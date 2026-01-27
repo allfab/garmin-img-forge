@@ -1,0 +1,87 @@
+# EditorConfig pour mpforge
+# https://editorconfig.org
+
+# Configuration racine
+root = true
+
+# Paramètres par défaut pour tous les fichiers
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Markdown - préserver trailing whitespace (2 espaces = line break)
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+# YAML - 2 espaces d'indentation
+[*.{yml,yaml}]
+indent_size = 2
+
+# TOML (Cargo.toml, etc.)
+[*.toml]
+indent_size = 2
+
+# JSON
+[*.json]
+indent_size = 2
+
+# C/C++ (Driver GDAL)
+[*.{c,cpp,h,hpp}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+# Rust
+[*.rs]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# Python (Plugin QGIS)
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 4
+
+# Makefiles - DOIVENT utiliser des tabs
+[Makefile]
+indent_style = tab
+
+[*.mk]
+indent_style = tab
+
+# CMake
+[CMakeLists.txt]
+indent_size = 2
+
+[*.cmake]
+indent_size = 2
+
+# Configuration files
+[*.{conf,config,ini}]
+indent_size = 2
+
+# XML
+[*.xml]
+indent_size = 2
+
+# Polish Map format (plaintext)
+[*.mp]
+indent_size = 2
+
+# Git
+[.gitignore]
+indent_size = 2
+
+[.gitattributes]
+indent_size = 2
