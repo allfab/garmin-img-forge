@@ -1,3 +1,3 @@
-# mpforge
+# MPForge
 
-On forge des cartes Garmin à partir de données SIG massives
+> On forge des cartes Garmin à partir de données SIG massives
