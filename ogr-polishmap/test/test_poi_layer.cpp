@@ -415,6 +415,72 @@ void TestIgnoreMixedSections() {
 }
 
 /************************************************************************/
+/*              Test 7.10: POI Without Label                            */
+/************************************************************************/
+
+void TestPOIWithoutLabel() {
+    TEST_START("POI Without Label (M3)");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/poi-no-label.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open poi-no-label.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(0);
+        CHECK(poLayer != nullptr, "Get POI layer");
+
+        if (poLayer != nullptr) {
+            // First POI: no Label field
+            OGRFeature* poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "Get first feature (no label)");
+
+            if (poFeature != nullptr) {
+                // Check Type field is set
+                CHECK(std::string(poFeature->GetFieldAsString("Type")) == "0x2C00", "Type is '0x2C00'");
+
+                // Check Label field is empty string (not null, just empty)
+                const char* pszLabel = poFeature->GetFieldAsString("Label");
+                CHECK(pszLabel != nullptr && std::string(pszLabel).empty(), "Label is empty string");
+
+                // Check EndLevel is set
+                CHECK(poFeature->GetFieldAsInteger("EndLevel") == 3, "EndLevel is 3");
+
+                // Check geometry exists and is valid
+                OGRGeometry* poGeom = poFeature->GetGeometryRef();
+                CHECK(poGeom != nullptr && poGeom->getGeometryType() == wkbPoint, "Geometry is wkbPoint");
+
+                if (poGeom != nullptr) {
+                    OGRPoint* poPoint = poGeom->toPoint();
+                    CHECK_NEAR(poPoint->getX(), 2.3522, 0.0001, "Longitude is 2.3522");
+                    CHECK_NEAR(poPoint->getY(), 48.8566, 0.0001, "Latitude is 48.8566");
+                }
+
+                OGRFeature::DestroyFeature(poFeature);
+            }
+
+            // Second POI: has Label
+            poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "Get second feature (with label)");
+
+            if (poFeature != nullptr) {
+                CHECK(std::string(poFeature->GetFieldAsString("Label")) == "With Label", "Label is 'With Label'");
+                OGRFeature::DestroyFeature(poFeature);
+            }
+
+            // No more features
+            poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature == nullptr, "nullptr after last feature");
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
 /*                              Main                                    */
 /************************************************************************/
 
@@ -435,6 +501,7 @@ int main() {
     TestCorrectCoordinates();
     TestEncodingConversion();
     TestIgnoreMixedSections();
+    TestPOIWithoutLabel();
 
     // Summary
     std::cout << "\n========================================" << std::endl;

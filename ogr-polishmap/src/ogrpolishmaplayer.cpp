@@ -34,12 +34,7 @@
 /************************************************************************/
 /*                        OGRPolishMapLayer()                           */
 /*                                                                      */
-/* Story 1.3: Full constructor with geometry type, field definitions,   */
-/* and WGS84 spatial reference.                                         */
-/*                                                                      */
-/* M1 Note: GDAL convention prohibits exceptions. Memory allocations    */
-/* with 'new' will terminate on failure (std::terminate). This is       */
-/* acceptable per GDAL driver conventions - no exception safety needed. */
+/* Story 1.3: Constructor without parser (for testing/legacy use).      */
 /************************************************************************/
 
 OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
@@ -47,50 +42,7 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(nullptr), m_osLayerType(pszLayerName), m_bEOF(false),
       m_bReaderInitialized(false) {
-
-    // Set layer description
-    SetDescription(pszLayerName);
-
-    // Create feature definition with layer name (Task 1.2)
-    m_poFeatureDefn = new OGRFeatureDefn(pszLayerName);
-    m_poFeatureDefn->Reference();  // Task 1.5: MANDATORY ref count increment
-
-    // Set geometry type (Task 1.3)
-    m_poFeatureDefn->SetGeomType(eGeomType);
-
-    // Create and assign WGS84 spatial reference (Task 1.6, FR40)
-    m_poSRS = new OGRSpatialReference();
-    // M2 Fix: Check return value of SetWellKnownGeogCS
-    if (m_poSRS->SetWellKnownGeogCS("WGS84") != OGRERR_NONE) {
-        CPLError(CE_Warning, CPLE_AppDefined,
-                 "Failed to set WGS84 coordinate system");
-    }
-    // GDAL 3.x: Traditional GIS order (lon, lat)
-    m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
-    // Note: SRS is set on GeomFieldDefn. When creating features (Story 1.4+),
-    // call OGRGeometry::assignSpatialReference(m_poSRS) on each geometry.
-    m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
-
-    // Add standard field definitions (Task 1.4, FR38)
-    // Type: Garmin type code (e.g., "0x2C00")
-    OGRFieldDefn oFieldType("Type", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldType);
-
-    // Label: Feature name/label
-    OGRFieldDefn oFieldLabel("Label", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldLabel);
-
-    // Data0: Numeric data field
-    OGRFieldDefn oFieldData0("Data0", OFTInteger);
-    m_poFeatureDefn->AddFieldDefn(&oFieldData0);
-
-    // EndLevel: Maximum zoom level (0-9)
-    OGRFieldDefn oFieldEndLevel("EndLevel", OFTInteger);
-    m_poFeatureDefn->AddFieldDefn(&oFieldEndLevel);
-
-    // Levels: Level range string (e.g., "0-3")
-    OGRFieldDefn oFieldLevels("Levels", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldLevels);
+    InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
 /************************************************************************/
@@ -105,13 +57,28 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(poParser), m_osLayerType(pszLayerName), m_bEOF(false),
       m_bReaderInitialized(false) {
+    InitializeLayerDefn(pszLayerName, eGeomType);
+}
 
+/************************************************************************/
+/*                       InitializeLayerDefn()                          */
+/*                                                                      */
+/* Common initialization for feature definition, SRS, and fields.       */
+/* Called by both constructors to avoid code duplication.               */
+/*                                                                      */
+/* Note: GDAL convention prohibits exceptions. Memory allocations       */
+/* with 'new' will terminate on failure (std::terminate). This is       */
+/* acceptable per GDAL driver conventions - no exception safety needed. */
+/************************************************************************/
+
+void OGRPolishMapLayer::InitializeLayerDefn(const char* pszLayerName,
+                                            OGRwkbGeometryType eGeomType) {
     // Set layer description
     SetDescription(pszLayerName);
 
     // Create feature definition with layer name
     m_poFeatureDefn = new OGRFeatureDefn(pszLayerName);
-    m_poFeatureDefn->Reference();
+    m_poFeatureDefn->Reference();  // MANDATORY ref count increment
 
     // Set geometry type
     m_poFeatureDefn->SetGeomType(eGeomType);
@@ -122,22 +89,28 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
         CPLError(CE_Warning, CPLE_AppDefined,
                  "Failed to set WGS84 coordinate system");
     }
+    // GDAL 3.x: Traditional GIS order (lon, lat)
     m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
 
-    // Add standard field definitions
+    // Add standard field definitions (FR38)
+    // Type: Garmin type code (e.g., "0x2C00")
     OGRFieldDefn oFieldType("Type", OFTString);
     m_poFeatureDefn->AddFieldDefn(&oFieldType);
 
+    // Label: Feature name/label
     OGRFieldDefn oFieldLabel("Label", OFTString);
     m_poFeatureDefn->AddFieldDefn(&oFieldLabel);
 
+    // Data0: Numeric data field (unused for POI, coordinates in geometry)
     OGRFieldDefn oFieldData0("Data0", OFTInteger);
     m_poFeatureDefn->AddFieldDefn(&oFieldData0);
 
+    // EndLevel: Maximum zoom level (0-9)
     OGRFieldDefn oFieldEndLevel("EndLevel", OFTInteger);
     m_poFeatureDefn->AddFieldDefn(&oFieldEndLevel);
 
+    // Levels: Level range string (e.g., "0-3")
     OGRFieldDefn oFieldLevels("Levels", OFTString);
     m_poFeatureDefn->AddFieldDefn(&oFieldLevels);
 }
@@ -213,8 +186,8 @@ OGRFeature* OGRPolishMapLayer::GetNextFeature() {
         poFeature->SetField("Type", oSection.osType.c_str());
         poFeature->SetField("Label", oSection.osLabel.c_str());
 
-        // Data0 is not really used for POI (coordinates are in geometry)
-        // but keep it for compatibility
+        // Data0: For POI, coordinates are in geometry, not this field.
+        // Field kept for schema consistency across all layer types.
         poFeature->SetField("Data0", 0);
 
         if (oSection.nEndLevel >= 0) {

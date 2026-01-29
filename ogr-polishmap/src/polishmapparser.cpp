@@ -277,7 +277,8 @@ bool PolishMapParser::ParseCoordinates(const CPLString& osValue, double& dfLat, 
 void PolishMapParser::ResetPOIReading() {
     if (m_fpFile != nullptr) {
         VSIFSeekL(m_fpFile, m_nAfterHeaderPos, SEEK_SET);
-        m_nCurrentLine = 0;  // Reset line counter
+        // Note: m_nCurrentLine is NOT reset - it tracks absolute line position
+        // for accurate error reporting across multiple iterations
     }
 }
 

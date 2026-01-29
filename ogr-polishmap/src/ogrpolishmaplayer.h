@@ -73,6 +73,10 @@ public:
     OGRFeature* GetNextFeature() override;
     OGRFeatureDefn* GetLayerDefn() override;
     int TestCapability(const char* pszCap) override;
+
+private:
+    // Initialize feature definition, SRS, and field definitions
+    void InitializeLayerDefn(const char* pszLayerName, OGRwkbGeometryType eGeomType);
 };
 
 #endif /* OGRPOLISHMAPLAYER_H_INCLUDED */
