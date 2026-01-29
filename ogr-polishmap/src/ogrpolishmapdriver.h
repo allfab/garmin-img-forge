@@ -46,9 +46,19 @@ public:
     static GDALDataset* Open(GDALOpenInfo* poOpenInfo);
 };
 
-// C-style registration function for GDAL driver manager
+// Visibility macro for exported symbols
+#if defined(__GNUC__) || defined(__clang__)
+#  define OGR_POLISHMAP_EXPORT __attribute__((visibility("default")))
+#elif defined(_MSC_VER)
+#  define OGR_POLISHMAP_EXPORT __declspec(dllexport)
+#else
+#  define OGR_POLISHMAP_EXPORT
+#endif
+
+// C-style registration functions (exported for plugin loading)
 extern "C" {
-    void RegisterOGRPolishMap();
+    OGR_POLISHMAP_EXPORT void RegisterOGRPolishMap();
+    OGR_POLISHMAP_EXPORT void GDALRegisterMe();  // Standard plugin entry point
 }
 
 #endif /* OGRPOLISHMAPDRIVER_H_INCLUDED */

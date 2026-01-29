@@ -511,6 +511,52 @@ static bool Test_Layer_Spatial_Reference() {
 }
 
 /************************************************************************/
+/*                    Test_Layer_Feature_Count_Is_Zero                   */
+/*                                                                      */
+/* L2 Fix: Test that empty layers return feature count of 0              */
+/************************************************************************/
+
+static bool Test_Layer_Feature_Count_Is_Zero() {
+    std::cout << "  Test_Layer_Feature_Count_Is_Zero... ";
+
+    CPLString osTempFile = CreateTempMPFile();
+    GDALDataset* poDS = GDALDataset::Open(osTempFile.c_str(), GDAL_OF_VECTOR);
+
+    if (poDS == nullptr) {
+        std::cout << "FAILED (cannot open file)" << std::endl;
+        CleanupTempFile(osTempFile);
+        return false;
+    }
+
+    bool bSuccess = true;
+
+    for (int i = 0; i < 3; i++) {
+        OGRLayer* poLayer = poDS->GetLayer(i);
+        if (poLayer == nullptr) {
+            std::cout << "FAILED (GetLayer(" << i << ") returned nullptr)" << std::endl;
+            bSuccess = false;
+            break;
+        }
+
+        GIntBig nCount = poLayer->GetFeatureCount();
+        if (nCount != 0) {
+            std::cout << "FAILED (layer " << i << " has " << nCount
+                      << " features, expected 0)" << std::endl;
+            bSuccess = false;
+            break;
+        }
+    }
+
+    GDALClose(poDS);
+    CleanupTempFile(osTempFile);
+
+    if (bSuccess) {
+        std::cout << "PASSED" << std::endl;
+    }
+    return bSuccess;
+}
+
+/************************************************************************/
 /*                               main()                                  */
 /************************************************************************/
 
@@ -551,6 +597,9 @@ int main() {
 
     // Additional: SRS test
     if (Test_Layer_Spatial_Reference()) nPassed++; else nFailed++;
+
+    // L2 Fix: Feature count test
+    if (Test_Layer_Feature_Count_Is_Zero()) nPassed++; else nFailed++;
 
     std::cout << std::endl;
     std::cout << "=== Test Summary ===" << std::endl;

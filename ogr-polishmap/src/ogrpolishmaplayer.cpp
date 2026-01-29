@@ -27,12 +27,18 @@
 
 #include "ogrpolishmaplayer.h"
 #include "cpl_conv.h"
+#include "cpl_error.h"
+#include <cassert>
 
 /************************************************************************/
 /*                        OGRPolishMapLayer()                           */
 /*                                                                      */
 /* Story 1.3: Full constructor with geometry type, field definitions,   */
 /* and WGS84 spatial reference.                                         */
+/*                                                                      */
+/* M1 Note: GDAL convention prohibits exceptions. Memory allocations    */
+/* with 'new' will terminate on failure (std::terminate). This is       */
+/* acceptable per GDAL driver conventions - no exception safety needed. */
 /************************************************************************/
 
 OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
@@ -51,9 +57,15 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
 
     // Create and assign WGS84 spatial reference (Task 1.6, FR40)
     m_poSRS = new OGRSpatialReference();
-    m_poSRS->SetWellKnownGeogCS("WGS84");
+    // M2 Fix: Check return value of SetWellKnownGeogCS
+    if (m_poSRS->SetWellKnownGeogCS("WGS84") != OGRERR_NONE) {
+        CPLError(CE_Warning, CPLE_AppDefined,
+                 "Failed to set WGS84 coordinate system");
+    }
     // GDAL 3.x: Traditional GIS order (lon, lat)
     m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    // Note: SRS is set on GeomFieldDefn. When creating features (Story 1.4+),
+    // call OGRGeometry::assignSpatialReference(m_poSRS) on each geometry.
     m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
 
     // Add standard field definitions (Task 1.4, FR38)
@@ -102,7 +114,7 @@ OGRPolishMapLayer::~OGRPolishMapLayer() {
 void OGRPolishMapLayer::ResetReading() {
     // Reset feature ID counter to 1 (FID starts at 1 per architecture)
     m_nNextFID = 1;
-    // Full implementation will be added when reading features (Story 1.4+)
+    // M4 Fix: Currently no-op for empty layers. Will reset file position in Story 1.4
 }
 
 /************************************************************************/
@@ -120,6 +132,8 @@ OGRFeature* OGRPolishMapLayer::GetNextFeature() {
 /************************************************************************/
 
 OGRFeatureDefn* OGRPolishMapLayer::GetLayerDefn() {
+    // M5 Fix: Assert that feature definition exists (should never be null)
+    assert(m_poFeatureDefn != nullptr);
     return m_poFeatureDefn;
 }
 

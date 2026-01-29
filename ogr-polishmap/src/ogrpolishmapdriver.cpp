@@ -172,3 +172,14 @@ extern "C" void RegisterOGRPolishMap() {
 
     CPLDebug("OGR_POLISHMAP", "Driver registered successfully");
 }
+
+/************************************************************************/
+/*                          GDALRegisterMe()                            */
+/*                                                                      */
+/* Standard entry point for external GDAL plugins. GDAL calls this      */
+/* function when loading plugins from GDAL_DRIVER_PATH.                 */
+/************************************************************************/
+
+extern "C" void GDALRegisterMe() {
+    RegisterOGRPolishMap();
+}

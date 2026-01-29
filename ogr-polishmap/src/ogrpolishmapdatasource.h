@@ -55,6 +55,11 @@ public:
 
     // GDALDataset pure virtual methods
     int GetLayerCount() override;
+
+    /** @brief Returns layer by index.
+     *  @param nLayer Layer index (0-2 valid)
+     *  @return OGRLayer pointer or nullptr if index invalid.
+     *  @note Ownership remains with dataset. Caller must NOT delete. */
     OGRLayer* GetLayer(int nLayer) override;
 
     int TestCapability(const char* pszCap) override;
