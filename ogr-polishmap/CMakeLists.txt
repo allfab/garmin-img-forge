@@ -20,6 +20,7 @@ set(POLISHMAP_SOURCES
     src/ogrpolishmapdriver.cpp
     src/ogrpolishmapdatasource.cpp
     src/ogrpolishmaplayer.cpp
+    src/polishmapparser.cpp
 )
 
 # Build shared library (GDAL plugin)
@@ -83,13 +84,35 @@ install(TARGETS gdal_POLISHMAP
     COMPONENT driver
 )
 
-# Test executable
+# Test executable - Driver Registration
 add_executable(test_driver_registration test/test_driver_registration.cpp ${POLISHMAP_SOURCES})
 target_include_directories(test_driver_registration PRIVATE
     ${GDAL_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_link_libraries(test_driver_registration PRIVATE ${GDAL_LIBRARIES})
+
+# Test executable - Identify Content Validation
+add_executable(test_identify_content test/test_identify_content.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_identify_content PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_identify_content PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_identify_content PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
+# Test executable - Parser and Open()
+add_executable(test_parser_and_open test/test_parser_and_open.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_parser_and_open PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_parser_and_open PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_parser_and_open PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
 
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")

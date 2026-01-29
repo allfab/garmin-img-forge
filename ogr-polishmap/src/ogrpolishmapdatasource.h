@@ -30,7 +30,9 @@
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "polishmapparser.h"
 #include <vector>
+#include <memory>
 
 class OGRPolishMapLayer;
 
@@ -42,6 +44,7 @@ class OGRPolishMapDataSource final : public GDALDataset {
 private:
     std::vector<std::unique_ptr<OGRPolishMapLayer>> m_apoLayers;
     CPLString m_osFilename;
+    PolishMapHeaderData m_oHeaderData;  // Story 1.2: Header metadata storage
 
 public:
     OGRPolishMapDataSource();
@@ -52,6 +55,10 @@ public:
     OGRLayer* GetLayer(int nLayer) override;
 
     int TestCapability(const char* pszCap) override;
+
+    // Story 1.2: Header metadata access
+    void SetHeaderData(const PolishMapHeaderData& oData) { m_oHeaderData = oData; }
+    const PolishMapHeaderData& GetHeaderData() const { return m_oHeaderData; }
 };
 
 #endif /* OGRPOLISHMAPDATASOURCE_H_INCLUDED */

@@ -26,6 +26,8 @@
  ****************************************************************************/
 
 #include "ogrpolishmapdriver.h"
+#include "ogrpolishmapdatasource.h"
+#include "polishmapparser.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_string.h"
@@ -63,12 +65,11 @@ OGRPolishMapDriver::~OGRPolishMapDriver() {
 /************************************************************************/
 /*                            Identify()                                */
 /*                                                                      */
-/* Identify whether this file is a Polish Map file by checking the     */
-/* file extension.                                                      */
+/* Identify whether this file is a Polish Map file by checking both    */
+/* the file extension AND the presence of [IMG ID] header in content.  */
 /*                                                                      */
-/* NOTE: Story 1.1 implements extension-only check as specified in     */
-/* FR20. Full content validation ([IMG ID] header check) will be       */
-/* implemented in Story 1.2 (Polish Map Header Parser).                */
+/* Story 1.2: Enhanced to validate file content, not just extension.   */
+/* Performance requirement: < 10ms using GDALOpenInfo::pabyHeader.     */
 /************************************************************************/
 
 int OGRPolishMapDriver::Identify(GDALOpenInfo* poOpenInfo) {
@@ -83,9 +84,29 @@ int OGRPolishMapDriver::Identify(GDALOpenInfo* poOpenInfo) {
     }
 
     // Check for .mp extension (case-insensitive)
-    // Full content validation will be added in Story 1.2
-    if (EQUAL(CPLGetExtension(pszFilename), "mp")) {
-        return TRUE;
+    if (!EQUAL(CPLGetExtension(pszFilename), "mp")) {
+        return FALSE;
+    }
+
+    // Story 1.2: Content validation - check for [IMG ID] header
+    // Use GDALOpenInfo::pabyHeader for fast access (first 1024 bytes pre-read)
+    if (poOpenInfo->pabyHeader == nullptr || poOpenInfo->nHeaderBytes < 8) {
+        return FALSE;
+    }
+
+    // Search for "[IMG ID]" marker in header bytes (case-sensitive)
+    // Polish Map format requires this header section
+    // Note: pabyHeader is NOT guaranteed to be null-terminated, so we must
+    // search within bounds using nHeaderBytes instead of strstr()
+    const char* pszHeader = reinterpret_cast<const char*>(poOpenInfo->pabyHeader);
+    const int nSearchLen = poOpenInfo->nHeaderBytes;
+    const char* pszMarker = "[IMG ID]";
+    const int nMarkerLen = 8;  // strlen("[IMG ID]")
+
+    for (int i = 0; i <= nSearchLen - nMarkerLen; i++) {
+        if (memcmp(pszHeader + i, pszMarker, nMarkerLen) == 0) {
+            return TRUE;
+        }
     }
 
     return FALSE;
@@ -94,23 +115,45 @@ int OGRPolishMapDriver::Identify(GDALOpenInfo* poOpenInfo) {
 /************************************************************************/
 /*                              Open()                                  */
 /*                                                                      */
-/* Open a Polish Map file. For now, this is a stub that returns NULL   */
-/* with an appropriate error message.                                   */
+/* Open a Polish Map file. Story 1.2: Parse and validate [IMG ID]       */
+/* header, create dataset with metadata.                                */
 /************************************************************************/
 
 GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
-    // Verify this is likely a Polish Map file
+    // Verify this is likely a Polish Map file (checks extension AND [IMG ID])
     if (!Identify(poOpenInfo)) {
         return nullptr;
     }
 
-    // For now, return NULL with a descriptive error
-    // Full implementation will come in subsequent stories
-    CPLError(CE_Failure, CPLE_OpenFailed,
-             "PolishMap driver: Open() not yet implemented. "
-             "File parsing will be added in subsequent development stories.");
+    // Parse the header using PolishMapParser
+    PolishMapParser oParser(poOpenInfo->pszFilename);
+    if (!oParser.IsOpen()) {
+        CPLError(CE_Failure, CPLE_OpenFailed,
+                 "Polish Map driver: Cannot open file '%s'",
+                 poOpenInfo->pszFilename);
+        return nullptr;
+    }
 
-    return nullptr;
+    // Parse the [IMG ID] header section
+    if (!oParser.ParseHeader()) {
+        // Error already logged by ParseHeader()
+        return nullptr;
+    }
+
+    // Create dataset
+    OGRPolishMapDataSource* poDS = new OGRPolishMapDataSource();
+
+    // Set the file path (FR26: pszName contains file path)
+    poDS->SetDescription(poOpenInfo->pszFilename);
+
+    // Store header metadata in dataset
+    poDS->SetHeaderData(oParser.GetHeaderData());
+
+    CPLDebug("OGR_POLISHMAP", "Opened Polish Map file: %s (Name: %s)",
+             poOpenInfo->pszFilename,
+             oParser.GetHeaderData().osName.c_str());
+
+    return poDS;
 }
 
 /************************************************************************/
