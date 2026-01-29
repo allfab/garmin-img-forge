@@ -315,9 +315,14 @@ static void Test_Open_SimpleHeader() {
     }
 
     // Verify basic dataset properties
-    if (poDS->GetLayerCount() != 0) {
+    // Story 1.3 changed expected layer count from 0 to 3
+    int nLayerCount = poDS->GetLayerCount();
+    if (nLayerCount != 3) {
         GDALClose(poDS);
-        // Currently expected to have 0 layers (layers added in future stories)
+        char szMsg[256];
+        snprintf(szMsg, sizeof(szMsg), "Expected 3 layers, got %d", nLayerCount);
+        TestFail(pszTestName, szMsg);
+        return;
     }
 
     GDALClose(poDS);

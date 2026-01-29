@@ -29,18 +29,25 @@
 #define OGRPOLISHMAPLAYER_H_INCLUDED
 
 #include "ogrsf_frmts.h"
+#include "ogr_spatialref.h"
 
 /************************************************************************/
 /*                         OGRPolishMapLayer                            */
+/*                                                                      */
+/* Story 1.3: Layer implementation with OGRFeatureDefn, geometry type,  */
+/* field definitions (Type, Label, Data0, EndLevel, Levels), and WGS84  */
+/* spatial reference system.                                            */
 /************************************************************************/
 
 class OGRPolishMapLayer final : public OGRLayer {
 private:
     OGRFeatureDefn* m_poFeatureDefn;
+    OGRSpatialReference* m_poSRS;
     GIntBig m_nNextFID;
 
 public:
-    explicit OGRPolishMapLayer(const char* pszLayerName);
+    // Story 1.3: Constructor now accepts geometry type for POI/POLYLINE/POLYGON
+    OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType);
     ~OGRPolishMapLayer() override;
 
     // Disable copy and assignment

@@ -30,21 +30,68 @@
 
 /************************************************************************/
 /*                        OGRPolishMapLayer()                           */
+/*                                                                      */
+/* Story 1.3: Full constructor with geometry type, field definitions,   */
+/* and WGS84 spatial reference.                                         */
 /************************************************************************/
 
-OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName)
-    : m_poFeatureDefn(new OGRFeatureDefn(pszLayerName)), m_nNextFID(1) {
+OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
+                                     OGRwkbGeometryType eGeomType)
+    : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1) {
+
+    // Set layer description
     SetDescription(pszLayerName);
-    m_poFeatureDefn->Reference();
+
+    // Create feature definition with layer name (Task 1.2)
+    m_poFeatureDefn = new OGRFeatureDefn(pszLayerName);
+    m_poFeatureDefn->Reference();  // Task 1.5: MANDATORY ref count increment
+
+    // Set geometry type (Task 1.3)
+    m_poFeatureDefn->SetGeomType(eGeomType);
+
+    // Create and assign WGS84 spatial reference (Task 1.6, FR40)
+    m_poSRS = new OGRSpatialReference();
+    m_poSRS->SetWellKnownGeogCS("WGS84");
+    // GDAL 3.x: Traditional GIS order (lon, lat)
+    m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
+
+    // Add standard field definitions (Task 1.4, FR38)
+    // Type: Garmin type code (e.g., "0x2C00")
+    OGRFieldDefn oFieldType("Type", OFTString);
+    m_poFeatureDefn->AddFieldDefn(&oFieldType);
+
+    // Label: Feature name/label
+    OGRFieldDefn oFieldLabel("Label", OFTString);
+    m_poFeatureDefn->AddFieldDefn(&oFieldLabel);
+
+    // Data0: Numeric data field
+    OGRFieldDefn oFieldData0("Data0", OFTInteger);
+    m_poFeatureDefn->AddFieldDefn(&oFieldData0);
+
+    // EndLevel: Maximum zoom level (0-9)
+    OGRFieldDefn oFieldEndLevel("EndLevel", OFTInteger);
+    m_poFeatureDefn->AddFieldDefn(&oFieldEndLevel);
+
+    // Levels: Level range string (e.g., "0-3")
+    OGRFieldDefn oFieldLevels("Levels", OFTString);
+    m_poFeatureDefn->AddFieldDefn(&oFieldLevels);
 }
 
 /************************************************************************/
 /*                       ~OGRPolishMapLayer()                           */
+/*                                                                      */
+/* Story 1.3: Proper cleanup with Release() for ref-counted objects.    */
 /************************************************************************/
 
 OGRPolishMapLayer::~OGRPolishMapLayer() {
+    // Task 1.5: Release OGRFeatureDefn (decrements ref count, frees if 0)
     if (m_poFeatureDefn != nullptr) {
         m_poFeatureDefn->Release();
+    }
+    // Task 1.6: Release spatial reference
+    if (m_poSRS != nullptr) {
+        m_poSRS->Release();
     }
 }
 
@@ -53,9 +100,9 @@ OGRPolishMapLayer::~OGRPolishMapLayer() {
 /************************************************************************/
 
 void OGRPolishMapLayer::ResetReading() {
-    // Reset feature ID counter
-    // Full implementation will be added when reading features (future story)
-    m_nNextFID = 0;
+    // Reset feature ID counter to 1 (FID starts at 1 per architecture)
+    m_nNextFID = 1;
+    // Full implementation will be added when reading features (Story 1.4+)
 }
 
 /************************************************************************/
@@ -63,8 +110,8 @@ void OGRPolishMapLayer::ResetReading() {
 /************************************************************************/
 
 OGRFeature* OGRPolishMapLayer::GetNextFeature() {
-    // Stub implementation - returns nullptr
-    // Feature reading will be implemented in subsequent stories
+    // Stub implementation - returns nullptr (layer is empty)
+    // Feature reading will be implemented in Story 1.4 (POI), 1.5, 1.6
     return nullptr;
 }
 
@@ -78,11 +125,23 @@ OGRFeatureDefn* OGRPolishMapLayer::GetLayerDefn() {
 
 /************************************************************************/
 /*                         TestCapability()                             */
+/*                                                                      */
+/* Story 1.3 Task 6: Report layer capabilities.                         */
 /************************************************************************/
 
 int OGRPolishMapLayer::TestCapability(const char* pszCap) {
-    // For now, report no capabilities
-    // Will be implemented in subsequent stories
-    CPL_IGNORE_RET_VAL(pszCap);
+    // Task 6.1: OLCRandomRead - GetFeature(FID) not implemented (Post-MVP)
+    if (EQUAL(pszCap, OLCRandomRead)) {
+        return FALSE;
+    }
+    // Task 6.2: OLCSequentialWrite - CreateFeature() not implemented (Story 2.x)
+    if (EQUAL(pszCap, OLCSequentialWrite)) {
+        return FALSE;
+    }
+    // Task 6.3: OLCFastFeatureCount - No optimization yet
+    if (EQUAL(pszCap, OLCFastFeatureCount)) {
+        return FALSE;
+    }
+    // Default: capability not supported
     return FALSE;
 }

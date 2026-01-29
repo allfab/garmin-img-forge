@@ -114,6 +114,17 @@ target_compile_definitions(test_parser_and_open PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - Dataset Layers (Story 1.3)
+add_executable(test_dataset_layers test/test_dataset_layers.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_dataset_layers PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_dataset_layers PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_dataset_layers PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

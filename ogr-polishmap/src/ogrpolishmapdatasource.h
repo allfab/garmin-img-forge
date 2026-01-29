@@ -46,6 +46,9 @@ private:
     CPLString m_osFilename;
     PolishMapHeaderData m_oHeaderData;  // Story 1.2: Header metadata storage
 
+    // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
+    void CreateLayers();
+
 public:
     OGRPolishMapDataSource();
     ~OGRPolishMapDataSource() override;
