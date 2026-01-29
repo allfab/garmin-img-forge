@@ -31,6 +31,7 @@
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_string.h"
+#include <memory>
 
 /************************************************************************/
 /*                       OGRPolishMapDriver()                           */
@@ -125,9 +126,9 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
         return nullptr;
     }
 
-    // Parse the header using PolishMapParser
-    PolishMapParser oParser(poOpenInfo->pszFilename);
-    if (!oParser.IsOpen()) {
+    // Story 1.4: Create parser with unique_ptr for ownership transfer
+    std::unique_ptr<PolishMapParser> poParser = std::make_unique<PolishMapParser>(poOpenInfo->pszFilename);
+    if (!poParser->IsOpen()) {
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Polish Map driver: Cannot open file '%s'",
                  poOpenInfo->pszFilename);
@@ -135,7 +136,7 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
     }
 
     // Parse the [IMG ID] header section
-    if (!oParser.ParseHeader()) {
+    if (!poParser->ParseHeader()) {
         // Error already logged by ParseHeader()
         return nullptr;
     }
@@ -147,11 +148,14 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
     poDS->SetDescription(poOpenInfo->pszFilename);
 
     // Store header metadata in dataset
-    poDS->SetHeaderData(oParser.GetHeaderData());
+    poDS->SetHeaderData(poParser->GetHeaderData());
+
+    // Story 1.4: Transfer parser ownership to dataset
+    poDS->SetParser(std::move(poParser));
 
     CPLDebug("OGR_POLISHMAP", "Opened Polish Map file: %s (Name: %s)",
              poOpenInfo->pszFilename,
-             oParser.GetHeaderData().osName.c_str());
+             poDS->GetHeaderData().osName.c_str());
 
     return poDS;
 }

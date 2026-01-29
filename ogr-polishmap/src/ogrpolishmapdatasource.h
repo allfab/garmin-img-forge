@@ -45,6 +45,7 @@ private:
     std::vector<std::unique_ptr<OGRPolishMapLayer>> m_apoLayers;
     CPLString m_osFilename;
     PolishMapHeaderData m_oHeaderData;  // Story 1.2: Header metadata storage
+    std::unique_ptr<PolishMapParser> m_poParser;  // Story 1.4: Parser for feature reading
 
     // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
     void CreateLayers();
@@ -67,6 +68,10 @@ public:
     // Story 1.2: Header metadata access
     void SetHeaderData(const PolishMapHeaderData& oData) { m_oHeaderData = oData; }
     const PolishMapHeaderData& GetHeaderData() const { return m_oHeaderData; }
+
+    // Story 1.4: Parser access
+    void SetParser(std::unique_ptr<PolishMapParser> poParser);
+    PolishMapParser* GetParser() { return m_poParser.get(); }
 };
 
 #endif /* OGRPOLISHMAPDATASOURCE_H_INCLUDED */

@@ -63,6 +63,35 @@ struct PolishMapHeaderData {
 };
 
 /************************************************************************/
+/*                        PolishMapPOISection                           */
+/*                                                                      */
+/* Intermediate Representation (IR) structure for [POI] section data.   */
+/* Story 1.4: IR minimaliste pour une seule section POI à la fois.     */
+/************************************************************************/
+
+struct PolishMapPOISection {
+    std::string osType;                    // "0x2C00"
+    std::string osLabel;                   // UTF-8 après conversion
+    std::pair<double, double> oCoords;     // (lat, lon)
+    int nEndLevel;                         // 0-9, -1 si absent
+    std::string osLevels;                  // "0-3" ou vide
+    std::map<std::string, std::string> aoOtherFields;  // Data1, Data2, etc.
+
+    // Default values
+    PolishMapPOISection() : oCoords(0.0, 0.0), nEndLevel(-1) {}
+
+    // Clear all data
+    void Clear() {
+        osType.clear();
+        osLabel.clear();
+        oCoords = std::make_pair(0.0, 0.0);
+        nEndLevel = -1;
+        osLevels.clear();
+        aoOtherFields.clear();
+    }
+};
+
+/************************************************************************/
 /*                         PolishMapParser                              */
 /*                                                                      */
 /* Hybrid parser for Polish Map format files:                           */
@@ -90,15 +119,29 @@ public:
     // Check if file was successfully opened
     bool IsOpen() const { return m_fpFile != nullptr; }
 
+    // Story 1.4: POI section parsing
+    // Parse next [POI] section from file
+    // Returns TRUE if POI found and parsed, FALSE if no more POI sections
+    bool ParseNextPOI(PolishMapPOISection& oSection);
+
+    // Reset reading position to start of POI sections (after header)
+    void ResetPOIReading();
+
+    // Get current line number (for debugging)
+    int GetCurrentLine() const { return m_nCurrentLine; }
+
 private:
     CPLString m_osFilePath;
     VSILFILE* m_fpFile;
     PolishMapHeaderData m_oHeaderData;
+    vsi_l_offset m_nAfterHeaderPos;  // File position after header (start of data sections)
+    int m_nCurrentLine;               // Current line number for error reporting
 
     // Helper methods
     bool ReadLine(CPLString& osLine);
     bool ParseKeyValue(const CPLString& osLine, CPLString& osKey, CPLString& osValue);
     CPLString RecodeToUTF8(const CPLString& osValue);
+    bool ParseCoordinates(const CPLString& osValue, double& dfLat, double& dfLon);
 };
 
 #endif /* POLISHMAPPARSER_H_INCLUDED */

@@ -37,8 +37,8 @@
 /************************************************************************/
 
 OGRPolishMapDataSource::OGRPolishMapDataSource() {
-    // Task 2.1: Create 3 layers in constructor
-    CreateLayers();
+    // Story 1.4: Don't create layers yet - wait for parser to be set
+    // Layers will be created in SetParser() after parser is available
 }
 
 /************************************************************************/
@@ -59,17 +59,22 @@ OGRPolishMapDataSource::~OGRPolishMapDataSource() {
 /************************************************************************/
 
 void OGRPolishMapDataSource::CreateLayers() {
+    // Story 1.4: Pass parser to layers for feature reading
+    PolishMapParser* poParser = m_poParser.get();
+
     // Task 2.2: Create POI layer with wkbPoint geometry type (index 0)
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POI", wkbPoint));
+        std::make_unique<OGRPolishMapLayer>("POI", wkbPoint, poParser));
 
     // Task 2.3: Create POLYLINE layer with wkbLineString geometry type (index 1)
+    // Note: POLYLINE not yet implemented - will be Story 1.5
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString));
+        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, poParser));
 
     // Task 2.4: Create POLYGON layer with wkbPolygon geometry type (index 2)
+    // Note: POLYGON not yet implemented - will be Story 1.6
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon));
+        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, poParser));
 
     // Task 2.5: Layers stored in m_apoLayers vector (3 layers total)
     CPLDebug("OGR_POLISHMAP", "Created %d layers: POI, POLYLINE, POLYGON",
@@ -123,4 +128,16 @@ int OGRPolishMapDataSource::TestCapability(const char* pszCap) {
     }
     // Task 5.2: Default - capability not supported
     return FALSE;
+}
+
+/************************************************************************/
+/*                            SetParser()                               */
+/*                                                                      */
+/* Story 1.4: Set parser and create layers (must be done in this order)*/
+/************************************************************************/
+
+void OGRPolishMapDataSource::SetParser(std::unique_ptr<PolishMapParser> poParser) {
+    m_poParser = std::move(poParser);
+    // Now that parser is set, create the layers
+    CreateLayers();
 }

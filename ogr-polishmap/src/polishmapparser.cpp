@@ -36,7 +36,7 @@
 /************************************************************************/
 
 PolishMapParser::PolishMapParser(const char* pszFilePath)
-    : m_osFilePath(pszFilePath), m_fpFile(nullptr) {
+    : m_osFilePath(pszFilePath), m_fpFile(nullptr), m_nAfterHeaderPos(0), m_nCurrentLine(0) {
     m_fpFile = VSIFOpenL(pszFilePath, "rb");
     if (m_fpFile == nullptr) {
         CPLDebug("OGR_POLISHMAP", "Failed to open file: %s", pszFilePath);
@@ -229,5 +229,157 @@ bool PolishMapParser::ParseHeader() {
              m_oHeaderData.osName.c_str(), m_oHeaderData.osID.c_str(),
              m_oHeaderData.osCodePage.c_str(), m_oHeaderData.osDatum.c_str());
 
+    // Story 1.4: Save position after header for POI reading
+    m_nAfterHeaderPos = VSIFTellL(m_fpFile);
+
     return true;
+}
+
+/************************************************************************/
+/*                         ParseCoordinates()                           */
+/*                                                                      */
+/* Parse coordinates from Data0=(lat,lon) or Data0=lat,lon format.     */
+/* Story 1.4: Handle both parenthesized and non-parenthesized formats.  */
+/************************************************************************/
+
+bool PolishMapParser::ParseCoordinates(const CPLString& osValue, double& dfLat, double& dfLon) {
+    CPLString osClean = osValue;
+
+    // Remove parentheses if present
+    if (!osClean.empty() && osClean[0] == '(') {
+        osClean = osClean.substr(1);
+    }
+    if (!osClean.empty() && osClean.back() == ')') {
+        osClean.resize(osClean.size() - 1);
+    }
+
+    // Find comma separator
+    const char* pszComma = strchr(osClean.c_str(), ',');
+    if (pszComma == nullptr) {
+        return false;
+    }
+
+    dfLat = CPLAtof(osClean.c_str());
+    dfLon = CPLAtof(pszComma + 1);
+
+    // Validate WGS84 range
+    return dfLat >= -90.0 && dfLat <= 90.0 &&
+           dfLon >= -180.0 && dfLon <= 180.0;
+}
+
+/************************************************************************/
+/*                          ResetPOIReading()                           */
+/*                                                                      */
+/* Reset file position to start of POI sections (after header).         */
+/* Story 1.4: Allow re-iteration through POI sections.                  */
+/************************************************************************/
+
+void PolishMapParser::ResetPOIReading() {
+    if (m_fpFile != nullptr) {
+        VSIFSeekL(m_fpFile, m_nAfterHeaderPos, SEEK_SET);
+        m_nCurrentLine = 0;  // Reset line counter
+    }
+}
+
+/************************************************************************/
+/*                          ParseNextPOI()                              */
+/*                                                                      */
+/* Parse next [POI] section from file.                                  */
+/* Story 1.4: State machine to skip non-POI sections.                   */
+/************************************************************************/
+
+bool PolishMapParser::ParseNextPOI(PolishMapPOISection& oSection) {
+    if (m_fpFile == nullptr) {
+        return false;
+    }
+
+    oSection.Clear();
+
+    CPLString osLine;
+    bool bInPOISection = false;
+    bool bInOtherSection = false;  // Track if we're in a non-POI section to skip
+
+    // Read file line by line
+    while (ReadLine(osLine)) {
+        m_nCurrentLine++;
+
+        // Check for section markers
+        if (!osLine.empty() && osLine[0] == '[') {
+            if (STARTS_WITH_CI(osLine.c_str(), "[POI]") || STARTS_WITH_CI(osLine.c_str(), "[RGN10]")) {
+                bInPOISection = true;
+                bInOtherSection = false;
+                continue;
+            } else if (STARTS_WITH_CI(osLine.c_str(), "[END]")) {
+                if (bInPOISection) {
+                    // End of current POI section - return it
+                    return true;
+                }
+                // End of some other section - reset flag and continue searching
+                bInOtherSection = false;
+                continue;
+            } else if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]") ||
+                       STARTS_WITH_CI(osLine.c_str(), "[END-IMG ID]")) {
+                // Header section markers - skip
+                bInOtherSection = false;
+                continue;
+            } else {
+                // It's a different section marker ([POLYLINE], [POLYGON], etc.)
+                if (bInPOISection) {
+                    // Another section started within POI (shouldn't happen normally)
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                             "Unexpected section marker within [POI] at line %d",
+                             m_nCurrentLine);
+                    return false;
+                }
+                // We're now in a non-POI section - skip until [END]
+                bInOtherSection = true;
+                continue;
+            }
+        }
+
+        // Skip lines if we're in a non-POI section
+        if (bInOtherSection) {
+            continue;
+        }
+
+        // Parse key=value pairs within [POI] section
+        if (bInPOISection) {
+            CPLString osKey, osValue;
+            if (ParseKeyValue(osLine, osKey, osValue)) {
+                // Store known fields
+                if (EQUAL(osKey.c_str(), "Type")) {
+                    oSection.osType = osValue;
+                } else if (EQUAL(osKey.c_str(), "Label")) {
+                    oSection.osLabel = RecodeToUTF8(osValue);
+                } else if (EQUAL(osKey.c_str(), "Data0")) {
+                    // Parse coordinates
+                    if (!ParseCoordinates(osValue, oSection.oCoords.first, oSection.oCoords.second)) {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "Skipping POI at line %d: invalid coordinates '%s'",
+                                 m_nCurrentLine, osValue.c_str());
+                        // Skip to next POI section
+                        bInPOISection = false;
+                        oSection.Clear();
+                        continue;
+                    }
+                } else if (EQUAL(osKey.c_str(), "EndLevel")) {
+                    oSection.nEndLevel = atoi(osValue.c_str());
+                } else if (EQUAL(osKey.c_str(), "Levels")) {
+                    oSection.osLevels = osValue;
+                } else {
+                    // Store other fields in the map
+                    oSection.aoOtherFields[osKey] = osValue;
+                }
+            }
+        }
+    }
+
+    // Reached end of file
+    if (bInPOISection) {
+        // We were in a POI section but didn't find [END] marker
+        // Accept it anyway (tolerant parsing)
+        return true;
+    }
+
+    return false;
 }

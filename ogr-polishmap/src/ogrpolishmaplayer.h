@@ -31,6 +31,9 @@
 #include "ogrsf_frmts.h"
 #include "ogr_spatialref.h"
 
+// Forward declaration
+class PolishMapParser;
+
 /************************************************************************/
 /*                         OGRPolishMapLayer                            */
 /*                                                                      */
@@ -45,9 +48,20 @@ private:
     OGRSpatialReference* m_poSRS;
     GIntBig m_nNextFID;
 
+    // Story 1.4: Parser and layer type for feature reading
+    PolishMapParser* m_poParser;       // Non-owning pointer to parser
+    CPLString m_osLayerType;           // "POI", "POLYLINE", or "POLYGON"
+    bool m_bEOF;                       // End of file reached
+    bool m_bReaderInitialized;        // Parser position initialized
+
 public:
     // Story 1.3: Constructor now accepts geometry type for POI/POLYLINE/POLYGON
     OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType);
+
+    // Story 1.4: Constructor with parser for feature reading
+    OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType,
+                      PolishMapParser* poParser);
+
     ~OGRPolishMapLayer() override;
 
     // Disable copy and assignment
