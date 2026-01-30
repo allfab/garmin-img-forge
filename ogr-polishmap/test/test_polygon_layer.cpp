@@ -31,6 +31,8 @@
 #include "cpl_conv.h"
 #include <iostream>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 
 // Declare the driver registration function
 extern "C" void RegisterOGRPolishMap();
@@ -228,7 +230,7 @@ void TestPolygonManyPoints() {
 
                 OGRPolygon* poPolygon = poGeom->toPolygon();
                 const OGRLinearRing* poRing = poPolygon->getExteriorRing();
-                CHECK(poRing->getNumPoints() == 20, "Ring has 20 points (Data0-Data19)");
+                CHECK(poRing->getNumPoints() == 20, "Ring has 20 points (all from Data0)");
 
                 // Validate first and last coordinates
                 CHECK_NEAR(poRing->getX(0), 2.3400, 0.0001, "First point lon correct");
@@ -362,14 +364,15 @@ void TestPolygonCoordinates() {
                 const OGRLinearRing* poRing = poPolygon->getExteriorRing();
 
                 // Verify all coordinates match test data exactly
-                CHECK_NEAR(poRing->getX(0), 2.3522, 0.0001, "Data0 lon = 2.3522");
-                CHECK_NEAR(poRing->getY(0), 48.8566, 0.0001, "Data0 lat = 48.8566");
-                CHECK_NEAR(poRing->getX(1), 2.3533, 0.0001, "Data1 lon = 2.3533");
-                CHECK_NEAR(poRing->getY(1), 48.8577, 0.0001, "Data1 lat = 48.8577");
-                CHECK_NEAR(poRing->getX(2), 2.3522, 0.0001, "Data2 lon = 2.3522");
-                CHECK_NEAR(poRing->getY(2), 48.8588, 0.0001, "Data2 lat = 48.8588");
-                CHECK_NEAR(poRing->getX(3), 2.3522, 0.0001, "Data3 lon = 2.3522 (closed)");
-                CHECK_NEAR(poRing->getY(3), 48.8566, 0.0001, "Data3 lat = 48.8566 (closed)");
+                // Note: All coords come from Data0 line in correct MP format
+                CHECK_NEAR(poRing->getX(0), 2.3522, 0.0001, "Point 0 lon = 2.3522");
+                CHECK_NEAR(poRing->getY(0), 48.8566, 0.0001, "Point 0 lat = 48.8566");
+                CHECK_NEAR(poRing->getX(1), 2.3533, 0.0001, "Point 1 lon = 2.3533");
+                CHECK_NEAR(poRing->getY(1), 48.8577, 0.0001, "Point 1 lat = 48.8577");
+                CHECK_NEAR(poRing->getX(2), 2.3522, 0.0001, "Point 2 lon = 2.3522");
+                CHECK_NEAR(poRing->getY(2), 48.8588, 0.0001, "Point 2 lat = 48.8588");
+                CHECK_NEAR(poRing->getX(3), 2.3522, 0.0001, "Point 3 lon = 2.3522 (ring closed)");
+                CHECK_NEAR(poRing->getY(3), 48.8566, 0.0001, "Point 3 lat = 48.8566 (ring closed)");
 
                 OGRFeature::DestroyFeature(poFeature);
             }
@@ -557,12 +560,13 @@ void TestPolygonOpenRingAutoClosure() {
 
     CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "error-recovery/polygon-open-ring.mp", nullptr);
 
-    // Enable CPLDebug output for OGR_POLISHMAP category
-    // Note: CPLDebug messages go to stderr when CPL_DEBUG is set.
-    // The message "Auto-closing POLYGON ring" will be visible in test output.
-    // Programmatic capture of CPLDebug requires complex setup with CPL_LOG file,
-    // so we verify the auto-close behavior functionally instead.
+    // Create temporary log file to capture CPLDebug output
+    CPLString osLogFile = CPLFormFilename(CPLGetConfigOption("TMPDIR", "/tmp"),
+                                          "test_polygon_autoclosure.log", nullptr);
+
+    // Enable CPLDebug output for OGR_POLISHMAP category and redirect to log file
     CPLSetConfigOption("CPL_DEBUG", "OGR_POLISHMAP");
+    CPLSetConfigOption("CPL_LOG", osLogFile.c_str());
 
     GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
         osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
@@ -594,10 +598,6 @@ void TestPolygonOpenRingAutoClosure() {
                               "Ring Y is closed after auto-close");
                 }
 
-                // AC4 verification: CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring")
-                // is called - visible in test output above when CPL_DEBUG=OGR_POLISHMAP
-                std::cout << "[INFO] CPLDebug 'Auto-closing POLYGON ring' should appear above" << std::endl;
-
                 OGRFeature::DestroyFeature(poFeature);
             }
         }
@@ -605,7 +605,24 @@ void TestPolygonOpenRingAutoClosure() {
         GDALClose(poDS);
     }
 
+    // Reset config options to flush log
     CPLSetConfigOption("CPL_DEBUG", nullptr);
+    CPLSetConfigOption("CPL_LOG", nullptr);
+
+    // AC4 verification: Read log file and verify CPLDebug message was emitted
+    bool bFoundAutoCloseMsg = false;
+    std::ifstream logFile(osLogFile.c_str());
+    if (logFile.is_open()) {
+        std::stringstream buffer;
+        buffer << logFile.rdbuf();
+        std::string logContent = buffer.str();
+        bFoundAutoCloseMsg = (logContent.find("Auto-closing POLYGON ring") != std::string::npos);
+        logFile.close();
+    }
+    CHECK(bFoundAutoCloseMsg, "CPLDebug 'Auto-closing POLYGON ring' message found in log");
+
+    // Clean up log file
+    VSIUnlink(osLogFile.c_str());
 
     TEST_END();
 }
@@ -726,6 +743,100 @@ void TestOgrinfoIntegration() {
 }
 
 /************************************************************************/
+/*               Test 5.13: POLYGON CP1252 Encoding (AC1)               */
+/************************************************************************/
+
+void TestPolygonCP1252Encoding() {
+    TEST_START("POLYGON CP1252 encoding conversion to UTF-8 (AC1)");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/polygon-cp1252.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open polygon-cp1252.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(2);  // POLYGON layer
+        CHECK(poLayer != nullptr, "Get POLYGON layer");
+
+        if (poLayer != nullptr) {
+            // Feature 1: "Forêt Réservée" (CP1252: For\xEAt R\xE9serv\xE9e)
+            OGRFeature* poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "Feature 1 exists");
+            if (poFeature) {
+                std::string osLabel = poFeature->GetFieldAsString("Label");
+                // UTF-8: ê = 0xC3 0xAA, é = 0xC3 0xA9
+                CHECK(osLabel == "Forêt Réservée",
+                      CPLSPrintf("Feature 1 Label CP1252->UTF-8: '%s'", osLabel.c_str()));
+                OGRFeature::DestroyFeature(poFeature);
+            }
+
+            // Feature 2: "Zürich Grünfläche" (CP1252: Z\xFCrich Gr\xFCnfl\xE4che)
+            poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "Feature 2 exists");
+            if (poFeature) {
+                std::string osLabel = poFeature->GetFieldAsString("Label");
+                // UTF-8: ü = 0xC3 0xBC, ä = 0xC3 0xA4
+                CHECK(osLabel == "Zürich Grünfläche",
+                      CPLSPrintf("Feature 2 Label CP1252->UTF-8: '%s'", osLabel.c_str()));
+                OGRFeature::DestroyFeature(poFeature);
+            }
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
+/*               Test 5.14: POLYGON without Label (AC1)                 */
+/************************************************************************/
+
+void TestPolygonNoLabel() {
+    TEST_START("POLYGON without Label field (AC1)");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/polygon-no-label.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open polygon-no-label.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(2);  // POLYGON layer
+        CHECK(poLayer != nullptr, "Get POLYGON layer");
+
+        if (poLayer != nullptr) {
+            OGRFeature* poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "Feature created without Label");
+
+            if (poFeature != nullptr) {
+                // Verify geometry is valid
+                OGRGeometry* poGeom = poFeature->GetGeometryRef();
+                CHECK(poGeom != nullptr, "Feature has geometry");
+                CHECK(poGeom->getGeometryType() == wkbPolygon, "Geometry is Polygon");
+
+                // Verify Label field is empty string (not null crash)
+                std::string osLabel = poFeature->GetFieldAsString("Label");
+                CHECK(osLabel.empty(), "Label field is empty string for POLYGON without Label");
+
+                // Verify Type field is populated
+                CHECK(std::string(poFeature->GetFieldAsString("Type")) == "0x4C", "Type field correct");
+
+                // Verify EndLevel field is populated
+                CHECK(poFeature->GetFieldAsInteger("EndLevel") == 3, "EndLevel field correct");
+
+                OGRFeature::DestroyFeature(poFeature);
+            }
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
 /*                             main()                                   */
 /************************************************************************/
 
@@ -754,6 +865,8 @@ int main(int /* argc */, char* /* argv */[]) {
     TestPolygonOpenRingAutoClosure(); // 5.10
     TestPolygonTwoPointsInvalid();    // 5.11
     TestOgrinfoIntegration();         // 5.12
+    TestPolygonCP1252Encoding();      // 5.13
+    TestPolygonNoLabel();             // 5.14
 
     // Print summary
     std::cout << "\n========================================" << std::endl;
