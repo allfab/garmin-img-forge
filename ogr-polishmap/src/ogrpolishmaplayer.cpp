@@ -270,8 +270,9 @@ OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
         poFeature->SetField("Type", oSection.osType.c_str());
         poFeature->SetField("Label", oSection.osLabel.c_str());
 
-        // Data0: For POLYLINE, coordinates are in geometry, not this field.
-        // Field kept for schema consistency across all layer types.
+        // Data0-N: For POLYLINE, coordinates from Data0..DataN are stored in
+        // the LineString geometry, not in individual fields. Field Data0 kept
+        // at 0 for schema consistency across all layer types.
         poFeature->SetField("Data0", 0);
 
         if (oSection.nEndLevel >= 0) {

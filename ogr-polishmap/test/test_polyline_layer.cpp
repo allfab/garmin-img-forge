@@ -123,6 +123,13 @@ void TestSimplePolyline() {
                 CHECK_NEAR(poLine->getX(1), 2.3533, 0.0001, "Point 1 lon correct");
                 CHECK_NEAR(poLine->getY(1), 48.8577, 0.0001, "Point 1 lat correct");
 
+                // AC2/FR40: Check WGS84 spatial reference assigned
+                const OGRSpatialReference* poSRS = poGeom->getSpatialReference();
+                CHECK(poSRS != nullptr, "Geometry has spatial reference (FR40)");
+                if (poSRS != nullptr) {
+                    CHECK(poSRS->IsGeographic(), "SRS is geographic (WGS84)");
+                }
+
                 // AC1: Check fields
                 CHECK(std::string(poFeature->GetFieldAsString("Type")) == "0x16", "Type field correct");
                 CHECK(std::string(poFeature->GetFieldAsString("Label")) == "Mountain Trail", "Label field correct");
@@ -423,11 +430,22 @@ void TestPolylineLayerFiltering() {
             int nPolylineCount = 0;
             OGRFeature* poFeature = nullptr;
 
+            // Expected POLYLINE labels (not POI: Restaurant, Hotel; not POLYGON: Park Zone)
+            const char* apszExpectedLabels[] = {"Trail Alpha", "Route Beta", "River Gamma"};
+
             while ((poFeature = poLayer->GetNextFeature()) != nullptr) {
                 // Verify all features are POLYLINE type (geometry is LineString)
                 OGRGeometry* poGeom = poFeature->GetGeometryRef();
                 CHECK(poGeom != nullptr, "Feature has geometry");
                 CHECK(poGeom->getGeometryType() == wkbLineString, "Geometry is LineString (not Point/Polygon)");
+
+                // Verify label matches expected POLYLINE (not POI/POLYGON)
+                if (nPolylineCount < 3) {
+                    std::string osLabel = poFeature->GetFieldAsString("Label");
+                    CHECK(osLabel == apszExpectedLabels[nPolylineCount],
+                          CPLSPrintf("Feature %d label is '%s' (POLYLINE, not POI/POLYGON)",
+                                     nPolylineCount + 1, apszExpectedLabels[nPolylineCount]));
+                }
 
                 nPolylineCount++;
                 OGRFeature::DestroyFeature(poFeature);
@@ -480,6 +498,15 @@ void TestPolylineFIDSequential() {
 /*               Test 5.10: Invalid POLYLINE (1 point)                  */
 /************************************************************************/
 
+// Global variable to capture error messages for AC6 test
+static CPLString g_osLastErrorMsg;
+static int g_nLastErrorType = CE_None;
+
+static void CPLTestErrorHandler(CPLErr eErrClass, CPLErrorNum /* nError */, const char* pszMsg) {
+    g_nLastErrorType = eErrClass;
+    g_osLastErrorMsg = pszMsg;
+}
+
 void TestPolylineOnePointInvalid() {
     TEST_START("POLYLINE with 1 point skipped with warning (AC6)");
 
@@ -494,8 +521,20 @@ void TestPolylineOnePointInvalid() {
         CHECK(poLayer != nullptr, "Get POLYLINE layer");
 
         if (poLayer != nullptr) {
+            // AC6: Install error handler to capture CE_Warning
+            g_osLastErrorMsg.clear();
+            g_nLastErrorType = CE_None;
+            CPLPushErrorHandler(CPLTestErrorHandler);
+
             // First feature should be skipped (1 point), second should be valid
             OGRFeature* poFeature = poLayer->GetNextFeature();
+
+            // AC6: Verify CE_Warning was logged
+            CPLPopErrorHandler();
+            CHECK(g_nLastErrorType == CE_Warning, "CPLError(CE_Warning) was logged (AC6)");
+            CHECK(g_osLastErrorMsg.find("less than 2 points") != std::string::npos,
+                  "Warning message mentions 'less than 2 points'");
+
             CHECK(poFeature != nullptr, "Valid feature found (invalid skipped)");
 
             if (poFeature) {
