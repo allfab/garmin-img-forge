@@ -136,6 +136,17 @@ target_compile_definitions(test_poi_layer PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - POLYLINE Layer (Story 1.5)
+add_executable(test_polyline_layer test/test_polyline_layer.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_polyline_layer PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_polyline_layer PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_polyline_layer PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

@@ -77,6 +77,10 @@ public:
 private:
     // Initialize feature definition, SRS, and field definitions
     void InitializeLayerDefn(const char* pszLayerName, OGRwkbGeometryType eGeomType);
+
+    // Story 1.4-1.5: Type-specific feature readers
+    OGRFeature* GetNextPOIFeature();
+    OGRFeature* GetNextPolylineFeature();
 };
 
 #endif /* OGRPOLISHMAPLAYER_H_INCLUDED */

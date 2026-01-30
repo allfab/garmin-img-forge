@@ -1,0 +1,14 @@
+[IMG ID]
+Name=Test POLYLINE No Parentheses
+ID=12345678
+CodePage=1252
+Datum=WGS 84
+[END-IMG ID]
+
+[POLYLINE]
+Type=0x16
+Label=Trail Without Parens
+Data0=48.8566,2.3522
+Data1=48.8577,2.3533
+Data2=48.8588,2.3544
+[END]

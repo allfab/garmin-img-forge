@@ -135,33 +135,57 @@ OGRPolishMapLayer::~OGRPolishMapLayer() {
 /************************************************************************/
 /*                          ResetReading()                              */
 /*                                                                      */
-/* Story 1.4: Reset file position and FID counter.                      */
+/* Story 1.4: Reset file position and FID counter for POI.              */
+/* Story 1.5: Add POLYLINE support.                                     */
+/* Note: All layer types use lazy initialization via m_bReaderInitialized*/
 /************************************************************************/
 
 void OGRPolishMapLayer::ResetReading() {
     // Reset feature ID counter to 1 (FID starts at 1 per architecture)
     m_nNextFID = 1;
 
-    // Story 1.4: Reset EOF flag and parser position
+    // Reset EOF flag and force re-initialization on next read
     m_bEOF = false;
-    m_bReaderInitialized = false;  // Force re-initialization on next read
-    if (m_poParser != nullptr && m_osLayerType == "POI") {
-        m_poParser->ResetPOIReading();
-    }
+    m_bReaderInitialized = false;  // Force re-seek on next GetNextFeature()
+
+    // Note: Actual seek happens lazily in GetNextPOIFeature() or GetNextPolylineFeature()
+    // when m_bReaderInitialized is false. This avoids redundant seeks.
 }
 
 /************************************************************************/
 /*                         GetNextFeature()                             */
 /*                                                                      */
 /* Story 1.4: Read POI features from parser.                            */
+/* Story 1.5: Add POLYLINE support with dispatch pattern.               */
 /************************************************************************/
 
 OGRFeature* OGRPolishMapLayer::GetNextFeature() {
-    // Story 1.4: Only POI layer is implemented
-    if (m_osLayerType != "POI" || m_poParser == nullptr || m_bEOF) {
+    // Check preconditions
+    if (m_poParser == nullptr || m_bEOF) {
         return nullptr;
     }
 
+    // Dispatch based on layer type
+    if (m_osLayerType == "POI") {
+        return GetNextPOIFeature();
+    } else if (m_osLayerType == "POLYLINE") {
+        return GetNextPolylineFeature();
+    } else if (m_osLayerType == "POLYGON") {
+        // Story 1.6: Not yet implemented
+        return nullptr;
+    }
+
+    return nullptr;
+}
+
+/************************************************************************/
+/*                       GetNextPOIFeature()                            */
+/*                                                                      */
+/* Story 1.4: Read POI features from parser.                            */
+/* Story 1.5: Extracted from GetNextFeature() for dispatch pattern.     */
+/************************************************************************/
+
+OGRFeature* OGRPolishMapLayer::GetNextPOIFeature() {
     // First call: reset parser to start of POI sections
     if (!m_bReaderInitialized) {
         m_poParser->ResetPOIReading();
@@ -187,6 +211,66 @@ OGRFeature* OGRPolishMapLayer::GetNextFeature() {
         poFeature->SetField("Label", oSection.osLabel.c_str());
 
         // Data0: For POI, coordinates are in geometry, not this field.
+        // Field kept for schema consistency across all layer types.
+        poFeature->SetField("Data0", 0);
+
+        if (oSection.nEndLevel >= 0) {
+            poFeature->SetField("EndLevel", oSection.nEndLevel);
+        }
+
+        if (!oSection.osLevels.empty()) {
+            poFeature->SetField("Levels", oSection.osLevels.c_str());
+        }
+
+        // Apply spatial and attribute filters (inherited from OGRLayer)
+        if ((m_poFilterGeom == nullptr || FilterGeometry(poFeature->GetGeomFieldRef(0))) &&
+            (m_poAttrQuery == nullptr || m_poAttrQuery->Evaluate(poFeature))) {
+            return poFeature;  // Ownership transferred to caller
+        }
+
+        // Feature filtered out, delete and try next
+        delete poFeature;
+    }
+
+    m_bEOF = true;
+    return nullptr;
+}
+
+/************************************************************************/
+/*                      GetNextPolylineFeature()                        */
+/*                                                                      */
+/* Story 1.5: Read POLYLINE features from parser.                       */
+/************************************************************************/
+
+OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
+    // First call: reset parser to start of POLYLINE sections
+    if (!m_bReaderInitialized) {
+        m_poParser->ResetPolylineReading();
+        m_bReaderInitialized = true;
+    }
+
+    PolishMapPolylineSection oSection;
+    while (m_poParser->ParseNextPolyline(oSection)) {
+        // Create feature from section
+        OGRFeature* poFeature = new OGRFeature(m_poFeatureDefn);
+
+        // Set FID (sequential, starts at 1)
+        poFeature->SetFID(m_nNextFID++);
+
+        // Create LineString geometry with N points
+        OGRLineString* poLine = new OGRLineString();
+        for (const auto& coord : oSection.aoCoords) {
+            // CRITICAL: OGR uses (X=lon, Y=lat) order, NOT (lat, lon)!
+            poLine->addPoint(coord.second, coord.first);  // lon, lat
+        }
+        poLine->assignSpatialReference(m_poSRS);
+        poFeature->SetGeometryDirectly(poLine);
+
+        // Set fields
+        poFeature->SetField("Type", oSection.osType.c_str());
+        poFeature->SetField("Label", oSection.osLabel.c_str());
+
+        // Data0: For POLYLINE, coordinates are in geometry, not this field.
         // Field kept for schema consistency across all layer types.
         poFeature->SetField("Data0", 0);
 

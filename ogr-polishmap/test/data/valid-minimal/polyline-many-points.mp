@@ -1,0 +1,25 @@
+[IMG ID]
+Name=Test POLYLINE Many Points
+ID=12345678
+CodePage=1252
+Datum=WGS 84
+[END-IMG ID]
+
+[POLYLINE]
+Type=0x16
+Label=Long Mountain Trail
+Data0=(48.8500,2.3500)
+Data1=(48.8510,2.3510)
+Data2=(48.8520,2.3520)
+Data3=(48.8530,2.3530)
+Data4=(48.8540,2.3540)
+Data5=(48.8550,2.3550)
+Data6=(48.8560,2.3560)
+Data7=(48.8570,2.3570)
+Data8=(48.8580,2.3580)
+Data9=(48.8590,2.3590)
+Data10=(48.8600,2.3600)
+Data11=(48.8610,2.3610)
+EndLevel=4
+Levels=0-4
+[END]

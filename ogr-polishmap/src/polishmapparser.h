@@ -32,6 +32,7 @@
 #include "cpl_string.h"
 #include <map>
 #include <string>
+#include <vector>
 
 /************************************************************************/
 /*                        PolishMapHeaderData                           */
@@ -92,6 +93,35 @@ struct PolishMapPOISection {
 };
 
 /************************************************************************/
+/*                      PolishMapPolylineSection                        */
+/*                                                                      */
+/* Intermediate Representation (IR) structure for [POLYLINE] section.   */
+/* Story 1.5: IR minimaliste pour une seule section POLYLINE à la fois.*/
+/************************************************************************/
+
+struct PolishMapPolylineSection {
+    std::string osType;                              // "0x16"
+    std::string osLabel;                             // UTF-8 après conversion
+    std::vector<std::pair<double, double>> aoCoords; // [(lat1, lon1), (lat2, lon2), ...]
+    int nEndLevel;                                   // 0-9, -1 si absent
+    std::string osLevels;                            // "0-3" ou vide
+    std::map<std::string, std::string> aoOtherFields;// Champs additionnels
+
+    // Default values
+    PolishMapPolylineSection() : nEndLevel(-1) {}
+
+    // Clear all data
+    void Clear() {
+        osType.clear();
+        osLabel.clear();
+        aoCoords.clear();
+        nEndLevel = -1;
+        osLevels.clear();
+        aoOtherFields.clear();
+    }
+};
+
+/************************************************************************/
 /*                         PolishMapParser                              */
 /*                                                                      */
 /* Hybrid parser for Polish Map format files:                           */
@@ -126,6 +156,14 @@ public:
 
     // Reset reading position to start of POI sections (after header)
     void ResetPOIReading();
+
+    // Story 1.5: POLYLINE section parsing
+    // Parse next [POLYLINE] section from file
+    // Returns TRUE if POLYLINE found and parsed, FALSE if no more POLYLINE sections
+    bool ParseNextPolyline(PolishMapPolylineSection& oSection);
+
+    // Reset reading position to start of POLYLINE sections (after header)
+    void ResetPolylineReading();
 
     // Get current line number (for debugging)
     int GetCurrentLine() const { return m_nCurrentLine; }
