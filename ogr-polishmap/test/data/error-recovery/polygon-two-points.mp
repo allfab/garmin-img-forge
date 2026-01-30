@@ -11,16 +11,12 @@ Datum=WGS 84
 [POLYGON]
 Type=0x4C
 Label=Invalid Polygon
-Data0=(48.8566,2.3522)
-Data1=(48.8577,2.3533)
+Data0=(48.8566,2.3522),(48.8577,2.3533)
 ; Only 2 points - not valid for POLYGON (minimum 3)
 [END]
 
 [POLYGON]
 Type=0x17
 Label=Valid Polygon After Invalid
-Data0=(48.8600,2.3500)
-Data1=(48.8620,2.3520)
-Data2=(48.8640,2.3500)
-Data3=(48.8600,2.3500)
+Data0=(48.8600,2.3500),(48.8620,2.3520),(48.8640,2.3500),(48.8600,2.3500)
 [END]

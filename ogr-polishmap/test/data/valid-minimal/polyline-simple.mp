@@ -8,6 +8,5 @@ Datum=WGS 84
 [POLYLINE]
 Type=0x16
 Label=Mountain Trail
-Data0=(48.8566,2.3522)
-Data1=(48.8577,2.3533)
+Data0=(48.8566,2.3522),(48.8577,2.3533)
 [END]

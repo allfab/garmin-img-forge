@@ -217,6 +217,12 @@ private:
     bool ParseKeyValue(const CPLString& osLine, CPLString& osKey, CPLString& osValue);
     CPLString RecodeToUTF8(const CPLString& osValue);
     bool ParseCoordinates(const CPLString& osValue, double& dfLat, double& dfLon);
+
+    // Story 1.5 REFACTORING: Parse coordinate LIST from Data0
+    // Format: "(lat1,lon1),(lat2,lon2),..." OR "lat1,lon1,lat2,lon2,..."
+    // Returns number of points parsed (0 on error)
+    int ParseCoordinateList(const CPLString& osValue,
+                            std::vector<std::pair<double, double>>& aoCoords);
 };
 
 #endif /* POLISHMAPPARSER_H_INCLUDED */

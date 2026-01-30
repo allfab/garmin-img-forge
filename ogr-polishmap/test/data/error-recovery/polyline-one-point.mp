@@ -14,6 +14,5 @@ Data0=(48.8566,2.3522)
 [POLYLINE]
 Type=0x0D
 Label=Valid Trail Two Points
-Data0=(48.9000,2.3000)
-Data1=(48.9100,2.3100)
+Data0=(48.9000,2.3000),(48.9100,2.3100)
 [END]

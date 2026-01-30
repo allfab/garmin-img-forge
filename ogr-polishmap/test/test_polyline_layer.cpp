@@ -101,6 +101,13 @@ void TestSimplePolyline() {
             CHECK(poDefn->GetGeomType() == wkbLineString, "Geometry type is wkbLineString");
             CHECK(poDefn->GetFieldCount() == 5, "5 fields defined");
 
+            // AC3: Verify field types (FR38)
+            CHECK(poDefn->GetFieldDefn(0)->GetType() == OFTString, "Type field is OFTString");
+            CHECK(poDefn->GetFieldDefn(1)->GetType() == OFTString, "Label field is OFTString");
+            CHECK(poDefn->GetFieldDefn(2)->GetType() == OFTInteger, "Data0 field is OFTInteger");
+            CHECK(poDefn->GetFieldDefn(3)->GetType() == OFTInteger, "EndLevel field is OFTInteger");
+            CHECK(poDefn->GetFieldDefn(4)->GetType() == OFTString, "Levels field is OFTString");
+
             // Read first feature (AC1)
             OGRFeature* poFeature = poLayer->GetNextFeature();
             CHECK(poFeature != nullptr, "GetNextFeature() returns feature");
@@ -117,7 +124,7 @@ void TestSimplePolyline() {
                 OGRLineString* poLine = poGeom->toLineString();
                 CHECK(poLine->getNumPoints() == 2, "LineString has 2 points");
 
-                // Check coordinates (Data0 and Data1)
+                // Check coordinates (all points from Data0 line)
                 CHECK_NEAR(poLine->getX(0), 2.3522, 0.0001, "Point 0 lon correct");
                 CHECK_NEAR(poLine->getY(0), 48.8566, 0.0001, "Point 0 lat correct");
                 CHECK_NEAR(poLine->getX(1), 2.3533, 0.0001, "Point 1 lon correct");
@@ -218,7 +225,7 @@ void TestPolylineManyPoints() {
                 CHECK(poGeom != nullptr, "Feature has geometry");
 
                 OGRLineString* poLine = poGeom->toLineString();
-                CHECK(poLine->getNumPoints() == 12, "LineString has 12 points (Data0-Data11)");
+                CHECK(poLine->getNumPoints() == 12, "LineString has 12 points (from Data0)");
 
                 // Validate first and last coordinates
                 CHECK_NEAR(poLine->getX(0), 2.3500, 0.0001, "First point lon correct");
@@ -600,6 +607,50 @@ void TestPolylineNoParentheses() {
 }
 
 /************************************************************************/
+/*               Test 5.12: Coordinates With Spaces (H4 Fix)            */
+/************************************************************************/
+
+void TestPolylineWithSpaces() {
+    TEST_START("POLYLINE coordinates with spaces (H4 Fix)");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/polyline-spaces.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open polyline-spaces.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(1);  // POLYLINE layer
+        CHECK(poLayer != nullptr, "Get POLYLINE layer");
+
+        if (poLayer != nullptr) {
+            OGRFeature* poFeature = poLayer->GetNextFeature();
+            CHECK(poFeature != nullptr, "GetNextFeature() returns feature");
+
+            if (poFeature != nullptr) {
+                OGRGeometry* poGeom = poFeature->GetGeometryRef();
+                OGRLineString* poLine = poGeom->toLineString();
+                CHECK(poLine->getNumPoints() == 3, "LineString has 3 points");
+
+                // Verify coordinates parsed correctly with spaces
+                CHECK_NEAR(poLine->getX(0), 2.3522, 0.0001, "Point 0 lon correct (with spaces)");
+                CHECK_NEAR(poLine->getY(0), 48.8566, 0.0001, "Point 0 lat correct (with spaces)");
+                CHECK_NEAR(poLine->getX(1), 2.3533, 0.0001, "Point 1 lon correct (with spaces)");
+                CHECK_NEAR(poLine->getY(1), 48.8577, 0.0001, "Point 1 lat correct (with spaces)");
+                CHECK_NEAR(poLine->getX(2), 2.3544, 0.0001, "Point 2 lon correct (with spaces)");
+                CHECK_NEAR(poLine->getY(2), 48.8588, 0.0001, "Point 2 lat correct (with spaces)");
+
+                OGRFeature::DestroyFeature(poFeature);
+            }
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
 /*                             main()                                   */
 /************************************************************************/
 
@@ -627,6 +678,7 @@ int main(int /* argc */, char* /* argv */[]) {
     TestPolylineFIDSequential();       // 5.9
     TestPolylineOnePointInvalid();     // 5.10
     TestPolylineNoParentheses();       // 5.11
+    TestPolylineWithSpaces();          // 5.12 (H4 Fix)
 
     // Print summary
     std::cout << "\n========================================" << std::endl;

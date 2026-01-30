@@ -57,18 +57,14 @@ EndLevel=4
 [POLYLINE]
 Type=0x16
 Label=Route Nord Primary
-Data0=(48.7,2.0)
-Data1=(48.8,2.2)
-Data2=(48.9,2.4)
+Data0=(48.7,2.0),(48.8,2.2),(48.9,2.4)
 EndLevel=4
 [END]
 
 [POLYLINE]
 Type=0x0D
 Label=Trail Nord Secondary
-Data0=(48.6,2.5)
-Data1=(48.7,2.7)
-Data2=(48.8,2.9)
+Data0=(48.6,2.5),(48.7,2.7),(48.8,2.9)
 EndLevel=2
 [END]
 
@@ -76,18 +72,14 @@ EndLevel=2
 [POLYLINE]
 Type=0x16
 Label=Route Sud Primary
-Data0=(48.1,2.0)
-Data1=(48.2,2.2)
-Data2=(48.3,2.4)
+Data0=(48.1,2.0),(48.2,2.2),(48.3,2.4)
 EndLevel=4
 [END]
 
 [POLYLINE]
 Type=0x1E
 Label=Street Sud Tertiary
-Data0=(48.0,2.5)
-Data1=(48.2,2.7)
-Data2=(48.4,2.8)
+Data0=(48.0,2.5),(48.2,2.7),(48.4,2.8)
 EndLevel=2
 [END]
 
@@ -96,22 +88,14 @@ EndLevel=2
 [POLYGON]
 Type=0x17
 Label=Park Nord
-Data0=(48.7,2.1)
-Data1=(48.8,2.1)
-Data2=(48.8,2.3)
-Data3=(48.7,2.3)
-Data4=(48.7,2.1)
+Data0=(48.7,2.1),(48.8,2.1),(48.8,2.3),(48.7,2.3),(48.7,2.1)
 EndLevel=3
 [END]
 
 [POLYGON]
 Type=0x50
 Label=Forest Nord
-Data0=(48.6,2.6)
-Data1=(48.7,2.6)
-Data2=(48.7,2.8)
-Data3=(48.6,2.8)
-Data4=(48.6,2.6)
+Data0=(48.6,2.6),(48.7,2.6),(48.7,2.8),(48.6,2.8),(48.6,2.6)
 EndLevel=3
 [END]
 
@@ -119,21 +103,13 @@ EndLevel=3
 [POLYGON]
 Type=0x17
 Label=Park Sud
-Data0=(48.2,2.2)
-Data1=(48.3,2.2)
-Data2=(48.3,2.4)
-Data3=(48.2,2.4)
-Data4=(48.2,2.2)
+Data0=(48.2,2.2),(48.3,2.2),(48.3,2.4),(48.2,2.4),(48.2,2.2)
 EndLevel=3
 [END]
 
 [POLYGON]
 Type=0x3C
 Label=Lake Sud
-Data0=(48.1,2.5)
-Data1=(48.2,2.5)
-Data2=(48.2,2.7)
-Data3=(48.1,2.7)
-Data4=(48.1,2.5)
+Data0=(48.1,2.5),(48.2,2.5),(48.2,2.7),(48.1,2.7),(48.1,2.5)
 EndLevel=3
 [END]

@@ -268,6 +268,135 @@ bool PolishMapParser::ParseCoordinates(const CPLString& osValue, double& dfLat, 
 }
 
 /************************************************************************/
+/*                       ParseCoordinateList()                          */
+/*                                                                      */
+/* Parse a LIST of coordinates from Data0 line.                         */
+/* Story 1.5 REFACTORING: Format correct selon spécification MP.        */
+/* Supports: "(lat1,lon1),(lat2,lon2),..." OR "lat1,lon1,lat2,lon2,..."  */
+/* Returns: number of points parsed (0 on error)                        */
+/************************************************************************/
+
+int PolishMapParser::ParseCoordinateList(const CPLString& osValue,
+                                         std::vector<std::pair<double, double>>& aoCoords) {
+    aoCoords.clear();
+
+    const char* pszInput = osValue.c_str();
+
+    // Detect format: parenthesized "(lat,lon),(lat,lon)" or plain "lat,lon,lat,lon"
+    bool bParenthesizedFormat = (strchr(pszInput, '(') != nullptr);
+
+    if (bParenthesizedFormat) {
+        // Format: "(lat1,lon1),(lat2,lon2),..."
+        while (*pszInput) {
+            // Skip whitespace before coordinate pair
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (!*pszInput) break;
+
+            // Skip comma separator between pairs (only after we have at least one pair)
+            // Note: Leading comma before first coordinate is an error, handled by '(' check below
+            if (*pszInput == ',' && !aoCoords.empty()) {
+                pszInput++;
+                // Skip whitespace after comma
+                while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            }
+            if (!*pszInput) break;
+
+            // Expect '('
+            if (*pszInput != '(') {
+                // Try to recover - might be end of valid data
+                if (aoCoords.size() >= 2) break;
+                return 0;  // Error: expected '('
+            }
+            pszInput++;  // Skip '('
+
+            // Parse latitude
+            char* pszEnd;
+            double dfLat = CPLStrtod(pszInput, &pszEnd);
+            if (pszEnd == pszInput) {
+                return 0;  // Error: no latitude
+            }
+            pszInput = pszEnd;
+
+            // Skip comma between lat and lon
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (*pszInput != ',') {
+                return 0;  // Error: expected comma
+            }
+            pszInput++;  // Skip ','
+
+            // Parse longitude
+            double dfLon = CPLStrtod(pszInput, &pszEnd);
+            if (pszEnd == pszInput) {
+                return 0;  // Error: no longitude
+            }
+            pszInput = pszEnd;
+
+            // Skip to closing ')'
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (*pszInput != ')') {
+                return 0;  // Error: expected ')'
+            }
+            pszInput++;  // Skip ')'
+
+            // Validate WGS84 range
+            if (dfLat < -90.0 || dfLat > 90.0 || dfLon < -180.0 || dfLon > 180.0) {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                         "Coordinate out of WGS84 range: (%f, %f)", dfLat, dfLon);
+                return 0;
+            }
+
+            aoCoords.push_back({dfLat, dfLon});
+        }
+    } else {
+        // Format: "lat1,lon1,lat2,lon2,..." (plain comma-separated)
+        while (*pszInput) {
+            // Skip whitespace
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (!*pszInput) break;
+
+            // Parse latitude
+            char* pszEnd;
+            double dfLat = CPLStrtod(pszInput, &pszEnd);
+            if (pszEnd == pszInput) {
+                break;  // No more numbers
+            }
+            pszInput = pszEnd;
+
+            // Skip comma between lat and lon
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (*pszInput != ',') {
+                return 0;  // Error: expected comma between lat and lon
+            }
+            pszInput++;  // Skip ','
+
+            // Parse longitude
+            double dfLon = CPLStrtod(pszInput, &pszEnd);
+            if (pszEnd == pszInput) {
+                return 0;  // Error: no longitude
+            }
+            pszInput = pszEnd;
+
+            // Validate WGS84 range
+            if (dfLat < -90.0 || dfLat > 90.0 || dfLon < -180.0 || dfLon > 180.0) {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                         "Coordinate out of WGS84 range: (%f, %f)", dfLat, dfLon);
+                return 0;
+            }
+
+            aoCoords.push_back({dfLat, dfLon});
+
+            // Skip comma separator between coordinate pairs (if any)
+            while (*pszInput && (*pszInput == ' ' || *pszInput == '\t')) pszInput++;
+            if (*pszInput == ',') {
+                pszInput++;  // Skip separator comma
+            }
+        }
+    }
+
+    return static_cast<int>(aoCoords.size());
+}
+
+/************************************************************************/
 /*                          ResetPOIReading()                           */
 /*                                                                      */
 /* Reset file position to start of POI sections (after header).         */
@@ -482,19 +611,24 @@ bool PolishMapParser::ParseNextPolyline(PolishMapPolylineSection& oSection) {
                     oSection.osType = osValue;
                 } else if (EQUAL(osKey.c_str(), "Label")) {
                     oSection.osLabel = RecodeToUTF8(osValue);
-                } else if (STARTS_WITH_CI(osKey.c_str(), "Data")) {
-                    // Parse coordinates: Data0, Data1, Data2, ..., DataN
-                    double dfLat, dfLon;
-                    if (!ParseCoordinates(osValue, dfLat, dfLon)) {
+                } else if (EQUAL(osKey.c_str(), "Data0")) {
+                    // Story 1.5 REFACTORING: Data0 contains ALL coordinates on one line
+                    // Format: "(lat1,lon1),(lat2,lon2),..." or "lat1,lon1,lat2,lon2,..."
+                    int nPoints = ParseCoordinateList(osValue, oSection.aoCoords);
+                    if (nPoints == 0) {
                         CPLError(CE_Warning, CPLE_AppDefined,
-                                 "Skipping POLYLINE at line %d: invalid coordinates in %s='%s'",
-                                 m_nCurrentLine, osKey.c_str(), osValue.c_str());
+                                 "Skipping POLYLINE at line %d: invalid coordinates in Data0='%s'",
+                                 m_nCurrentLine, osValue.c_str());
                         // Skip to next POLYLINE section
                         bInPolylineSection = false;
                         oSection.Clear();
                         continue;
                     }
-                    oSection.aoCoords.push_back({dfLat, dfLon});
+                } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
+                    // Story 1.5 REFACTORING: Data1, Data2, etc. are multi-resolution levels
+                    // Ignored in MVP - only Data0 (highest resolution) is used
+                    CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
+                             osKey.c_str());
                 } else if (EQUAL(osKey.c_str(), "EndLevel")) {
                     oSection.nEndLevel = atoi(osValue.c_str());
                 } else if (EQUAL(osKey.c_str(), "Levels")) {
@@ -616,19 +750,24 @@ bool PolishMapParser::ParseNextPolygon(PolishMapPolygonSection& oSection) {
                     oSection.osType = osValue;
                 } else if (EQUAL(osKey.c_str(), "Label")) {
                     oSection.osLabel = RecodeToUTF8(osValue);
-                } else if (STARTS_WITH_CI(osKey.c_str(), "Data")) {
-                    // Parse coordinates: Data0, Data1, Data2, ..., DataN
-                    double dfLat, dfLon;
-                    if (!ParseCoordinates(osValue, dfLat, dfLon)) {
+                } else if (EQUAL(osKey.c_str(), "Data0")) {
+                    // Story 1.6 REFACTORING: Data0 contains ALL coordinates on one line
+                    // Format: "(lat1,lon1),(lat2,lon2),..." or "lat1,lon1,lat2,lon2,..."
+                    int nPoints = ParseCoordinateList(osValue, oSection.aoCoords);
+                    if (nPoints == 0) {
                         CPLError(CE_Warning, CPLE_AppDefined,
-                                 "Skipping POLYGON at line %d: invalid coordinates in %s='%s'",
-                                 m_nCurrentLine, osKey.c_str(), osValue.c_str());
+                                 "Skipping POLYGON at line %d: invalid coordinates in Data0='%s'",
+                                 m_nCurrentLine, osValue.c_str());
                         // Skip to next POLYGON section
                         bInPolygonSection = false;
                         oSection.Clear();
                         continue;
                     }
-                    oSection.aoCoords.push_back({dfLat, dfLon});
+                } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
+                    // Story 1.6 REFACTORING: Data1, Data2, etc. are multi-resolution levels
+                    // Ignored in MVP - only Data0 (highest resolution) is used
+                    CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
+                             osKey.c_str());
                 } else if (EQUAL(osKey.c_str(), "EndLevel")) {
                     oSection.nEndLevel = atoi(osValue.c_str());
                 } else if (EQUAL(osKey.c_str(), "Levels")) {

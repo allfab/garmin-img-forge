@@ -12,9 +12,7 @@ Datum=WGS 84
 [POLYGON]
 Type=0x4C
 Label=Open Forest
-Data0=(48.8566,2.3522)
-Data1=(48.8577,2.3533)
-Data2=(48.8588,2.3522)
-; Note: No Data3 closing back to Data0 - ring is open!
+Data0=(48.8566,2.3522),(48.8577,2.3533),(48.8588,2.3522)
+; Note: Ring is open - no closing point back to first coordinate!
 EndLevel=3
 [END]
