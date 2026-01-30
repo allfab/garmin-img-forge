@@ -44,6 +44,10 @@ class PolishMapParser;
 
 class OGRPolishMapLayer final : public OGRLayer {
 private:
+    // Ring closure tolerance: 1e-9 degrees (~0.1mm at Earth surface)
+    // Used for comparing first/last point to determine if POLYGON ring needs auto-closure
+    static constexpr double RING_CLOSURE_TOLERANCE = 1e-9;
+
     OGRFeatureDefn* m_poFeatureDefn;
     OGRSpatialReference* m_poSRS;
     GIntBig m_nNextFID;
@@ -78,9 +82,10 @@ private:
     // Initialize feature definition, SRS, and field definitions
     void InitializeLayerDefn(const char* pszLayerName, OGRwkbGeometryType eGeomType);
 
-    // Story 1.4-1.5: Type-specific feature readers
+    // Story 1.4-1.6: Type-specific feature readers
     OGRFeature* GetNextPOIFeature();
     OGRFeature* GetNextPolylineFeature();
+    OGRFeature* GetNextPolygonFeature();
 };
 
 #endif /* OGRPOLISHMAPLAYER_H_INCLUDED */

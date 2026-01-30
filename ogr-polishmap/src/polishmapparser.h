@@ -122,6 +122,35 @@ struct PolishMapPolylineSection {
 };
 
 /************************************************************************/
+/*                      PolishMapPolygonSection                         */
+/*                                                                      */
+/* Intermediate Representation (IR) structure for [POLYGON] section.    */
+/* Story 1.6: IR minimaliste pour une seule section POLYGON à la fois.  */
+/************************************************************************/
+
+struct PolishMapPolygonSection {
+    std::string osType;                              // "0x4C"
+    std::string osLabel;                             // UTF-8 après conversion
+    std::vector<std::pair<double, double>> aoCoords; // [(lat1, lon1), (lat2, lon2), ...]
+    int nEndLevel;                                   // 0-9, -1 si absent
+    std::string osLevels;                            // "0-3" ou vide
+    std::map<std::string, std::string> aoOtherFields;// Champs additionnels
+
+    // Default values
+    PolishMapPolygonSection() : nEndLevel(-1) {}
+
+    // Clear all data
+    void Clear() {
+        osType.clear();
+        osLabel.clear();
+        aoCoords.clear();
+        nEndLevel = -1;
+        osLevels.clear();
+        aoOtherFields.clear();
+    }
+};
+
+/************************************************************************/
 /*                         PolishMapParser                              */
 /*                                                                      */
 /* Hybrid parser for Polish Map format files:                           */
@@ -164,6 +193,14 @@ public:
 
     // Reset reading position to start of POLYLINE sections (after header)
     void ResetPolylineReading();
+
+    // Story 1.6: POLYGON section parsing
+    // Parse next [POLYGON] section from file
+    // Returns TRUE if POLYGON found and parsed, FALSE if no more POLYGON sections
+    bool ParseNextPolygon(PolishMapPolygonSection& oSection);
+
+    // Reset reading position to start of POLYGON sections (after header)
+    void ResetPolygonReading();
 
     // Get current line number (for debugging)
     int GetCurrentLine() const { return m_nCurrentLine; }

@@ -30,6 +30,7 @@
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include <cassert>
+#include <cmath>
 
 /************************************************************************/
 /*                        OGRPolishMapLayer()                           */
@@ -148,8 +149,8 @@ void OGRPolishMapLayer::ResetReading() {
     m_bEOF = false;
     m_bReaderInitialized = false;  // Force re-seek on next GetNextFeature()
 
-    // Note: Actual seek happens lazily in GetNextPOIFeature() or GetNextPolylineFeature()
-    // when m_bReaderInitialized is false. This avoids redundant seeks.
+    // Note: Actual seek happens lazily in GetNextPOIFeature(), GetNextPolylineFeature(),
+    // or GetNextPolygonFeature() when m_bReaderInitialized is false. This avoids redundant seeks.
 }
 
 /************************************************************************/
@@ -171,8 +172,7 @@ OGRFeature* OGRPolishMapLayer::GetNextFeature() {
     } else if (m_osLayerType == "POLYLINE") {
         return GetNextPolylineFeature();
     } else if (m_osLayerType == "POLYGON") {
-        // Story 1.6: Not yet implemented
-        return nullptr;
+        return GetNextPolygonFeature();
     }
 
     return nullptr;
@@ -186,6 +186,9 @@ OGRFeature* OGRPolishMapLayer::GetNextFeature() {
 /************************************************************************/
 
 OGRFeature* OGRPolishMapLayer::GetNextPOIFeature() {
+    // LEÇON 1.4: Assert parser is valid before use
+    assert(m_poParser != nullptr);
+
     // First call: reset parser to start of POI sections
     if (!m_bReaderInitialized) {
         m_poParser->ResetPOIReading();
@@ -243,6 +246,9 @@ OGRFeature* OGRPolishMapLayer::GetNextPOIFeature() {
 /************************************************************************/
 
 OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
+    // LEÇON 1.4: Assert parser is valid before use
+    assert(m_poParser != nullptr);
+
     // First call: reset parser to start of POLYLINE sections
     if (!m_bReaderInitialized) {
         m_poParser->ResetPolylineReading();
@@ -272,6 +278,89 @@ OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
 
         // Data0-N: For POLYLINE, coordinates from Data0..DataN are stored in
         // the LineString geometry, not in individual fields. Field Data0 kept
+        // at 0 for schema consistency across all layer types.
+        poFeature->SetField("Data0", 0);
+
+        if (oSection.nEndLevel >= 0) {
+            poFeature->SetField("EndLevel", oSection.nEndLevel);
+        }
+
+        if (!oSection.osLevels.empty()) {
+            poFeature->SetField("Levels", oSection.osLevels.c_str());
+        }
+
+        // Apply spatial and attribute filters (inherited from OGRLayer)
+        if ((m_poFilterGeom == nullptr || FilterGeometry(poFeature->GetGeomFieldRef(0))) &&
+            (m_poAttrQuery == nullptr || m_poAttrQuery->Evaluate(poFeature))) {
+            return poFeature;  // Ownership transferred to caller
+        }
+
+        // Feature filtered out, delete and try next
+        delete poFeature;
+    }
+
+    m_bEOF = true;
+    return nullptr;
+}
+
+/************************************************************************/
+/*                      GetNextPolygonFeature()                         */
+/*                                                                      */
+/* Story 1.6: Read POLYGON features from parser.                        */
+/************************************************************************/
+
+OGRFeature* OGRPolishMapLayer::GetNextPolygonFeature() {
+    // LEÇON 1.4: Assert parser is valid before use
+    assert(m_poParser != nullptr);
+
+    // First call: reset parser to start of POLYGON sections
+    if (!m_bReaderInitialized) {
+        m_poParser->ResetPolygonReading();
+        m_bReaderInitialized = true;
+    }
+
+    PolishMapPolygonSection oSection;
+    while (m_poParser->ParseNextPolygon(oSection)) {
+        // Create feature from section
+        OGRFeature* poFeature = new OGRFeature(m_poFeatureDefn);
+
+        // Set FID (sequential, starts at 1)
+        poFeature->SetFID(m_nNextFID++);
+
+        // Create Polygon geometry with exterior ring
+        OGRPolygon* poPolygon = new OGRPolygon();
+        OGRLinearRing* poRing = new OGRLinearRing();
+
+        for (const auto& coord : oSection.aoCoords) {
+            // CRITICAL: OGR uses (X=lon, Y=lat) order, NOT (lat, lon)!
+            poRing->addPoint(coord.second, coord.first);  // lon, lat
+        }
+
+        // Check if ring is closed (AC4: auto-close open ring)
+        // Use class constant RING_CLOSURE_TOLERANCE for comparison
+        if (oSection.aoCoords.size() >= 3) {
+            const auto& firstPt = oSection.aoCoords.front();
+            const auto& lastPt = oSection.aoCoords.back();
+
+            if (std::abs(firstPt.first - lastPt.first) > RING_CLOSURE_TOLERANCE ||
+                std::abs(firstPt.second - lastPt.second) > RING_CLOSURE_TOLERANCE) {
+                // Ring is open - auto-close with debug log (Minor Issue per Architecture)
+                CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring");
+                poRing->addPoint(firstPt.second, firstPt.first);  // lon, lat
+            }
+        }
+
+        // Add ring to polygon (no closeRings() call - we handle closure manually above)
+        poPolygon->addRingDirectly(poRing);
+        poPolygon->assignSpatialReference(m_poSRS);
+        poFeature->SetGeometryDirectly(poPolygon);
+
+        // Set fields
+        poFeature->SetField("Type", oSection.osType.c_str());
+        poFeature->SetField("Label", oSection.osLabel.c_str());
+
+        // Data0-N: For POLYGON, coordinates from Data0..DataN are stored in
+        // the Polygon geometry ring, not in individual fields. Field Data0 kept
         // at 0 for schema consistency across all layer types.
         poFeature->SetField("Data0", 0);
 
