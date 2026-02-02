@@ -415,6 +415,11 @@ int OGRPolishMapLayer::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, OLCFastFeatureCount)) {
         return FALSE;
     }
+    // Story 1.7: OLCFastSpatialFilter - No spatial index, client-side linear filtering
+    // Filters work via inherited OGRLayer methods but without acceleration
+    if (EQUAL(pszCap, OLCFastSpatialFilter)) {
+        return FALSE;
+    }
     // Default: capability not supported
     return FALSE;
 }

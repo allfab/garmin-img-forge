@@ -833,6 +833,78 @@ void TestPolylineSpatialFilter() {
 }
 
 /************************************************************************/
+/*    Test: Invalid attribute filter syntax (error handling)             */
+/************************************************************************/
+
+void TestAttributeFilterInvalidSyntax() {
+    TEST_START("Invalid attribute filter syntax (error handling)");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/filter-attribute-types.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open filter-attribute-types.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(0);
+        CHECK(poLayer != nullptr, "Get POI layer");
+
+        if (poLayer != nullptr) {
+            // Invalid SQL syntax should return error
+            OGRErr eErr = poLayer->SetAttributeFilter("INVALID !@#$ SYNTAX");
+            CHECK(eErr != OGRERR_NONE, "Invalid SQL returns error (not OGRERR_NONE)");
+
+            // Layer should still work after invalid filter attempt
+            poLayer->SetAttributeFilter(nullptr);  // Clear any partial state
+            int nCount = CountFeatures(poLayer);
+            CHECK_EQ(nCount, 30, "Layer still works after invalid filter: 30 features");
+
+            // Empty string filter should be OK (means no filter)
+            eErr = poLayer->SetAttributeFilter("");
+            CHECK(eErr == OGRERR_NONE, "Empty string filter succeeds");
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
+/*    Test: TestCapability for OLCFastSpatialFilter                      */
+/************************************************************************/
+
+void TestCapabilityFastSpatialFilter() {
+    TEST_START("TestCapability OLCFastSpatialFilter = FALSE");
+
+    CPLString osFilename = CPLFormFilename(TEST_DATA_DIR, "valid-minimal/filter-spatial-grid.mp", nullptr);
+    GDALDataset* poDS = GDALDataset::FromHandle(GDALOpenEx(
+        osFilename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr));
+
+    CHECK(poDS != nullptr, "Open filter-spatial-grid.mp");
+
+    if (poDS != nullptr) {
+        OGRLayer* poLayer = poDS->GetLayer(0);
+        CHECK(poLayer != nullptr, "Get POI layer");
+
+        if (poLayer != nullptr) {
+            // OLCFastSpatialFilter should be FALSE (no spatial index)
+            int bFastSpatial = poLayer->TestCapability(OLCFastSpatialFilter);
+            CHECK(bFastSpatial == FALSE, "OLCFastSpatialFilter = FALSE (no spatial index)");
+
+            // Filters still work even without fast capability
+            poLayer->SetSpatialFilterRect(2.0, 48.0, 2.4, 48.4);
+            int nFiltered = CountFeatures(poLayer);
+            CHECK_EQ(nFiltered, 25, "Spatial filter works despite OLCFastSpatialFilter=FALSE");
+        }
+
+        GDALClose(poDS);
+    }
+
+    TEST_END();
+}
+
+/************************************************************************/
 /*                              Main                                    */
 /************************************************************************/
 
@@ -869,6 +941,10 @@ int main() {
     // POLYLINE filter tests
     TestPolylineAttributeFilter();
     TestPolylineSpatialFilter();
+
+    // Error handling and capability tests (Code Review fixes)
+    TestAttributeFilterInvalidSyntax();
+    TestCapabilityFastSpatialFilter();
 
     // Summary
     std::cout << "\n========================================" << std::endl;
