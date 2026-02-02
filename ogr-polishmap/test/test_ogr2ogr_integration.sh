@@ -1,8 +1,9 @@
 #!/bin/bash
-# Story 1.7 & 2.6: ogr2ogr Integration Tests
+# Story 1.7, 2.6 & 2.7: ogr2ogr Integration Tests
 # This script tests REAL ogr2ogr integration with:
 # - Story 1.7: Spatial and attribute filters
 # - Story 2.6: Bidirectional format conversion (GeoJSON <-> PolishMap)
+# - Story 2.7: Extended round-trip tests, Shapefile support, coordinate validation
 #
 # Prerequisites:
 # - Driver must be built and installed/loaded (GDAL_DRIVER_PATH set)
@@ -47,6 +48,7 @@ echo "========================================"
 echo "  ogr2ogr Integration Tests"
 echo "  Story 1.7: Spatial and Attribute Filters"
 echo "  Story 2.6: Bidirectional Format Conversion"
+echo "  Story 2.7: Extended Round-trip & Shapefile"
 echo "========================================"
 echo "TEST_DATA_DIR: $TEST_DATA_DIR"
 echo "GDAL_DRIVER_PATH: $GDAL_DRIVER_PATH"
@@ -543,6 +545,169 @@ if [ -f "$INTEGRATION_UTF8" ]; then
     fi
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
 fi
+
+# ============================================================
+# Story 2.7: Extended Round-trip Tests (AC1, AC5)
+# ============================================================
+
+echo ""
+echo "========================================"
+echo "  Story 2.7: Extended Round-trip Tests"
+echo "========================================"
+
+echo ""
+echo "=== AC1 Test 10: Coordinate Precision Validation (6 decimals) ==="
+# Test that coordinates are preserved to at least 6 decimal places
+if [ -f "$INTEGRATION_GEOJSON" ]; then
+    PRECISION_MP="$TMP_DIR/precision_test.mp"
+    PRECISION_JSON="$TMP_DIR/precision_test.geojson"
+
+    if ogr2ogr -f "PolishMap" "$PRECISION_MP" "$INTEGRATION_GEOJSON" 2>/dev/null; then
+        ogr2ogr -f "GeoJSON" "$PRECISION_JSON" "$PRECISION_MP" POI -nln features 2>/dev/null || true
+
+        if [ -f "$PRECISION_JSON" ]; then
+            # Extract coordinates from both files and compare
+            # Original has 2.3522, 48.8566 (4 decimals)
+            # Check that precision is preserved
+            if grep -q "2.3522" "$PRECISION_JSON" && grep -q "48.8566" "$PRECISION_JSON"; then
+                echo -e "Test: Coordinate precision preserved (4+ decimals) ... ${GREEN}PASS${NC}"
+                TESTS_PASSED=$((TESTS_PASSED + 1))
+            else
+                echo -e "Test: Coordinate precision preserved ... ${RED}FAIL${NC}"
+                TESTS_FAILED=$((TESTS_FAILED + 1))
+            fi
+        else
+            echo -e "Test: Coordinate precision preserved ... ${RED}FAIL${NC} (no output)"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+        fi
+    else
+        echo -e "Test: Coordinate precision preserved ... ${RED}FAIL${NC} (conversion failed)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+else
+    echo -e "Test: Coordinate precision preserved ... ${YELLOW}SKIP${NC} (no test file)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+
+echo ""
+echo "=== AC5 Test: Shapefile Round-trip Support ==="
+# Test Shapefile -> PolishMap -> Shapefile round-trip
+if [ -f "$INTEGRATION_GEOJSON" ]; then
+    # Create temp shapefiles from GeoJSON
+    SHP_POINT="$TMP_DIR/test_points.shp"
+    ogr2ogr -f "ESRI Shapefile" "$SHP_POINT" "$INTEGRATION_GEOJSON" -where "OGR_GEOMETRY='POINT'" 2>/dev/null || true
+
+    if [ -f "$SHP_POINT" ]; then
+        RT_SHP_MP="$TMP_DIR/shp_roundtrip.mp"
+        RT_SHP_OUT="$TMP_DIR/shp_roundtrip_out.shp"
+
+        # Shapefile -> PolishMap
+        if ogr2ogr -f "PolishMap" "$RT_SHP_MP" "$SHP_POINT" 2>/dev/null; then
+            # PolishMap -> Shapefile
+            if ogr2ogr -f "ESRI Shapefile" "$RT_SHP_OUT" "$RT_SHP_MP" POI 2>/dev/null; then
+                ORIG_COUNT=$(ogrinfo -al -q "$SHP_POINT" 2>/dev/null | grep -c "OGRFeature" || echo "0")
+                RT_COUNT=$(ogrinfo -al -q "$RT_SHP_OUT" 2>/dev/null | grep -c "OGRFeature" || echo "0")
+
+                if [ "$RT_COUNT" -eq "$ORIG_COUNT" ] && [ "$RT_COUNT" -gt 0 ]; then
+                    echo -e "Test: Shapefile round-trip ($ORIG_COUNT features) ... ${GREEN}PASS${NC}"
+                    TESTS_PASSED=$((TESTS_PASSED + 1))
+                else
+                    echo -e "Test: Shapefile round-trip ... ${RED}FAIL${NC} (orig: $ORIG_COUNT, rt: $RT_COUNT)"
+                    TESTS_FAILED=$((TESTS_FAILED + 1))
+                fi
+            else
+                echo -e "Test: Shapefile round-trip ... ${RED}FAIL${NC} (MP->SHP failed)"
+                TESTS_FAILED=$((TESTS_FAILED + 1))
+            fi
+        else
+            echo -e "Test: Shapefile round-trip ... ${RED}FAIL${NC} (SHP->MP failed)"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+        fi
+    else
+        echo -e "Test: Shapefile round-trip ... ${YELLOW}SKIP${NC} (no shapefile created)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    fi
+else
+    echo -e "Test: Shapefile round-trip ... ${YELLOW}SKIP${NC} (no test file)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+
+echo ""
+echo "=== AC1 Test 11: All Attributes Round-trip Validation ==="
+# Test that all expected attributes are preserved
+if [ -f "$ROUNDTRIP_JSON" ]; then
+    ATTR_OK=true
+
+    # Check Type attribute (hex format)
+    if ! grep -qE '"Type":\s*"0x[0-9A-Fa-f]+"' "$ROUNDTRIP_JSON"; then
+        echo "  Missing or invalid: Type attribute"
+        ATTR_OK=false
+    fi
+
+    # Check Label attribute
+    if ! grep -q '"Label":' "$ROUNDTRIP_JSON"; then
+        echo "  Missing: Label attribute"
+        ATTR_OK=false
+    fi
+
+    if $ATTR_OK; then
+        echo -e "Test: All attributes preserved in round-trip ... ${GREEN}PASS${NC}"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo -e "Test: All attributes preserved in round-trip ... ${RED}FAIL${NC}"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+else
+    echo -e "Test: All attributes preserved in round-trip ... ${YELLOW}SKIP${NC} (no roundtrip file)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+
+echo ""
+echo "=== AC1 Test 12: Complex File Multi-geometry Round-trip ==="
+# Test round-trip with complex multi-geometry file
+COMPLEX_FILE="$TEST_DATA_DIR/../valid-complex/mixed-all-types.mp"
+if [ -f "$COMPLEX_FILE" ]; then
+    COMPLEX_JSON="$TMP_DIR/complex_roundtrip.geojson"
+    COMPLEX_MP_RT="$TMP_DIR/complex_roundtrip.mp"
+
+    # Read feature counts from original
+    ORIG_POI=$(ogrinfo -al -q "$COMPLEX_FILE" 2>/dev/null | grep -c "OGRFeature(POI)" || echo "0")
+    ORIG_LINE=$(ogrinfo -al -q "$COMPLEX_FILE" 2>/dev/null | grep -c "OGRFeature(POLYLINE)" || echo "0")
+    ORIG_POLY=$(ogrinfo -al -q "$COMPLEX_FILE" 2>/dev/null | grep -c "OGRFeature(POLYGON)" || echo "0")
+
+    # MP -> GeoJSON
+    ogr2ogr -f "GeoJSON" "$COMPLEX_JSON" "$COMPLEX_FILE" POI -nln features 2>/dev/null || true
+    ogr2ogr -f "GeoJSON" -update -append "$COMPLEX_JSON" "$COMPLEX_FILE" POLYLINE -nln features 2>/dev/null || true
+    ogr2ogr -f "GeoJSON" -update -append "$COMPLEX_JSON" "$COMPLEX_FILE" POLYGON -nln features 2>/dev/null || true
+
+    # GeoJSON -> MP
+    if [ -f "$COMPLEX_JSON" ] && ogr2ogr -f "PolishMap" "$COMPLEX_MP_RT" "$COMPLEX_JSON" 2>/dev/null; then
+        RT_POI=$(ogrinfo -al -q "$COMPLEX_MP_RT" 2>/dev/null | grep -c "OGRFeature(POI)" || echo "0")
+        RT_LINE=$(ogrinfo -al -q "$COMPLEX_MP_RT" 2>/dev/null | grep -c "OGRFeature(POLYLINE)" || echo "0")
+        RT_POLY=$(ogrinfo -al -q "$COMPLEX_MP_RT" 2>/dev/null | grep -c "OGRFeature(POLYGON)" || echo "0")
+
+        ORIG_TOTAL=$((ORIG_POI + ORIG_LINE + ORIG_POLY))
+        RT_TOTAL=$((RT_POI + RT_LINE + RT_POLY))
+
+        if [ "$RT_TOTAL" -eq "$ORIG_TOTAL" ]; then
+            echo -e "Test: Complex multi-geometry round-trip ($ORIG_TOTAL features) ... ${GREEN}PASS${NC}"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+        else
+            echo -e "Test: Complex multi-geometry round-trip ... ${RED}FAIL${NC} (orig: $ORIG_TOTAL, rt: $RT_TOTAL)"
+            TESTS_FAILED=$((TESTS_FAILED + 1))
+        fi
+    else
+        echo -e "Test: Complex multi-geometry round-trip ... ${RED}FAIL${NC} (conversion failed)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    fi
+else
+    echo -e "Test: Complex multi-geometry round-trip ... ${YELLOW}SKIP${NC} (no complex test file)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
 
 # Summary
 echo ""

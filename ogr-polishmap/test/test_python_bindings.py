@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """
-Story 2.6: Python GDAL Bindings Tests (AC4, AC5)
+Story 2.6 & 2.7: Python GDAL Bindings Tests (AC4, AC5, AC7)
 
 Tests Python GDAL bindings for reading and writing Polish Map files.
+
+Story 2.6:
+- AC4: Python GDAL bindings work for writing
+- AC5: Python GDAL bindings work for reading
+
+Story 2.7:
+- AC7: Round-trip with modification: read MP -> modify features -> write MP -> read MP
 
 Requirements:
 - Python GDAL bindings (python3-gdal or osgeo package)
@@ -258,9 +265,245 @@ def test_roundtrip():
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+def test_ac7_modify_and_persist():
+    """AC7: Read MP -> modify features -> write MP -> read MP."""
+    from osgeo import ogr
+
+    print("  AC7: Modify and persist test... ", end="")
+
+    # Create two temp files: original and modified
+    fd1, original_path = tempfile.mkstemp(suffix='.mp')
+    os.close(fd1)
+    fd2, modified_path = tempfile.mkstemp(suffix='.mp')
+    os.close(fd2)
+
+    try:
+        # Step 1: Create original MP file with multiple features
+        driver = ogr.GetDriverByName('PolishMap')
+        ds = driver.CreateDataSource(original_path)
+
+        poi_layer = ds.GetLayer(0)
+
+        # Create 3 features
+        for i, (type_code, label) in enumerate([
+            ('0x2C00', 'Original Restaurant'),
+            ('0x4000', 'Original City'),
+            ('0x6401', 'Original Gas Station')
+        ]):
+            feature = ogr.Feature(poi_layer.GetLayerDefn())
+            feature.SetField('Type', type_code)
+            feature.SetField('Label', label)
+            point = ogr.Geometry(ogr.wkbPoint)
+            point.AddPoint(2.35 + i * 0.01, 48.85 + i * 0.01)
+            feature.SetGeometry(point)
+            poi_layer.CreateFeature(feature)
+
+        ds = None
+
+        # Step 2: Read original, modify, write to new file
+        ds_read = ogr.Open(original_path)
+        if ds_read is None:
+            print("FAILED (could not open original)")
+            return False
+
+        # Create new datasource for modified data
+        ds_write = driver.CreateDataSource(modified_path)
+        poi_layer_write = ds_write.GetLayer(0)
+
+        # Read and modify features
+        poi_layer_read = ds_read.GetLayer(0)
+        poi_layer_read.ResetReading()
+
+        modifications = [
+            ('0x2C01', 'Modified Restaurant'),  # Changed type and label
+            ('0x4001', 'Modified City'),
+            ('0x6402', 'Modified Gas Station')
+        ]
+
+        feature_idx = 0
+        while True:
+            feat = poi_layer_read.GetNextFeature()
+            if feat is None:
+                break
+
+            # Create new feature with modified attributes
+            new_feat = ogr.Feature(poi_layer_write.GetLayerDefn())
+            new_feat.SetField('Type', modifications[feature_idx][0])
+            new_feat.SetField('Label', modifications[feature_idx][1])
+
+            # Preserve geometry
+            new_feat.SetGeometry(feat.GetGeometryRef().Clone())
+
+            poi_layer_write.CreateFeature(new_feat)
+            feature_idx += 1
+
+        ds_read = None
+        ds_write = None
+
+        # Step 3: Read modified file and verify modifications
+        ds_verify = ogr.Open(modified_path)
+        if ds_verify is None:
+            print("FAILED (could not open modified file)")
+            return False
+
+        poi_layer_verify = ds_verify.GetLayer(0)
+        count = poi_layer_verify.GetFeatureCount()
+
+        if count != 3:
+            print(f"FAILED (expected 3 features, got {count})")
+            return False
+
+        poi_layer_verify.ResetReading()
+        verified = 0
+        while True:
+            feat = poi_layer_verify.GetNextFeature()
+            if feat is None:
+                break
+
+            label = feat.GetField('Label')
+            if label is None or not label.startswith('Modified'):
+                print(f"FAILED (expected modified label, got '{label}')")
+                return False
+            verified += 1
+
+        ds_verify = None
+
+        if verified != 3:
+            print(f"FAILED (only verified {verified} features)")
+            return False
+
+        print("PASSED")
+        return True
+
+    except Exception as e:
+        print(f"FAILED (exception: {e})")
+        return False
+    finally:
+        for path in [original_path, modified_path]:
+            if os.path.exists(path):
+                os.remove(path)
+
+def test_ac7_roundtrip_all_geometry_types():
+    """AC7: Round-trip with all geometry types (POI, POLYLINE, POLYGON)."""
+    from osgeo import ogr
+
+    print("  AC7: Multi-geometry round-trip... ", end="")
+
+    fd1, original_path = tempfile.mkstemp(suffix='.mp')
+    os.close(fd1)
+    fd2, modified_path = tempfile.mkstemp(suffix='.mp')
+    os.close(fd2)
+
+    try:
+        # Step 1: Create original with all geometry types
+        driver = ogr.GetDriverByName('PolishMap')
+        ds = driver.CreateDataSource(original_path)
+
+        # POI
+        poi_layer = ds.GetLayer(0)
+        feat = ogr.Feature(poi_layer.GetLayerDefn())
+        feat.SetField('Type', '0x2C00')
+        feat.SetField('Label', 'Test POI')
+        point = ogr.Geometry(ogr.wkbPoint)
+        point.AddPoint(2.35, 48.85)
+        feat.SetGeometry(point)
+        poi_layer.CreateFeature(feat)
+
+        # POLYLINE
+        line_layer = ds.GetLayer(1)
+        feat = ogr.Feature(line_layer.GetLayerDefn())
+        feat.SetField('Type', '0x0001')
+        feat.SetField('Label', 'Test Road')
+        line = ogr.Geometry(ogr.wkbLineString)
+        line.AddPoint(2.35, 48.85)
+        line.AddPoint(2.36, 48.86)
+        line.AddPoint(2.37, 48.87)
+        feat.SetGeometry(line)
+        line_layer.CreateFeature(feat)
+
+        # POLYGON
+        poly_layer = ds.GetLayer(2)
+        feat = ogr.Feature(poly_layer.GetLayerDefn())
+        feat.SetField('Type', '0x004C')
+        feat.SetField('Label', 'Test Forest')
+        polygon = ogr.Geometry(ogr.wkbPolygon)
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(2.40, 48.80)
+        ring.AddPoint(2.42, 48.80)
+        ring.AddPoint(2.42, 48.82)
+        ring.AddPoint(2.40, 48.82)
+        ring.AddPoint(2.40, 48.80)
+        polygon.AddGeometry(ring)
+        feat.SetGeometry(polygon)
+        poly_layer.CreateFeature(feat)
+
+        ds = None
+
+        # Step 2: Read, modify labels, write to new file
+        ds_read = ogr.Open(original_path)
+        ds_write = driver.CreateDataSource(modified_path)
+
+        for layer_idx in range(3):
+            src_layer = ds_read.GetLayer(layer_idx)
+            dst_layer = ds_write.GetLayer(layer_idx)
+
+            src_layer.ResetReading()
+            while True:
+                feat = src_layer.GetNextFeature()
+                if feat is None:
+                    break
+
+                new_feat = ogr.Feature(dst_layer.GetLayerDefn())
+                new_feat.SetField('Type', feat.GetField('Type'))
+
+                old_label = feat.GetField('Label') or ''
+                new_feat.SetField('Label', f'RT-{old_label}')
+
+                new_feat.SetGeometry(feat.GetGeometryRef().Clone())
+                dst_layer.CreateFeature(new_feat)
+
+        ds_read = None
+        ds_write = None
+
+        # Step 3: Verify
+        ds_verify = ogr.Open(modified_path)
+
+        total_features = 0
+        for layer_idx in range(3):
+            layer = ds_verify.GetLayer(layer_idx)
+            count = layer.GetFeatureCount()
+            total_features += count
+
+            layer.ResetReading()
+            while True:
+                feat = layer.GetNextFeature()
+                if feat is None:
+                    break
+                label = feat.GetField('Label')
+                if label is None or not label.startswith('RT-'):
+                    print(f"FAILED (layer {layer_idx}: label not modified)")
+                    return False
+
+        ds_verify = None
+
+        if total_features != 3:
+            print(f"FAILED (expected 3 total features, got {total_features})")
+            return False
+
+        print("PASSED")
+        return True
+
+    except Exception as e:
+        print(f"FAILED (exception: {e})")
+        return False
+    finally:
+        for path in [original_path, modified_path]:
+            if os.path.exists(path):
+                os.remove(path)
+
 def main():
     """Run all Python binding tests."""
-    print("=== Story 2.6: Python GDAL Bindings Tests (AC4, AC5) ===")
+    print("=== Story 2.6 & 2.7: Python GDAL Bindings Tests (AC4, AC5, AC7) ===")
     print()
 
     # Check GDAL availability
@@ -299,6 +542,18 @@ def main():
 
     # Round-trip test
     if test_roundtrip():
+        passed += 1
+    else:
+        failed += 1
+
+    # AC7: Modify and persist test (Story 2.7)
+    if test_ac7_modify_and_persist():
+        passed += 1
+    else:
+        failed += 1
+
+    # AC7: Multi-geometry round-trip test (Story 2.7)
+    if test_ac7_roundtrip_all_geometry_types():
         passed += 1
     else:
         failed += 1

@@ -1,0 +1,178 @@
+[IMG ID]
+Name=Mixed Types Test File
+ID=12345678
+CodePage=1252
+Levels=5
+Level0=24
+Level1=22
+Level2=20
+Level3=18
+Level4=16
+Zoom0=0
+Zoom1=1
+Zoom2=2
+Zoom3=3
+Zoom4=4
+[END]
+
+; ===== POI Features =====
+; Test various POI types with different attributes
+
+[POI]
+Type=0x2C00
+Label=Restaurant Chez Marcel
+Data0=(48.856600,2.352200)
+[END]
+
+[POI]
+Type=0x4000
+Label=City Center Paris
+Data0=(48.853400,2.348800)
+[END]
+
+[POI]
+Type=0x6401
+Label=Gas Station Total
+Data0=(48.860000,2.355000)
+[END]
+
+[POI]
+Type=0x2A00
+Label=Hotel Le Grand
+Data0=(48.858000,2.350000)
+[END]
+
+[POI]
+Type=0x2B00
+Label=Cafe de Flore
+Data0=(48.854000,2.333300)
+[END]
+
+[POI]
+Type=0x2E00
+Label=Pharmacie Centrale
+Data0=(48.852000,2.340000)
+[END]
+
+[POI]
+Type=0x2F00
+Label=Supermarche Carrefour
+Data0=(48.850000,2.345000)
+[END]
+
+[POI]
+Type=0x5100
+Label=Telephone Public
+Data0=(48.851000,2.347000)
+[END]
+
+; POI without label (NoLabel test)
+[POI]
+Type=0x6401
+Data0=(48.849000,2.343000)
+[END]
+
+; POI with special characters (CP1252 encoding)
+[POI]
+Type=0x2C00
+Label=Boulangerie La Mie Doree
+Data0=(48.855000,2.351000)
+[END]
+
+; ===== POLYLINE Features =====
+; Test various road and trail types
+
+[POLYLINE]
+Type=0x0001
+Label=Rue de Rivoli
+EndLevel=3
+Data0=(48.856100,2.342000),(48.856200,2.345000),(48.856300,2.348000),(48.856400,2.351000)
+[END]
+
+[POLYLINE]
+Type=0x0002
+Label=Boulevard Saint-Germain
+EndLevel=2
+Data0=(48.852000,2.330000),(48.852500,2.335000),(48.853000,2.340000),(48.853500,2.345000),(48.854000,2.350000)
+[END]
+
+[POLYLINE]
+Type=0x0016
+Label=Sentier du Parc
+EndLevel=4
+Data0=(48.850000,2.340000),(48.850500,2.341000),(48.851000,2.342000)
+[END]
+
+[POLYLINE]
+Type=0x0003
+Label=Avenue des Champs-Elysees
+EndLevel=1
+Data0=(48.866000,2.305000),(48.868000,2.295000),(48.870000,2.285000),(48.872000,2.275000),(48.874000,2.265000)
+[END]
+
+[POLYLINE]
+Type=0x0005
+Label=Quai de Seine
+EndLevel=2
+Data0=(48.850000,2.300000),(48.852000,2.310000),(48.854000,2.320000),(48.856000,2.330000)
+[END]
+
+; POLYLINE with many points
+[POLYLINE]
+Type=0x0007
+Label=Piste Cyclable
+EndLevel=3
+Data0=(48.840000,2.350000),(48.841000,2.351000),(48.842000,2.352000),(48.843000,2.353000),(48.844000,2.354000),(48.845000,2.355000),(48.846000,2.356000),(48.847000,2.357000),(48.848000,2.358000),(48.849000,2.359000)
+[END]
+
+; ===== POLYGON Features =====
+; Test various area types
+
+[POLYGON]
+Type=0x004C
+Label=Bois de Boulogne
+EndLevel=2
+Data0=(48.860000,2.240000),(48.865000,2.245000),(48.870000,2.250000),(48.875000,2.245000),(48.870000,2.235000),(48.865000,2.230000),(48.860000,2.240000)
+[END]
+
+[POLYGON]
+Type=0x0050
+Label=Jardin des Tuileries
+EndLevel=3
+Data0=(48.862000,2.324000),(48.864000,2.326000),(48.866000,2.328000),(48.865000,2.332000),(48.863000,2.330000),(48.861000,2.328000),(48.862000,2.324000)
+[END]
+
+[POLYGON]
+Type=0x0017
+Label=Parking Souterrain
+EndLevel=4
+Data0=(48.851000,2.348000),(48.852000,2.349000),(48.852000,2.350000),(48.851000,2.351000),(48.850000,2.350000),(48.851000,2.348000)
+[END]
+
+[POLYGON]
+Type=0x004B
+Label=Cimetiere Pere Lachaise
+EndLevel=2
+Data0=(48.861000,2.390000),(48.864000,2.392000),(48.866000,2.395000),(48.865000,2.400000),(48.862000,2.398000),(48.860000,2.394000),(48.861000,2.390000)
+[END]
+
+[POLYGON]
+Type=0x0013
+Label=Zone Industrielle
+EndLevel=3
+Data0=(48.900000,2.450000),(48.905000,2.455000),(48.910000,2.450000),(48.905000,2.445000),(48.900000,2.450000)
+[END]
+
+; POLYGON with many points (complex shape)
+[POLYGON]
+Type=0x0014
+Label=Lac du Bois
+EndLevel=2
+Data0=(48.862000,2.260000),(48.863000,2.262000),(48.864000,2.265000),(48.865000,2.268000),(48.866000,2.270000),(48.867000,2.268000),(48.868000,2.265000),(48.868000,2.262000),(48.867000,2.259000),(48.866000,2.257000),(48.865000,2.256000),(48.864000,2.257000),(48.863000,2.258000),(48.862000,2.260000)
+[END]
+
+; POLYGON without label
+[POLYGON]
+Type=0x0050
+Data0=(48.845000,2.330000),(48.847000,2.332000),(48.848000,2.335000),(48.846000,2.336000),(48.844000,2.334000),(48.845000,2.330000)
+[END]
