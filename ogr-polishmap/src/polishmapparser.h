@@ -35,6 +35,83 @@
 #include <vector>
 
 /************************************************************************/
+/*                            SectionType                               */
+/*                                                                      */
+/* Enum for Polish Map section types - used by unified ParseNextSection */
+/* REFACTORING: DRY elimination of duplicated parsing methods.          */
+/************************************************************************/
+
+enum class SectionType {
+    POI,        // [POI] or [RGN10] - Point features
+    Polyline,   // [POLYLINE] - Linear features
+    Polygon     // [POLYGON] - Area features
+};
+
+/************************************************************************/
+/*                        PolishMapSection                              */
+/*                                                                      */
+/* Unified IR structure for all section types (POI, POLYLINE, POLYGON). */
+/* REFACTORING: Replaces duplicate POI/Polyline/Polygon structures for  */
+/* the unified ParseNextSection() method.                               */
+/************************************************************************/
+
+struct PolishMapSection {
+    SectionType eType;                               // Section type
+    std::string osType;                              // Garmin type code "0x2C00", "0x16", etc.
+    std::string osLabel;                             // UTF-8 after conversion
+    std::vector<std::pair<double, double>> aoCoords; // Coordinates (1 for POI, N for POLY*)
+    int nEndLevel;                                   // 0-9, -1 if absent
+    std::string osLevels;                            // "0-3" or empty
+    std::map<std::string, std::string> aoOtherFields;// Additional fields
+
+    // Default constructor
+    PolishMapSection() : eType(SectionType::POI), nEndLevel(-1) {}
+
+    // Constructor with type
+    explicit PolishMapSection(SectionType type) : eType(type), nEndLevel(-1) {}
+
+    // Clear all data
+    void Clear() {
+        osType.clear();
+        osLabel.clear();
+        aoCoords.clear();
+        nEndLevel = -1;
+        osLevels.clear();
+        aoOtherFields.clear();
+    }
+
+    // Get minimum point count for valid geometry
+    int GetMinPointCount() const {
+        switch (eType) {
+            case SectionType::POI: return 1;
+            case SectionType::Polyline: return 2;
+            case SectionType::Polygon: return 3;
+        }
+        return 1;
+    }
+
+    // Get section marker string
+    const char* GetSectionMarker() const {
+        switch (eType) {
+            case SectionType::POI: return "[POI]";
+            case SectionType::Polyline: return "[POLYLINE]";
+            case SectionType::Polygon: return "[POLYGON]";
+        }
+        return "[UNKNOWN]";
+    }
+
+    // Get section type name for logging
+    const char* GetTypeName() const {
+        switch (eType) {
+            case SectionType::POI: return "POI";
+            case SectionType::Polyline: return "POLYLINE";
+            case SectionType::Polygon: return "POLYGON";
+        }
+        return "UNKNOWN";
+    }
+};
+
+/************************************************************************/
 /*                        PolishMapHeaderData                           */
 /*                                                                      */
 /* Intermediate Representation (IR) structure for [IMG ID] header data. */
@@ -178,29 +255,40 @@ public:
     // Check if file was successfully opened
     bool IsOpen() const { return m_fpFile != nullptr; }
 
-    // Story 1.4: POI section parsing
+    // REFACTORING: Unified section parsing (DRY pattern)
+    // Parse next section of specified type from file
+    // Returns TRUE if section found and parsed, FALSE if no more sections of that type
+    bool ParseNextSection(SectionType eTargetType, PolishMapSection& oSection);
+
+    // Reset reading position to start of data sections (after header)
+    void ResetSectionReading();
+
+    // Story 1.4: POI section parsing (wrapper for backward compatibility)
     // Parse next [POI] section from file
     // Returns TRUE if POI found and parsed, FALSE if no more POI sections
     bool ParseNextPOI(PolishMapPOISection& oSection);
 
     // Reset reading position to start of POI sections (after header)
-    void ResetPOIReading();
+    // Note: Alias for ResetSectionReading() - all layers share same position
+    void ResetPOIReading() { ResetSectionReading(); }
 
-    // Story 1.5: POLYLINE section parsing
+    // Story 1.5: POLYLINE section parsing (wrapper for backward compatibility)
     // Parse next [POLYLINE] section from file
     // Returns TRUE if POLYLINE found and parsed, FALSE if no more POLYLINE sections
     bool ParseNextPolyline(PolishMapPolylineSection& oSection);
 
     // Reset reading position to start of POLYLINE sections (after header)
-    void ResetPolylineReading();
+    // Note: Alias for ResetSectionReading() - all layers share same position
+    void ResetPolylineReading() { ResetSectionReading(); }
 
-    // Story 1.6: POLYGON section parsing
+    // Story 1.6: POLYGON section parsing (wrapper for backward compatibility)
     // Parse next [POLYGON] section from file
     // Returns TRUE if POLYGON found and parsed, FALSE if no more POLYGON sections
     bool ParseNextPolygon(PolishMapPolygonSection& oSection);
 
     // Reset reading position to start of POLYGON sections (after header)
-    void ResetPolygonReading();
+    // Note: Alias for ResetSectionReading() - all layers share same position
+    void ResetPolygonReading() { ResetSectionReading(); }
 
     // Get current line number (for debugging)
     int GetCurrentLine() const { return m_nCurrentLine; }

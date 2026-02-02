@@ -173,5 +173,100 @@ while (ReadLine(osLine)) {
 
 ---
 
-*Document mis à jour : 2026-01-29*
-*Prochaine story : 1.5 (POLYLINE) - Appliquer ces leçons !*
+## Refactoring Post-Epic 1 - Élimination Duplication DRY
+
+### Contexte
+
+**Date** : 2026-02-02
+**Owner** : Charlie + Elena (pair programming)
+**Trigger** : Rétrospective Epic 1
+
+### Problème Identifié
+
+Les méthodes `ParseNextPOI()`, `ParseNextPolyline()`, et `ParseNextPolygon()` partageaient ~95% de code identique :
+
+| Méthode | Lignes | Structure |
+|---------|--------|-----------|
+| ParseNextPOI() | 94 lignes | State machine + key/value parsing |
+| ParseNextPolyline() | 112 lignes | Structure identique |
+| ParseNextPolygon() | 112 lignes | Structure identique |
+| **Total dupliqué** | **~300 lignes** | |
+
+**Risques** :
+- Chaque bug devait être corrigé à 3 endroits
+- L'Epic 2 (Writer) aurait doublé cette dette avec `WritePOI()`, `WritePolyline()`, `WritePolygon()`
+
+### Solution Implémentée
+
+**1. Structure IR unifiée** (`polishmapparser.h`) :
+```cpp
+enum class SectionType { POI, Polyline, Polygon };
+
+struct PolishMapSection {
+    SectionType eType;
+    std::string osType;
+    std::string osLabel;
+    std::vector<std::pair<double, double>> aoCoords;
+    int nEndLevel;
+    std::string osLevels;
+    std::map<std::string, std::string> aoOtherFields;
+
+    int GetMinPointCount() const;      // 1, 2, ou 3 selon eType
+    const char* GetSectionMarker() const;  // "[POI]", "[POLYLINE]", "[POLYGON]"
+    const char* GetTypeName() const;
+};
+```
+
+**2. Méthode de parsing unifiée** (`polishmapparser.cpp`) :
+```cpp
+bool ParseNextSection(SectionType eTargetType, PolishMapSection& oSection);
+```
+
+**3. Wrappers pour rétrocompatibilité API** :
+```cpp
+bool ParseNextPOI(PolishMapPOISection& oSection) {
+    PolishMapSection oGeneric(SectionType::POI);
+    if (!ParseNextSection(SectionType::POI, oGeneric)) return false;
+    // Conversion PolishMapSection -> PolishMapPOISection
+    return true;
+}
+```
+
+**4. Reset unifié** :
+```cpp
+void ResetSectionReading();  // Méthode principale
+void ResetPOIReading() { ResetSectionReading(); }     // Alias inline
+void ResetPolylineReading() { ResetSectionReading(); } // Alias inline
+void ResetPolygonReading() { ResetSectionReading(); }  // Alias inline
+```
+
+### Résultats
+
+| Métrique | Avant | Après | Réduction |
+|----------|-------|-------|-----------|
+| Lignes polishmapparser.cpp | 794 | 644 | **-150 lignes (19%)** |
+| Méthodes de parsing | 3 dupliquées | 1 unifiée + 3 wrappers | Single point of fix |
+| Tests | 72+ | 72+ | **100% pass** |
+| API publique | Intacte | Intacte | Rétrocompatibilité préservée |
+
+### Leçons Clés
+
+1. **Refactorer AVANT d'ajouter de la dette** : Le refactoring fait avant Epic 2 évite de doubler la dette
+2. **Wrappers pour rétrocompatibilité** : Préserver l'API publique via thin wrappers
+3. **Tests comme filet de sécurité** : 72+ tests garantissent que le refactoring ne casse rien
+4. **Structures unifiées avec helpers** : `GetMinPointCount()`, `GetTypeName()` encapsulent les différences
+
+### Pattern Réutilisable pour Epic 2
+
+Le même pattern peut être utilisé pour le Writer :
+```cpp
+bool WriteSection(const PolishMapSection& oSection);  // Méthode unifiée
+bool WritePOI(const PolishMapPOISection& oSection);   // Wrapper
+bool WritePolyline(const PolishMapPolylineSection& oSection);  // Wrapper
+bool WritePolygon(const PolishMapPolygonSection& oSection);    // Wrapper
+```
+
+---
+
+*Document mis à jour : 2026-02-02*
+*Epic 1 complet, prêt pour Epic 2 !*

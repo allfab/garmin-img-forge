@@ -397,13 +397,14 @@ int PolishMapParser::ParseCoordinateList(const CPLString& osValue,
 }
 
 /************************************************************************/
-/*                          ResetPOIReading()                           */
+/*                       ResetSectionReading()                          */
 /*                                                                      */
-/* Reset file position to start of POI sections (after header).         */
-/* Story 1.4: Allow re-iteration through POI sections.                  */
+/* Reset file position to start of data sections (after header).        */
+/* REFACTORING: Unified method replacing Reset*Reading() duplicates.    */
+/* Note: All layers share the same file position after header.          */
 /************************************************************************/
 
-void PolishMapParser::ResetPOIReading() {
+void PolishMapParser::ResetSectionReading() {
     if (m_fpFile != nullptr) {
         VSIFSeekL(m_fpFile, m_nAfterHeaderPos, SEEK_SET);
         // Note: m_nCurrentLine is NOT reset - it tracks absolute line position
@@ -412,382 +413,232 @@ void PolishMapParser::ResetPOIReading() {
 }
 
 /************************************************************************/
-/*                       ResetPolylineReading()                         */
+/*                        ParseNextSection()                            */
 /*                                                                      */
-/* Reset file position to start of POLYLINE sections (after header).    */
-/* Story 1.5: Allow re-iteration through POLYLINE sections.             */
-/* Note: Reuses same position as POI (m_nAfterHeaderPos) since all      */
-/* layers share the same file and parse from the beginning.             */
+/* REFACTORING: Unified section parsing method (DRY pattern).           */
+/* Replaces ParseNextPOI, ParseNextPolyline, ParseNextPolygon.          */
+/* State machine to find and parse sections of specified type.          */
 /************************************************************************/
 
-void PolishMapParser::ResetPolylineReading() {
-    if (m_fpFile != nullptr) {
-        VSIFSeekL(m_fpFile, m_nAfterHeaderPos, SEEK_SET);
-        // Note: m_nCurrentLine is NOT reset - it tracks absolute line position
-        // for accurate error reporting across multiple iterations
+bool PolishMapParser::ParseNextSection(SectionType eTargetType, PolishMapSection& oSection) {
+    if (m_fpFile == nullptr) {
+        return false;
     }
+
+    oSection.Clear();
+    oSection.eType = eTargetType;
+
+    const char* pszTypeName = oSection.GetTypeName();
+    const int nMinPoints = oSection.GetMinPointCount();
+
+    CPLString osLine;
+    bool bInTargetSection = false;
+    bool bInOtherSection = false;  // CRITICAL FLAG to skip non-target sections
+
+    // Read file line by line
+    while (ReadLine(osLine)) {
+        m_nCurrentLine++;
+
+        // Check for section markers
+        if (!osLine.empty() && osLine[0] == '[') {
+            // Check for target section marker
+            bool bIsTargetSection = false;
+            if (eTargetType == SectionType::POI) {
+                bIsTargetSection = STARTS_WITH_CI(osLine.c_str(), "[POI]") ||
+                                   STARTS_WITH_CI(osLine.c_str(), "[RGN10]");
+            } else if (eTargetType == SectionType::Polyline) {
+                bIsTargetSection = STARTS_WITH_CI(osLine.c_str(), "[POLYLINE]");
+            } else if (eTargetType == SectionType::Polygon) {
+                bIsTargetSection = STARTS_WITH_CI(osLine.c_str(), "[POLYGON]");
+            }
+
+            if (bIsTargetSection) {
+                bInTargetSection = true;
+                bInOtherSection = false;
+                continue;
+            } else if (STARTS_WITH_CI(osLine.c_str(), "[END]")) {
+                if (bInTargetSection) {
+                    // End of current target section - validate and return
+                    if (static_cast<int>(oSection.aoCoords.size()) < nMinPoints) {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "%s at line %d has less than %d points (%zu found), skipping",
+                                 pszTypeName, m_nCurrentLine, nMinPoints, oSection.aoCoords.size());
+                        oSection.Clear();
+                        oSection.eType = eTargetType;
+                        bInTargetSection = false;
+                        continue;  // Skip this section, look for next
+                    }
+                    return true;
+                }
+                // End of some other section - reset flag and continue searching
+                bInOtherSection = false;
+                continue;
+            } else if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]") ||
+                       STARTS_WITH_CI(osLine.c_str(), "[END-IMG ID]")) {
+                // Header section markers - skip
+                bInOtherSection = false;
+                continue;
+            } else {
+                // It's a different section marker
+                if (bInTargetSection) {
+                    // Another section started within target (shouldn't happen normally)
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                             "Unexpected section marker within [%s] at line %d",
+                             pszTypeName, m_nCurrentLine);
+                    return false;
+                }
+                // We're now in a non-target section - skip until [END]
+                bInOtherSection = true;
+                continue;
+            }
+        }
+
+        // Skip lines if we're in a non-target section
+        if (bInOtherSection) {
+            continue;
+        }
+
+        // Parse key=value pairs within target section
+        if (bInTargetSection) {
+            CPLString osKey, osValue;
+            if (ParseKeyValue(osLine, osKey, osValue)) {
+                // Store known fields
+                if (EQUAL(osKey.c_str(), "Type")) {
+                    oSection.osType = osValue;
+                } else if (EQUAL(osKey.c_str(), "Label")) {
+                    oSection.osLabel = RecodeToUTF8(osValue);
+                } else if (EQUAL(osKey.c_str(), "Data0")) {
+                    // POI: single coordinate, POLYLINE/POLYGON: coordinate list
+                    if (eTargetType == SectionType::POI) {
+                        double dfLat, dfLon;
+                        if (!ParseCoordinates(osValue, dfLat, dfLon)) {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Skipping %s at line %d: invalid coordinates '%s'",
+                                     pszTypeName, m_nCurrentLine, osValue.c_str());
+                            bInTargetSection = false;
+                            oSection.Clear();
+                            oSection.eType = eTargetType;
+                            continue;
+                        }
+                        oSection.aoCoords.push_back({dfLat, dfLon});
+                    } else {
+                        // POLYLINE/POLYGON: coordinate list
+                        int nPoints = ParseCoordinateList(osValue, oSection.aoCoords);
+                        if (nPoints == 0) {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Skipping %s at line %d: invalid coordinates in Data0='%s'",
+                                     pszTypeName, m_nCurrentLine, osValue.c_str());
+                            bInTargetSection = false;
+                            oSection.Clear();
+                            oSection.eType = eTargetType;
+                            continue;
+                        }
+                    }
+                } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
+                    // Data1, Data2, etc. are multi-resolution levels (ignored in MVP)
+                    if (eTargetType != SectionType::POI) {
+                        CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
+                                 osKey.c_str());
+                    }
+                } else if (EQUAL(osKey.c_str(), "EndLevel")) {
+                    oSection.nEndLevel = atoi(osValue.c_str());
+                } else if (EQUAL(osKey.c_str(), "Levels")) {
+                    oSection.osLevels = osValue;
+                } else {
+                    // Store other fields in the map
+                    oSection.aoOtherFields[osKey] = osValue;
+                }
+            }
+        }
+    }
+
+    // Reached end of file
+    if (bInTargetSection) {
+        // We were in a target section but didn't find [END] marker
+        // Validate and accept it anyway (tolerant parsing)
+        if (static_cast<int>(oSection.aoCoords.size()) >= nMinPoints) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /************************************************************************/
 /*                          ParseNextPOI()                              */
 /*                                                                      */
 /* Parse next [POI] section from file.                                  */
-/* Story 1.4: State machine to skip non-POI sections.                   */
+/* REFACTORING: Wrapper around ParseNextSection() for backward compat.  */
 /************************************************************************/
 
 bool PolishMapParser::ParseNextPOI(PolishMapPOISection& oSection) {
-    if (m_fpFile == nullptr) {
+    oSection.Clear();
+
+    PolishMapSection oGeneric(SectionType::POI);
+    if (!ParseNextSection(SectionType::POI, oGeneric)) {
         return false;
     }
 
-    oSection.Clear();
+    // Convert PolishMapSection -> PolishMapPOISection
+    oSection.osType = oGeneric.osType;
+    oSection.osLabel = oGeneric.osLabel;
+    oSection.oCoords = oGeneric.aoCoords.empty() ?
+                       std::make_pair(0.0, 0.0) : oGeneric.aoCoords[0];
+    oSection.nEndLevel = oGeneric.nEndLevel;
+    oSection.osLevels = oGeneric.osLevels;
+    oSection.aoOtherFields = oGeneric.aoOtherFields;
 
-    CPLString osLine;
-    bool bInPOISection = false;
-    bool bInOtherSection = false;  // Track if we're in a non-POI section to skip
-
-    // Read file line by line
-    while (ReadLine(osLine)) {
-        m_nCurrentLine++;
-
-        // Check for section markers
-        if (!osLine.empty() && osLine[0] == '[') {
-            if (STARTS_WITH_CI(osLine.c_str(), "[POI]") || STARTS_WITH_CI(osLine.c_str(), "[RGN10]")) {
-                bInPOISection = true;
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[END]")) {
-                if (bInPOISection) {
-                    // End of current POI section - return it
-                    return true;
-                }
-                // End of some other section - reset flag and continue searching
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]") ||
-                       STARTS_WITH_CI(osLine.c_str(), "[END-IMG ID]")) {
-                // Header section markers - skip
-                bInOtherSection = false;
-                continue;
-            } else {
-                // It's a different section marker ([POLYLINE], [POLYGON], etc.)
-                if (bInPOISection) {
-                    // Another section started within POI (shouldn't happen normally)
-                    CPLError(CE_Warning, CPLE_AppDefined,
-                             "Unexpected section marker within [POI] at line %d",
-                             m_nCurrentLine);
-                    return false;
-                }
-                // We're now in a non-POI section - skip until [END]
-                bInOtherSection = true;
-                continue;
-            }
-        }
-
-        // Skip lines if we're in a non-POI section
-        if (bInOtherSection) {
-            continue;
-        }
-
-        // Parse key=value pairs within [POI] section
-        if (bInPOISection) {
-            CPLString osKey, osValue;
-            if (ParseKeyValue(osLine, osKey, osValue)) {
-                // Store known fields
-                if (EQUAL(osKey.c_str(), "Type")) {
-                    oSection.osType = osValue;
-                } else if (EQUAL(osKey.c_str(), "Label")) {
-                    oSection.osLabel = RecodeToUTF8(osValue);
-                } else if (EQUAL(osKey.c_str(), "Data0")) {
-                    // Parse coordinates
-                    if (!ParseCoordinates(osValue, oSection.oCoords.first, oSection.oCoords.second)) {
-                        CPLError(CE_Warning, CPLE_AppDefined,
-                                 "Skipping POI at line %d: invalid coordinates '%s'",
-                                 m_nCurrentLine, osValue.c_str());
-                        // Skip to next POI section
-                        bInPOISection = false;
-                        oSection.Clear();
-                        continue;
-                    }
-                } else if (EQUAL(osKey.c_str(), "EndLevel")) {
-                    oSection.nEndLevel = atoi(osValue.c_str());
-                } else if (EQUAL(osKey.c_str(), "Levels")) {
-                    oSection.osLevels = osValue;
-                } else {
-                    // Store other fields in the map
-                    oSection.aoOtherFields[osKey] = osValue;
-                }
-            }
-        }
-    }
-
-    // Reached end of file
-    if (bInPOISection) {
-        // We were in a POI section but didn't find [END] marker
-        // Accept it anyway (tolerant parsing)
-        return true;
-    }
-
-    return false;
+    return true;
 }
 
 /************************************************************************/
 /*                        ParseNextPolyline()                           */
 /*                                                                      */
 /* Parse next [POLYLINE] section from file.                             */
-/* Story 1.5: State machine to skip non-POLYLINE sections (POI/POLYGON).*/
-/* LEÇON 1.4: FLAG bInOtherSection CRITIQUE pour éviter le bug de 1.4. */
+/* REFACTORING: Wrapper around ParseNextSection() for backward compat.  */
 /************************************************************************/
 
 bool PolishMapParser::ParseNextPolyline(PolishMapPolylineSection& oSection) {
-    if (m_fpFile == nullptr) {
+    oSection.Clear();
+
+    PolishMapSection oGeneric(SectionType::Polyline);
+    if (!ParseNextSection(SectionType::Polyline, oGeneric)) {
         return false;
     }
 
-    oSection.Clear();
+    // Convert PolishMapSection -> PolishMapPolylineSection
+    oSection.osType = oGeneric.osType;
+    oSection.osLabel = oGeneric.osLabel;
+    oSection.aoCoords = oGeneric.aoCoords;
+    oSection.nEndLevel = oGeneric.nEndLevel;
+    oSection.osLevels = oGeneric.osLevels;
+    oSection.aoOtherFields = oGeneric.aoOtherFields;
 
-    CPLString osLine;
-    bool bInPolylineSection = false;
-    bool bInOtherSection = false;  // FLAG CRITIQUE pour skipper POI/POLYGON
-
-    // Read file line by line
-    while (ReadLine(osLine)) {
-        m_nCurrentLine++;
-
-        // Check for section markers
-        if (!osLine.empty() && osLine[0] == '[') {
-            if (STARTS_WITH_CI(osLine.c_str(), "[POLYLINE]")) {
-                bInPolylineSection = true;
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[END]")) {
-                if (bInPolylineSection) {
-                    // End of current POLYLINE section - validate and return
-                    // Must have at least 2 points for valid POLYLINE
-                    if (oSection.aoCoords.size() < 2) {
-                        CPLError(CE_Warning, CPLE_AppDefined,
-                                 "POLYLINE at line %d has less than 2 points (%zu found), skipping",
-                                 m_nCurrentLine, oSection.aoCoords.size());
-                        oSection.Clear();
-                        bInPolylineSection = false;
-                        continue;  // Skip this POLYLINE, look for next
-                    }
-                    return true;
-                }
-                // End of some other section - reset flag and continue searching
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]") ||
-                       STARTS_WITH_CI(osLine.c_str(), "[END-IMG ID]")) {
-                // Header section markers - skip
-                bInOtherSection = false;
-                continue;
-            } else {
-                // It's a different section marker ([POI], [POLYGON], [RGN*], etc.)
-                if (bInPolylineSection) {
-                    // Another section started within POLYLINE (shouldn't happen normally)
-                    CPLError(CE_Warning, CPLE_AppDefined,
-                             "Unexpected section marker within [POLYLINE] at line %d",
-                             m_nCurrentLine);
-                    return false;
-                }
-                // We're now in a non-POLYLINE section - skip until [END]
-                bInOtherSection = true;
-                continue;
-            }
-        }
-
-        // SKIP toutes les lignes dans les sections non-POLYLINE
-        if (bInOtherSection) {
-            continue;
-        }
-
-        // Parse key=value pairs within [POLYLINE] section
-        if (bInPolylineSection) {
-            CPLString osKey, osValue;
-            if (ParseKeyValue(osLine, osKey, osValue)) {
-                // Store known fields
-                if (EQUAL(osKey.c_str(), "Type")) {
-                    oSection.osType = osValue;
-                } else if (EQUAL(osKey.c_str(), "Label")) {
-                    oSection.osLabel = RecodeToUTF8(osValue);
-                } else if (EQUAL(osKey.c_str(), "Data0")) {
-                    // Story 1.5 REFACTORING: Data0 contains ALL coordinates on one line
-                    // Format: "(lat1,lon1),(lat2,lon2),..." or "lat1,lon1,lat2,lon2,..."
-                    int nPoints = ParseCoordinateList(osValue, oSection.aoCoords);
-                    if (nPoints == 0) {
-                        CPLError(CE_Warning, CPLE_AppDefined,
-                                 "Skipping POLYLINE at line %d: invalid coordinates in Data0='%s'",
-                                 m_nCurrentLine, osValue.c_str());
-                        // Skip to next POLYLINE section
-                        bInPolylineSection = false;
-                        oSection.Clear();
-                        continue;
-                    }
-                } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
-                    // Story 1.5 REFACTORING: Data1, Data2, etc. are multi-resolution levels
-                    // Ignored in MVP - only Data0 (highest resolution) is used
-                    CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
-                             osKey.c_str());
-                } else if (EQUAL(osKey.c_str(), "EndLevel")) {
-                    oSection.nEndLevel = atoi(osValue.c_str());
-                } else if (EQUAL(osKey.c_str(), "Levels")) {
-                    oSection.osLevels = osValue;
-                } else {
-                    // Store other fields in the map
-                    oSection.aoOtherFields[osKey] = osValue;
-                }
-            }
-        }
-    }
-
-    // Reached end of file
-    if (bInPolylineSection) {
-        // We were in a POLYLINE section but didn't find [END] marker
-        // Validate and accept it anyway (tolerant parsing)
-        if (oSection.aoCoords.size() >= 2) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/************************************************************************/
-/*                       ResetPolygonReading()                          */
-/*                                                                      */
-/* Reset file position to start of POLYGON sections (after header).     */
-/* Story 1.6: Allow re-iteration through POLYGON sections.              */
-/* Note: Reuses same position as POI/POLYLINE (m_nAfterHeaderPos) since */
-/* all layers share the same file and parse from the beginning.         */
-/************************************************************************/
-
-void PolishMapParser::ResetPolygonReading() {
-    if (m_fpFile != nullptr) {
-        VSIFSeekL(m_fpFile, m_nAfterHeaderPos, SEEK_SET);
-        // Note: m_nCurrentLine is NOT reset - it tracks absolute line position
-        // for accurate error reporting across multiple iterations
-    }
+    return true;
 }
 
 /************************************************************************/
 /*                        ParseNextPolygon()                            */
 /*                                                                      */
 /* Parse next [POLYGON] section from file.                              */
-/* Story 1.6: State machine to skip non-POLYGON sections (POI/POLYLINE).*/
-/* LEÇON 1.4: FLAG bInOtherSection CRITIQUE pour éviter le bug de 1.4.  */
+/* REFACTORING: Wrapper around ParseNextSection() for backward compat.  */
 /************************************************************************/
 
 bool PolishMapParser::ParseNextPolygon(PolishMapPolygonSection& oSection) {
-    if (m_fpFile == nullptr) {
+    oSection.Clear();
+
+    PolishMapSection oGeneric(SectionType::Polygon);
+    if (!ParseNextSection(SectionType::Polygon, oGeneric)) {
         return false;
     }
 
-    oSection.Clear();
+    // Convert PolishMapSection -> PolishMapPolygonSection
+    oSection.osType = oGeneric.osType;
+    oSection.osLabel = oGeneric.osLabel;
+    oSection.aoCoords = oGeneric.aoCoords;
+    oSection.nEndLevel = oGeneric.nEndLevel;
+    oSection.osLevels = oGeneric.osLevels;
+    oSection.aoOtherFields = oGeneric.aoOtherFields;
 
-    CPLString osLine;
-    bool bInPolygonSection = false;
-    bool bInOtherSection = false;  // FLAG CRITIQUE pour skipper POI/POLYLINE
-
-    // Read file line by line
-    while (ReadLine(osLine)) {
-        m_nCurrentLine++;
-
-        // Check for section markers
-        if (!osLine.empty() && osLine[0] == '[') {
-            if (STARTS_WITH_CI(osLine.c_str(), "[POLYGON]")) {
-                bInPolygonSection = true;
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[END]")) {
-                if (bInPolygonSection) {
-                    // End of current POLYGON section - validate and return
-                    // Must have at least 3 points for valid POLYGON
-                    if (oSection.aoCoords.size() < 3) {
-                        CPLError(CE_Warning, CPLE_AppDefined,
-                                 "POLYGON at line %d has less than 3 points (%zu found), skipping",
-                                 m_nCurrentLine, oSection.aoCoords.size());
-                        oSection.Clear();
-                        bInPolygonSection = false;
-                        continue;  // Skip this POLYGON, look for next
-                    }
-                    return true;
-                }
-                // End of some other section - reset flag and continue searching
-                bInOtherSection = false;
-                continue;
-            } else if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]") ||
-                       STARTS_WITH_CI(osLine.c_str(), "[END-IMG ID]")) {
-                // Header section markers - skip
-                bInOtherSection = false;
-                continue;
-            } else {
-                // It's a different section marker ([POI], [POLYLINE], [RGN*], etc.)
-                if (bInPolygonSection) {
-                    // Another section started within POLYGON (shouldn't happen normally)
-                    CPLError(CE_Warning, CPLE_AppDefined,
-                             "Unexpected section marker within [POLYGON] at line %d",
-                             m_nCurrentLine);
-                    return false;
-                }
-                // We're now in a non-POLYGON section - skip until [END]
-                bInOtherSection = true;
-                continue;
-            }
-        }
-
-        // SKIP toutes les lignes dans les sections non-POLYGON
-        if (bInOtherSection) {
-            continue;
-        }
-
-        // Parse key=value pairs within [POLYGON] section
-        if (bInPolygonSection) {
-            CPLString osKey, osValue;
-            if (ParseKeyValue(osLine, osKey, osValue)) {
-                // Store known fields
-                if (EQUAL(osKey.c_str(), "Type")) {
-                    oSection.osType = osValue;
-                } else if (EQUAL(osKey.c_str(), "Label")) {
-                    oSection.osLabel = RecodeToUTF8(osValue);
-                } else if (EQUAL(osKey.c_str(), "Data0")) {
-                    // Story 1.6 REFACTORING: Data0 contains ALL coordinates on one line
-                    // Format: "(lat1,lon1),(lat2,lon2),..." or "lat1,lon1,lat2,lon2,..."
-                    int nPoints = ParseCoordinateList(osValue, oSection.aoCoords);
-                    if (nPoints == 0) {
-                        CPLError(CE_Warning, CPLE_AppDefined,
-                                 "Skipping POLYGON at line %d: invalid coordinates in Data0='%s'",
-                                 m_nCurrentLine, osValue.c_str());
-                        // Skip to next POLYGON section
-                        bInPolygonSection = false;
-                        oSection.Clear();
-                        continue;
-                    }
-                } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
-                    // Story 1.6 REFACTORING: Data1, Data2, etc. are multi-resolution levels
-                    // Ignored in MVP - only Data0 (highest resolution) is used
-                    CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
-                             osKey.c_str());
-                } else if (EQUAL(osKey.c_str(), "EndLevel")) {
-                    oSection.nEndLevel = atoi(osValue.c_str());
-                } else if (EQUAL(osKey.c_str(), "Levels")) {
-                    oSection.osLevels = osValue;
-                } else {
-                    // Store other fields in the map
-                    oSection.aoOtherFields[osKey] = osValue;
-                }
-            }
-        }
-    }
-
-    // Reached end of file
-    if (bInPolygonSection) {
-        // We were in a POLYGON section but didn't find [END] marker
-        // Validate and accept it anyway (tolerant parsing)
-        if (oSection.aoCoords.size() >= 3) {
-            return true;
-        }
-    }
-
-    return false;
+    return true;
 }
