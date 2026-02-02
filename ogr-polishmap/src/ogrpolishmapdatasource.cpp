@@ -27,6 +27,7 @@
 
 #include "ogrpolishmapdatasource.h"
 #include "ogrpolishmaplayer.h"
+#include "polishmapwriter.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 
@@ -36,9 +37,13 @@
 /* Story 1.3: Constructor creates the 3 empty layers.                   */
 /************************************************************************/
 
-OGRPolishMapDataSource::OGRPolishMapDataSource() {
+OGRPolishMapDataSource::OGRPolishMapDataSource()
+    : m_bUpdate(false)
+    , m_fpOutput(nullptr)
+{
     // Story 1.4: Don't create layers yet - wait for parser to be set
     // Layers will be created in SetParser() after parser is available
+    // Story 2.1: Or in CreateLayersForWriteMode() for write mode
 }
 
 /************************************************************************/
@@ -48,6 +53,31 @@ OGRPolishMapDataSource::OGRPolishMapDataSource() {
 /************************************************************************/
 
 OGRPolishMapDataSource::~OGRPolishMapDataSource() {
+    // Story 2.1: Write minimal header on close if in write mode
+    if (m_bUpdate && m_fpOutput != nullptr) {
+        // Writer should already exist (created in Create())
+        // This is a defensive check - if somehow writer is null, we can't write
+        if (m_poWriter == nullptr) {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "Writer not initialized in write mode - cannot write header");
+        } else {
+            // Write header if not already written
+            // TODO Story 2.2: Use metadata from dataset instead of hardcoded "Untitled"
+            if (!m_poWriter->IsHeaderWritten()) {
+                m_poWriter->WriteHeader("Untitled", "1252");
+            }
+
+            // Flush pending writes
+            m_poWriter->Flush();
+        }
+
+        // Close output file
+        VSIFCloseL(m_fpOutput);
+        m_fpOutput = nullptr;
+
+        CPLDebug("OGR_POLISHMAP", "Closed write-mode dataset");
+    }
+
     // Task 7.1: unique_ptr automatically deletes layers (RAII)
     // No manual cleanup needed - m_apoLayers destructor handles it
 }
@@ -118,7 +148,9 @@ int OGRPolishMapDataSource::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, ODsCRandomLayerRead)) {
         return TRUE;  // Can read layers in random order
     }
-    // ODsCCreateLayer - Not implemented yet (Story 2.x)
+    // Story 2.1: ODsCCreateLayer - FALSE always
+    // Polish Map format has fixed layers (POI, POLYLINE, POLYGON)
+    // created automatically by Create(). User cannot create custom layers.
     if (EQUAL(pszCap, ODsCCreateLayer)) {
         return FALSE;
     }
@@ -140,4 +172,77 @@ void OGRPolishMapDataSource::SetParser(std::unique_ptr<PolishMapParser> poParser
     m_poParser = std::move(poParser);
     // Now that parser is set, create the layers
     CreateLayers();
+}
+
+/************************************************************************/
+/*                     CreateLayersForWriteMode()                        */
+/*                                                                      */
+/* Story 2.1 Task 2.3: Create 3 empty layers for write mode.            */
+/* Similar to CreateLayers() but without parser dependency.              */
+/************************************************************************/
+
+void OGRPolishMapDataSource::CreateLayersForWriteMode() {
+    // No parser in write mode - pass nullptr
+    // Layers will be write-only until Story 2.3-2.5 implement CreateFeature
+
+    // Task 2.2: Create POI layer with wkbPoint geometry type (index 0)
+    m_apoLayers.push_back(
+        std::make_unique<OGRPolishMapLayer>("POI", wkbPoint, nullptr));
+
+    // Task 2.3: Create POLYLINE layer with wkbLineString geometry type (index 1)
+    m_apoLayers.push_back(
+        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, nullptr));
+
+    // Task 2.4: Create POLYGON layer with wkbPolygon geometry type (index 2)
+    m_apoLayers.push_back(
+        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, nullptr));
+
+    CPLDebug("OGR_POLISHMAP", "Created %d layers for write mode: POI, POLYLINE, POLYGON",
+             static_cast<int>(m_apoLayers.size()));
+}
+
+/************************************************************************/
+/*                              Create()                                 */
+/*                                                                      */
+/* Story 2.1: Factory method for creating new Polish Map dataset.       */
+/* Opens file for writing, creates 3 empty layers.                       */
+/************************************************************************/
+
+OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) {
+    // Validate input - NULL path is invalid
+    if (pszFilename == nullptr) {
+        CPLError(CE_Failure, CPLE_OpenFailed,
+                 "Cannot create Polish Map file: filename is NULL");
+        return nullptr;
+    }
+
+    // Task 1.3: Create file with VSIFOpenL() in mode "w" (overwrites if exists)
+    VSILFILE* fp = VSIFOpenL(pszFilename, "w");
+    if (fp == nullptr) {
+        // Task 1.4: Return NULL + CPLError on failure
+        CPLError(CE_Failure, CPLE_OpenFailed,
+                 "Cannot create Polish Map file: %s", pszFilename);
+        return nullptr;
+    }
+
+    // Task 1.5: Create OGRPolishMapDataSource in write mode
+    OGRPolishMapDataSource* poDS = new OGRPolishMapDataSource();
+
+    // Set write mode flag
+    poDS->m_bUpdate = true;
+    poDS->m_fpOutput = fp;
+
+    // Set description (file path)
+    poDS->SetDescription(pszFilename);
+
+    // Task 2.3: Create 3 empty layers for write mode
+    poDS->CreateLayersForWriteMode();
+
+    // Create writer instance (will be used on close or when writing features)
+    poDS->m_poWriter = std::make_unique<PolishMapWriter>(fp);
+
+    CPLDebug("OGR_POLISHMAP", "Created new Polish Map dataset for writing: %s",
+             pszFilename);
+
+    return poDS;
 }

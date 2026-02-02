@@ -35,6 +35,7 @@
 #include <memory>
 
 class OGRPolishMapLayer;
+class PolishMapWriter;
 
 /************************************************************************/
 /*                       OGRPolishMapDataSource                         */
@@ -47,8 +48,16 @@ private:
     PolishMapHeaderData m_oHeaderData;  // Story 1.2: Header metadata storage
     std::unique_ptr<PolishMapParser> m_poParser;  // Story 1.4: Parser for feature reading
 
+    // Story 2.1: Write mode support
+    bool m_bUpdate;                              // false = read (Open), true = write (Create)
+    VSILFILE* m_fpOutput;                        // Output file handle (write mode only)
+    std::unique_ptr<PolishMapWriter> m_poWriter; // Writer instance (write mode only)
+
     // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
     void CreateLayers();
+
+    // Story 2.1: Create layers for write mode (no parser needed)
+    void CreateLayersForWriteMode();
 
 public:
     OGRPolishMapDataSource();
@@ -72,6 +81,12 @@ public:
     // Story 1.4: Parser access
     void SetParser(std::unique_ptr<PolishMapParser> poParser);
     PolishMapParser* GetParser() { return m_poParser.get(); }
+
+    // Story 2.1: Write mode factory method
+    static OGRPolishMapDataSource* Create(const char* pszFilename);
+
+    // Story 2.1: Check if in write mode
+    bool IsUpdateMode() const { return m_bUpdate; }
 };
 
 #endif /* OGRPOLISHMAPDATASOURCE_H_INCLUDED */

@@ -44,6 +44,10 @@ public:
 
     // Driver open method
     static GDALDataset* Open(GDALOpenInfo* poOpenInfo);
+
+    // Story 2.1: Driver create method
+    static GDALDataset* Create(const char* pszName, int nXSize, int nYSize,
+                               int nBands, GDALDataType eType, char** papszOptions);
 };
 
 // Visibility macro for exported symbols

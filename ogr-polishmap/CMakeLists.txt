@@ -21,6 +21,7 @@ set(POLISHMAP_SOURCES
     src/ogrpolishmapdatasource.cpp
     src/ogrpolishmaplayer.cpp
     src/polishmapparser.cpp
+    src/polishmapwriter.cpp
 )
 
 # Build shared library (GDAL plugin)
@@ -166,6 +167,17 @@ target_include_directories(test_filters PRIVATE
 )
 target_link_libraries(test_filters PRIVATE ${GDAL_LIBRARIES})
 target_compile_definitions(test_filters PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
+# Test executable - Create (Story 2.1)
+add_executable(test_create test/test_create.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_create PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_create PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_create PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 

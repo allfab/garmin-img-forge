@@ -50,9 +50,14 @@ OGRPolishMapDriver::OGRPolishMapDriver() {
     // Driver capabilities
     SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
 
+    // Story 2.1 Task 4.1: Add GDAL_DCAP_CREATE capability
+    SetMetadataItem(GDAL_DCAP_CREATE, "YES");
+
     // Function pointers for driver operations
     pfnOpen = Open;
     pfnIdentify = Identify;
+    // Story 2.1 Task 1.1: Add pfnCreate function pointer
+    pfnCreate = Create;
 }
 
 /************************************************************************/
@@ -158,6 +163,21 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
              poDS->GetHeaderData().osName.c_str());
 
     return poDS;
+}
+
+/************************************************************************/
+/*                             Create()                                  */
+/*                                                                      */
+/* Story 2.1: Create a new Polish Map file for writing.                 */
+/* Parameters nXSize, nYSize, nBands, eType are ignored for vector.     */
+/************************************************************************/
+
+GDALDataset* OGRPolishMapDriver::Create(const char* pszName, int /* nXSize */,
+                                        int /* nYSize */, int /* nBands */,
+                                        GDALDataType /* eType */,
+                                        char** /* papszOptions */) {
+    // Task 1.2: Delegate to OGRPolishMapDataSource::Create()
+    return OGRPolishMapDataSource::Create(pszName);
 }
 
 /************************************************************************/
