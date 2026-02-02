@@ -1,0 +1,2 @@
+ÿþ This is binary garbage
+Not a valid Polish Map file at all

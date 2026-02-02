@@ -187,9 +187,11 @@ bool PolishMapParser::ParseHeader() {
     CPLString osLine;
     bool bInImgIdSection = false;
     bool bFoundImgIdSection = false;
+    int nLineNumber = 0;  // Story 3.2 M2: Track line number for error context
 
     // Parse file line by line
     while (ReadLine(osLine)) {
+        nLineNumber++;
         // Check for section markers
         if (!osLine.empty() && osLine[0] == '[') {
             if (STARTS_WITH_CI(osLine.c_str(), "[IMG ID]")) {
@@ -232,8 +234,10 @@ bool PolishMapParser::ParseHeader() {
     }
 
     if (!bFoundImgIdSection) {
+        // Story 3.2 AC1/AC6: Critical Error with contextual message (filename + line count)
         CPLError(CE_Failure, CPLE_OpenFailed,
-                 "Polish Map file missing required [IMG ID] header");
+                 "Polish Map file missing required [IMG ID] header after %d lines: %s",
+                 nLineNumber, m_osFilePath.c_str());
         return false;
     }
 
@@ -480,6 +484,20 @@ bool PolishMapParser::ParseNextSection(SectionType eTargetType, PolishMapSection
                         bInTargetSection = false;
                         continue;  // Skip this section, look for next
                     }
+
+                    // Story 3.2 AC3: Minor Issues - Log missing optional fields with CPLDebug
+                    // Pattern: Default value + CPLDebug (NFR10: clear diagnostic messages)
+                    if (oSection.osLabel.empty()) {
+                        CPLDebug("OGR_POLISHMAP",
+                                 "%s at line %d has no Label, using empty string",
+                                 pszTypeName, m_nCurrentLine);
+                    }
+                    if (oSection.nEndLevel < 0) {
+                        CPLDebug("OGR_POLISHMAP",
+                                 "%s at line %d has no EndLevel, using default -1",
+                                 pszTypeName, m_nCurrentLine);
+                    }
+
                     return true;
                 }
                 // End of some other section - reset flag and continue searching
@@ -516,6 +534,38 @@ bool PolishMapParser::ParseNextSection(SectionType eTargetType, PolishMapSection
             if (ParseKeyValue(osLine, osKey, osValue)) {
                 // Store known fields
                 if (EQUAL(osKey.c_str(), "Type")) {
+                    // Story 3.2 Task 2.5: Validate Type code format (AC2 Recoverable Error)
+                    // Valid formats: "0x0001", "0x2C00", etc. (hex) or decimal "1234"
+                    // Invalid: "0xZZZZ", "notahex", empty string
+                    bool bValidType = false;
+                    if (!osValue.empty()) {
+                        if (STARTS_WITH_CI(osValue.c_str(), "0x")) {
+                            // Hex format: validate all chars after "0x" are hex digits
+                            const char* pszHex = osValue.c_str() + 2;
+                            bValidType = (*pszHex != '\0');  // Must have at least one digit
+                            while (*pszHex && bValidType) {
+                                if (!isxdigit(static_cast<unsigned char>(*pszHex))) {
+                                    bValidType = false;
+                                }
+                                pszHex++;
+                            }
+                        } else {
+                            // Decimal format: validate all chars are digits
+                            const char* pszDec = osValue.c_str();
+                            bValidType = true;
+                            while (*pszDec && bValidType) {
+                                if (!isdigit(static_cast<unsigned char>(*pszDec))) {
+                                    bValidType = false;
+                                }
+                                pszDec++;
+                            }
+                        }
+                    }
+                    if (!bValidType) {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "%s at line %d has invalid Type code '%s', using as-is",
+                                 pszTypeName, m_nCurrentLine, osValue.c_str());
+                    }
                     oSection.osType = osValue;
                 } else if (EQUAL(osKey.c_str(), "Label")) {
                     oSection.osLabel = RecodeToUTF8(osValue);
@@ -569,6 +619,23 @@ bool PolishMapParser::ParseNextSection(SectionType eTargetType, PolishMapSection
         // We were in a target section but didn't find [END] marker
         // Validate and accept it anyway (tolerant parsing)
         if (static_cast<int>(oSection.aoCoords.size()) >= nMinPoints) {
+            // Story 3.2: Log missing [END] marker as minor issue
+            CPLDebug("OGR_POLISHMAP",
+                     "%s at EOF has no [END] marker, accepting anyway",
+                     pszTypeName);
+
+            // Story 3.2 AC3: Minor Issues - Log missing optional fields
+            if (oSection.osLabel.empty()) {
+                CPLDebug("OGR_POLISHMAP",
+                         "%s at EOF has no Label, using empty string",
+                         pszTypeName);
+            }
+            if (oSection.nEndLevel < 0) {
+                CPLDebug("OGR_POLISHMAP",
+                         "%s at EOF has no EndLevel, using default -1",
+                         pszTypeName);
+            }
+
             return true;
         }
     }

@@ -250,6 +250,31 @@ struct PolishMapPolygonSection {
 /* - CPLReadLineL() uses internal buffering (GDAL optimized)             */
 /* - No additional buffer needed - measured 0.455s for 10 MB (< 2s NFR1) */
 /* - Memory optimized via shrink_to_fit() on IR structures               */
+/*                                                                      */
+/* Story 3.2: Three-Level Error Strategy (NFR9, NFR10, NFR11)            */
+/*                                                                      */
+/* @section error_strategy Error Handling Strategy                       */
+/*                                                                      */
+/* The parser implements a three-level error strategy for robustness:    */
+/*                                                                      */
+/* 1. CRITICAL ERRORS (Fail + Return NULL):                              */
+/*    - Missing [IMG ID] header section                                  */
+/*    - Empty or binary/corrupted file                                   */
+/*    - Action: CPLError(CE_Failure, CPLE_OpenFailed) + return false     */
+/*                                                                      */
+/* 2. RECOVERABLE ERRORS (Skip + Continue):                              */
+/*    - Malformed section (missing required fields like Type/Data0)      */
+/*    - Invalid geometry (coordinates outside WGS84 range)               */
+/*    - Invalid Type code format (non-hex/non-numeric)                   */
+/*    - Action: CPLError(CE_Warning, CPLE_AppDefined) + skip section     */
+/*                                                                      */
+/* 3. MINOR ISSUES (Default + Log):                                      */
+/*    - Missing optional fields (Label, EndLevel)                        */
+/*    - Missing [END] marker at EOF                                      */
+/*    - Action: CPLDebug("OGR_POLISHMAP") + use default value            */
+/*                                                                      */
+/* All error messages include context: filename, line number, section.   */
+/* This strategy ensures NFR9 (0 crashes) and NFR11 (graceful degrade).  */
 /************************************************************************/
 
 class PolishMapParser {
