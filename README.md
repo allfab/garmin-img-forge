@@ -27,7 +27,19 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Charger l'environnement (ou redémarrer le terminal)
 source $HOME/.cargo/env
 
-# Ajouter les composants recommandés
+# Ajouter les compProchaines étapes:
+
+  1. Consulter le résumé de rétrospective: docs/implementation-artifacts/epic-1-retro-2026-02-02.md
+  2. Exécuter le sprint de préparation:
+    - Compléter le refactoring parser (Charlie + Elena) 🔴
+    - Documenter l'architecture Writer (Charlie) 🟠
+    - Enrichir l'architecture avec exemples de code 🟠
+  3. Revoir les action items au prochain standup:
+    - S'assurer que l'ownership est clair
+    - Suivre la progression des engagements
+  4. Démarrer Epic 2 quand prêt:
+    - Utiliser /bmad-bmm-create-story pour créer la première story
+    - L'Epic passera automatiquement à in-progress osants recommandés
 rustup component add clippy rustfmt rust-src
 
 ---
@@ -84,3 +96,18 @@ wget https://www.mkgmap.org.uk/download/mkgmap-latest.tar.gz
 tar xzf mkgmap-latest.tar.gz
 sudo mv mkgmap-* /opt/mkgmap
 echo 'export PATH=/opt/mkgmap:$PATH' >> ~/.bashrc
+
+
+Prochaines étapes:
+
+  1. Consulter le résumé de rétrospective: docs/implementation-artifacts/epic-1-retro-2026-02-02.md
+  2. Exécuter le sprint de préparation:
+    - Compléter le refactoring parser (Charlie + Elena) 🔴
+    - Documenter l'architecture Writer (Charlie) 🟠
+    - Enrichir l'architecture avec exemples de code 🟠
+  3. Revoir les action items au prochain standup:
+    - S'assurer que l'ownership est clair
+    - Suivre la progression des engagements
+  4. Démarrer Epic 2 quand prêt:
+    - Utiliser /bmad-bmm-create-story pour créer la première story
+    - L'Epic passera automatiquement à in-progress
