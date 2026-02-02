@@ -33,21 +33,54 @@
 
 /************************************************************************/
 /*                         PolishMapParser()                            */
+/*                                                                      */
+/* Story 3.1: Buffered I/O initialization (Architecture: Buffered I/O)  */
+/* - Allocate 64KB read buffer for performance optimization (NFR1)      */
+/* - Reduces syscalls for improved parsing speed                         */
 /************************************************************************/
 
 PolishMapParser::PolishMapParser(const char* pszFilePath)
-    : m_osFilePath(pszFilePath), m_fpFile(nullptr), m_nAfterHeaderPos(0), m_nCurrentLine(0) {
+    : m_osFilePath(pszFilePath)
+    , m_fpFile(nullptr)
+    , m_nAfterHeaderPos(0)
+    , m_nCurrentLine(0)
+    , m_pszReadBuffer(nullptr)
+    , m_nBufferSize(PARSER_BUFFER_SIZE)
+    , m_nBufferPos(0)
+    , m_nBufferFilled(0)
+{
     m_fpFile = VSIFOpenL(pszFilePath, "rb");
     if (m_fpFile == nullptr) {
         CPLDebug("OGR_POLISHMAP", "Failed to open file: %s", pszFilePath);
+        return;
+    }
+
+    // Story 3.1: Allocate read buffer (NFR1: 10 MB < 2s)
+    m_pszReadBuffer = static_cast<char*>(CPLMalloc(PARSER_BUFFER_SIZE));
+    if (m_pszReadBuffer == nullptr) {
+        CPLError(CE_Warning, CPLE_OutOfMemory,
+                 "Failed to allocate %zu byte read buffer, using unbuffered I/O",
+                 PARSER_BUFFER_SIZE);
+        m_nBufferSize = 0;
+    } else {
+        CPLDebug("OGR_POLISHMAP", "Allocated %zu byte read buffer for buffered I/O",
+                 PARSER_BUFFER_SIZE);
     }
 }
 
 /************************************************************************/
 /*                        ~PolishMapParser()                            */
+/*                                                                      */
+/* Story 3.1: Free read buffer in destructor (GDAL memory pattern)      */
 /************************************************************************/
 
 PolishMapParser::~PolishMapParser() {
+    // Story 3.1: Free read buffer
+    if (m_pszReadBuffer != nullptr) {
+        CPLFree(m_pszReadBuffer);
+        m_pszReadBuffer = nullptr;
+    }
+
     if (m_fpFile != nullptr) {
         VSIFCloseL(m_fpFile);
         m_fpFile = nullptr;

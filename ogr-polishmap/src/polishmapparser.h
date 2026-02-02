@@ -71,10 +71,13 @@ struct PolishMapSection {
     explicit PolishMapSection(SectionType type) : eType(type), nEndLevel(-1) {}
 
     // Clear all data
+    // Story 3.1: Added shrink_to_fit() for memory optimization (Architecture: Memory Management)
+    // Pattern: Parse section → Populate IR → Convert to OGRFeature → Clear IR → Next section
     void Clear() {
         osType.clear();
         osLabel.clear();
         aoCoords.clear();
+        aoCoords.shrink_to_fit();  // Release memory (NFR3: < 2x file size)
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
@@ -188,10 +191,12 @@ struct PolishMapPolylineSection {
     PolishMapPolylineSection() : nEndLevel(-1) {}
 
     // Clear all data
+    // Story 3.1: Added shrink_to_fit() for memory optimization (NFR3)
     void Clear() {
         osType.clear();
         osLabel.clear();
         aoCoords.clear();
+        aoCoords.shrink_to_fit();  // Release memory
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
@@ -217,10 +222,12 @@ struct PolishMapPolygonSection {
     PolishMapPolygonSection() : nEndLevel(-1) {}
 
     // Clear all data
+    // Story 3.1: Added shrink_to_fit() for memory optimization (NFR3)
     void Clear() {
         osType.clear();
         osLabel.clear();
         aoCoords.clear();
+        aoCoords.shrink_to_fit();  // Release memory
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
@@ -234,7 +241,14 @@ struct PolishMapPolygonSection {
 /* - Level 1: Section detection via [SECTION_NAME] markers              */
 /* - Level 2: Key=value parsing inside sections                         */
 /* - State machine for section transitions                              */
+/*                                                                      */
+/* Story 3.1: Buffered I/O for performance optimization (NFR1, NFR3)    */
+/* - 64KB read buffer to reduce syscalls                                 */
+/* - Architecture pattern: Buffered I/O with explicit buffer size        */
 /************************************************************************/
+
+// Story 3.1: Buffered I/O configuration (Architecture: Buffered I/O Pattern)
+static constexpr size_t PARSER_BUFFER_SIZE = 65536;  // 64KB buffer
 
 class PolishMapParser {
 public:
@@ -299,6 +313,12 @@ private:
     PolishMapHeaderData m_oHeaderData;
     vsi_l_offset m_nAfterHeaderPos;  // File position after header (start of data sections)
     int m_nCurrentLine;               // Current line number for error reporting
+
+    // Story 3.1: Buffered I/O members (Architecture: Buffered I/O Pattern)
+    char* m_pszReadBuffer;            // 64KB read buffer for performance
+    size_t m_nBufferSize;             // Current buffer size
+    size_t m_nBufferPos;              // Current position in buffer
+    size_t m_nBufferFilled;           // Number of bytes currently in buffer
 
     // Helper methods
     bool ReadLine(CPLString& osLine);

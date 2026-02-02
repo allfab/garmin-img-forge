@@ -40,7 +40,15 @@
 /*                                                                      */
 /* Story 2.1: Skeleton writer for Polish Map format output.             */
 /* Handles file I/O using GDAL VSI abstraction layer.                   */
+/*                                                                      */
+/* Story 3.1: Buffered writing for performance optimization (NFR2)      */
+/* - 64KB write buffer to reduce syscalls                                */
+/* - Accumulated writes flushed at buffer capacity or explicit Flush()   */
+/* - Architecture pattern: Buffered I/O with explicit buffer size        */
 /************************************************************************/
+
+// Story 3.1: Buffered writing configuration (Architecture: Buffered I/O Pattern)
+static constexpr size_t WRITER_BUFFER_SIZE = 65536;  // 64KB buffer
 
 class PolishMapWriter {
 public:
@@ -149,6 +157,25 @@ public:
 private:
     VSILFILE* m_fpOutput;      // Borrowed file handle (NOT owned)
     bool m_bHeaderWritten;     // Track if header section was written
+
+    // Story 3.1: Buffered writing members (Architecture: Buffered I/O Pattern)
+    std::string m_osWriteBuffer;  // Accumulation buffer for writes (NFR2: 10 MB < 3s)
+
+    /**
+     * @brief Write data to internal buffer, flush if necessary.
+     * @param pszData String data to write
+     * @return true if successful, false on error
+     *
+     * Story 3.1: Buffered writing to reduce syscalls.
+     * Accumulates data until buffer reaches WRITER_BUFFER_SIZE, then flushes.
+     */
+    bool BufferedWrite(const char* pszData);
+
+    /**
+     * @brief Flush internal write buffer to file.
+     * @return true if successful, false on error
+     */
+    bool FlushBuffer();
 
     /**
      * @brief Convert UTF-8 string to CP1252 encoding.

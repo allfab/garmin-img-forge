@@ -28,6 +28,7 @@
 #include "polishmapwriter.h"
 #include "cpl_error.h"
 #include "cpl_conv.h"
+#include <cstdarg>  // Story 3.1: For FormatString() helper
 
 // Default POI type code when Type field is not set
 static const char* const DEFAULT_POI_TYPE = "0x0000";
@@ -46,6 +47,8 @@ static constexpr int LARGE_POLYGON_WARNING_THRESHOLD = 10000;
 
 /************************************************************************/
 /*                          PolishMapWriter()                            */
+/*                                                                      */
+/* Story 3.1: Initialize buffered writing (Architecture: Buffered I/O)   */
 /************************************************************************/
 
 PolishMapWriter::PolishMapWriter(VSILFILE* fpOutput)
@@ -53,16 +56,113 @@ PolishMapWriter::PolishMapWriter(VSILFILE* fpOutput)
     , m_bHeaderWritten(false)
 {
     // File handle is borrowed - we don't own it
+    // Story 3.1: Reserve buffer capacity to avoid reallocations
+    m_osWriteBuffer.reserve(WRITER_BUFFER_SIZE);
+    CPLDebug("OGR_POLISHMAP", "Writer initialized with %zu byte write buffer",
+             WRITER_BUFFER_SIZE);
 }
 
 /************************************************************************/
 /*                         ~PolishMapWriter()                            */
+/*                                                                      */
+/* Story 3.1: Flush remaining buffer data before destruction             */
 /************************************************************************/
 
 PolishMapWriter::~PolishMapWriter()
 {
+    // Story 3.1: Flush any remaining buffered data
+    if (!m_osWriteBuffer.empty() && m_fpOutput != nullptr) {
+        FlushBuffer();
+    }
     // Do NOT close file - it's a borrowed handle
     // Owner (OGRPolishMapDataSource) is responsible for closing
+}
+
+/************************************************************************/
+/*                          BufferedWrite()                              */
+/*                                                                      */
+/* Story 3.1: Accumulate writes in buffer to reduce syscalls (NFR2)      */
+/* Flushes automatically when buffer reaches WRITER_BUFFER_SIZE          */
+/************************************************************************/
+
+bool PolishMapWriter::BufferedWrite(const char* pszData)
+{
+    if (pszData == nullptr) {
+        return true;  // Nothing to write
+    }
+
+    m_osWriteBuffer += pszData;
+
+    // Flush if buffer exceeds threshold
+    if (m_osWriteBuffer.size() >= WRITER_BUFFER_SIZE) {
+        return FlushBuffer();
+    }
+
+    return true;
+}
+
+/************************************************************************/
+/*                     BufferedPrintf() - static helper                  */
+/*                                                                      */
+/* Story 3.1: Printf-style wrapper for buffered writing                  */
+/* Used internally to replace VSIFPrintfL calls                          */
+/************************************************************************/
+
+static std::string FormatString(const char* pszFormat, ...)
+{
+    va_list args;
+    va_start(args, pszFormat);
+
+    // First pass: get required size
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int nLen = vsnprintf(nullptr, 0, pszFormat, args_copy);
+    va_end(args_copy);
+
+    if (nLen < 0) {
+        va_end(args);
+        return "";
+    }
+
+    // Second pass: format into string
+    std::string osResult(static_cast<size_t>(nLen) + 1, '\0');
+    vsnprintf(&osResult[0], osResult.size(), pszFormat, args);
+    va_end(args);
+
+    osResult.resize(static_cast<size_t>(nLen));  // Remove null terminator
+    return osResult;
+}
+
+/************************************************************************/
+/*                          FlushBuffer()                                */
+/*                                                                      */
+/* Story 3.1: Write accumulated buffer to file (Architecture: I/O)       */
+/************************************************************************/
+
+bool PolishMapWriter::FlushBuffer()
+{
+    if (m_osWriteBuffer.empty()) {
+        return true;  // Nothing to flush
+    }
+
+    if (m_fpOutput == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "FlushBuffer: file handle is null");
+        return false;
+    }
+
+    size_t nWritten = VSIFWriteL(m_osWriteBuffer.c_str(), 1,
+                                  m_osWriteBuffer.size(), m_fpOutput);
+
+    if (nWritten != m_osWriteBuffer.size()) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "FlushBuffer: wrote %zu of %zu bytes",
+                 nWritten, m_osWriteBuffer.size());
+        return false;
+    }
+
+    m_osWriteBuffer.clear();
+    return true;
 }
 
 /************************************************************************/
@@ -89,11 +189,18 @@ bool PolishMapWriter::WriteHeader(const std::string& osName, const std::string& 
 
 /************************************************************************/
 /*                              Flush()                                  */
+/*                                                                      */
+/* Story 3.1: Flush internal buffer + VSI flush (NFR2 performance)       */
 /************************************************************************/
 
 bool PolishMapWriter::Flush()
 {
     if (m_fpOutput == nullptr) {
+        return false;
+    }
+
+    // Story 3.1: Flush internal write buffer first
+    if (!FlushBuffer()) {
         return false;
     }
 
@@ -127,6 +234,7 @@ std::string PolishMapWriter::RecodeToCP1252(const std::string& osUTF8Value)
 /*                    WriteHeader(aoMetadata)                            */
 /*                                                                      */
 /* Story 2.2 Task 3: Write [IMG ID] header with metadata map.           */
+/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
 /* Handles field ordering, default values, and UTF-8→CP1252 conversion. */
 /************************************************************************/
 
@@ -159,15 +267,16 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         osCodePage = itCodePage->second;  // CodePage is numeric, no recode needed
     }
 
+    // Story 3.1: Use buffered writing for performance (NFR2)
     // Write [IMG ID] section
-    if (VSIFPrintfL(m_fpOutput, "[IMG ID]\n") < 0) {
+    if (!BufferedWrite("[IMG ID]\n")) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "PolishMapWriter::WriteHeader() - failed to write [IMG ID]");
         return false;
     }
 
     // Write Name field first (always present)
-    if (VSIFPrintfL(m_fpOutput, "Name=%s\n", osName.c_str()) < 0) {
+    if (!BufferedWrite(FormatString("Name=%s\n", osName.c_str()).c_str())) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "PolishMapWriter::WriteHeader() - failed to write Name");
         return false;
@@ -183,7 +292,7 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         auto it = aoMetadata.find(apszKnownFields[i]);
         if (it != aoMetadata.end()) {
             std::string osValue = RecodeToCP1252(it->second);
-            if (VSIFPrintfL(m_fpOutput, "%s=%s\n", it->first.c_str(), osValue.c_str()) < 0) {
+            if (!BufferedWrite(FormatString("%s=%s\n", it->first.c_str(), osValue.c_str()).c_str())) {
                 CPLError(CE_Failure, CPLE_FileIO,
                          "PolishMapWriter::WriteHeader() - failed to write %s",
                          it->first.c_str());
@@ -207,7 +316,7 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         }
         if (!bIsKnown) {
             std::string osValue = RecodeToCP1252(kv.second);
-            if (VSIFPrintfL(m_fpOutput, "%s=%s\n", kv.first.c_str(), osValue.c_str()) < 0) {
+            if (!BufferedWrite(FormatString("%s=%s\n", kv.first.c_str(), osValue.c_str()).c_str())) {
                 CPLError(CE_Failure, CPLE_FileIO,
                          "PolishMapWriter::WriteHeader() - failed to write %s",
                          kv.first.c_str());
@@ -217,14 +326,14 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
     }
 
     // CodePage always last before [END]
-    if (VSIFPrintfL(m_fpOutput, "CodePage=%s\n", osCodePage.c_str()) < 0) {
+    if (!BufferedWrite(FormatString("CodePage=%s\n", osCodePage.c_str()).c_str())) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "PolishMapWriter::WriteHeader() - failed to write CodePage");
         return false;
     }
 
     // Write [END] marker
-    if (VSIFPrintfL(m_fpOutput, "[END]\n") < 0) {
+    if (!BufferedWrite("[END]\n")) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "PolishMapWriter::WriteHeader() - failed to write [END]");
         return false;
@@ -243,6 +352,7 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 /*                            WritePOI()                                 */
 /*                                                                      */
 /* Story 2.3 Task 2: Write POI feature to output file.                   */
+/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
 /* Format:                                                               */
 /*   [POI]                                                               */
 /*   Type=<type_code>                                                    */
@@ -302,8 +412,9 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
         return false;
     }
 
+    // Story 3.1: Use buffered writing for performance (NFR2)
     // Write [POI] section marker
-    if (VSIFPrintfL(m_fpOutput, "[POI]\n") < 0) {
+    if (!BufferedWrite("[POI]\n")) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "WritePOI: failed to write [POI] marker");
         return false;
@@ -312,13 +423,13 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
     // Task 2.4: Extract and write Type field (required)
     const char* pszType = poFeature->GetFieldAsString("Type");
     if (pszType != nullptr && pszType[0] != '\0') {
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Type");
             return false;
         }
     } else {
         // Default POI type
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POI_TYPE) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POI_TYPE).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write default Type");
             return false;
         }
@@ -329,7 +440,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         // Task 2.5: Convert UTF-8 to CP1252
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Label");
             return false;
         }
@@ -342,7 +453,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
     double dfLat = poPoint->getY();
     double dfLon = poPoint->getX();
 
-    if (VSIFPrintfL(m_fpOutput, "Data0=(%.6f,%.6f)\n", dfLat, dfLon) < 0) {
+    if (!BufferedWrite(FormatString("Data0=(%.6f,%.6f)\n", dfLat, dfLon).c_str())) {
         CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Data0");
         return false;
     }
@@ -351,7 +462,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
     int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
         int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write EndLevel");
             return false;
         }
@@ -359,7 +470,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
 
     // Task 2.6: Write [END] marker (Polish Map format standard)
     // Note: Polish Map uses [END] for all sections, not [END-POI]
-    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+    if (!BufferedWrite("[END]\n\n")) {
         CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write [END]");
         return false;
     }
@@ -376,6 +487,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
 /*                          WritePOLYLINE()                              */
 /*                                                                      */
 /* Story 2.4 Task 1: Write POLYLINE feature to output file.              */
+/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
 /* Format:                                                               */
 /*   [POLYLINE]                                                          */
 /*   Type=<type_code>                                                    */
@@ -445,8 +557,9 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
         return false;
     }
 
+    // Story 3.1: Use buffered writing for performance (NFR2)
     // Task 1.9: Write [POLYLINE] section marker
-    if (VSIFPrintfL(m_fpOutput, "[POLYLINE]\n") < 0) {
+    if (!BufferedWrite("[POLYLINE]\n")) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "WritePOLYLINE: failed to write [POLYLINE] marker");
         return false;
@@ -455,13 +568,13 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     // Task 1.7: Extract and write Type field (required)
     const char* pszType = poFeature->GetFieldAsString("Type");
     if (pszType != nullptr && pszType[0] != '\0') {
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Type");
             return false;
         }
     } else {
         // Default POLYLINE type
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POLYLINE_TYPE) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYLINE_TYPE).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write default Type");
             return false;
         }
@@ -472,7 +585,7 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         // Task 1.8: Convert UTF-8 to CP1252
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Label");
             return false;
         }
@@ -480,12 +593,11 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     // Task 1.10: If Label is empty/null, omit the line entirely
 
     // Task 1.5-1.6: Write Data0 coordinates (ALL points on ONE line)
+    // Story 3.1: Build coordinate string in buffer before writing (NFR2)
     // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
     // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...
-    if (VSIFPrintfL(m_fpOutput, "Data0=") < 0) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Data0");
-        return false;
-    }
+    std::string osData0 = "Data0=";
+    osData0.reserve(static_cast<size_t>(nNumPoints) * 30);  // Estimate ~30 chars per coord pair
 
     for (int i = 0; i < nNumPoints; i++) {
         double dfLat = poLine->getY(i);  // Latitude = Y
@@ -493,22 +605,16 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
 
         // Task 1.5: Add comma separator between coordinate pairs
         if (i > 0) {
-            if (VSIFPrintfL(m_fpOutput, ",") < 0) {
-                CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write comma");
-                return false;
-            }
+            osData0 += ",";
         }
 
         // Task 1.6: Format with 6 decimals
-        if (VSIFPrintfL(m_fpOutput, "(%.6f,%.6f)", dfLat, dfLon) < 0) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write coordinates");
-            return false;
-        }
+        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
     }
+    osData0 += "\n";
 
-    // End Data0 line
-    if (VSIFPrintfL(m_fpOutput, "\n") < 0) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write newline");
+    if (!BufferedWrite(osData0.c_str())) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Data0");
         return false;
     }
 
@@ -516,7 +622,7 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
         int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write EndLevel");
             return false;
         }
@@ -525,14 +631,14 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     // Task 1.7, 1.10: Extract and write Levels field (optional)
     const char* pszLevels = poFeature->GetFieldAsString("Levels");
     if (pszLevels != nullptr && pszLevels[0] != '\0') {
-        if (VSIFPrintfL(m_fpOutput, "Levels=%s\n", pszLevels) < 0) {
+        if (!BufferedWrite(FormatString("Levels=%s\n", pszLevels).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Levels");
             return false;
         }
     }
 
     // Task 1.9: Write [END] marker (Polish Map format standard)
-    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+    if (!BufferedWrite("[END]\n\n")) {
         CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write [END]");
         return false;
     }
@@ -549,6 +655,7 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
 /*                          WritePOLYGON()                               */
 /*                                                                      */
 /* Story 2.5 Task 1: Write POLYGON feature to output file.               */
+/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
 /* Format:                                                               */
 /*   [POLYGON]                                                           */
 /*   Type=<type_code>                                                    */
@@ -661,8 +768,9 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
         CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring for writing");
     }
 
+    // Story 3.1: Use buffered writing for performance (NFR2)
     // Task 1.12: Write [POLYGON] section marker
-    if (VSIFPrintfL(m_fpOutput, "[POLYGON]\n") < 0) {
+    if (!BufferedWrite("[POLYGON]\n")) {
         CPLError(CE_Failure, CPLE_FileIO,
                  "WritePOLYGON: failed to write [POLYGON] marker");
         return false;
@@ -671,13 +779,13 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
     // Task 1.10: Extract and write Type field (required)
     const char* pszType = poFeature->GetFieldAsString("Type");
     if (pszType != nullptr && pszType[0] != '\0') {
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Type");
             return false;
         }
     } else {
         // Task 1.14: Default POLYGON type
-        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POLYGON_TYPE) < 0) {
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYGON_TYPE).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write default Type");
             return false;
         }
@@ -688,7 +796,7 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         // Task 1.11: Convert UTF-8 to CP1252
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Label");
             return false;
         }
@@ -696,12 +804,11 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
     // Task 1.13: If Label is empty/null, omit the line entirely
 
     // Task 1.8-1.9: Write Data0 coordinates (ALL points on ONE line, closed ring)
+    // Story 3.1: Build coordinate string in buffer before writing (NFR2)
     // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
     // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...,(lat1,lon1)
-    if (VSIFPrintfL(m_fpOutput, "Data0=") < 0) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Data0");
-        return false;
-    }
+    std::string osData0 = "Data0=";
+    osData0.reserve(static_cast<size_t>(nNumPoints + 1) * 30);  // Estimate ~30 chars per coord pair
 
     for (int i = 0; i < nNumPoints; i++) {
         double dfLat = poRing->getY(i);  // Latitude = Y
@@ -709,30 +816,21 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
 
         // Task 1.8: Add comma separator between coordinate pairs
         if (i > 0) {
-            if (VSIFPrintfL(m_fpOutput, ",") < 0) {
-                CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write comma");
-                return false;
-            }
+            osData0 += ",";
         }
 
         // Task 1.9: Format with 6 decimals
-        if (VSIFPrintfL(m_fpOutput, "(%.6f,%.6f)", dfLat, dfLon) < 0) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write coordinates");
-            return false;
-        }
+        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
     }
 
     // Task 1.7: Auto-close ring if needed (duplicate first point)
     if (bNeedsClosing) {
-        if (VSIFPrintfL(m_fpOutput, ",(%.6f,%.6f)", dfFirstLat, dfFirstLon) < 0) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write closing point");
-            return false;
-        }
+        osData0 += FormatString(",(%.6f,%.6f)", dfFirstLat, dfFirstLon);
     }
+    osData0 += "\n";
 
-    // End Data0 line
-    if (VSIFPrintfL(m_fpOutput, "\n") < 0) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write newline");
+    if (!BufferedWrite(osData0.c_str())) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Data0");
         return false;
     }
 
@@ -740,14 +838,14 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
     int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
         int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write EndLevel");
             return false;
         }
     }
 
     // Task 1.12: Write [END] marker (Polish Map format standard)
-    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+    if (!BufferedWrite("[END]\n\n")) {
         CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write [END]");
         return false;
     }
