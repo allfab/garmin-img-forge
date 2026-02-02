@@ -123,6 +123,24 @@ public:
     bool WritePOLYLINE(OGRFeature* poFeature);
 
     /**
+     * @brief Write a POLYGON feature to the output file.
+     * @param poFeature OGRFeature with Polygon geometry and attributes
+     * @return true if successful, false on error
+     *
+     * Story 2.5: Writes [POLYGON] section with:
+     * - Type field (required, defaults to 0x0001)
+     * - Label field (optional, UTF-8 → CP1252 converted)
+     * - Data0 field (required, ALL coordinates on ONE line as (lat,lon),(lat,lon),...
+     *               with closed ring - first point = last point)
+     * - EndLevel field (optional)
+     * - [END] marker (Polish Map standard for all sections)
+     *
+     * CRITICAL: Polygon must have at least 3 points (triangle minimum).
+     * Auto-closes open rings by duplicating the first point.
+     */
+    bool WritePOLYGON(OGRFeature* poFeature);
+
+    /**
      * @brief Check if header has been written.
      * @return true if WriteHeader() has been called successfully
      */

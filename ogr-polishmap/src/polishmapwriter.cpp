@@ -35,6 +35,15 @@ static const char* const DEFAULT_POI_TYPE = "0x0000";
 // Default POLYLINE type code when Type field is not set (road type)
 static const char* const DEFAULT_POLYLINE_TYPE = "0x0001";
 
+// Default POLYGON type code when Type field is not set (area type)
+static const char* const DEFAULT_POLYGON_TYPE = "0x0001";
+
+// Tolerance for ring closure detection (same as OGRPolishMapLayer::RING_CLOSURE_TOLERANCE)
+static constexpr double RING_CLOSURE_TOLERANCE = 1e-9;
+
+// Warning threshold for very large polygons (performance consideration)
+static constexpr int LARGE_POLYGON_WARNING_THRESHOLD = 10000;
+
 /************************************************************************/
 /*                          PolishMapWriter()                            */
 /************************************************************************/
@@ -532,6 +541,223 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
              pszType ? pszType : "(default)",
              pszLabel ? pszLabel : "(null)",
              nNumPoints);
+
+    return true;
+}
+
+/************************************************************************/
+/*                          WritePOLYGON()                               */
+/*                                                                      */
+/* Story 2.5 Task 1: Write POLYGON feature to output file.               */
+/* Format:                                                               */
+/*   [POLYGON]                                                           */
+/*   Type=<type_code>                                                    */
+/*   Label=<label>       (optional, UTF-8 → CP1252)                      */
+/*   Data0=(lat1,lon1),(lat2,lon2),...,(lat1,lon1)  (closed ring)        */
+/*   EndLevel=<level>    (optional)                                      */
+/*   [END]                                                               */
+/************************************************************************/
+
+bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
+{
+    // Task 1.2: Validate input
+    if (poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: NULL feature pointer");
+        return false;
+    }
+
+    if (m_fpOutput == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: file handle is null");
+        return false;
+    }
+
+    // Ensure header is written before first feature
+    if (!m_bHeaderWritten) {
+        std::map<std::string, std::string> aoDefaultMetadata;
+        aoDefaultMetadata["Name"] = "Untitled";
+        aoDefaultMetadata["CodePage"] = "1252";
+        if (!WriteHeader(aoDefaultMetadata)) {
+            CPLError(CE_Failure, CPLE_FileIO,
+                     "WritePOLYGON: failed to write header");
+            return false;
+        }
+    }
+
+    // Task 1.2: Extract geometry via GetGeometryRef()
+    OGRGeometry* poGeom = poFeature->GetGeometryRef();
+    if (poGeom == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: feature has no geometry");
+        return false;
+    }
+
+    // Task 1.3: Validate geometry is Polygon
+    if (wkbFlatten(poGeom->getGeometryType()) != wkbPolygon) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: feature geometry is not Polygon (type=%d)",
+                 static_cast<int>(poGeom->getGeometryType()));
+        return false;
+    }
+
+    OGRPolygon* poPolygon = poGeom->toPolygon();
+    if (poPolygon == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: failed to cast geometry to Polygon");
+        return false;
+    }
+
+    // Task 1.4: Extract exterior ring
+    OGRLinearRing* poRing = poPolygon->getExteriorRing();
+    if (poRing == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: Polygon has no exterior ring");
+        return false;
+    }
+
+    // Task 1.5: Validate minimum 3 points for valid POLYGON
+    int nNumPoints = poRing->getNumPoints();
+    if (nNumPoints < 3) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: Polygon exterior ring has less than 3 points (%d)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Code Review Fix H2: Validate polygon is not degenerate (all points at same location)
+    bool bIsDegenerate = true;
+    double dfRefLat = poRing->getY(0);
+    double dfRefLon = poRing->getX(0);
+    for (int i = 1; i < nNumPoints && bIsDegenerate; i++) {
+        if (fabs(poRing->getY(i) - dfRefLat) > RING_CLOSURE_TOLERANCE ||
+            fabs(poRing->getX(i) - dfRefLon) > RING_CLOSURE_TOLERANCE) {
+            bIsDegenerate = false;
+        }
+    }
+    if (bIsDegenerate) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYGON: Polygon is degenerate (all %d points at same location)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Code Review Fix M4: Warn about very large polygons
+    if (nNumPoints > LARGE_POLYGON_WARNING_THRESHOLD) {
+        CPLDebug("OGR_POLISHMAP",
+                 "WritePOLYGON: Large polygon with %d points (performance warning)",
+                 nNumPoints);
+    }
+
+    // Task 1.6-1.7: Check if ring needs auto-closing
+    double dfFirstLat = poRing->getY(0);
+    double dfFirstLon = poRing->getX(0);
+    double dfLastLat = poRing->getY(nNumPoints - 1);
+    double dfLastLon = poRing->getX(nNumPoints - 1);
+    bool bNeedsClosing = (fabs(dfFirstLat - dfLastLat) > RING_CLOSURE_TOLERANCE ||
+                          fabs(dfFirstLon - dfLastLon) > RING_CLOSURE_TOLERANCE);
+
+    if (bNeedsClosing) {
+        CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring for writing");
+    }
+
+    // Task 1.12: Write [POLYGON] section marker
+    if (VSIFPrintfL(m_fpOutput, "[POLYGON]\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WritePOLYGON: failed to write [POLYGON] marker");
+        return false;
+    }
+
+    // Task 1.10: Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Type");
+            return false;
+        }
+    } else {
+        // Task 1.14: Default POLYGON type
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POLYGON_TYPE) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Task 1.10-1.11, 1.13: Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        // Task 1.11: Convert UTF-8 to CP1252
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Label");
+            return false;
+        }
+    }
+    // Task 1.13: If Label is empty/null, omit the line entirely
+
+    // Task 1.8-1.9: Write Data0 coordinates (ALL points on ONE line, closed ring)
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...,(lat1,lon1)
+    if (VSIFPrintfL(m_fpOutput, "Data0=") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Data0");
+        return false;
+    }
+
+    for (int i = 0; i < nNumPoints; i++) {
+        double dfLat = poRing->getY(i);  // Latitude = Y
+        double dfLon = poRing->getX(i);  // Longitude = X
+
+        // Task 1.8: Add comma separator between coordinate pairs
+        if (i > 0) {
+            if (VSIFPrintfL(m_fpOutput, ",") < 0) {
+                CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write comma");
+                return false;
+            }
+        }
+
+        // Task 1.9: Format with 6 decimals
+        if (VSIFPrintfL(m_fpOutput, "(%.6f,%.6f)", dfLat, dfLon) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write coordinates");
+            return false;
+        }
+    }
+
+    // Task 1.7: Auto-close ring if needed (duplicate first point)
+    if (bNeedsClosing) {
+        if (VSIFPrintfL(m_fpOutput, ",(%.6f,%.6f)", dfFirstLat, dfFirstLon) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write closing point");
+            return false;
+        }
+    }
+
+    // End Data0 line
+    if (VSIFPrintfL(m_fpOutput, "\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write newline");
+        return false;
+    }
+
+    // Task 1.10, 1.13: Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Task 1.12: Write [END] marker (Polish Map format standard)
+    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write [END]");
+        return false;
+    }
+
+    int nWrittenPoints = bNeedsClosing ? nNumPoints + 1 : nNumPoints;
+    CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Type=%s, Label=%s, %d points%s",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             nWrittenPoints,
+             bNeedsClosing ? " (auto-closed)" : "");
 
     return true;
 }
