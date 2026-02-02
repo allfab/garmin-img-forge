@@ -29,6 +29,9 @@
 #include "cpl_error.h"
 #include "cpl_conv.h"
 
+// Default POI type code when Type field is not set
+static const char* const DEFAULT_POI_TYPE = "0x0000";
+
 /************************************************************************/
 /*                          PolishMapWriter()                            */
 /************************************************************************/
@@ -220,6 +223,139 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
     CPLDebug("OGR_POLISHMAP", "WriteHeader: Name=%s, CodePage=%s, %d fields total",
              osName.c_str(), osCodePage.c_str(),
              static_cast<int>(aoMetadata.size()));
+
+    return true;
+}
+
+/************************************************************************/
+/*                            WritePOI()                                 */
+/*                                                                      */
+/* Story 2.3 Task 2: Write POI feature to output file.                   */
+/* Format:                                                               */
+/*   [POI]                                                               */
+/*   Type=<type_code>                                                    */
+/*   Label=<label>       (optional, UTF-8 → CP1252)                      */
+/*   Data0=(lat,lon)     (6 decimal precision)                           */
+/*   EndLevel=<level>    (optional)                                      */
+/*   [END-POI]                                                           */
+/************************************************************************/
+
+bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
+{
+    // Task 2.2: Validate input
+    if (poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOI: NULL feature pointer");
+        return false;
+    }
+
+    if (m_fpOutput == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOI: file handle is null");
+        return false;
+    }
+
+    // Ensure header is written before first feature
+    // If not written yet, write with default values
+    if (!m_bHeaderWritten) {
+        std::map<std::string, std::string> aoDefaultMetadata;
+        aoDefaultMetadata["Name"] = "Untitled";
+        aoDefaultMetadata["CodePage"] = "1252";
+        if (!WriteHeader(aoDefaultMetadata)) {
+            CPLError(CE_Failure, CPLE_FileIO,
+                     "WritePOI: failed to write header");
+            return false;
+        }
+    }
+
+    // Task 2.2: Extract and verify geometry is Point
+    OGRGeometry* poGeom = poFeature->GetGeometryRef();
+    if (poGeom == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOI: feature has no geometry");
+        return false;
+    }
+
+    if (wkbFlatten(poGeom->getGeometryType()) != wkbPoint) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOI: feature geometry is not Point (type=%d)",
+                 static_cast<int>(poGeom->getGeometryType()));
+        return false;
+    }
+
+    OGRPoint* poPoint = poGeom->toPoint();
+    if (poPoint == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOI: failed to cast geometry to Point");
+        return false;
+    }
+
+    // Write [POI] section marker
+    if (VSIFPrintfL(m_fpOutput, "[POI]\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WritePOI: failed to write [POI] marker");
+        return false;
+    }
+
+    // Task 2.4: Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Type");
+            return false;
+        }
+    } else {
+        // Default POI type
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POI_TYPE) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Task 2.4, 2.5, 2.7: Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        // Task 2.5: Convert UTF-8 to CP1252
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Label");
+            return false;
+        }
+    }
+    // Task 2.7: If Label is empty/null, omit the line entirely
+
+    // Task 2.3: Write Data0 with 6 decimal precision
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    // OGRPoint: getX() = longitude, getY() = latitude
+    double dfLat = poPoint->getY();
+    double dfLon = poPoint->getX();
+
+    if (VSIFPrintfL(m_fpOutput, "Data0=(%.6f,%.6f)\n", dfLat, dfLon) < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Data0");
+        return false;
+    }
+
+    // Task 2.4, 2.7: Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Task 2.6: Write [END] marker (Polish Map format standard)
+    // Note: Polish Map uses [END] for all sections, not [END-POI]
+    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write [END]");
+        return false;
+    }
+
+    CPLDebug("OGR_POLISHMAP", "WritePOI: Type=%s, Label=%s, (%.6f,%.6f)",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             dfLat, dfLon);
 
     return true;
 }

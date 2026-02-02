@@ -31,6 +31,7 @@
 #include "cpl_port.h"
 #include "cpl_string.h"
 #include "cpl_vsi.h"
+#include "ogrsf_frmts.h"
 #include <string>
 #include <map>
 
@@ -89,6 +90,20 @@ public:
      * @return true if successful, false on error
      */
     bool Flush();
+
+    /**
+     * @brief Write a POI feature to the output file.
+     * @param poFeature OGRFeature with Point geometry and attributes
+     * @return true if successful, false on error
+     *
+     * Story 2.3: Writes [POI] section with:
+     * - Type field (required, defaults to 0x0000)
+     * - Label field (optional, UTF-8 → CP1252 converted)
+     * - Data0 field (required, coordinates as (lat,lon) with 6 decimals)
+     * - EndLevel field (optional)
+     * - [END] marker (Polish Map standard for all sections)
+     */
+    bool WritePOI(OGRFeature* poFeature);
 
     /**
      * @brief Check if header has been written.

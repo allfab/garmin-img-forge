@@ -188,7 +188,7 @@ void OGRPolishMapDataSource::SetParser(std::unique_ptr<PolishMapParser> poParser
 
 void OGRPolishMapDataSource::CreateLayersForWriteMode() {
     // No parser in write mode - pass nullptr
-    // Layers will be write-only until Story 2.3-2.5 implement CreateFeature
+    // Layers will be write-only
 
     // Task 2.2: Create POI layer with wkbPoint geometry type (index 0)
     m_apoLayers.push_back(
@@ -201,6 +201,10 @@ void OGRPolishMapDataSource::CreateLayersForWriteMode() {
     // Task 2.4: Create POLYGON layer with wkbPolygon geometry type (index 2)
     m_apoLayers.push_back(
         std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, nullptr));
+
+    // Story 2.3 Task 3.1: Connect writer to layers AFTER writer is created
+    // Note: Writer is created in Create() method, so layers need to be connected there
+    // This method just creates the layers - connection happens in Create()
 
     CPLDebug("OGR_POLISHMAP", "Created %d layers for write mode: POI, POLYLINE, POLYGON",
              static_cast<int>(m_apoLayers.size()));
@@ -240,11 +244,17 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) 
     // Set description (file path)
     poDS->SetDescription(pszFilename);
 
+    // Story 2.3 Task 3.2: Create writer BEFORE layers (so we can connect them)
+    poDS->m_poWriter = std::make_unique<PolishMapWriter>(fp);
+
     // Task 2.3: Create 3 empty layers for write mode
     poDS->CreateLayersForWriteMode();
 
-    // Create writer instance (will be used on close or when writing features)
-    poDS->m_poWriter = std::make_unique<PolishMapWriter>(fp);
+    // Story 2.3 Task 3.1: Connect writer to all layers
+    PolishMapWriter* poWriter = poDS->m_poWriter.get();
+    for (auto& poLayer : poDS->m_apoLayers) {
+        poLayer->SetWriter(poWriter);
+    }
 
     CPLDebug("OGR_POLISHMAP", "Created new Polish Map dataset for writing: %s",
              pszFilename);

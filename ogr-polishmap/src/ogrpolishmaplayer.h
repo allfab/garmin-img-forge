@@ -31,8 +31,9 @@
 #include "ogrsf_frmts.h"
 #include "ogr_spatialref.h"
 
-// Forward declaration
+// Forward declarations
 class PolishMapParser;
+class PolishMapWriter;
 
 /************************************************************************/
 /*                         OGRPolishMapLayer                            */
@@ -58,6 +59,10 @@ private:
     bool m_bEOF;                       // End of file reached
     bool m_bReaderInitialized;        // Parser position initialized
 
+    // Story 2.3: Write mode support
+    bool m_bWriteMode;                 // true if layer is in write mode
+    PolishMapWriter* m_poWriter;       // Non-owning pointer to writer (write mode only)
+
 public:
     // Story 1.3: Constructor now accepts geometry type for POI/POLYLINE/POLYGON
     OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType);
@@ -77,6 +82,17 @@ public:
     OGRFeature* GetNextFeature() override;
     OGRFeatureDefn* GetLayerDefn() override;
     int TestCapability(const char* pszCap) override;
+
+    // Story 2.3: Write mode support
+    /** @brief Set the writer for this layer (write mode).
+     *  @param poWriter Non-owning pointer to PolishMapWriter instance.
+     *  @note Enables write mode and OLCSequentialWrite capability.
+     */
+    void SetWriter(PolishMapWriter* poWriter);
+
+protected:
+    // Story 2.3: GDAL convention - override ICreateFeature, not CreateFeature
+    OGRErr ICreateFeature(OGRFeature* poFeature) override;
 
 private:
     // Initialize feature definition, SRS, and field definitions

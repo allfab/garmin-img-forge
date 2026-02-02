@@ -27,6 +27,7 @@
 
 #include "ogrpolishmaplayer.h"
 #include "polishmapparser.h"
+#include "polishmapwriter.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include <cassert>
@@ -42,7 +43,7 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
                                      OGRwkbGeometryType eGeomType)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(nullptr), m_osLayerType(pszLayerName), m_bEOF(false),
-      m_bReaderInitialized(false) {
+      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -57,7 +58,7 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
                                      PolishMapParser* poParser)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(poParser), m_osLayerType(pszLayerName), m_bEOF(false),
-      m_bReaderInitialized(false) {
+      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -407,8 +408,16 @@ int OGRPolishMapLayer::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, OLCRandomRead)) {
         return FALSE;
     }
-    // Task 6.2: OLCSequentialWrite - CreateFeature() not implemented (Story 2.x)
+    // Story 2.3 Task 4: OLCSequentialWrite - TRUE only for POI in write mode
+    // POLYLINE/POLYGON writing not yet implemented (Stories 2.4/2.5)
     if (EQUAL(pszCap, OLCSequentialWrite)) {
+        if (m_bWriteMode && m_osLayerType == "POI") {
+            return TRUE;
+        }
+        return FALSE;
+    }
+    // Story 2.3 Task 4.2: OLCRandomWrite - SetFeature() not supported
+    if (EQUAL(pszCap, OLCRandomWrite)) {
         return FALSE;
     }
     // Task 6.3: OLCFastFeatureCount - No optimization yet
@@ -422,4 +431,69 @@ int OGRPolishMapLayer::TestCapability(const char* pszCap) {
     }
     // Default: capability not supported
     return FALSE;
+}
+
+/************************************************************************/
+/*                            SetWriter()                               */
+/*                                                                      */
+/* Story 2.3 Task 1.3: Connect writer for write mode.                   */
+/************************************************************************/
+
+void OGRPolishMapLayer::SetWriter(PolishMapWriter* poWriter) {
+    m_poWriter = poWriter;
+    m_bWriteMode = (poWriter != nullptr);
+
+    CPLDebug("OGR_POLISHMAP", "Layer %s: SetWriter(%s), write mode = %s",
+             m_osLayerType.c_str(),
+             poWriter ? "writer" : "nullptr",
+             m_bWriteMode ? "true" : "false");
+}
+
+/************************************************************************/
+/*                          ICreateFeature()                             */
+/*                                                                      */
+/* Story 2.3 Task 1.4-1.5: Override ICreateFeature for POI writing.     */
+/* GDAL convention: Override ICreateFeature(), NOT CreateFeature().      */
+/************************************************************************/
+
+OGRErr OGRPolishMapLayer::ICreateFeature(OGRFeature* poFeature) {
+    // Task 1.5: Validate NULL feature
+    if (poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "ICreateFeature: NULL feature pointer");
+        return OGRERR_FAILURE;
+    }
+
+    // Validate write mode
+    if (!m_bWriteMode || m_poWriter == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "ICreateFeature: Layer not in write mode or writer not set");
+        return OGRERR_FAILURE;
+    }
+
+    // Dispatch based on layer type
+    if (m_osLayerType == "POI") {
+        if (!m_poWriter->WritePOI(poFeature)) {
+            return OGRERR_FAILURE;
+        }
+    } else if (m_osLayerType == "POLYLINE") {
+        // Story 2.4: POLYLINE writing not implemented yet
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "ICreateFeature: POLYLINE writing not implemented yet");
+        return OGRERR_UNSUPPORTED_OPERATION;
+    } else if (m_osLayerType == "POLYGON") {
+        // Story 2.5: POLYGON writing not implemented yet
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "ICreateFeature: POLYGON writing not implemented yet");
+        return OGRERR_UNSUPPORTED_OPERATION;
+    } else {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "ICreateFeature: Unknown layer type: %s", m_osLayerType.c_str());
+        return OGRERR_FAILURE;
+    }
+
+    // Set FID for the feature (sequential)
+    poFeature->SetFID(m_nNextFID++);
+
+    return OGRERR_NONE;
 }
