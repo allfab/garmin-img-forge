@@ -37,9 +37,12 @@ target_include_directories(gdal_POLISHMAP PRIVATE
 target_link_libraries(gdal_POLISHMAP PRIVATE ${GDAL_LIBRARIES})
 
 # Position-independent code (required for shared library/plugin)
+# PREFIX "" removes the "lib" prefix so the file is named gdal_POLISHMAP.so
+# This is required for GDAL to find the plugin
 set_target_properties(gdal_POLISHMAP PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
+    PREFIX ""
 )
 
 # Compiler flags
@@ -224,6 +227,14 @@ target_link_libraries(test_polygon_write PRIVATE ${GDAL_LIBRARIES})
 target_compile_definitions(test_polygon_write PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
+
+# Test executable - Driver Metadata (Story 2.6)
+add_executable(test_driver_metadata test/test_driver_metadata.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_driver_metadata PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_driver_metadata PRIVATE ${GDAL_LIBRARIES})
 
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")

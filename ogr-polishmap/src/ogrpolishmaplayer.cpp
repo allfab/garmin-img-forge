@@ -472,24 +472,46 @@ OGRErr OGRPolishMapLayer::ICreateFeature(OGRFeature* poFeature) {
         return OGRERR_FAILURE;
     }
 
-    // Dispatch based on layer type
-    if (m_osLayerType == "POI") {
-        if (!m_poWriter->WritePOI(poFeature)) {
-            return OGRERR_FAILURE;
-        }
-    } else if (m_osLayerType == "POLYLINE") {
-        // Story 2.4: POLYLINE writing
-        if (!m_poWriter->WritePOLYLINE(poFeature)) {
-            return OGRERR_FAILURE;
-        }
-    } else if (m_osLayerType == "POLYGON") {
-        // Story 2.5: POLYGON writing
-        if (!m_poWriter->WritePOLYGON(poFeature)) {
-            return OGRERR_FAILURE;
-        }
-    } else {
+    // Story 2.6: Dispatch based on feature geometry type (not layer type)
+    // This enables ogr2ogr to work with mixed geometry sources by routing
+    // features to the appropriate writer method based on actual geometry
+    const OGRGeometry* poGeom = poFeature->GetGeometryRef();
+    if (poGeom == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "ICreateFeature: Unknown layer type: %s", m_osLayerType.c_str());
+                 "ICreateFeature: Feature has no geometry");
+        return OGRERR_FAILURE;
+    }
+
+    OGRwkbGeometryType eGeomType = wkbFlatten(poGeom->getGeometryType());
+    bool bSuccess = false;
+
+    switch (eGeomType) {
+        case wkbPoint:
+        case wkbMultiPoint:
+            bSuccess = m_poWriter->WritePOI(poFeature);
+            CPLDebug("OGR_POLISHMAP", "ICreateFeature: Point -> WritePOI");
+            break;
+
+        case wkbLineString:
+        case wkbMultiLineString:
+            bSuccess = m_poWriter->WritePOLYLINE(poFeature);
+            CPLDebug("OGR_POLISHMAP", "ICreateFeature: LineString -> WritePOLYLINE");
+            break;
+
+        case wkbPolygon:
+        case wkbMultiPolygon:
+            bSuccess = m_poWriter->WritePOLYGON(poFeature);
+            CPLDebug("OGR_POLISHMAP", "ICreateFeature: Polygon -> WritePOLYGON");
+            break;
+
+        default:
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "ICreateFeature: Unsupported geometry type: %s",
+                     OGRGeometryTypeToName(eGeomType));
+            return OGRERR_FAILURE;
+    }
+
+    if (!bSuccess) {
         return OGRERR_FAILURE;
     }
 

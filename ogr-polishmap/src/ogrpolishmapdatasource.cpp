@@ -153,11 +153,11 @@ int OGRPolishMapDataSource::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, ODsCRandomLayerRead)) {
         return TRUE;  // Can read layers in random order
     }
-    // Story 2.1: ODsCCreateLayer - FALSE always
+    // Story 2.6: ODsCCreateLayer - TRUE in write mode for ogr2ogr compatibility
     // Polish Map format has fixed layers (POI, POLYLINE, POLYGON)
-    // created automatically by Create(). User cannot create custom layers.
+    // ICreateLayer() maps geometry type to the appropriate fixed layer
     if (EQUAL(pszCap, ODsCCreateLayer)) {
-        return FALSE;
+        return m_bUpdate ? TRUE : FALSE;
     }
     // ODsCDeleteLayer - Not implemented
     if (EQUAL(pszCap, ODsCDeleteLayer)) {
@@ -165,6 +165,80 @@ int OGRPolishMapDataSource::TestCapability(const char* pszCap) {
     }
     // Task 5.2: Default - capability not supported
     return FALSE;
+}
+
+/************************************************************************/
+/*                          ICreateLayer()                              */
+/*                                                                      */
+/* Story 2.6: Map geometry type to fixed layers for ogr2ogr support.    */
+/* Polish Map has fixed layers: POI (Point), POLYLINE (LineString),     */
+/* POLYGON (Polygon). This method returns the appropriate layer based   */
+/* on the requested geometry type, ignoring the layer name parameter.   */
+/************************************************************************/
+
+OGRLayer* OGRPolishMapDataSource::ICreateLayer(
+    const char* /* pszName */,
+    const OGRGeomFieldDefn* poGeomFieldDefn,
+    CSLConstList /* papszOptions */) {
+
+    // Only available in write mode
+    if (!m_bUpdate) {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "Cannot create layer in read-only mode");
+        return nullptr;
+    }
+
+    // Get geometry type (default to wkbUnknown if no field definition)
+    OGRwkbGeometryType eGType = wkbUnknown;
+    if (poGeomFieldDefn != nullptr) {
+        eGType = poGeomFieldDefn->GetType();
+    }
+
+    // Map geometry type to fixed layer
+    // wkbFlatten removes 25D variants (wkbPoint25D -> wkbPoint)
+    OGRwkbGeometryType eFlatType = wkbFlatten(eGType);
+
+    int nLayerIndex = -1;
+    switch (eFlatType) {
+        case wkbPoint:
+        case wkbMultiPoint:
+            nLayerIndex = 0;  // POI layer
+            CPLDebug("OGR_POLISHMAP", "ICreateLayer: Point geometry -> POI layer");
+            break;
+
+        case wkbLineString:
+        case wkbMultiLineString:
+            nLayerIndex = 1;  // POLYLINE layer
+            CPLDebug("OGR_POLISHMAP", "ICreateLayer: LineString geometry -> POLYLINE layer");
+            break;
+
+        case wkbPolygon:
+        case wkbMultiPolygon:
+            nLayerIndex = 2;  // POLYGON layer
+            CPLDebug("OGR_POLISHMAP", "ICreateLayer: Polygon geometry -> POLYGON layer");
+            break;
+
+        case wkbUnknown:
+        case wkbGeometryCollection:
+            // For unknown/mixed geometry, return POI layer as default
+            // ogr2ogr will dispatch features by geometry type via CreateFeature
+            nLayerIndex = 0;
+            CPLDebug("OGR_POLISHMAP", "ICreateLayer: Unknown/mixed geometry -> POI layer (default)");
+            break;
+
+        default:
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "Geometry type %s not supported by PolishMap driver",
+                     OGRGeometryTypeToName(eGType));
+            return nullptr;
+    }
+
+    // Return the appropriate layer
+    if (nLayerIndex >= 0 && nLayerIndex < GetLayerCount()) {
+        return GetLayer(nLayerIndex);
+    }
+
+    return nullptr;
 }
 
 /************************************************************************/

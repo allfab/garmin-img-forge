@@ -1,0 +1,59 @@
+{
+  "type": "FeatureCollection",
+  "name": "integration_test_utf8",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x2C00",
+        "Label": "Café des Alliés"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3522, 48.8566]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x4000",
+        "Label": "Église Notre-Dame"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3488, 48.8534]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x0016",
+        "Label": "Sentier de la Forêt"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [2.3500, 48.8500],
+          [2.3550, 48.8550],
+          [2.3600, 48.8530]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x004C",
+        "Label": "Parc du Château"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [2.3400, 48.8400],
+          [2.3500, 48.8450],
+          [2.3550, 48.8400],
+          [2.3400, 48.8400]
+        ]]
+      }
+    }
+  ]
+}

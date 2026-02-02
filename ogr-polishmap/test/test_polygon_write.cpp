@@ -1116,15 +1116,16 @@ static bool Test_4_12_MixedFile_POI_POLYLINE_POLYGON() {
 }
 
 /************************************************************************/
-/*     Test 4.13: WrongGeometryType_Returns_OGRERR_FAILURE               */
+/*     Test 4.13: GeometryAutoDispatch                                   */
 /*                                                                      */
-/* CreateFeature with Point geometry on POLYGON layer fails              */
+/* Story 2.6: CreateFeature with Point on POLYGON layer is auto-         */
+/* dispatched to POI writer (for ogr2ogr compatibility).                 */
 /************************************************************************/
 
 static bool Test_4_13_WrongGeometryType_Returns_OGRERR_FAILURE() {
-    std::cout << "  Test 4.13: WrongGeometryType_Returns_OGRERR_FAILURE... ";
+    std::cout << "  Test 4.13: GeometryAutoDispatch... ";
 
-    CPLString osTempFile = GetTempFilePath("test_polygon_wronggeom");
+    CPLString osTempFile = GetTempFilePath("test_polygon_autodispatch");
     CleanupTempFile(osTempFile);
 
     GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName("PolishMap");
@@ -1143,35 +1144,37 @@ static bool Test_4_13_WrongGeometryType_Returns_OGRERR_FAILURE() {
     OGRLayer* poPolygonLayer = poDS->GetLayer(2);  // POLYGON layer
 
     OGRFeature* poFeature = OGRFeature::CreateFeature(poPolygonLayer->GetLayerDefn());
-    poFeature->SetField("Type", "0x4C");
+    poFeature->SetField("Type", "0x2C00");
+    poFeature->SetField("Label", "AutoDispatch Test");
 
-    // Set POINT geometry instead of Polygon - wrong type for POLYGON layer
+    // Story 2.6: Set POINT geometry on POLYGON layer - will be auto-dispatched to POI
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
     // Clear previous errors
     CPLErrorReset();
 
-    // Call CreateFeature - should fail due to wrong geometry type
+    // Story 2.6: Call CreateFeature - should succeed with auto-dispatch
     OGRErr eErr = poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
-    if (eErr != OGRERR_FAILURE) {
-        std::cout << "FAILED (expected OGRERR_FAILURE for Point geometry, got " << eErr << ")" << std::endl;
-        GDALClose(poDS);
-        CleanupTempFile(osTempFile);
-        return false;
-    }
-
-    // Verify CPLError was logged
-    if (CPLGetLastErrorType() != CE_Failure) {
-        std::cout << "FAILED (expected CE_Failure error)" << std::endl;
+    if (eErr != OGRERR_NONE) {
+        std::cout << "FAILED (expected OGRERR_NONE for auto-dispatched geometry, got " << eErr << ")" << std::endl;
         GDALClose(poDS);
         CleanupTempFile(osTempFile);
         return false;
     }
 
     GDALClose(poDS);
+
+    // Verify the file contains [POI] section (auto-dispatched)
+    std::string osContent = ReadFileContent(osTempFile.c_str());
+    if (osContent.find("[POI]") == std::string::npos) {
+        std::cout << "FAILED ([POI] section not found - auto-dispatch failed)" << std::endl;
+        CleanupTempFile(osTempFile);
+        return false;
+    }
+
     CleanupTempFile(osTempFile);
 
     std::cout << "PASSED" << std::endl;

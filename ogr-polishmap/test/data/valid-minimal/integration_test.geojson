@@ -1,0 +1,106 @@
+{
+  "type": "FeatureCollection",
+  "name": "integration_test",
+  "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x2C00",
+        "Label": "Restaurant Paris"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3522, 48.8566]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x4000",
+        "Label": "City Center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3488, 48.8534]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x6401",
+        "Label": "Gas Station"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3550, 48.8600]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x0016",
+        "Label": "Trail Path",
+        "EndLevel": "3"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [2.3500, 48.8500],
+          [2.3550, 48.8550],
+          [2.3600, 48.8530],
+          [2.3650, 48.8580]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x0001",
+        "Label": "Main Road"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [2.3400, 48.8450],
+          [2.3500, 48.8500],
+          [2.3600, 48.8480]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x004C",
+        "Label": "Forest Area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [2.3400, 48.8400],
+          [2.3500, 48.8450],
+          [2.3550, 48.8400],
+          [2.3500, 48.8350],
+          [2.3400, 48.8400]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Type": "0x0050",
+        "Label": "Park Zone"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [2.3600, 48.8400],
+          [2.3700, 48.8450],
+          [2.3750, 48.8400],
+          [2.3700, 48.8350],
+          [2.3600, 48.8400]
+        ]]
+      }
+    }
+  ]
+}

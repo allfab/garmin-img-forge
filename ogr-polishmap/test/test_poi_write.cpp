@@ -564,15 +564,16 @@ static bool Test_CreateFeature_EndLevel_Written_When_Set() {
 }
 
 /************************************************************************/
-/*          Test_CreateFeature_WrongGeometryType_Fails                   */
+/*          Test_CreateFeature_GeometryAutoDispatch                      */
 /*                                                                      */
-/* CreateFeature with LineString on POI layer should fail                */
+/* Story 2.6: CreateFeature with LineString on POI layer is auto-        */
+/* dispatched to POLYLINE writer (for ogr2ogr compatibility).            */
 /************************************************************************/
 
 static bool Test_CreateFeature_WrongGeometryType_Fails() {
-    std::cout << "  Test_CreateFeature_WrongGeometryType_Fails... ";
+    std::cout << "  Test_CreateFeature_GeometryAutoDispatch... ";
 
-    CPLString osTempFile = GetTempFilePath("test_poi_wronggeom");
+    CPLString osTempFile = GetTempFilePath("test_poi_autodispatch");
     CleanupTempFile(osTempFile);
 
     GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName("PolishMap");
@@ -591,9 +592,10 @@ static bool Test_CreateFeature_WrongGeometryType_Fails() {
     OGRLayer* poPOILayer = poDS->GetLayer(0);
 
     OGRFeature* poFeature = OGRFeature::CreateFeature(poPOILayer->GetLayerDefn());
-    poFeature->SetField("Type", "0x2C00");
+    poFeature->SetField("Type", "0x0016");
+    poFeature->SetField("Label", "AutoDispatch Test");
 
-    // Create LineString instead of Point - should fail on POI layer
+    // Story 2.6: Create LineString on POI layer - should auto-dispatch to POLYLINE
     OGRLineString oLine;
     oLine.addPoint(2.3522, 48.8566);
     oLine.addPoint(2.3530, 48.8570);
@@ -603,14 +605,24 @@ static bool Test_CreateFeature_WrongGeometryType_Fails() {
     OGRErr eErr = poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
-    if (eErr != OGRERR_FAILURE) {
-        std::cout << "FAILED (expected OGRERR_FAILURE for wrong geometry type)" << std::endl;
+    // Story 2.6: Should now succeed because geometry is auto-dispatched
+    if (eErr != OGRERR_NONE) {
+        std::cout << "FAILED (expected OGRERR_NONE for auto-dispatched geometry)" << std::endl;
         GDALClose(poDS);
         CleanupTempFile(osTempFile);
         return false;
     }
 
     GDALClose(poDS);
+
+    // Verify the file contains [POLYLINE] section (auto-dispatched)
+    std::string osContent = ReadFileContent(osTempFile.c_str());
+    if (osContent.find("[POLYLINE]") == std::string::npos) {
+        std::cout << "FAILED ([POLYLINE] section not found - auto-dispatch failed)" << std::endl;
+        CleanupTempFile(osTempFile);
+        return false;
+    }
+
     CleanupTempFile(osTempFile);
 
     std::cout << "PASSED" << std::endl;

@@ -387,13 +387,14 @@ static bool Test_Driver_Metadata_GDAL_DCAP_CREATE() {
 }
 
 /************************************************************************/
-/*            Test_TestCapability_ODsCCreateLayer_Always_False           */
+/*            Test_TestCapability_ODsCCreateLayer                        */
 /*                                                                      */
-/* Polish Map has fixed layers - ODsCCreateLayer must be FALSE always   */
+/* Story 2.6: ODsCCreateLayer TRUE in write mode (for ogr2ogr),         */
+/* FALSE in read mode.                                                   */
 /************************************************************************/
 
 static bool Test_TestCapability_ODsCCreateLayer_Always_False() {
-    std::cout << "  Test_TestCapability_ODsCCreateLayer_Always_False... ";
+    std::cout << "  Test_TestCapability_ODsCCreateLayer... ";
 
     CPLString osTempFile = GetTempFilePath("test_capability");
     CleanupTempFile(osTempFile);
@@ -414,14 +415,14 @@ static bool Test_TestCapability_ODsCCreateLayer_Always_False() {
         return false;
     }
 
-    // Check ODsCCreateLayer capability in write mode - should be FALSE
-    // Polish Map format has fixed layers (POI, POLYLINE, POLYGON)
+    // Story 2.6: Check ODsCCreateLayer capability in write mode - should be TRUE
+    // This enables ogr2ogr to work with the driver via ICreateLayer()
     bool bCreateLayerWrite = poDS->TestCapability(ODsCCreateLayer);
 
     GDALClose(poDS);
 
-    if (bCreateLayerWrite) {
-        std::cout << "FAILED (ODsCCreateLayer should be FALSE in write mode)" << std::endl;
+    if (!bCreateLayerWrite) {
+        std::cout << "FAILED (ODsCCreateLayer should be TRUE in write mode for ogr2ogr)" << std::endl;
         CleanupTempFile(osTempFile);
         return false;
     }

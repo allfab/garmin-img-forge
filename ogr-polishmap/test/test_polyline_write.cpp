@@ -1025,15 +1025,16 @@ static bool Test_CreateFeature_Levels_And_EndLevel_Written() {
 }
 
 /************************************************************************/
-/*          Test_CreateFeature_WrongGeometryType_Returns_OGRERR_FAILURE  */
+/*          Test_CreateFeature_GeometryAutoDispatch                      */
 /*                                                                      */
-/* CreateFeature with Point geometry on POLYLINE layer fails             */
+/* Story 2.6: CreateFeature with Point geometry on POLYLINE layer is     */
+/* auto-dispatched to POI writer (for ogr2ogr compatibility).            */
 /************************************************************************/
 
 static bool Test_CreateFeature_WrongGeometryType_Returns_OGRERR_FAILURE() {
-    std::cout << "  Test_CreateFeature_WrongGeometryType_Returns_OGRERR_FAILURE... ";
+    std::cout << "  Test_CreateFeature_GeometryAutoDispatch... ";
 
-    CPLString osTempFile = GetTempFilePath("test_polyline_wronggeom");
+    CPLString osTempFile = GetTempFilePath("test_polyline_autodispatch");
     CleanupTempFile(osTempFile);
 
     GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName("PolishMap");
@@ -1052,29 +1053,22 @@ static bool Test_CreateFeature_WrongGeometryType_Returns_OGRERR_FAILURE() {
     OGRLayer* poPolylineLayer = poDS->GetLayer(1);  // POLYLINE layer
 
     OGRFeature* poFeature = OGRFeature::CreateFeature(poPolylineLayer->GetLayerDefn());
-    poFeature->SetField("Type", "0x16");
+    poFeature->SetField("Type", "0x2C00");
+    poFeature->SetField("Label", "AutoDispatch Test");
 
-    // Set POINT geometry instead of LineString - wrong type for POLYLINE layer
+    // Story 2.6: Set POINT geometry on POLYLINE layer - will be auto-dispatched to POI
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
     // Clear previous errors
     CPLErrorReset();
 
-    // Call CreateFeature - should fail due to wrong geometry type
+    // Story 2.6: Call CreateFeature - should succeed with auto-dispatch
     OGRErr eErr = poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
-    if (eErr != OGRERR_FAILURE) {
-        std::cout << "FAILED (expected OGRERR_FAILURE for Point geometry, got " << eErr << ")" << std::endl;
-        GDALClose(poDS);
-        CleanupTempFile(osTempFile);
-        return false;
-    }
-
-    // Verify CPLError was logged
-    if (CPLGetLastErrorType() != CE_Failure) {
-        std::cout << "FAILED (expected CE_Failure error)" << std::endl;
+    if (eErr != OGRERR_NONE) {
+        std::cout << "FAILED (expected OGRERR_NONE for auto-dispatched geometry, got " << eErr << ")" << std::endl;
         GDALClose(poDS);
         CleanupTempFile(osTempFile);
         return false;

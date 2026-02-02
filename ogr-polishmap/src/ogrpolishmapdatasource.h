@@ -79,6 +79,12 @@ public:
 
     int TestCapability(const char* pszCap) override;
 
+    // Story 2.6: ICreateLayer() for ogr2ogr compatibility
+    // Maps geometry type to fixed layers: Point->POI, LineString->POLYLINE, Polygon->POLYGON
+    OGRLayer* ICreateLayer(const char* pszName,
+                           const OGRGeomFieldDefn* poGeomFieldDefn,
+                           CSLConstList papszOptions) override;
+
     // Story 1.2: Header metadata access
     void SetHeaderData(const PolishMapHeaderData& oData) { m_oHeaderData = oData; }
     const PolishMapHeaderData& GetHeaderData() const { return m_oHeaderData; }

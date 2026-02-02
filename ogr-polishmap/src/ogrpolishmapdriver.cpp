@@ -53,6 +53,13 @@ OGRPolishMapDriver::OGRPolishMapDriver() {
     // Story 2.1 Task 4.1: Add GDAL_DCAP_CREATE capability
     SetMetadataItem(GDAL_DCAP_CREATE, "YES");
 
+    // Story 2.6: Additional metadata for full GDAL integration
+    // Supported field data types for writing (String only for Polish Map)
+    SetMetadataItem(GDAL_DMD_CREATIONFIELDDATATYPES, "String");
+
+    // SQL dialects supported (OGRSQL is the default OGR SQL)
+    SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL");
+
     // Function pointers for driver operations
     pfnOpen = Open;
     pfnIdentify = Identify;
@@ -202,8 +209,21 @@ extern "C" void RegisterOGRPolishMap() {
 /*                                                                      */
 /* Standard entry point for external GDAL plugins. GDAL calls this      */
 /* function when loading plugins from GDAL_DRIVER_PATH.                 */
+/* Must be exported with default visibility for dynamic loading.        */
 /************************************************************************/
 
-extern "C" void GDALRegisterMe() {
+extern "C" __attribute__((visibility("default"))) void GDALRegisterMe() {
+    RegisterOGRPolishMap();
+}
+
+/************************************************************************/
+/*                       GDALRegister_POLISHMAP()                        */
+/*                                                                      */
+/* GDAL 3.9+ plugin entry point. GDAL looks for this symbol when        */
+/* loading plugins from GDAL_DRIVER_PATH.                               */
+/* Format: GDALRegister_<DRIVER_NAME> where DRIVER_NAME is uppercase.   */
+/************************************************************************/
+
+extern "C" __attribute__((visibility("default"))) void GDALRegister_POLISHMAP() {
     RegisterOGRPolishMap();
 }
