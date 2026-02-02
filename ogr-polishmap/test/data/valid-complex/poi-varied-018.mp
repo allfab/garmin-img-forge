@@ -1,0 +1,24 @@
+[IMG ID]
+Name=POI Test 18
+ID=72387561
+CodePage=1252
+Datum=WGS 84
+[END-IMG ID]
+
+[POI]
+Type=0x0500
+Label=Museum QVR
+Data0=(37.938931,7.570169)
+[END]
+
+[POI]
+Type=0x6403
+Label=Gym ACL
+Data0=(43.049659,-6.067057)
+[END]
+
+[POI]
+Type=0x0003
+Label=Bridge 9SJ
+Data0=(38.21148,4.957667)
+[END]
