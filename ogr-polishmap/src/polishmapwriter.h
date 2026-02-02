@@ -32,6 +32,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 #include <string>
+#include <map>
 
 /************************************************************************/
 /*                          PolishMapWriter                              */
@@ -74,6 +75,16 @@ public:
     bool WriteHeader(const std::string& osName, const std::string& osCodePage = "1252");
 
     /**
+     * @brief Write [IMG ID] header section with full metadata.
+     * @param aoMetadata Map of key=value pairs for header fields
+     * @return true if successful, false on write error
+     *
+     * Story 2.2: Extended signature accepting metadata map.
+     * Handles default values, field ordering, and UTF-8 to CP1252 conversion.
+     */
+    bool WriteHeader(const std::map<std::string, std::string>& aoMetadata);
+
+    /**
      * @brief Flush any pending writes to file.
      * @return true if successful, false on error
      */
@@ -88,6 +99,16 @@ public:
 private:
     VSILFILE* m_fpOutput;      // Borrowed file handle (NOT owned)
     bool m_bHeaderWritten;     // Track if header section was written
+
+    /**
+     * @brief Convert UTF-8 string to CP1252 encoding.
+     * @param osUTF8Value UTF-8 encoded string
+     * @return CP1252 encoded string, or original string on conversion failure
+     *
+     * Story 2.2 Task 4: Uses CPLRecode for conversion.
+     * On failure, logs CE_Warning and returns original value as fallback.
+     */
+    std::string RecodeToCP1252(const std::string& osUTF8Value);
 };
 
 #endif /* POLISHMAPWRITER_H_INCLUDED */

@@ -53,7 +53,7 @@ OGRPolishMapDataSource::OGRPolishMapDataSource()
 /************************************************************************/
 
 OGRPolishMapDataSource::~OGRPolishMapDataSource() {
-    // Story 2.1: Write minimal header on close if in write mode
+    // Story 2.1/2.2: Write header on close if in write mode
     if (m_bUpdate && m_fpOutput != nullptr) {
         // Writer should already exist (created in Create())
         // This is a defensive check - if somehow writer is null, we can't write
@@ -62,9 +62,14 @@ OGRPolishMapDataSource::~OGRPolishMapDataSource() {
                      "Writer not initialized in write mode - cannot write header");
         } else {
             // Write header if not already written
-            // TODO Story 2.2: Use metadata from dataset instead of hardcoded "Untitled"
+            // Story 2.2: Use metadata from dataset
             if (!m_poWriter->IsHeaderWritten()) {
-                m_poWriter->WriteHeader("Untitled", "1252");
+                if (m_aoMetadata.empty()) {
+                    // No metadata set - use defaults
+                    m_aoMetadata["Name"] = "Untitled";
+                    m_aoMetadata["CodePage"] = "1252";
+                }
+                m_poWriter->WriteHeader(m_aoMetadata);
             }
 
             // Flush pending writes
@@ -78,7 +83,7 @@ OGRPolishMapDataSource::~OGRPolishMapDataSource() {
         CPLDebug("OGR_POLISHMAP", "Closed write-mode dataset");
     }
 
-    // Task 7.1: unique_ptr automatically deletes layers (RAII)
+    // Layers cleanup: unique_ptr automatically deletes layers (RAII)
     // No manual cleanup needed - m_apoLayers destructor handles it
 }
 
@@ -245,4 +250,51 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) 
              pszFilename);
 
     return poDS;
+}
+
+/************************************************************************/
+/*                         SetMetadataItem()                             */
+/*                                                                      */
+/* Story 2.2 Task 1: Store metadata for Polish Map header fields.        */
+/* Overrides GDALMajorObject::SetMetadataItem().                         */
+/************************************************************************/
+
+CPLErr OGRPolishMapDataSource::SetMetadataItem(const char* pszName,
+                                                const char* pszValue,
+                                                const char* pszDomain) {
+    // Polish Map metadata domain (nullptr, empty string, or "POLISHMAP")
+    if (pszDomain == nullptr || EQUAL(pszDomain, "") || EQUAL(pszDomain, "POLISHMAP")) {
+        if (pszName != nullptr && pszValue != nullptr) {
+            m_aoMetadata[pszName] = pszValue;
+            CPLDebug("OGR_POLISHMAP", "SetMetadataItem: %s=%s", pszName, pszValue);
+            return CE_None;
+        }
+        return CE_Failure;
+    }
+    // Delegate to parent for other domains
+    return GDALDataset::SetMetadataItem(pszName, pszValue, pszDomain);
+}
+
+/************************************************************************/
+/*                         GetMetadataItem()                             */
+/*                                                                      */
+/* Story 2.2 Task 2: Retrieve metadata for Polish Map header fields.     */
+/* Overrides GDALMajorObject::GetMetadataItem().                         */
+/************************************************************************/
+
+const char* OGRPolishMapDataSource::GetMetadataItem(const char* pszName,
+                                                     const char* pszDomain) {
+    // Polish Map metadata domain (nullptr, empty string, or "POLISHMAP")
+    if (pszDomain == nullptr || EQUAL(pszDomain, "") || EQUAL(pszDomain, "POLISHMAP")) {
+        if (pszName == nullptr) {
+            return nullptr;
+        }
+        auto it = m_aoMetadata.find(pszName);
+        if (it != m_aoMetadata.end()) {
+            return it->second.c_str();
+        }
+        return nullptr;
+    }
+    // Delegate to parent for other domains
+    return GDALDataset::GetMetadataItem(pszName, pszDomain);
 }

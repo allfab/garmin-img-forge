@@ -33,6 +33,8 @@
 #include "polishmapparser.h"
 #include <vector>
 #include <memory>
+#include <map>
+#include <string>
 
 class OGRPolishMapLayer;
 class PolishMapWriter;
@@ -52,6 +54,9 @@ private:
     bool m_bUpdate;                              // false = read (Open), true = write (Create)
     VSILFILE* m_fpOutput;                        // Output file handle (write mode only)
     std::unique_ptr<PolishMapWriter> m_poWriter; // Writer instance (write mode only)
+
+    // Story 2.2: Metadata storage for Polish Map header fields
+    std::map<std::string, std::string> m_aoMetadata;
 
     // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
     void CreateLayers();
@@ -87,6 +92,18 @@ public:
 
     // Story 2.1: Check if in write mode
     bool IsUpdateMode() const { return m_bUpdate; }
+
+    // Story 2.2: Metadata API override for Polish Map header fields
+    CPLErr SetMetadataItem(const char* pszName, const char* pszValue,
+                           const char* pszDomain = nullptr) override;
+    const char* GetMetadataItem(const char* pszName,
+                                const char* pszDomain = nullptr) override;
+
+    /** @brief Access Polish Map metadata map (for writer).
+     *  @return Const reference to internal metadata map (key=value pairs).
+     *  @note Used internally by PolishMapWriter to generate [IMG ID] section.
+     *  @since Story 2.2 */
+    const std::map<std::string, std::string>& GetPolishMapMetadata() const { return m_aoMetadata; }
 };
 
 #endif /* OGRPOLISHMAPDATASOURCE_H_INCLUDED */
