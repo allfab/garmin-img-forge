@@ -408,10 +408,11 @@ int OGRPolishMapLayer::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, OLCRandomRead)) {
         return FALSE;
     }
-    // Story 2.3 Task 4: OLCSequentialWrite - TRUE only for POI in write mode
-    // POLYLINE/POLYGON writing not yet implemented (Stories 2.4/2.5)
+    // Story 2.3 Task 4: OLCSequentialWrite - TRUE for POI in write mode
+    // Story 2.4 Task 3: TRUE also for POLYLINE in write mode
+    // POLYGON writing not yet implemented (Story 2.5)
     if (EQUAL(pszCap, OLCSequentialWrite)) {
-        if (m_bWriteMode && m_osLayerType == "POI") {
+        if (m_bWriteMode && (m_osLayerType == "POI" || m_osLayerType == "POLYLINE")) {
             return TRUE;
         }
         return FALSE;
@@ -477,10 +478,10 @@ OGRErr OGRPolishMapLayer::ICreateFeature(OGRFeature* poFeature) {
             return OGRERR_FAILURE;
         }
     } else if (m_osLayerType == "POLYLINE") {
-        // Story 2.4: POLYLINE writing not implemented yet
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "ICreateFeature: POLYLINE writing not implemented yet");
-        return OGRERR_UNSUPPORTED_OPERATION;
+        // Story 2.4: POLYLINE writing
+        if (!m_poWriter->WritePOLYLINE(poFeature)) {
+            return OGRERR_FAILURE;
+        }
     } else if (m_osLayerType == "POLYGON") {
         // Story 2.5: POLYGON writing not implemented yet
         CPLError(CE_Failure, CPLE_NotSupported,

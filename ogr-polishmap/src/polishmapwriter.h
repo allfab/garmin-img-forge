@@ -106,6 +106,23 @@ public:
     bool WritePOI(OGRFeature* poFeature);
 
     /**
+     * @brief Write a POLYLINE feature to the output file.
+     * @param poFeature OGRFeature with LineString geometry and attributes
+     * @return true if successful, false on error
+     *
+     * Story 2.4: Writes [POLYLINE] section with:
+     * - Type field (required, defaults to 0x0001)
+     * - Label field (optional, UTF-8 → CP1252 converted)
+     * - Data0 field (required, ALL coordinates on ONE line as (lat,lon),(lat,lon),...)
+     * - EndLevel field (optional)
+     * - Levels field (optional)
+     * - [END] marker (Polish Map standard for all sections)
+     *
+     * CRITICAL: LineString must have at least 2 points to be valid.
+     */
+    bool WritePOLYLINE(OGRFeature* poFeature);
+
+    /**
      * @brief Check if header has been written.
      * @return true if WriteHeader() has been called successfully
      */

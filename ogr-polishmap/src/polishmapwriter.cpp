@@ -32,6 +32,9 @@
 // Default POI type code when Type field is not set
 static const char* const DEFAULT_POI_TYPE = "0x0000";
 
+// Default POLYLINE type code when Type field is not set (road type)
+static const char* const DEFAULT_POLYLINE_TYPE = "0x0001";
+
 /************************************************************************/
 /*                          PolishMapWriter()                            */
 /************************************************************************/
@@ -237,7 +240,7 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 /*   Label=<label>       (optional, UTF-8 → CP1252)                      */
 /*   Data0=(lat,lon)     (6 decimal precision)                           */
 /*   EndLevel=<level>    (optional)                                      */
-/*   [END-POI]                                                           */
+/*   [END]                                                               */
 /************************************************************************/
 
 bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
@@ -356,6 +359,179 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
              pszType ? pszType : "(default)",
              pszLabel ? pszLabel : "(null)",
              dfLat, dfLon);
+
+    return true;
+}
+
+/************************************************************************/
+/*                          WritePOLYLINE()                              */
+/*                                                                      */
+/* Story 2.4 Task 1: Write POLYLINE feature to output file.              */
+/* Format:                                                               */
+/*   [POLYLINE]                                                          */
+/*   Type=<type_code>                                                    */
+/*   Label=<label>       (optional, UTF-8 → CP1252)                      */
+/*   Data0=(lat1,lon1),(lat2,lon2),...  (ALL points on ONE line)         */
+/*   EndLevel=<level>    (optional)                                      */
+/*   Levels=<range>      (optional)                                      */
+/*   [END]                                                               */
+/************************************************************************/
+
+bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
+{
+    // Task 1.1-1.2: Validate input
+    if (poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: NULL feature pointer");
+        return false;
+    }
+
+    if (m_fpOutput == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: file handle is null");
+        return false;
+    }
+
+    // Ensure header is written before first feature
+    // If not written yet, write with default values
+    if (!m_bHeaderWritten) {
+        std::map<std::string, std::string> aoDefaultMetadata;
+        aoDefaultMetadata["Name"] = "Untitled";
+        aoDefaultMetadata["CodePage"] = "1252";
+        if (!WriteHeader(aoDefaultMetadata)) {
+            CPLError(CE_Failure, CPLE_FileIO,
+                     "WritePOLYLINE: failed to write header");
+            return false;
+        }
+    }
+
+    // Task 1.2-1.3: Extract and verify geometry is LineString
+    OGRGeometry* poGeom = poFeature->GetGeometryRef();
+    if (poGeom == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: feature has no geometry");
+        return false;
+    }
+
+    if (wkbFlatten(poGeom->getGeometryType()) != wkbLineString) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: feature geometry is not LineString (type=%d)",
+                 static_cast<int>(poGeom->getGeometryType()));
+        return false;
+    }
+
+    OGRLineString* poLine = poGeom->toLineString();
+    if (poLine == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: failed to cast geometry to LineString");
+        return false;
+    }
+
+    // Task 1.4: Validate minimum 2 points for valid POLYLINE
+    int nNumPoints = poLine->getNumPoints();
+    if (nNumPoints < 2) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WritePOLYLINE: LineString has less than 2 points (%d)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Task 1.9: Write [POLYLINE] section marker
+    if (VSIFPrintfL(m_fpOutput, "[POLYLINE]\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WritePOLYLINE: failed to write [POLYLINE] marker");
+        return false;
+    }
+
+    // Task 1.7: Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", pszType) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Type");
+            return false;
+        }
+    } else {
+        // Default POLYLINE type
+        if (VSIFPrintfL(m_fpOutput, "Type=%s\n", DEFAULT_POLYLINE_TYPE) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Task 1.7-1.8, 1.10: Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        // Task 1.8: Convert UTF-8 to CP1252
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (VSIFPrintfL(m_fpOutput, "Label=%s\n", osLabelCP1252.c_str()) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Label");
+            return false;
+        }
+    }
+    // Task 1.10: If Label is empty/null, omit the line entirely
+
+    // Task 1.5-1.6: Write Data0 coordinates (ALL points on ONE line)
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...
+    if (VSIFPrintfL(m_fpOutput, "Data0=") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Data0");
+        return false;
+    }
+
+    for (int i = 0; i < nNumPoints; i++) {
+        double dfLat = poLine->getY(i);  // Latitude = Y
+        double dfLon = poLine->getX(i);  // Longitude = X
+
+        // Task 1.5: Add comma separator between coordinate pairs
+        if (i > 0) {
+            if (VSIFPrintfL(m_fpOutput, ",") < 0) {
+                CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write comma");
+                return false;
+            }
+        }
+
+        // Task 1.6: Format with 6 decimals
+        if (VSIFPrintfL(m_fpOutput, "(%.6f,%.6f)", dfLat, dfLon) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write coordinates");
+            return false;
+        }
+    }
+
+    // End Data0 line
+    if (VSIFPrintfL(m_fpOutput, "\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write newline");
+        return false;
+    }
+
+    // Task 1.7, 1.10: Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (VSIFPrintfL(m_fpOutput, "EndLevel=%d\n", nEndLevel) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Task 1.7, 1.10: Extract and write Levels field (optional)
+    const char* pszLevels = poFeature->GetFieldAsString("Levels");
+    if (pszLevels != nullptr && pszLevels[0] != '\0') {
+        if (VSIFPrintfL(m_fpOutput, "Levels=%s\n", pszLevels) < 0) {
+            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Levels");
+            return false;
+        }
+    }
+
+    // Task 1.9: Write [END] marker (Polish Map format standard)
+    if (VSIFPrintfL(m_fpOutput, "[END]\n\n") < 0) {
+        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write [END]");
+        return false;
+    }
+
+    CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Type=%s, Label=%s, %d points",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             nNumPoints);
 
     return true;
 }

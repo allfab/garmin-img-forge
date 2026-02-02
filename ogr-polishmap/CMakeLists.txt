@@ -203,6 +203,17 @@ target_compile_definitions(test_poi_write PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - POLYLINE Write (Story 2.4)
+add_executable(test_polyline_write test/test_polyline_write.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_polyline_write PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_polyline_write PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_polyline_write PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
