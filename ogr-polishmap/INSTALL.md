@@ -45,8 +45,8 @@ sudo apt-get install -y python3-gdal python3-pytest
 
 ```bash
 # Clone the repository (if not already done)
-git clone https://github.com/mpforge/ogr-polishmap.git
-cd ogr-polishmap
+git clone https://forgejo.allfabox.fr/allfab/mpforge.git
+cd mpforge/ogr-polishmap
 
 # Create build directory
 mkdir build && cd build
@@ -74,7 +74,7 @@ gdal-config --plugindir
 sudo make install
 
 # Or manually copy the shared library
-sudo cp libogr_PolishMap.so $(gdal-config --plugindir)/
+sudo cp gdal_POLISHMAP.so $(gdal-config --plugindir)/
 ```
 
 **Option 2: Set GDAL_DRIVER_PATH (no root required)**
@@ -84,7 +84,7 @@ sudo cp libogr_PolishMap.so $(gdal-config --plugindir)/
 mkdir -p ~/.gdal/plugins
 
 # Copy the library
-cp libogr_PolishMap.so ~/.gdal/plugins/
+cp gdal_POLISHMAP.so ~/.gdal/plugins/
 
 # Add to your shell profile (~/.bashrc or ~/.zshrc)
 echo 'export GDAL_DRIVER_PATH=$HOME/.gdal/plugins' >> ~/.bashrc
@@ -124,8 +124,8 @@ pip3 install gdal pytest
 
 ```bash
 # Clone and enter directory
-git clone https://github.com/mpforge/ogr-polishmap.git
-cd ogr-polishmap
+git clone https://forgejo.allfabox.fr/allfab/mpforge.git
+cd mpforge/ogr-polishmap
 
 # Create build directory
 mkdir build && cd build
@@ -151,7 +151,7 @@ sudo make install
 
 # Or set GDAL_DRIVER_PATH for local installation
 mkdir -p ~/.gdal/plugins
-cp libogr_PolishMap.dylib ~/.gdal/plugins/
+cp gdal_POLISHMAP.dylib ~/.gdal/plugins/
 export GDAL_DRIVER_PATH=$HOME/.gdal/plugins
 ```
 
@@ -194,8 +194,8 @@ Download and install [OSGeo4W](https://trac.osgeo.org/osgeo4w/). Select the foll
 
 ```powershell
 # Clone repository
-git clone https://github.com/mpforge/ogr-polishmap.git
-cd ogr-polishmap
+git clone https://forgejo.allfabox.fr/allfab/mpforge.git
+cd mpforge/ogr-polishmap
 
 # Create build directory
 mkdir build
@@ -231,11 +231,11 @@ nmake
 # - vcpkg: Check your vcpkg install location
 
 # Copy the DLL to GDAL plugins directory
-copy Release\ogr_PolishMap.dll "C:\OSGeo4W\bin\gdalplugins\"
+copy Release\gdal_POLISHMAP.dll "C:\OSGeo4W\bin\gdalplugins\"
 
 # Or set GDAL_DRIVER_PATH environment variable (recommended)
 mkdir "%USERPROFILE%\.gdal\plugins"
-copy Release\ogr_PolishMap.dll "%USERPROFILE%\.gdal\plugins\"
+copy Release\gdal_POLISHMAP.dll "%USERPROFILE%\.gdal\plugins\"
 setx GDAL_DRIVER_PATH "%USERPROFILE%\.gdal\plugins"
 ```
 
@@ -372,5 +372,5 @@ ogr2ogr -spat xmin ymin xmax ymax output.mp input.mp
 
 ## Support
 
-For issues and feature requests, please use the GitHub issue tracker:
-https://github.com/mpforge/ogr-polishmap/issues
+For issues and feature requests, please use the Forgejo issue tracker:
+https://forgejo.allfabox.fr/allfab/mpforge/issues
