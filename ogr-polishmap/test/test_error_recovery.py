@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Story 3.2: Error Recovery Tests (AC1-AC7)
+Story 3.2 & 3.4: Error Recovery Tests
 
-Tests the Three-Level Error Strategy for the Polish Map driver:
+Story 3.2 Tests (AC1-AC7):
 - Critical Errors: Fail + Return NULL (AC1, AC5)
 - Recoverable Errors: Skip + Continue (AC2, AC4)
 - Minor Issues: Default + Log (AC3)
 - CPL Logging Consistency (AC6)
 - Zero Crash Validation (AC7)
 
+Story 3.4 Extended Tests (AC7-AC9):
+- AC7: Missing header returns NULL + CE_Failure
+- AC8: Invalid section skipped, valid sections processed
+- AC9: 0 crashes on all 50 error-recovery files
+
 Requirements:
 - Python GDAL bindings (python3-gdal or osgeo package)
 - PolishMap driver must be installed in GDAL plugin path
+- For full AC9: Run tools/generate_error_recovery_corpus.py first
 
 Usage:
     python3 test_error_recovery.py
@@ -571,24 +577,24 @@ def test_polygon_invalid_coords():
 def test_mixed_valid_invalid():
     """Test file with mixed valid and invalid content."""
     from osgeo import ogr, gdal
-    
+
     print("  Mixed valid/invalid test... ", end="", flush=True)
-    
+
     test_file = os.path.join(get_test_data_dir(), 'mixed-valid-invalid.mp')
     if not os.path.exists(test_file):
         print("SKIPPED (test file not found)")
         return None
-    
+
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    
+
     try:
         ds = ogr.Open(test_file)
         gdal.PopErrorHandler()
-        
+
         if ds is None:
             print("FAILED (Open() returned NULL)")
             return False
-        
+
         total_features = 0
         for layer_idx in range(3):
             layer = ds.GetLayer(layer_idx)
@@ -598,22 +604,310 @@ def test_mixed_valid_invalid():
                 if feat is None:
                     break
                 total_features += 1
-        
+
         ds = None
-        
+
         # Should have extracted valid features from mixed content
         # File has 2 valid POIs, 2 valid polylines, 2 valid polygons = 6 valid total
         if total_features < 6:
             print(f"FAILED (expected >= 6 valid features, got {total_features})")
             return False
-        
+
         print(f"PASSED ({total_features} valid features)")
         return True
-        
+
     except Exception as e:
         gdal.PopErrorHandler()
         print(f"CRASHED ({e})")
         return False
+
+
+# =============================================================================
+# Story 3.4: Extended Error Recovery Tests (AC7-AC9)
+# =============================================================================
+def test_ac7_missing_header_returns_null():
+    """AC7: Missing header returns NULL + CE_Failure."""
+    from osgeo import ogr, gdal
+
+    print("  AC7: Missing header returns NULL... ", end="", flush=True)
+
+    test_file = os.path.join(get_test_data_dir(), 'missing-header.mp')
+    if not os.path.exists(test_file):
+        print("SKIPPED (test file not found)")
+        return None
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    try:
+        ds = ogr.Open(test_file)
+        err_type = gdal.GetLastErrorType()
+        gdal.PopErrorHandler()
+
+        if ds is not None:
+            ds = None
+            print("FAILED (should return NULL)")
+            return False
+
+        # Should be CE_Failure (3)
+        if err_type != gdal.CE_Failure:
+            print(f"FAILED (expected CE_Failure, got {err_type})")
+            return False
+
+        print("PASSED")
+        return True
+
+    except Exception as e:
+        gdal.PopErrorHandler()
+        print(f"CRASHED ({e})")
+        return False
+
+
+def test_ac8_invalid_section_skip_continue():
+    """AC8: Invalid section skipped, valid sections processed."""
+    from osgeo import ogr, gdal
+
+    print("  AC8: Invalid section skip + continue... ", end="", flush=True)
+
+    # Try err-section-unknown-type.mp which has [UNKNOWN] section
+    test_file = os.path.join(get_test_data_dir(), 'err-section-unknown-type.mp')
+    if not os.path.exists(test_file):
+        print("SKIPPED (test file not found)")
+        return None
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    try:
+        ds = ogr.Open(test_file)
+        gdal.PopErrorHandler()
+
+        if ds is None:
+            print("FAILED (should recover and open)")
+            return False
+
+        # Should have processed valid POI after unknown section
+        poi_layer = ds.GetLayerByName('POI')
+        if poi_layer is None:
+            poi_layer = ds.GetLayer(0)
+
+        if poi_layer is None:
+            ds = None
+            print("FAILED (no POI layer)")
+            return False
+
+        poi_layer.ResetReading()
+        count = 0
+        while True:
+            feat = poi_layer.GetNextFeature()
+            if feat is None:
+                break
+            count += 1
+
+        ds = None
+
+        if count < 1:
+            print(f"FAILED (expected >= 1 valid POI, got {count})")
+            return False
+
+        print(f"PASSED ({count} valid POIs after skip)")
+        return True
+
+    except Exception as e:
+        gdal.PopErrorHandler()
+        print(f"CRASHED ({e})")
+        return False
+
+
+def test_ac9_zero_crashes_extended():
+    """AC9: 0 crashes on all error-recovery files (50+ for full AC9 compliance)."""
+    from osgeo import ogr, gdal
+
+    print("  AC9: Extended zero crash validation... ", end="", flush=True)
+
+    test_dir = get_test_data_dir()
+    if not os.path.exists(test_dir):
+        print("SKIPPED (test directory not found)")
+        print("  Run: python3 tools/generate_error_recovery_corpus.py")
+        return None
+
+    test_files = glob.glob(os.path.join(test_dir, '*.mp'))
+
+    # Minimum 19 files (Story 3.2 baseline) to run; AC6 requires 50-100
+    if len(test_files) < 19:
+        print(f"SKIPPED (only {len(test_files)} files, need >= 19 baseline)")
+        print("  Run: python3 tools/generate_error_recovery_corpus.py")
+        return None
+
+    if len(test_files) < 50:
+        print(f"WARNING: Only {len(test_files)} files, AC6 requires 50-100. Running anyway...")
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    crashes = 0
+    processed = 0
+
+    for test_file in test_files:
+        try:
+            ds = ogr.Open(test_file)
+
+            if ds is not None:
+                for i in range(ds.GetLayerCount()):
+                    layer = ds.GetLayer(i)
+                    if layer is not None:
+                        layer.ResetReading()
+                        while True:
+                            feat = layer.GetNextFeature()
+                            if feat is None:
+                                break
+                            geom = feat.GetGeometryRef()
+                            if geom:
+                                geom.GetX()
+                            feat.GetField('Label')
+
+                ds = None
+
+            processed += 1
+
+        except Exception as e:
+            crashes += 1
+            print(f"\n    CRASH in {os.path.basename(test_file)}: {e}")
+
+    gdal.PopErrorHandler()
+
+    if crashes > 0:
+        print(f"FAILED ({crashes} crashes out of {len(test_files)} files)")
+        return False
+
+    print(f"PASSED ({processed}/{len(test_files)} files, 0 crashes)")
+    return True
+
+
+def test_header_errors():
+    """Test header error files are handled gracefully."""
+    from osgeo import ogr, gdal
+
+    print("  Header errors test... ", end="", flush=True)
+
+    test_dir = get_test_data_dir()
+    header_files = glob.glob(os.path.join(test_dir, 'err-header-*.mp'))
+
+    if len(header_files) < 3:
+        print("SKIPPED (not enough header error files)")
+        return None
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    crashes = 0
+
+    for test_file in header_files:
+        try:
+            ds = ogr.Open(test_file)
+            if ds is not None:
+                ds = None
+        except Exception as e:
+            crashes += 1
+            print(f"\n    CRASH in {os.path.basename(test_file)}: {e}")
+
+    gdal.PopErrorHandler()
+
+    if crashes > 0:
+        print(f"FAILED ({crashes} crashes)")
+        return False
+
+    print(f"PASSED ({len(header_files)} files, 0 crashes)")
+    return True
+
+
+def test_geometry_errors():
+    """Test geometry error files are handled gracefully."""
+    from osgeo import ogr, gdal
+
+    print("  Geometry errors test... ", end="", flush=True)
+
+    test_dir = get_test_data_dir()
+    geom_files = glob.glob(os.path.join(test_dir, 'err-geom-*.mp'))
+
+    if len(geom_files) < 3:
+        print("SKIPPED (not enough geometry error files)")
+        return None
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    crashes = 0
+    opened_count = 0
+
+    for test_file in geom_files:
+        try:
+            ds = ogr.Open(test_file)
+            if ds is not None:
+                opened_count += 1
+                # Try to read features
+                for i in range(ds.GetLayerCount()):
+                    layer = ds.GetLayer(i)
+                    if layer:
+                        layer.ResetReading()
+                        while True:
+                            feat = layer.GetNextFeature()
+                            if feat is None:
+                                break
+                ds = None
+        except Exception as e:
+            crashes += 1
+            print(f"\n    CRASH in {os.path.basename(test_file)}: {e}")
+
+    gdal.PopErrorHandler()
+
+    if crashes > 0:
+        print(f"FAILED ({crashes} crashes)")
+        return False
+
+    print(f"PASSED ({len(geom_files)} files, {opened_count} opened, 0 crashes)")
+    return True
+
+
+def test_mixed_errors():
+    """Test mixed error files are handled gracefully."""
+    from osgeo import ogr, gdal
+
+    print("  Mixed errors test... ", end="", flush=True)
+
+    test_dir = get_test_data_dir()
+    mixed_files = glob.glob(os.path.join(test_dir, 'err-mixed-*.mp'))
+
+    if len(mixed_files) < 3:
+        print("SKIPPED (not enough mixed error files)")
+        return None
+
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    crashes = 0
+    valid_features_found = 0
+
+    for test_file in mixed_files:
+        try:
+            ds = ogr.Open(test_file)
+            if ds is not None:
+                for i in range(ds.GetLayerCount()):
+                    layer = ds.GetLayer(i)
+                    if layer:
+                        layer.ResetReading()
+                        while True:
+                            feat = layer.GetNextFeature()
+                            if feat is None:
+                                break
+                            valid_features_found += 1
+                ds = None
+        except Exception as e:
+            crashes += 1
+            print(f"\n    CRASH in {os.path.basename(test_file)}: {e}")
+
+    gdal.PopErrorHandler()
+
+    if crashes > 0:
+        print(f"FAILED ({crashes} crashes)")
+        return False
+
+    print(f"PASSED ({len(mixed_files)} files, {valid_features_found} valid features, 0 crashes)")
+    return True
 
 
 # =============================================================================
@@ -651,25 +945,33 @@ def main():
         test_ac1_missing_header,
         test_ac5_binary_file,
         test_ac5_empty_file,
-        
+
         # Recoverable Errors (AC2, AC4)
         test_ac2_malformed_section,
         test_ac4_corrupt_geometry,
-        
+
         # Minor Issues (AC3)
         test_ac3_missing_label,
-        
+
         # CPL Logging (AC6)
         test_ac6_error_logging,
-        
+
         # Zero Crash Validation (AC7)
         test_ac7_no_crashes,
-        
+
         # Additional tests
         test_truncated_file,
         test_polyline_invalid_coords,
         test_polygon_invalid_coords,
         test_mixed_valid_invalid,
+
+        # Story 3.4: Extended Tests (AC7-AC9)
+        test_ac7_missing_header_returns_null,
+        test_ac8_invalid_section_skip_continue,
+        test_ac9_zero_crashes_extended,
+        test_header_errors,
+        test_geometry_errors,
+        test_mixed_errors,
     ]
     
     print("Running tests:")
