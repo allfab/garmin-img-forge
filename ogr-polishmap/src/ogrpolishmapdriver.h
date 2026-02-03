@@ -180,11 +180,11 @@ extern "C" {
      *
      * This function is the entry point for GDAL 3.9+ plugins.
      * GDAL looks for this symbol when loading plugins from GDAL_DRIVER_PATH.
-     * Format: GDALRegister_<DRIVER_NAME> where DRIVER_NAME is uppercase.
+     * Format: GDALRegister_<FormatName> with proper casing.
      *
      * @note This function is required for GDAL 3.9+ plugin compatibility.
      */
-    OGR_POLISHMAP_EXPORT void GDALRegister_POLISHMAP();
+    OGR_POLISHMAP_EXPORT void GDALRegister_PolishMap();
 }
 
 /** @} */ // end of Registration Functions group

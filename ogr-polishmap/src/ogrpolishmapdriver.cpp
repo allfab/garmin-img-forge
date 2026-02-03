@@ -217,13 +217,13 @@ extern "C" __attribute__((visibility("default"))) void GDALRegisterMe() {
 }
 
 /************************************************************************/
-/*                       GDALRegister_POLISHMAP()                        */
+/*                       GDALRegister_PolishMap()                        */
 /*                                                                      */
 /* GDAL 3.9+ plugin entry point. GDAL looks for this symbol when        */
 /* loading plugins from GDAL_DRIVER_PATH.                               */
-/* Format: GDALRegister_<DRIVER_NAME> where DRIVER_NAME is uppercase.   */
+/* Format: GDALRegister_<FormatName> with proper casing.                */
 /************************************************************************/
 
-extern "C" __attribute__((visibility("default"))) void GDALRegister_POLISHMAP() {
+extern "C" __attribute__((visibility("default"))) void GDALRegister_PolishMap() {
     RegisterOGRPolishMap();
 }

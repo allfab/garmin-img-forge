@@ -74,7 +74,7 @@ gdal-config --plugindir
 sudo make install
 
 # Or manually copy the shared library
-sudo cp gdal_POLISHMAP.so $(gdal-config --plugindir)/
+sudo cp ogr_PolishMap.so $(gdal-config --plugindir)/
 ```
 
 **Option 2: Set GDAL_DRIVER_PATH (no root required)**
@@ -84,7 +84,7 @@ sudo cp gdal_POLISHMAP.so $(gdal-config --plugindir)/
 mkdir -p ~/.gdal/plugins
 
 # Copy the library
-cp gdal_POLISHMAP.so ~/.gdal/plugins/
+cp ogr_PolishMap.so ~/.gdal/plugins/
 
 # Add to your shell profile (~/.bashrc or ~/.zshrc)
 echo 'export GDAL_DRIVER_PATH=$HOME/.gdal/plugins' >> ~/.bashrc
@@ -151,7 +151,7 @@ sudo make install
 
 # Or set GDAL_DRIVER_PATH for local installation
 mkdir -p ~/.gdal/plugins
-cp gdal_POLISHMAP.dylib ~/.gdal/plugins/
+cp ogr_PolishMap.dylib ~/.gdal/plugins/
 export GDAL_DRIVER_PATH=$HOME/.gdal/plugins
 ```
 
@@ -231,11 +231,11 @@ nmake
 # - vcpkg: Check your vcpkg install location
 
 # Copy the DLL to GDAL plugins directory
-copy Release\gdal_POLISHMAP.dll "C:\OSGeo4W\bin\gdalplugins\"
+copy Release\ogr_PolishMap.dll "C:\OSGeo4W\bin\gdalplugins\"
 
 # Or set GDAL_DRIVER_PATH environment variable (recommended)
 mkdir "%USERPROFILE%\.gdal\plugins"
-copy Release\gdal_POLISHMAP.dll "%USERPROFILE%\.gdal\plugins\"
+copy Release\ogr_PolishMap.dll "%USERPROFILE%\.gdal\plugins\"
 setx GDAL_DRIVER_PATH "%USERPROFILE%\.gdal\plugins"
 ```
 

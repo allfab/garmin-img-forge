@@ -25,37 +25,36 @@ set(POLISHMAP_SOURCES
 )
 
 # Build shared library (GDAL plugin)
-add_library(gdal_POLISHMAP MODULE ${POLISHMAP_SOURCES})
+add_library(ogr_PolishMap MODULE ${POLISHMAP_SOURCES})
 
 # Include directories
-target_include_directories(gdal_POLISHMAP PRIVATE
+target_include_directories(ogr_PolishMap PRIVATE
     ${GDAL_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 # Link against GDAL
-target_link_libraries(gdal_POLISHMAP PRIVATE ${GDAL_LIBRARIES})
+target_link_libraries(ogr_PolishMap PRIVATE ${GDAL_LIBRARIES})
 
 # Position-independent code (required for shared library/plugin)
-# PREFIX "" removes the "lib" prefix so the file is named gdal_POLISHMAP.so
+# PREFIX "" removes the "lib" prefix so the file is named ogr_PolishMap.so
 # This is required for GDAL to find the plugin
-set_target_properties(gdal_POLISHMAP PROPERTIES
+set_target_properties(ogr_PolishMap PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    CXX_Vlibjson
-ISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
     PREFIX ""
 )
 
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(gdal_POLISHMAP PRIVATE
+    target_compile_options(ogr_PolishMap PRIVATE
         -Wall
         -Wextra
         -Wpedantic
         -Wno-unused-parameter
     )
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(gdal_POLISHMAP PRIVATE
+    target_compile_options(ogr_PolishMap PRIVATE
         /W4
         /wd4100  # unreferenced formal parameter
     )
@@ -84,7 +83,7 @@ if(NOT DEFINED GDAL_PLUGIN_DIR)
 endif()
 
 # Installation
-install(TARGETS gdal_POLISHMAP
+install(TARGETS ogr_PolishMap
     LIBRARY DESTINATION ${GDAL_PLUGIN_DIR}
     COMPONENT driver
 )

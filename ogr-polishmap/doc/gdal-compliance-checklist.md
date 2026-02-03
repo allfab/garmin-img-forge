@@ -31,7 +31,7 @@ The ogr-polishmap driver follows all GDAL conventions (NFR-GDAL1 through NFR-GDA
 |-------|--------|----------|
 | RegisterOGRPolishMap() function exists | ✅ | `ogrpolishmapdriver.cpp:196` |
 | GDALRegisterMe() plugin entry point | ✅ | `ogrpolishmapdriver.cpp:215` |
-| GDALRegister_POLISHMAP() GDAL 3.9+ entry | ✅ | `ogrpolishmapdriver.cpp:227` |
+| GDALRegister_PolishMap() GDAL 3.9+ entry | ✅ | `ogrpolishmapdriver.cpp:227` |
 | Driver name is "PolishMap" | ✅ | `ogrpolishmapdriver.cpp:42` - `SetDescription("PolishMap")` |
 | Export visibility | ✅ | `__attribute__((visibility("default")))` |
 

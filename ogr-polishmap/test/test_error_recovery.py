@@ -23,7 +23,7 @@ Usage:
     python3 test_error_recovery.py
 
 Environment:
-    GDAL_DRIVER_PATH: Set to directory containing gdal_POLISHMAP.so
+    GDAL_DRIVER_PATH: Set to directory containing ogr_PolishMap.so
 """
 
 import os

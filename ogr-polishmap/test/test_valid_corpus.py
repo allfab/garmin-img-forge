@@ -22,7 +22,7 @@ Usage:
     python3 test_valid_corpus.py
 
 Environment:
-    GDAL_DRIVER_PATH: Set to directory containing gdal_POLISHMAP.so
+    GDAL_DRIVER_PATH: Set to directory containing ogr_PolishMap.so
 """
 
 import os
