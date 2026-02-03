@@ -174,6 +174,17 @@ extern "C" {
      * @note The function name must be exactly "GDALRegisterMe" for GDAL to find it.
      */
     OGR_POLISHMAP_EXPORT void GDALRegisterMe();
+
+    /**
+     * @brief GDAL 3.9+ plugin entry point.
+     *
+     * This function is the entry point for GDAL 3.9+ plugins.
+     * GDAL looks for this symbol when loading plugins from GDAL_DRIVER_PATH.
+     * Format: GDALRegister_<DRIVER_NAME> where DRIVER_NAME is uppercase.
+     *
+     * @note This function is required for GDAL 3.9+ plugin compatibility.
+     */
+    OGR_POLISHMAP_EXPORT void GDALRegister_POLISHMAP();
 }
 
 /** @} */ // end of Registration Functions group

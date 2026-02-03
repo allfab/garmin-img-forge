@@ -430,6 +430,15 @@ int OGRPolishMapLayer::TestCapability(const char* pszCap) {
     if (EQUAL(pszCap, OLCFastSpatialFilter)) {
         return FALSE;
     }
+    // Story 3.7 Code Review Fix M2: OLCFastGetExtent - No cached extent
+    if (EQUAL(pszCap, OLCFastGetExtent)) {
+        return FALSE;
+    }
+    // Story 3.7 Code Review Fix M1: OLCStringsAsUTF8 - Labels are converted to UTF-8
+    // Parser converts from CP1252 to UTF-8 during reading (RecodeToUTF8)
+    if (EQUAL(pszCap, OLCStringsAsUTF8)) {
+        return TRUE;
+    }
     // Default: capability not supported
     return FALSE;
 }
