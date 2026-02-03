@@ -1,0 +1,273 @@
+# OGR PolishMap Driver - CI/CD Pipeline
+# NFR21: Automated CI tests on every commit
+# Platforms: NFR16 (Linux), NFR17 (macOS), NFR18 (Windows)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================================================
+  # Linux Build (NFR16) - GCC 13+
+  # ============================================================================
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgdal-dev \
+            gdal-bin \
+            python3-gdal \
+            python3-pytest \
+            python3-pytest-timeout \
+            cmake \
+            g++
+
+      - name: Display GDAL version
+        run: |
+          gdal-config --version
+          ogrinfo --version
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=17 \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic"
+        working-directory: ogr-polishmap
+
+      - name: Build driver
+        run: cmake --build build --parallel
+        working-directory: ogr-polishmap
+
+      - name: Run C++ unit tests
+        run: |
+          ./build/test_driver_registration
+          ./build/test_identify_content
+          ./build/test_parser_and_open
+          ./build/test_dataset_layers
+          ./build/test_poi_layer
+          ./build/test_polyline_layer
+          ./build/test_polygon_layer
+          ./build/test_filters
+          ./build/test_create
+          ./build/test_header
+          ./build/test_poi_write
+          ./build/test_polyline_write
+          ./build/test_polygon_write
+          ./build/test_driver_metadata
+        working-directory: ogr-polishmap
+
+      - name: Set GDAL_DRIVER_PATH
+        run: |
+          echo "GDAL_DRIVER_PATH=${{ github.workspace }}/ogr-polishmap/build" >> $GITHUB_ENV
+
+      - name: Run pytest test suite
+        run: |
+          pytest test/test_valid_corpus.py -v --junitxml=test-results-valid.xml --timeout=300
+          pytest test/test_edge_cases.py -v --junitxml=test-results-edge.xml --timeout=300
+          pytest test/test_error_recovery.py -v --junitxml=test-results-error.xml --timeout=300
+          pytest test/test_performance_parsing.py -v --junitxml=test-results-perf.xml --timeout=300
+        working-directory: ogr-polishmap
+        continue-on-error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: ogr-polishmap/test-results-*.xml
+          retention-days: 30
+
+  # ============================================================================
+  # macOS Build (NFR17) - Clang
+  # ============================================================================
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install gdal cmake
+
+      - name: Display GDAL version
+        run: |
+          gdal-config --version
+          ogrinfo --version
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=17 \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic"
+        working-directory: ogr-polishmap
+
+      - name: Build driver
+        run: cmake --build build --parallel
+        working-directory: ogr-polishmap
+
+      - name: Run C++ unit tests
+        run: |
+          ./build/test_driver_registration
+          ./build/test_identify_content
+          ./build/test_parser_and_open
+          ./build/test_dataset_layers
+          ./build/test_poi_layer
+          ./build/test_polyline_layer
+          ./build/test_polygon_layer
+          ./build/test_filters
+          ./build/test_create
+          ./build/test_header
+          ./build/test_poi_write
+          ./build/test_polyline_write
+          ./build/test_polygon_write
+          ./build/test_driver_metadata
+        working-directory: ogr-polishmap
+
+      - name: Install pytest
+        run: pip3 install pytest pytest-timeout --break-system-packages || pip3 install pytest pytest-timeout
+
+      - name: Set GDAL_DRIVER_PATH
+        run: |
+          echo "GDAL_DRIVER_PATH=${{ github.workspace }}/ogr-polishmap/build" >> $GITHUB_ENV
+
+      - name: Run pytest test suite
+        run: |
+          pytest test/test_valid_corpus.py -v --junitxml=test-results-valid.xml --timeout=300
+          pytest test/test_edge_cases.py -v --junitxml=test-results-edge.xml --timeout=300
+          pytest test/test_error_recovery.py -v --junitxml=test-results-error.xml --timeout=300
+          pytest test/test_performance_parsing.py -v --junitxml=test-results-perf.xml --timeout=300
+        working-directory: ogr-polishmap
+        continue-on-error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-macos
+          path: ogr-polishmap/test-results-*.xml
+          retention-days: 30
+
+  # ============================================================================
+  # Windows Build (NFR18) - MSVC 2022
+  # ============================================================================
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: gdal-env
+          environment-file: ''
+          auto-activate-base: false
+
+      - name: Install GDAL via conda
+        shell: bash -l {0}
+        run: |
+          conda install -c conda-forge gdal cmake pytest pytest-timeout -y
+
+      - name: Display GDAL version
+        shell: bash -l {0}
+        run: |
+          gdal-config --version
+          ogrinfo --version
+
+      - name: Configure CMake
+        shell: bash -l {0}
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=17
+        working-directory: ogr-polishmap
+
+      - name: Build driver
+        shell: bash -l {0}
+        run: cmake --build build --config Release --parallel
+        working-directory: ogr-polishmap
+
+      - name: Run C++ unit tests
+        shell: bash -l {0}
+        run: |
+          ./build/Release/test_driver_registration.exe || ./build/test_driver_registration.exe
+          ./build/Release/test_identify_content.exe || ./build/test_identify_content.exe
+          ./build/Release/test_parser_and_open.exe || ./build/test_parser_and_open.exe
+          ./build/Release/test_dataset_layers.exe || ./build/test_dataset_layers.exe
+          ./build/Release/test_poi_layer.exe || ./build/test_poi_layer.exe
+          ./build/Release/test_polyline_layer.exe || ./build/test_polyline_layer.exe
+          ./build/Release/test_polygon_layer.exe || ./build/test_polygon_layer.exe
+          ./build/Release/test_filters.exe || ./build/test_filters.exe
+          ./build/Release/test_create.exe || ./build/test_create.exe
+          ./build/Release/test_header.exe || ./build/test_header.exe
+          ./build/Release/test_poi_write.exe || ./build/test_poi_write.exe
+          ./build/Release/test_polyline_write.exe || ./build/test_polyline_write.exe
+          ./build/Release/test_polygon_write.exe || ./build/test_polygon_write.exe
+          ./build/Release/test_driver_metadata.exe || ./build/test_driver_metadata.exe
+        working-directory: ogr-polishmap
+
+      - name: Set GDAL_DRIVER_PATH
+        shell: bash -l {0}
+        run: |
+          echo "GDAL_DRIVER_PATH=${{ github.workspace }}/ogr-polishmap/build/Release" >> $GITHUB_ENV
+
+      - name: Run pytest test suite
+        shell: bash -l {0}
+        run: |
+          pytest test/test_valid_corpus.py -v --junitxml=test-results-valid.xml --timeout=300
+          pytest test/test_edge_cases.py -v --junitxml=test-results-edge.xml --timeout=300
+          pytest test/test_error_recovery.py -v --junitxml=test-results-error.xml --timeout=300
+          pytest test/test_performance_parsing.py -v --junitxml=test-results-perf.xml --timeout=300
+        working-directory: ogr-polishmap
+        continue-on-error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows
+          path: ogr-polishmap/test-results-*.xml
+          retention-days: 30
+
+  # ============================================================================
+  # Summary job - Reports overall status
+  # ============================================================================
+  ci-status:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Check all platforms passed
+        run: |
+          echo "Linux: ${{ needs.build-linux.result }}"
+          echo "macOS: ${{ needs.build-macos.result }}"
+          echo "Windows: ${{ needs.build-windows.result }}"
+
+          if [ "${{ needs.build-linux.result }}" != "success" ] || \
+             [ "${{ needs.build-macos.result }}" != "success" ] || \
+             [ "${{ needs.build-windows.result }}" != "success" ]; then
+            echo "One or more platform builds failed"
+            exit 1
+          fi
+
+          echo "All platform builds succeeded!"

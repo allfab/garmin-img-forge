@@ -1,0 +1,234 @@
+# OGR PolishMap Driver - Code Coverage
+# NFR14: Code coverage > 80%
+# Quality Gate: Build fails if coverage drops below 80%
+
+name: Code Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgdal-dev \
+            gdal-bin \
+            python3-gdal \
+            python3-pytest \
+            python3-pytest-cov \
+            python3-pytest-timeout \
+            cmake \
+            g++ \
+            lcov \
+            gcovr
+
+      - name: Display versions
+        run: |
+          gcov --version
+          lcov --version
+          gdal-config --version
+
+      - name: Configure CMake with coverage flags
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_STANDARD=17 \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage -g -O0"
+        working-directory: ogr-polishmap
+
+      - name: Build driver with coverage instrumentation
+        run: cmake --build build --parallel
+        working-directory: ogr-polishmap
+
+      - name: Set GDAL_DRIVER_PATH
+        run: |
+          echo "GDAL_DRIVER_PATH=${{ github.workspace }}/ogr-polishmap/build" >> $GITHUB_ENV
+
+      # Run all C++ tests to generate coverage data
+      # Tests must pass - coverage is only meaningful on passing tests
+      - name: Run C++ unit tests
+        id: cpp-tests
+        run: |
+          set -e
+          ./build/test_driver_registration
+          ./build/test_identify_content
+          ./build/test_parser_and_open
+          ./build/test_dataset_layers
+          ./build/test_poi_layer
+          ./build/test_polyline_layer
+          ./build/test_polygon_layer
+          ./build/test_filters
+          ./build/test_create
+          ./build/test_header
+          ./build/test_poi_write
+          ./build/test_polyline_write
+          ./build/test_polygon_write
+          ./build/test_driver_metadata
+          echo "cpp_tests_passed=true" >> $GITHUB_OUTPUT
+        working-directory: ogr-polishmap
+
+      # Run Python tests - must pass for valid coverage
+      - name: Run pytest test suite
+        id: python-tests
+        run: |
+          set -e
+          pytest test/test_valid_corpus.py -v --timeout=300
+          pytest test/test_edge_cases.py -v --timeout=300
+          pytest test/test_error_recovery.py -v --timeout=300
+          pytest test/test_performance_parsing.py -v --timeout=300
+          echo "python_tests_passed=true" >> $GITHUB_OUTPUT
+        working-directory: ogr-polishmap
+
+      # Collect coverage with lcov
+      - name: Capture coverage info
+        run: |
+          lcov --capture \
+               --directory build \
+               --output-file coverage-raw.info \
+               --ignore-errors source,gcov
+
+          # Remove system headers and test files from coverage
+          lcov --remove coverage-raw.info \
+               '/usr/*' \
+               '*/test/*' \
+               '*/build/_deps/*' \
+               --output-file coverage.info \
+               --ignore-errors unused
+
+          # Generate summary
+          lcov --summary coverage.info
+        working-directory: ogr-polishmap
+
+      # Generate HTML report
+      - name: Generate HTML coverage report
+        run: |
+          genhtml coverage.info \
+                  --output-directory coverage-html \
+                  --title "OGR PolishMap Driver Coverage" \
+                  --legend \
+                  --show-details
+        working-directory: ogr-polishmap
+
+      # Check coverage threshold (NFR14: > 80%)
+      - name: Check coverage threshold (>= 80%)
+        id: coverage-check
+        run: |
+          # Extract line coverage percentage
+          COVERAGE=$(lcov --summary coverage.info 2>&1 | grep "lines" | awk '{print $2}' | tr -d '%')
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+
+          echo "============================================="
+          echo "Line Coverage: ${COVERAGE}%"
+          echo "Threshold: 80%"
+          echo "============================================="
+
+          # Check if coverage meets threshold
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 80% threshold (NFR14)"
+            echo "QUALITY_GATE=FAILED" >> $GITHUB_ENV
+            exit 1
+          else
+            echo "Coverage ${COVERAGE}% meets the 80% threshold (NFR14)"
+            echo "QUALITY_GATE=PASSED" >> $GITHUB_ENV
+          fi
+        working-directory: ogr-polishmap
+
+      # Generate Cobertura XML for PR comments
+      - name: Generate Cobertura XML report
+        if: always()
+        run: |
+          gcovr --root . \
+                --filter src/ \
+                --xml-pretty \
+                --output coverage.xml
+        working-directory: ogr-polishmap
+
+      # Generate coverage badge data
+      - name: Generate coverage badge
+        if: always()
+        run: |
+          COVERAGE=${{ steps.coverage-check.outputs.coverage }}
+          if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
+            COLOR="brightgreen"
+          elif (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+            COLOR="green"
+          elif (( $(echo "$COVERAGE >= 70" | bc -l) )); then
+            COLOR="yellow"
+          elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then
+            COLOR="orange"
+          else
+            COLOR="red"
+          fi
+          echo "Coverage: ${COVERAGE}% ($COLOR)"
+
+          # Create badge JSON
+          cat > coverage-badge.json << EOF
+          {
+            "schemaVersion": 1,
+            "label": "coverage",
+            "message": "${COVERAGE}%",
+            "color": "$COLOR"
+          }
+          EOF
+        working-directory: ogr-polishmap
+
+      # Upload artifacts
+      - name: Upload coverage report (HTML)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-html-report
+          path: ogr-polishmap/coverage-html/
+          retention-days: 30
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-data
+          path: |
+            ogr-polishmap/coverage.info
+            ogr-polishmap/coverage.xml
+          retention-days: 30
+
+      # Separate artifact for badge - easily accessible for shields.io
+      - name: Upload coverage badge
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-badge
+          path: ogr-polishmap/coverage-badge.json
+          retention-days: 90
+
+      # Post coverage summary to PR
+      - name: Coverage Summary
+        if: always()
+        run: |
+          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value | Threshold | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          COVERAGE=${{ steps.coverage-check.outputs.coverage }}
+          if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+            STATUS="✅ PASS"
+          else
+            STATUS="❌ FAIL"
+          fi
+          echo "| Line Coverage | ${COVERAGE}% | ≥ 80% | $STATUS |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Quality Gate: ${{ env.QUALITY_GATE }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "NFR14 requires code coverage > 80%." >> $GITHUB_STEP_SUMMARY
