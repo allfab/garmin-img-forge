@@ -37,19 +37,42 @@
 
 /************************************************************************/
 /*                          PolishMapWriter                              */
-/*                                                                      */
-/* Story 2.1: Skeleton writer for Polish Map format output.             */
-/* Handles file I/O using GDAL VSI abstraction layer.                   */
-/*                                                                      */
-/* Story 3.1: Buffered writing for performance optimization (NFR2)      */
-/* - 64KB write buffer to reduce syscalls                                */
-/* - Accumulated writes flushed at buffer capacity or explicit Flush()   */
-/* - Architecture pattern: Buffered I/O with explicit buffer size        */
 /************************************************************************/
 
-// Story 3.1: Buffered writing configuration (Architecture: Buffered I/O Pattern)
+/**
+ * @def WRITER_BUFFER_SIZE
+ * @brief Size of the internal write buffer (64KB).
+ *
+ * Used for buffered I/O to reduce system calls and improve performance.
+ * The buffer is flushed when full or when Flush() is called.
+ */
 static constexpr size_t WRITER_BUFFER_SIZE = 65536;  // 64KB buffer
 
+/**
+ * @class PolishMapWriter
+ * @brief Writer class for Polish Map format output.
+ *
+ * Handles writing of Polish Map files with buffered I/O for performance.
+ * Supports writing the [IMG ID] header section and feature sections
+ * (POI, POLYLINE, POLYGON) with proper encoding conversion.
+ *
+ * @section buffering Buffered Writing
+ * The writer uses a 64KB internal buffer to accumulate writes and reduce
+ * system calls. Data is automatically flushed when the buffer is full,
+ * or manually via Flush(). The destructor does NOT auto-flush; call
+ * Flush() before closing the file handle.
+ *
+ * @section encoding Character Encoding
+ * Labels are automatically converted from UTF-8 to CP1252 (Windows Western
+ * European) encoding, which is the default for Polish Map files.
+ *
+ * @section ownership File Handle Ownership
+ * The writer borrows the file handle; it does NOT close the file on
+ * destruction. The caller must manage the file handle lifecycle.
+ *
+ * @see OGRPolishMapDataSource
+ * @see OGRPolishMapLayer::ICreateFeature()
+ */
 class PolishMapWriter {
 public:
     /**

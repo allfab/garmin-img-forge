@@ -37,12 +37,37 @@ class PolishMapWriter;
 
 /************************************************************************/
 /*                         OGRPolishMapLayer                            */
-/*                                                                      */
-/* Story 1.3: Layer implementation with OGRFeatureDefn, geometry type,  */
-/* field definitions (Type, Label, Data0, EndLevel, Levels), and WGS84  */
-/* spatial reference system.                                            */
 /************************************************************************/
 
+/**
+ * @class OGRPolishMapLayer
+ * @brief Layer class for Polish Map format features.
+ *
+ * Represents one of the three layer types in a Polish Map file:
+ * - POI: Point of Interest features (wkbPoint)
+ * - POLYLINE: Linear features like roads and trails (wkbLineString)
+ * - POLYGON: Area features like forests and lakes (wkbPolygon)
+ *
+ * @section fields Attribute Fields
+ * Each layer supports the following fields:
+ * - **Type** (OFTString): Garmin type code (e.g., "0x2C00" for restaurant)
+ * - **Label** (OFTString): Feature name/label (UTF-8 encoded)
+ * - **Data0** (OFTString): Raw coordinate data string
+ * - **EndLevel** (OFTInteger): Maximum display zoom level (0-9)
+ * - **Levels** (OFTString): Display zoom range (e.g., "0-3")
+ *
+ * @section srs Spatial Reference
+ * All features use WGS84 (EPSG:4326) coordinate system with
+ * latitude/longitude coordinates.
+ *
+ * @section modes Operating Modes
+ * - Read mode: Features are read from file via PolishMapParser
+ * - Write mode: Features are written to file via PolishMapWriter
+ *
+ * @see OGRPolishMapDataSource
+ * @see PolishMapParser
+ * @see PolishMapWriter
+ */
 class OGRPolishMapLayer final : public OGRLayer {
 private:
     // Ring closure tolerance: 1e-9 degrees (~0.1mm at Earth surface)
@@ -64,43 +89,165 @@ private:
     PolishMapWriter* m_poWriter;       // Non-owning pointer to writer (write mode only)
 
 public:
-    // Story 1.3: Constructor now accepts geometry type for POI/POLYLINE/POLYGON
+    /**
+     * @brief Construct a layer for write mode (no parser).
+     *
+     * Creates a layer with the specified name and geometry type.
+     * Used when creating new Polish Map files for writing.
+     *
+     * @param pszLayerName Layer name ("POI", "POLYLINE", or "POLYGON").
+     * @param eGeomType Geometry type (wkbPoint, wkbLineString, or wkbPolygon).
+     */
     OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType);
 
-    // Story 1.4: Constructor with parser for feature reading
+    /**
+     * @brief Construct a layer for read mode with parser.
+     *
+     * Creates a layer connected to a parser for reading features from file.
+     *
+     * @param pszLayerName Layer name ("POI", "POLYLINE", or "POLYGON").
+     * @param eGeomType Geometry type (wkbPoint, wkbLineString, or wkbPolygon).
+     * @param poParser Non-owning pointer to the file parser.
+     *
+     * @note The parser must remain valid for the lifetime of the layer.
+     */
     OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType,
                       PolishMapParser* poParser);
 
+    /**
+     * @brief Destructor.
+     *
+     * Releases the feature definition and spatial reference.
+     */
     ~OGRPolishMapLayer() override;
 
-    // Disable copy and assignment
+    /** @brief Copy constructor (deleted). */
     OGRPolishMapLayer(const OGRPolishMapLayer&) = delete;
+
+    /** @brief Copy assignment operator (deleted). */
     OGRPolishMapLayer& operator=(const OGRPolishMapLayer&) = delete;
 
-    // OGRLayer pure virtual methods
+    /**
+     * @brief Reset feature reading to the beginning of the layer.
+     *
+     * Resets the internal reading position so that the next call to
+     * GetNextFeature() returns the first feature in the layer.
+     *
+     * @note In read mode, this resets the parser position.
+     * @note In write mode, this has no effect.
+     */
     void ResetReading() override;
+
+    /**
+     * @brief Get the next feature in the layer.
+     *
+     * Returns the next feature from the layer, applying any active
+     * spatial or attribute filters. Returns nullptr when no more
+     * features are available.
+     *
+     * @return Pointer to the next OGRFeature, or nullptr if no more features.
+     *         Caller takes ownership and must destroy with OGRFeature::DestroyFeature().
+     *
+     * @note The returned feature includes geometry and all attribute fields.
+     * @note Filters set via SetSpatialFilter() and SetAttributeFilter() are applied.
+     */
     OGRFeature* GetNextFeature() override;
+
+    /**
+     * @brief Get the layer's feature definition.
+     *
+     * Returns the schema definition for features in this layer, including
+     * geometry type and field definitions (Type, Label, Data0, EndLevel, Levels).
+     *
+     * @return Pointer to OGRFeatureDefn. Ownership remains with the layer.
+     */
     OGRFeatureDefn* GetLayerDefn() override;
+
+    /**
+     * @brief Test if the layer supports a specific capability.
+     *
+     * @param pszCap Capability name string.
+     * @return TRUE if capability is supported, FALSE otherwise.
+     *
+     * @note Supported capabilities:
+     *       - OLCSequentialWrite: Yes (write mode only)
+     *       - OLCStringsAsUTF8: Yes
+     *       - OLCFastFeatureCount: No
+     *       - OLCFastGetExtent: No
+     *       - OLCRandomRead: No
+     *       - OLCRandomWrite: No
+     */
     int TestCapability(const char* pszCap) override;
 
-    // Story 2.3: Write mode support
-    /** @brief Set the writer for this layer (write mode).
-     *  @param poWriter Non-owning pointer to PolishMapWriter instance.
-     *  @note Enables write mode and OLCSequentialWrite capability.
+    /**
+     * @brief Set the writer for this layer (enables write mode).
+     *
+     * Associates a PolishMapWriter with this layer, enabling feature
+     * writing via CreateFeature()/ICreateFeature().
+     *
+     * @param poWriter Non-owning pointer to PolishMapWriter instance.
+     *
+     * @note The writer must remain valid for the lifetime of the layer.
+     * @note Call this before attempting to write features.
      */
     void SetWriter(PolishMapWriter* poWriter);
 
 protected:
-    // Story 2.3: GDAL convention - override ICreateFeature, not CreateFeature
+    /**
+     * @brief Create and write a feature to the Polish Map file.
+     *
+     * Writes the feature to the file using the associated PolishMapWriter.
+     * The feature must have valid geometry matching the layer's geometry type.
+     *
+     * @param poFeature Feature to write. Must have valid geometry.
+     * @return OGRERR_NONE on success, or error code on failure.
+     *
+     * @note The feature's FID is assigned by the layer after successful write.
+     * @note Required fields: geometry. Optional: Type, Label, EndLevel, Levels.
+     * @note This is the protected implementation called by CreateFeature().
+     */
     OGRErr ICreateFeature(OGRFeature* poFeature) override;
 
 private:
-    // Initialize feature definition, SRS, and field definitions
+    /**
+     * @brief Initialize the feature definition, SRS, and field definitions.
+     *
+     * Sets up the layer's schema with geometry type, WGS84 SRS, and
+     * standard Polish Map fields (Type, Label, Data0, EndLevel, Levels).
+     *
+     * @param pszLayerName Layer name for the feature definition.
+     * @param eGeomType Geometry type for the layer.
+     */
     void InitializeLayerDefn(const char* pszLayerName, OGRwkbGeometryType eGeomType);
 
-    // Story 1.4-1.6: Type-specific feature readers
+    /**
+     * @brief Read and return the next POI feature from the parser.
+     *
+     * Parses the next [POI] section and converts it to an OGRFeature with
+     * Point geometry.
+     *
+     * @return Pointer to new OGRFeature, or nullptr if no more POIs.
+     */
     OGRFeature* GetNextPOIFeature();
+
+    /**
+     * @brief Read and return the next POLYLINE feature from the parser.
+     *
+     * Parses the next [POLYLINE] section and converts it to an OGRFeature
+     * with LineString geometry.
+     *
+     * @return Pointer to new OGRFeature, or nullptr if no more POLYLINEs.
+     */
     OGRFeature* GetNextPolylineFeature();
+
+    /**
+     * @brief Read and return the next POLYGON feature from the parser.
+     *
+     * Parses the next [POLYGON] section and converts it to an OGRFeature
+     * with Polygon geometry.
+     *
+     * @return Pointer to new OGRFeature, or nullptr if no more POLYGONs.
+     */
     OGRFeature* GetNextPolygonFeature();
 };
 

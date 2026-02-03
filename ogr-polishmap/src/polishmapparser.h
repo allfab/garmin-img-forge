@@ -36,25 +36,40 @@
 
 /************************************************************************/
 /*                            SectionType                               */
-/*                                                                      */
-/* Enum for Polish Map section types - used by unified ParseNextSection */
-/* REFACTORING: DRY elimination of duplicated parsing methods.          */
 /************************************************************************/
 
+/**
+ * @enum SectionType
+ * @brief Enumeration of Polish Map section types.
+ *
+ * Used by the parser to identify and handle different section types
+ * in Polish Map files. Each section type corresponds to a geometry type.
+ */
 enum class SectionType {
-    POI,        // [POI] or [RGN10] - Point features
-    Polyline,   // [POLYLINE] - Linear features
-    Polygon     // [POLYGON] - Area features
+    POI,        /**< Point of Interest - [POI] or [RGN10] sections (wkbPoint) */
+    Polyline,   /**< Linear feature - [POLYLINE] sections (wkbLineString) */
+    Polygon     /**< Area feature - [POLYGON] sections (wkbPolygon) */
 };
 
 /************************************************************************/
 /*                        PolishMapSection                              */
-/*                                                                      */
-/* Unified IR structure for all section types (POI, POLYLINE, POLYGON). */
-/* REFACTORING: Replaces duplicate POI/Polyline/Polygon structures for  */
-/* the unified ParseNextSection() method.                               */
 /************************************************************************/
 
+/**
+ * @struct PolishMapSection
+ * @brief Unified Intermediate Representation (IR) for all section types.
+ *
+ * This structure serves as a container for parsed section data from
+ * Polish Map files. It handles POI, POLYLINE, and POLYGON sections
+ * with a unified interface for the DRY ParseNextSection() method.
+ *
+ * @section lifecycle Memory Lifecycle
+ * The structure is designed for reuse: parse a section, convert to
+ * OGRFeature, then call Clear() to release memory before parsing the next.
+ * This pattern minimizes memory usage for large files.
+ *
+ * @see PolishMapParser::ParseNextSection()
+ */
 struct PolishMapSection {
     SectionType eType;                               // Section type
     std::string osType;                              // Garmin type code "0x2C00", "0x16", etc.
@@ -149,11 +164,18 @@ struct PolishMapHeaderData {
 
 /************************************************************************/
 /*                        PolishMapPOISection                           */
-/*                                                                      */
-/* Intermediate Representation (IR) structure for [POI] section data.   */
-/* Story 1.4: IR minimaliste pour une seule section POI à la fois.     */
 /************************************************************************/
 
+/**
+ * @struct PolishMapPOISection
+ * @brief Intermediate Representation (IR) for [POI] section data.
+ *
+ * Minimalist IR structure for parsing a single POI section at a time.
+ * Used for backward compatibility with legacy parsing code.
+ *
+ * @see PolishMapSection for the unified IR structure.
+ * @see PolishMapParser::ParseNextPOI()
+ */
 struct PolishMapPOISection {
     std::string osType;                    // "0x2C00"
     std::string osLabel;                   // UTF-8 après conversion
@@ -178,11 +200,18 @@ struct PolishMapPOISection {
 
 /************************************************************************/
 /*                      PolishMapPolylineSection                        */
-/*                                                                      */
-/* Intermediate Representation (IR) structure for [POLYLINE] section.   */
-/* Story 1.5: IR minimaliste pour une seule section POLYLINE à la fois.*/
 /************************************************************************/
 
+/**
+ * @struct PolishMapPolylineSection
+ * @brief Intermediate Representation (IR) for [POLYLINE] section data.
+ *
+ * Minimalist IR structure for parsing a single POLYLINE section at a time.
+ * Stores coordinate list for linear features (roads, trails, boundaries).
+ *
+ * @see PolishMapSection for the unified IR structure.
+ * @see PolishMapParser::ParseNextPolyline()
+ */
 struct PolishMapPolylineSection {
     std::string osType;                              // "0x16"
     std::string osLabel;                             // UTF-8 après conversion
@@ -209,11 +238,18 @@ struct PolishMapPolylineSection {
 
 /************************************************************************/
 /*                      PolishMapPolygonSection                         */
-/*                                                                      */
-/* Intermediate Representation (IR) structure for [POLYGON] section.    */
-/* Story 1.6: IR minimaliste pour une seule section POLYGON à la fois.  */
 /************************************************************************/
 
+/**
+ * @struct PolishMapPolygonSection
+ * @brief Intermediate Representation (IR) for [POLYGON] section data.
+ *
+ * Minimalist IR structure for parsing a single POLYGON section at a time.
+ * Stores coordinate list for area features (forests, lakes, urban areas).
+ *
+ * @see PolishMapSection for the unified IR structure.
+ * @see PolishMapParser::ParseNextPolygon()
+ */
 struct PolishMapPolygonSection {
     std::string osType;                              // "0x4C"
     std::string osLabel;                             // UTF-8 après conversion
@@ -277,79 +313,226 @@ struct PolishMapPolygonSection {
 /* This strategy ensures NFR9 (0 crashes) and NFR11 (graceful degrade).  */
 /************************************************************************/
 
+/**
+ * @class PolishMapParser
+ * @brief Parser for Polish Map format files.
+ *
+ * Implements a hybrid parser for Polish Map (.mp) files with:
+ * - Level 1: Section detection via bracketed markers ([POI], [POLYLINE], etc.)
+ * - Level 2: Key=value parsing inside sections
+ * - State machine for section transitions and error recovery
+ *
+ * @section performance Performance Characteristics
+ * - Uses GDAL's CPLReadLineL() for efficient buffered reading
+ * - Memory-optimized IR structures with shrink_to_fit() cleanup
+ * - Measured: ~0.455s for 10 MB file (NFR1 target: <2s)
+ *
+ * @section errors Error Handling Strategy
+ * The parser implements a three-level error strategy:
+ * 1. **CRITICAL**: Missing header, corrupted file → Fail with CE_Failure
+ * 2. **RECOVERABLE**: Malformed section, invalid coords → Skip with CE_Warning
+ * 3. **MINOR**: Missing optional fields → Use defaults with CPLDebug()
+ *
+ * @see PolishMapSection
+ * @see PolishMapHeaderData
+ * @see OGRPolishMapDataSource
+ */
 class PolishMapParser {
 public:
+    /**
+     * @brief Construct a parser for the specified file.
+     *
+     * Opens the file using GDAL's VSI file abstraction layer.
+     * Check IsOpen() after construction to verify success.
+     *
+     * @param pszFilePath Path to the Polish Map file to parse.
+     */
     explicit PolishMapParser(const char* pszFilePath);
+
+    /**
+     * @brief Destructor.
+     *
+     * Closes the file handle if open.
+     */
     ~PolishMapParser();
 
-    // Disable copy and assignment
+    /** @brief Copy constructor (deleted). */
     PolishMapParser(const PolishMapParser&) = delete;
+
+    /** @brief Copy assignment operator (deleted). */
     PolishMapParser& operator=(const PolishMapParser&) = delete;
 
-    // Parse the [IMG ID] header section
-    // Returns TRUE on success, FALSE on failure
+    /**
+     * @brief Parse the [IMG ID] header section.
+     *
+     * Reads and parses the file header, extracting metadata fields like
+     * Name, ID, CodePage, Datum, etc. Must be called before parsing
+     * any feature sections.
+     *
+     * @return true on success, false on failure.
+     *
+     * @note On failure, CPLError() is called with error details.
+     * @note Stores the file position after header for ResetSectionReading().
+     */
     bool ParseHeader();
 
-    // Get parsed header data (valid after successful ParseHeader())
+    /**
+     * @brief Get the parsed header data.
+     *
+     * @return Const reference to the header data structure.
+     *
+     * @note Only valid after successful ParseHeader() call.
+     */
     const PolishMapHeaderData& GetHeaderData() const { return m_oHeaderData; }
 
-    // Check if file was successfully opened
+    /**
+     * @brief Check if the file was successfully opened.
+     *
+     * @return true if the file is open and ready, false otherwise.
+     */
     bool IsOpen() const { return m_fpFile != nullptr; }
 
-    // REFACTORING: Unified section parsing (DRY pattern)
-    // Parse next section of specified type from file
-    // Returns TRUE if section found and parsed, FALSE if no more sections of that type
+    /**
+     * @brief Parse the next section of the specified type.
+     *
+     * Scans from the current position for the next section matching
+     * the target type and parses its contents into the output structure.
+     *
+     * @param eTargetType Type of section to find (POI, Polyline, or Polygon).
+     * @param oSection Output structure to receive parsed data.
+     * @return true if a section was found and parsed, false if no more sections.
+     *
+     * @note Skips sections that don't match the target type.
+     * @note Call oSection.Clear() before reusing the structure.
+     */
     bool ParseNextSection(SectionType eTargetType, PolishMapSection& oSection);
 
-    // Reset reading position to start of data sections (after header)
+    /**
+     * @brief Reset reading position to start of data sections.
+     *
+     * Resets the file position to just after the header, allowing
+     * feature sections to be re-read from the beginning.
+     */
     void ResetSectionReading();
 
-    // Story 1.4: POI section parsing (wrapper for backward compatibility)
-    // Parse next [POI] section from file
-    // Returns TRUE if POI found and parsed, FALSE if no more POI sections
+    /**
+     * @brief Parse the next [POI] section.
+     *
+     * Wrapper for backward compatibility. Equivalent to calling
+     * ParseNextSection(SectionType::POI, ...) with conversion.
+     *
+     * @param oSection Output structure to receive parsed POI data.
+     * @return true if a POI was found and parsed, false if no more POIs.
+     */
     bool ParseNextPOI(PolishMapPOISection& oSection);
 
-    // Reset reading position to start of POI sections (after header)
-    // Note: Alias for ResetSectionReading() - all layers share same position
+    /**
+     * @brief Reset reading position for POI sections.
+     *
+     * Alias for ResetSectionReading() - all layers share the same position.
+     */
     void ResetPOIReading() { ResetSectionReading(); }
 
-    // Story 1.5: POLYLINE section parsing (wrapper for backward compatibility)
-    // Parse next [POLYLINE] section from file
-    // Returns TRUE if POLYLINE found and parsed, FALSE if no more POLYLINE sections
+    /**
+     * @brief Parse the next [POLYLINE] section.
+     *
+     * Wrapper for backward compatibility.
+     *
+     * @param oSection Output structure to receive parsed POLYLINE data.
+     * @return true if a POLYLINE was found and parsed, false if no more.
+     */
     bool ParseNextPolyline(PolishMapPolylineSection& oSection);
 
-    // Reset reading position to start of POLYLINE sections (after header)
-    // Note: Alias for ResetSectionReading() - all layers share same position
+    /**
+     * @brief Reset reading position for POLYLINE sections.
+     *
+     * Alias for ResetSectionReading() - all layers share the same position.
+     */
     void ResetPolylineReading() { ResetSectionReading(); }
 
-    // Story 1.6: POLYGON section parsing (wrapper for backward compatibility)
-    // Parse next [POLYGON] section from file
-    // Returns TRUE if POLYGON found and parsed, FALSE if no more POLYGON sections
+    /**
+     * @brief Parse the next [POLYGON] section.
+     *
+     * Wrapper for backward compatibility.
+     *
+     * @param oSection Output structure to receive parsed POLYGON data.
+     * @return true if a POLYGON was found and parsed, false if no more.
+     */
     bool ParseNextPolygon(PolishMapPolygonSection& oSection);
 
-    // Reset reading position to start of POLYGON sections (after header)
-    // Note: Alias for ResetSectionReading() - all layers share same position
+    /**
+     * @brief Reset reading position for POLYGON sections.
+     *
+     * Alias for ResetSectionReading() - all layers share the same position.
+     */
     void ResetPolygonReading() { ResetSectionReading(); }
 
-    // Get current line number (for debugging)
+    /**
+     * @brief Get the current line number in the file.
+     *
+     * Useful for error messages and debugging.
+     *
+     * @return Current line number (1-based).
+     */
     int GetCurrentLine() const { return m_nCurrentLine; }
 
 private:
-    CPLString m_osFilePath;
-    VSILFILE* m_fpFile;
-    PolishMapHeaderData m_oHeaderData;
-    vsi_l_offset m_nAfterHeaderPos;  // File position after header (start of data sections)
-    int m_nCurrentLine;               // Current line number for error reporting
+    CPLString m_osFilePath;           /**< Path to the input file */
+    VSILFILE* m_fpFile;               /**< VSI file handle */
+    PolishMapHeaderData m_oHeaderData;/**< Parsed header metadata */
+    vsi_l_offset m_nAfterHeaderPos;   /**< File position after header */
+    int m_nCurrentLine;               /**< Current line number (1-based) */
 
-    // Helper methods
+    /**
+     * @brief Read the next line from the file.
+     *
+     * @param osLine Output string to receive the line content.
+     * @return true if a line was read, false on EOF or error.
+     */
     bool ReadLine(CPLString& osLine);
+
+    /**
+     * @brief Parse a key=value pair from a line.
+     *
+     * @param osLine Input line to parse.
+     * @param osKey Output key name.
+     * @param osValue Output value string.
+     * @return true if successfully parsed, false if not a key=value line.
+     */
     bool ParseKeyValue(const CPLString& osLine, CPLString& osKey, CPLString& osValue);
+
+    /**
+     * @brief Convert a string from CP1252 to UTF-8.
+     *
+     * Uses the CodePage from header metadata to determine source encoding.
+     *
+     * @param osValue Input string in source encoding.
+     * @return UTF-8 encoded string.
+     */
     CPLString RecodeToUTF8(const CPLString& osValue);
+
+    /**
+     * @brief Parse single coordinate pair from Data0 value.
+     *
+     * Parses "(lat,lon)" format into separate double values.
+     *
+     * @param osValue Input coordinate string.
+     * @param dfLat Output latitude value.
+     * @param dfLon Output longitude value.
+     * @return true if successfully parsed, false on error.
+     */
     bool ParseCoordinates(const CPLString& osValue, double& dfLat, double& dfLon);
 
-    // Story 1.5 REFACTORING: Parse coordinate LIST from Data0
-    // Format: "(lat1,lon1),(lat2,lon2),..." OR "lat1,lon1,lat2,lon2,..."
-    // Returns number of points parsed (0 on error)
+    /**
+     * @brief Parse coordinate list from Data0 value.
+     *
+     * Parses multi-point format "(lat1,lon1),(lat2,lon2),..." or
+     * simple "lat1,lon1,lat2,lon2,..." into a vector of coordinate pairs.
+     *
+     * @param osValue Input coordinate list string.
+     * @param aoCoords Output vector of (lat, lon) pairs.
+     * @return Number of points parsed (0 on error or empty input).
+     */
     int ParseCoordinateList(const CPLString& osValue,
                             std::vector<std::pair<double, double>>& aoCoords);
 };
