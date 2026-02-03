@@ -41,7 +41,8 @@ target_link_libraries(gdal_POLISHMAP PRIVATE ${GDAL_LIBRARIES})
 # This is required for GDAL to find the plugin
 set_target_properties(gdal_POLISHMAP PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    CXX_VISIBILITY_PRESET hidden
+    CXX_Vlibjson
+ISIBILITY_PRESET hidden
     PREFIX ""
 )
 
