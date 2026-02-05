@@ -247,6 +247,17 @@ target_compile_definitions(test_createfield PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - Multi-Geometry Decomposition (Story 4.2)
+add_executable(test_multigeom test/test_multigeom.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_multigeom PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_multigeom PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_multigeom PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

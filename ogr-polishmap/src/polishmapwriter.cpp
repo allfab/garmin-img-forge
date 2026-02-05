@@ -349,10 +349,11 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 }
 
 /************************************************************************/
-/*                            WritePOI()                                 */
+/*                         WriteSinglePOI()                              */
 /*                                                                      */
-/* Story 2.3 Task 2: Write POI feature to output file.                   */
-/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
+/* Story 4.2 Task 4.1: Write a single Point geometry as [POI] section.   */
+/* Extracted from WritePOI() to enable MultiPoint decomposition.         */
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
 /* Format:                                                               */
 /*   [POI]                                                               */
 /*   Type=<type_code>                                                    */
@@ -362,9 +363,91 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 /*   [END]                                                               */
 /************************************************************************/
 
+bool PolishMapWriter::WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature)
+{
+    if (poPoint == nullptr || poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOI: NULL pointer");
+        return false;
+    }
+
+    // Write [POI] section marker
+    if (!BufferedWrite("[POI]\n")) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WriteSinglePOI: failed to write [POI] marker");
+        return false;
+    }
+
+    // Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write Type");
+            return false;
+        }
+    } else {
+        // Default POI type
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POI_TYPE).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write Label");
+            return false;
+        }
+    }
+
+    // Write Data0 with 6 decimal precision
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    double dfLat = poPoint->getY();
+    double dfLon = poPoint->getX();
+
+    if (!BufferedWrite(FormatString("Data0=(%.6f,%.6f)\n", dfLat, dfLon).c_str())) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write Data0");
+        return false;
+    }
+
+    // Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Write [END] marker
+    if (!BufferedWrite("[END]\n\n")) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write [END]");
+        return false;
+    }
+
+    CPLDebug("OGR_POLISHMAP", "WriteSinglePOI: Type=%s, Label=%s, (%.6f,%.6f)",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             dfLat, dfLon);
+
+    return true;
+}
+
+/************************************************************************/
+/*                            WritePOI()                                 */
+/*                                                                      */
+/* Story 2.3 Task 2: Write POI feature to output file.                   */
+/* Story 4.2: Updated to handle wkbMultiPoint decomposition (AC3).       */
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
+/************************************************************************/
+
 bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
 {
-    // Task 2.2: Validate input
+    // Validate input
     if (poFeature == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "WritePOI: NULL feature pointer");
@@ -378,7 +461,6 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
     }
 
     // Ensure header is written before first feature
-    // If not written yet, write with default values
     if (!m_bHeaderWritten) {
         std::map<std::string, std::string> aoDefaultMetadata;
         aoDefaultMetadata["Name"] = "Untitled";
@@ -390,7 +472,7 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
         }
     }
 
-    // Task 2.2: Extract and verify geometry is Point
+    // Extract geometry
     OGRGeometry* poGeom = poFeature->GetGeometryRef();
     if (poGeom == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
@@ -398,96 +480,79 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
         return false;
     }
 
-    if (wkbFlatten(poGeom->getGeometryType()) != wkbPoint) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOI: feature geometry is not Point (type=%d)",
-                 static_cast<int>(poGeom->getGeometryType()));
-        return false;
-    }
+    OGRwkbGeometryType eType = wkbFlatten(poGeom->getGeometryType());
 
-    OGRPoint* poPoint = poGeom->toPoint();
-    if (poPoint == nullptr) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOI: failed to cast geometry to Point");
-        return false;
-    }
-
-    // Story 3.1: Use buffered writing for performance (NFR2)
-    // Write [POI] section marker
-    if (!BufferedWrite("[POI]\n")) {
-        CPLError(CE_Failure, CPLE_FileIO,
-                 "WritePOI: failed to write [POI] marker");
-        return false;
-    }
-
-    // Task 2.4: Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
-    if (pszType != nullptr && pszType[0] != '\0') {
-        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Type");
+    // Story 4.2 Task 1: Handle wkbMultiPoint - decompose into multiple [POI] sections
+    if (eType == wkbMultiPoint) {
+        OGRMultiPoint* poMulti = poGeom->toMultiPoint();
+        if (poMulti == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOI: failed to cast geometry to MultiPoint");
             return false;
         }
-    } else {
-        // Default POI type
-        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POI_TYPE).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write default Type");
+
+        int nParts = poMulti->getNumGeometries();
+        int nWritten = 0;  // M1 Fix: Count written parts
+        CPLDebug("OGR_POLISHMAP", "WritePOI: Decomposing MultiPoint with %d parts", nParts);
+
+        for (int i = 0; i < nParts; i++) {
+            OGRGeometry* poPartGeom = poMulti->getGeometryRef(i);
+            if (poPartGeom == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOI: Skipping NULL part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            OGRPoint* poPart = poPartGeom->toPoint();
+            if (poPart == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOI: Skipping non-Point part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            if (!WriteSinglePOI(poPart, poFeature)) {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "WritePOI: Failed to write part %d/%d of MultiPoint",
+                         i + 1, nParts);
+                return false;
+            }
+            nWritten++;
+        }
+
+        // M1 Fix: Warn if all parts were skipped
+        if (nWritten == 0 && nParts > 0) {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "WritePOI: All %d parts of MultiPoint were empty/invalid - nothing written",
+                     nParts);
+        }
+
+        CPLDebug("OGR_POLISHMAP", "WritePOI: Wrote %d/%d valid parts from MultiPoint",
+                 nWritten, nParts);
+        return true;
+    }
+
+    // Handle simple Point geometry
+    if (eType == wkbPoint) {
+        OGRPoint* poPoint = poGeom->toPoint();
+        if (poPoint == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOI: failed to cast geometry to Point");
             return false;
         }
+        return WriteSinglePOI(poPoint, poFeature);
     }
 
-    // Task 2.4, 2.5, 2.7: Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
-    if (pszLabel != nullptr && pszLabel[0] != '\0') {
-        // Task 2.5: Convert UTF-8 to CP1252
-        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Label");
-            return false;
-        }
-    }
-    // Task 2.7: If Label is empty/null, omit the line entirely
-
-    // Task 2.3: Write Data0 with 6 decimal precision
-    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
-    // OGRPoint: getX() = longitude, getY() = latitude
-    double dfLat = poPoint->getY();
-    double dfLon = poPoint->getX();
-
-    if (!BufferedWrite(FormatString("Data0=(%.6f,%.6f)\n", dfLat, dfLon).c_str())) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write Data0");
-        return false;
-    }
-
-    // Task 2.4, 2.7: Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
-    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write EndLevel");
-            return false;
-        }
-    }
-
-    // Task 2.6: Write [END] marker (Polish Map format standard)
-    // Note: Polish Map uses [END] for all sections, not [END-POI]
-    if (!BufferedWrite("[END]\n\n")) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOI: failed to write [END]");
-        return false;
-    }
-
-    CPLDebug("OGR_POLISHMAP", "WritePOI: Type=%s, Label=%s, (%.6f,%.6f)",
-             pszType ? pszType : "(default)",
-             pszLabel ? pszLabel : "(null)",
-             dfLat, dfLon);
-
-    return true;
+    // Unsupported geometry type
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "WritePOI: feature geometry is not Point or MultiPoint (type=%d)",
+             static_cast<int>(poGeom->getGeometryType()));
+    return false;
 }
 
 /************************************************************************/
-/*                          WritePOLYLINE()                              */
+/*                       WriteSinglePOLYLINE()                           */
 /*                                                                      */
-/* Story 2.4 Task 1: Write POLYLINE feature to output file.              */
-/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
+/* Story 4.2 Task 4.2: Write a single LineString as [POLYLINE] section.  */
+/* Extracted from WritePOLYLINE() to enable MultiLineString decomposition*/
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
 /* Format:                                                               */
 /*   [POLYLINE]                                                          */
 /*   Type=<type_code>                                                    */
@@ -498,9 +563,120 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
 /*   [END]                                                               */
 /************************************************************************/
 
+bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poFeature)
+{
+    if (poLine == nullptr || poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYLINE: NULL pointer");
+        return false;
+    }
+
+    // Validate minimum 2 points for valid POLYLINE
+    int nNumPoints = poLine->getNumPoints();
+    if (nNumPoints < 2) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYLINE: LineString has less than 2 points (%d)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Write [POLYLINE] section marker
+    if (!BufferedWrite("[POLYLINE]\n")) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WriteSinglePOLYLINE: failed to write [POLYLINE] marker");
+        return false;
+    }
+
+    // Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Type");
+            return false;
+        }
+    } else {
+        // Default POLYLINE type
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYLINE_TYPE).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Label");
+            return false;
+        }
+    }
+
+    // Write Data0 coordinates (ALL points on ONE line)
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    std::string osData0 = "Data0=";
+    osData0.reserve(static_cast<size_t>(nNumPoints) * 30);
+
+    for (int i = 0; i < nNumPoints; i++) {
+        double dfLat = poLine->getY(i);
+        double dfLon = poLine->getX(i);
+
+        if (i > 0) {
+            osData0 += ",";
+        }
+        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
+    }
+    osData0 += "\n";
+
+    if (!BufferedWrite(osData0.c_str())) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Data0");
+        return false;
+    }
+
+    // Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Extract and write Levels field (optional)
+    const char* pszLevels = poFeature->GetFieldAsString("Levels");
+    if (pszLevels != nullptr && pszLevels[0] != '\0') {
+        if (!BufferedWrite(FormatString("Levels=%s\n", pszLevels).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Levels");
+            return false;
+        }
+    }
+
+    // Write [END] marker
+    if (!BufferedWrite("[END]\n\n")) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write [END]");
+        return false;
+    }
+
+    CPLDebug("OGR_POLISHMAP", "WriteSinglePOLYLINE: Type=%s, Label=%s, %d points",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             nNumPoints);
+
+    return true;
+}
+
+/************************************************************************/
+/*                          WritePOLYLINE()                              */
+/*                                                                      */
+/* Story 2.4 Task 1: Write POLYLINE feature to output file.              */
+/* Story 4.2: Updated to handle wkbMultiLineString decomposition (AC2).  */
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
+/************************************************************************/
+
 bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
 {
-    // Task 1.1-1.2: Validate input
+    // Validate input
     if (poFeature == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "WritePOLYLINE: NULL feature pointer");
@@ -514,7 +690,6 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
     }
 
     // Ensure header is written before first feature
-    // If not written yet, write with default values
     if (!m_bHeaderWritten) {
         std::map<std::string, std::string> aoDefaultMetadata;
         aoDefaultMetadata["Name"] = "Untitled";
@@ -526,7 +701,7 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
         }
     }
 
-    // Task 1.2-1.3: Extract and verify geometry is LineString
+    // Extract geometry
     OGRGeometry* poGeom = poFeature->GetGeometryRef();
     if (poGeom == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
@@ -534,128 +709,86 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
         return false;
     }
 
-    if (wkbFlatten(poGeom->getGeometryType()) != wkbLineString) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYLINE: feature geometry is not LineString (type=%d)",
-                 static_cast<int>(poGeom->getGeometryType()));
-        return false;
-    }
+    OGRwkbGeometryType eType = wkbFlatten(poGeom->getGeometryType());
 
-    OGRLineString* poLine = poGeom->toLineString();
-    if (poLine == nullptr) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYLINE: failed to cast geometry to LineString");
-        return false;
-    }
-
-    // Task 1.4: Validate minimum 2 points for valid POLYLINE
-    int nNumPoints = poLine->getNumPoints();
-    if (nNumPoints < 2) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYLINE: LineString has less than 2 points (%d)",
-                 nNumPoints);
-        return false;
-    }
-
-    // Story 3.1: Use buffered writing for performance (NFR2)
-    // Task 1.9: Write [POLYLINE] section marker
-    if (!BufferedWrite("[POLYLINE]\n")) {
-        CPLError(CE_Failure, CPLE_FileIO,
-                 "WritePOLYLINE: failed to write [POLYLINE] marker");
-        return false;
-    }
-
-    // Task 1.7: Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
-    if (pszType != nullptr && pszType[0] != '\0') {
-        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Type");
+    // Story 4.2 Task 2: Handle wkbMultiLineString - decompose into multiple [POLYLINE] sections
+    if (eType == wkbMultiLineString) {
+        OGRMultiLineString* poMulti = poGeom->toMultiLineString();
+        if (poMulti == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOLYLINE: failed to cast geometry to MultiLineString");
             return false;
         }
-    } else {
-        // Default POLYLINE type
-        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYLINE_TYPE).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write default Type");
+
+        int nParts = poMulti->getNumGeometries();
+        int nWritten = 0;  // M1 Fix: Count written parts
+        CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Decomposing MultiLineString with %d parts", nParts);
+
+        for (int i = 0; i < nParts; i++) {
+            OGRGeometry* poPartGeom = poMulti->getGeometryRef(i);
+            if (poPartGeom == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Skipping NULL part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            OGRLineString* poPart = poPartGeom->toLineString();
+            if (poPart == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Skipping non-LineString part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            // Skip degenerate parts (< 2 points)
+            if (poPart->getNumPoints() < 2) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Skipping degenerate part %d/%d (%d points)",
+                         i + 1, nParts, poPart->getNumPoints());
+                continue;
+            }
+
+            if (!WriteSinglePOLYLINE(poPart, poFeature)) {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "WritePOLYLINE: Failed to write part %d/%d of MultiLineString",
+                         i + 1, nParts);
+                return false;
+            }
+            nWritten++;
+        }
+
+        // M1 Fix: Warn if all parts were skipped
+        if (nWritten == 0 && nParts > 0) {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "WritePOLYLINE: All %d parts of MultiLineString were empty/degenerate - nothing written",
+                     nParts);
+        }
+
+        CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Wrote %d/%d valid parts from MultiLineString",
+                 nWritten, nParts);
+        return true;
+    }
+
+    // Handle simple LineString geometry
+    if (eType == wkbLineString) {
+        OGRLineString* poLine = poGeom->toLineString();
+        if (poLine == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOLYLINE: failed to cast geometry to LineString");
             return false;
         }
+        return WriteSinglePOLYLINE(poLine, poFeature);
     }
 
-    // Task 1.7-1.8, 1.10: Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
-    if (pszLabel != nullptr && pszLabel[0] != '\0') {
-        // Task 1.8: Convert UTF-8 to CP1252
-        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Label");
-            return false;
-        }
-    }
-    // Task 1.10: If Label is empty/null, omit the line entirely
-
-    // Task 1.5-1.6: Write Data0 coordinates (ALL points on ONE line)
-    // Story 3.1: Build coordinate string in buffer before writing (NFR2)
-    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
-    // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...
-    std::string osData0 = "Data0=";
-    osData0.reserve(static_cast<size_t>(nNumPoints) * 30);  // Estimate ~30 chars per coord pair
-
-    for (int i = 0; i < nNumPoints; i++) {
-        double dfLat = poLine->getY(i);  // Latitude = Y
-        double dfLon = poLine->getX(i);  // Longitude = X
-
-        // Task 1.5: Add comma separator between coordinate pairs
-        if (i > 0) {
-            osData0 += ",";
-        }
-
-        // Task 1.6: Format with 6 decimals
-        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
-    }
-    osData0 += "\n";
-
-    if (!BufferedWrite(osData0.c_str())) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Data0");
-        return false;
-    }
-
-    // Task 1.7, 1.10: Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
-    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write EndLevel");
-            return false;
-        }
-    }
-
-    // Task 1.7, 1.10: Extract and write Levels field (optional)
-    const char* pszLevels = poFeature->GetFieldAsString("Levels");
-    if (pszLevels != nullptr && pszLevels[0] != '\0') {
-        if (!BufferedWrite(FormatString("Levels=%s\n", pszLevels).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write Levels");
-            return false;
-        }
-    }
-
-    // Task 1.9: Write [END] marker (Polish Map format standard)
-    if (!BufferedWrite("[END]\n\n")) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYLINE: failed to write [END]");
-        return false;
-    }
-
-    CPLDebug("OGR_POLISHMAP", "WritePOLYLINE: Type=%s, Label=%s, %d points",
-             pszType ? pszType : "(default)",
-             pszLabel ? pszLabel : "(null)",
-             nNumPoints);
-
-    return true;
+    // Unsupported geometry type
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "WritePOLYLINE: feature geometry is not LineString or MultiLineString (type=%d)",
+             static_cast<int>(poGeom->getGeometryType()));
+    return false;
 }
 
 /************************************************************************/
-/*                          WritePOLYGON()                               */
+/*                       WriteSinglePOLYGON()                            */
 /*                                                                      */
-/* Story 2.5 Task 1: Write POLYGON feature to output file.               */
-/* Story 3.1: Updated to use buffered writing (NFR2 performance)         */
+/* Story 4.2 Task 4.3: Write a single Polygon as [POLYGON] section.      */
+/* Extracted from WritePOLYGON() to enable MultiPolygon decomposition.   */
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
 /* Format:                                                               */
 /*   [POLYGON]                                                           */
 /*   Type=<type_code>                                                    */
@@ -665,9 +798,171 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
 /*   [END]                                                               */
 /************************************************************************/
 
+bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFeature)
+{
+    if (poPolygon == nullptr || poFeature == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYGON: NULL pointer");
+        return false;
+    }
+
+    // Extract exterior ring
+    OGRLinearRing* poRing = poPolygon->getExteriorRing();
+    if (poRing == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYGON: Polygon has no exterior ring");
+        return false;
+    }
+
+    // M3 Fix: Warn if interior rings (holes) are present - they will be ignored
+    int nInteriorRings = poPolygon->getNumInteriorRings();
+    if (nInteriorRings > 0) {
+        CPLError(CE_Warning, CPLE_AppDefined,
+                 "WriteSinglePOLYGON: Polygon has %d interior ring(s) (holes) which will be ignored - "
+                 "Polish Map format does not support polygon holes",
+                 nInteriorRings);
+    }
+
+    // Validate minimum 3 points for valid POLYGON
+    int nNumPoints = poRing->getNumPoints();
+    if (nNumPoints < 3) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYGON: Polygon exterior ring has less than 3 points (%d)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Validate polygon is not degenerate (all points at same location)
+    bool bIsDegenerate = true;
+    double dfRefLat = poRing->getY(0);
+    double dfRefLon = poRing->getX(0);
+    for (int i = 1; i < nNumPoints && bIsDegenerate; i++) {
+        if (fabs(poRing->getY(i) - dfRefLat) > RING_CLOSURE_TOLERANCE ||
+            fabs(poRing->getX(i) - dfRefLon) > RING_CLOSURE_TOLERANCE) {
+            bIsDegenerate = false;
+        }
+    }
+    if (bIsDegenerate) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "WriteSinglePOLYGON: Polygon is degenerate (all %d points at same location)",
+                 nNumPoints);
+        return false;
+    }
+
+    // Warn about very large polygons
+    if (nNumPoints > LARGE_POLYGON_WARNING_THRESHOLD) {
+        CPLDebug("OGR_POLISHMAP",
+                 "WriteSinglePOLYGON: Large polygon with %d points (performance warning)",
+                 nNumPoints);
+    }
+
+    // Check if ring needs auto-closing
+    double dfFirstLat = poRing->getY(0);
+    double dfFirstLon = poRing->getX(0);
+    double dfLastLat = poRing->getY(nNumPoints - 1);
+    double dfLastLon = poRing->getX(nNumPoints - 1);
+    bool bNeedsClosing = (fabs(dfFirstLat - dfLastLat) > RING_CLOSURE_TOLERANCE ||
+                          fabs(dfFirstLon - dfLastLon) > RING_CLOSURE_TOLERANCE);
+
+    if (bNeedsClosing) {
+        CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring for writing");
+    }
+
+    // Write [POLYGON] section marker
+    if (!BufferedWrite("[POLYGON]\n")) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "WriteSinglePOLYGON: failed to write [POLYGON] marker");
+        return false;
+    }
+
+    // Extract and write Type field (required)
+    const char* pszType = poFeature->GetFieldAsString("Type");
+    if (pszType != nullptr && pszType[0] != '\0') {
+        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write Type");
+            return false;
+        }
+    } else {
+        // Default POLYGON type
+        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYGON_TYPE).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write default Type");
+            return false;
+        }
+    }
+
+    // Extract and write Label field (optional)
+    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    if (pszLabel != nullptr && pszLabel[0] != '\0') {
+        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
+        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write Label");
+            return false;
+        }
+    }
+
+    // Write Data0 coordinates (ALL points on ONE line, closed ring)
+    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
+    std::string osData0 = "Data0=";
+    osData0.reserve(static_cast<size_t>(nNumPoints + 1) * 30);
+
+    for (int i = 0; i < nNumPoints; i++) {
+        double dfLat = poRing->getY(i);
+        double dfLon = poRing->getX(i);
+
+        if (i > 0) {
+            osData0 += ",";
+        }
+        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
+    }
+
+    // Auto-close ring if needed (duplicate first point)
+    if (bNeedsClosing) {
+        osData0 += FormatString(",(%.6f,%.6f)", dfFirstLat, dfFirstLon);
+    }
+    osData0 += "\n";
+
+    if (!BufferedWrite(osData0.c_str())) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write Data0");
+        return false;
+    }
+
+    // Extract and write EndLevel field (optional)
+    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
+        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write EndLevel");
+            return false;
+        }
+    }
+
+    // Write [END] marker
+    if (!BufferedWrite("[END]\n\n")) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write [END]");
+        return false;
+    }
+
+    int nWrittenPoints = bNeedsClosing ? nNumPoints + 1 : nNumPoints;
+    CPLDebug("OGR_POLISHMAP", "WriteSinglePOLYGON: Type=%s, Label=%s, %d points%s",
+             pszType ? pszType : "(default)",
+             pszLabel ? pszLabel : "(null)",
+             nWrittenPoints,
+             bNeedsClosing ? " (auto-closed)" : "");
+
+    return true;
+}
+
+/************************************************************************/
+/*                          WritePOLYGON()                               */
+/*                                                                      */
+/* Story 2.5 Task 1: Write POLYGON feature to output file.               */
+/* Story 4.2: Updated to handle wkbMultiPolygon decomposition (AC1).     */
+/* Story 3.1: Uses buffered writing (NFR2 performance)                   */
+/************************************************************************/
+
 bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
 {
-    // Task 1.2: Validate input
+    // Validate input
     if (poFeature == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "WritePOLYGON: NULL feature pointer");
@@ -692,7 +987,7 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
         }
     }
 
-    // Task 1.2: Extract geometry via GetGeometryRef()
+    // Extract geometry
     OGRGeometry* poGeom = poFeature->GetGeometryRef();
     if (poGeom == nullptr) {
         CPLError(CE_Failure, CPLE_AppDefined,
@@ -700,162 +995,77 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
         return false;
     }
 
-    // Task 1.3: Validate geometry is Polygon
-    if (wkbFlatten(poGeom->getGeometryType()) != wkbPolygon) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYGON: feature geometry is not Polygon (type=%d)",
-                 static_cast<int>(poGeom->getGeometryType()));
-        return false;
-    }
+    OGRwkbGeometryType eType = wkbFlatten(poGeom->getGeometryType());
 
-    OGRPolygon* poPolygon = poGeom->toPolygon();
-    if (poPolygon == nullptr) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYGON: failed to cast geometry to Polygon");
-        return false;
-    }
-
-    // Task 1.4: Extract exterior ring
-    OGRLinearRing* poRing = poPolygon->getExteriorRing();
-    if (poRing == nullptr) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYGON: Polygon has no exterior ring");
-        return false;
-    }
-
-    // Task 1.5: Validate minimum 3 points for valid POLYGON
-    int nNumPoints = poRing->getNumPoints();
-    if (nNumPoints < 3) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYGON: Polygon exterior ring has less than 3 points (%d)",
-                 nNumPoints);
-        return false;
-    }
-
-    // Code Review Fix H2: Validate polygon is not degenerate (all points at same location)
-    bool bIsDegenerate = true;
-    double dfRefLat = poRing->getY(0);
-    double dfRefLon = poRing->getX(0);
-    for (int i = 1; i < nNumPoints && bIsDegenerate; i++) {
-        if (fabs(poRing->getY(i) - dfRefLat) > RING_CLOSURE_TOLERANCE ||
-            fabs(poRing->getX(i) - dfRefLon) > RING_CLOSURE_TOLERANCE) {
-            bIsDegenerate = false;
-        }
-    }
-    if (bIsDegenerate) {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "WritePOLYGON: Polygon is degenerate (all %d points at same location)",
-                 nNumPoints);
-        return false;
-    }
-
-    // Code Review Fix M4: Warn about very large polygons
-    if (nNumPoints > LARGE_POLYGON_WARNING_THRESHOLD) {
-        CPLDebug("OGR_POLISHMAP",
-                 "WritePOLYGON: Large polygon with %d points (performance warning)",
-                 nNumPoints);
-    }
-
-    // Task 1.6-1.7: Check if ring needs auto-closing
-    double dfFirstLat = poRing->getY(0);
-    double dfFirstLon = poRing->getX(0);
-    double dfLastLat = poRing->getY(nNumPoints - 1);
-    double dfLastLon = poRing->getX(nNumPoints - 1);
-    bool bNeedsClosing = (fabs(dfFirstLat - dfLastLat) > RING_CLOSURE_TOLERANCE ||
-                          fabs(dfFirstLon - dfLastLon) > RING_CLOSURE_TOLERANCE);
-
-    if (bNeedsClosing) {
-        CPLDebug("OGR_POLISHMAP", "Auto-closing POLYGON ring for writing");
-    }
-
-    // Story 3.1: Use buffered writing for performance (NFR2)
-    // Task 1.12: Write [POLYGON] section marker
-    if (!BufferedWrite("[POLYGON]\n")) {
-        CPLError(CE_Failure, CPLE_FileIO,
-                 "WritePOLYGON: failed to write [POLYGON] marker");
-        return false;
-    }
-
-    // Task 1.10: Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
-    if (pszType != nullptr && pszType[0] != '\0') {
-        if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Type");
+    // Story 4.2 Task 3: Handle wkbMultiPolygon - decompose into multiple [POLYGON] sections
+    if (eType == wkbMultiPolygon) {
+        OGRMultiPolygon* poMulti = poGeom->toMultiPolygon();
+        if (poMulti == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOLYGON: failed to cast geometry to MultiPolygon");
             return false;
         }
-    } else {
-        // Task 1.14: Default POLYGON type
-        if (!BufferedWrite(FormatString("Type=%s\n", DEFAULT_POLYGON_TYPE).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write default Type");
+
+        int nParts = poMulti->getNumGeometries();
+        int nWritten = 0;
+        CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Decomposing MultiPolygon with %d parts", nParts);
+
+        for (int i = 0; i < nParts; i++) {
+            OGRGeometry* poPartGeom = poMulti->getGeometryRef(i);
+            if (poPartGeom == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Skipping NULL part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            OGRPolygon* poPart = poPartGeom->toPolygon();
+            if (poPart == nullptr) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Skipping non-Polygon part %d/%d", i + 1, nParts);
+                continue;
+            }
+
+            // Story 4.2: Skip empty/degenerate parts - don't fail entire operation
+            OGRLinearRing* poRing = poPart->getExteriorRing();
+            if (poRing == nullptr || poRing->getNumPoints() < 3) {
+                CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Skipping degenerate part %d/%d (< 3 points)",
+                         i + 1, nParts);
+                continue;
+            }
+
+            if (!WriteSinglePOLYGON(poPart, poFeature)) {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "WritePOLYGON: Failed to write part %d/%d of MultiPolygon",
+                         i + 1, nParts);
+                return false;
+            }
+            nWritten++;
+        }
+
+        // H4 Fix: Warn if all parts were skipped
+        if (nWritten == 0 && nParts > 0) {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "WritePOLYGON: All %d parts of MultiPolygon were empty/degenerate - nothing written",
+                     nParts);
+        }
+
+        CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Wrote %d/%d valid parts from MultiPolygon",
+                 nWritten, nParts);
+        return true;
+    }
+
+    // Handle simple Polygon geometry
+    if (eType == wkbPolygon) {
+        OGRPolygon* poPolygon = poGeom->toPolygon();
+        if (poPolygon == nullptr) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "WritePOLYGON: failed to cast geometry to Polygon");
             return false;
         }
+        return WriteSinglePOLYGON(poPolygon, poFeature);
     }
 
-    // Task 1.10-1.11, 1.13: Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
-    if (pszLabel != nullptr && pszLabel[0] != '\0') {
-        // Task 1.11: Convert UTF-8 to CP1252
-        std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
-        if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Label");
-            return false;
-        }
-    }
-    // Task 1.13: If Label is empty/null, omit the line entirely
-
-    // Task 1.8-1.9: Write Data0 coordinates (ALL points on ONE line, closed ring)
-    // Story 3.1: Build coordinate string in buffer before writing (NFR2)
-    // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
-    // Format: Data0=(lat1,lon1),(lat2,lon2),(lat3,lon3),...,(lat1,lon1)
-    std::string osData0 = "Data0=";
-    osData0.reserve(static_cast<size_t>(nNumPoints + 1) * 30);  // Estimate ~30 chars per coord pair
-
-    for (int i = 0; i < nNumPoints; i++) {
-        double dfLat = poRing->getY(i);  // Latitude = Y
-        double dfLon = poRing->getX(i);  // Longitude = X
-
-        // Task 1.8: Add comma separator between coordinate pairs
-        if (i > 0) {
-            osData0 += ",";
-        }
-
-        // Task 1.9: Format with 6 decimals
-        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
-    }
-
-    // Task 1.7: Auto-close ring if needed (duplicate first point)
-    if (bNeedsClosing) {
-        osData0 += FormatString(",(%.6f,%.6f)", dfFirstLat, dfFirstLon);
-    }
-    osData0 += "\n";
-
-    if (!BufferedWrite(osData0.c_str())) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write Data0");
-        return false;
-    }
-
-    // Task 1.10, 1.13: Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
-    if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
-        if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
-            CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write EndLevel");
-            return false;
-        }
-    }
-
-    // Task 1.12: Write [END] marker (Polish Map format standard)
-    if (!BufferedWrite("[END]\n\n")) {
-        CPLError(CE_Failure, CPLE_FileIO, "WritePOLYGON: failed to write [END]");
-        return false;
-    }
-
-    int nWrittenPoints = bNeedsClosing ? nNumPoints + 1 : nNumPoints;
-    CPLDebug("OGR_POLISHMAP", "WritePOLYGON: Type=%s, Label=%s, %d points%s",
-             pszType ? pszType : "(default)",
-             pszLabel ? pszLabel : "(null)",
-             nWrittenPoints,
-             bNeedsClosing ? " (auto-closed)" : "");
-
-    return true;
+    // Unsupported geometry type
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "WritePOLYGON: feature geometry is not Polygon or MultiPolygon (type=%d)",
+             static_cast<int>(poGeom->getGeometryType()));
+    return false;
 }

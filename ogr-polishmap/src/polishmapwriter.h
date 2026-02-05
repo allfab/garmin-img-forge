@@ -209,6 +209,42 @@ private:
      * On failure, logs CE_Warning and returns original value as fallback.
      */
     std::string RecodeToCP1252(const std::string& osUTF8Value);
+
+    // Story 4.2: Helper methods for single geometry writing (multi-geometry decomposition)
+
+    /**
+     * @brief Write a single Point geometry as [POI] section.
+     * @param poPoint Point geometry to write
+     * @param poFeature Feature containing attributes (Type, Label, EndLevel)
+     * @return true if successful, false on error
+     *
+     * Story 4.2 Task 4.1: Extracted from WritePOI() to enable MultiPoint decomposition.
+     * Writes [POI] section with Type, Label, Data0, EndLevel fields.
+     */
+    bool WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature);
+
+    /**
+     * @brief Write a single LineString geometry as [POLYLINE] section.
+     * @param poLine LineString geometry to write
+     * @param poFeature Feature containing attributes (Type, Label, EndLevel, Levels)
+     * @return true if successful, false on error
+     *
+     * Story 4.2 Task 4.2: Extracted from WritePOLYLINE() to enable MultiLineString decomposition.
+     * Writes [POLYLINE] section with Type, Label, Data0, EndLevel, Levels fields.
+     */
+    bool WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poFeature);
+
+    /**
+     * @brief Write a single Polygon geometry as [POLYGON] section.
+     * @param poPolygon Polygon geometry to write
+     * @param poFeature Feature containing attributes (Type, Label, EndLevel)
+     * @return true if successful, false on error
+     *
+     * Story 4.2 Task 4.3: Extracted from WritePOLYGON() to enable MultiPolygon decomposition.
+     * Writes [POLYGON] section with Type, Label, Data0, EndLevel fields.
+     * Auto-closes open rings by duplicating first point.
+     */
+    bool WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFeature);
 };
 
 #endif /* POLISHMAPWRITER_H_INCLUDED */
