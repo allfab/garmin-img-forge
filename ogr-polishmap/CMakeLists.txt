@@ -236,6 +236,17 @@ target_include_directories(test_driver_metadata PRIVATE
 )
 target_link_libraries(test_driver_metadata PRIVATE ${GDAL_LIBRARIES})
 
+# Test executable - CreateField (Story 4.1)
+add_executable(test_createfield test/test_createfield.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_createfield PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_createfield PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_createfield PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

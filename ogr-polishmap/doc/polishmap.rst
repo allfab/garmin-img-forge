@@ -94,7 +94,7 @@ Driver Capabilities
 +-------------------------+--------+
 | OLCFastGetExtent        | No     |
 +-------------------------+--------+
-| OLCCreateField          | No     |
+| OLCCreateField          | Yes*   |
 +-------------------------+--------+
 | OLCDeleteField          | No     |
 +-------------------------+--------+
@@ -106,6 +106,50 @@ Driver Capabilities
 +-------------------------+--------+
 | OLCStringsAsUTF8        | Yes    |
 +-------------------------+--------+
+
+\* OLCCreateField is only supported in write mode.
+
+Field Mapping (CreateField Behavior)
+------------------------------------
+
+When converting from other formats (such as Shapefile or GeoJSON) using
+``ogr2ogr``, the driver implements an **accept-and-map** pattern for field
+handling:
+
+- **All fields are accepted**: The driver returns ``OGRERR_NONE`` for any
+  ``CreateField()`` call, ensuring compatibility with any source format.
+- **Known fields are mapped**: Fields matching the Polish Map schema are
+  tracked and their values are written to the output file.
+- **Unknown fields are silently ignored**: Fields that don't match the
+  Polish Map schema are accepted but their values are not written.
+
+This approach enables seamless conversion from any source format without
+errors, while preserving only the attributes meaningful for Polish Map files.
+
+**Known Polish Map Fields** (case-insensitive matching):
+
++------------------+-----------------------------------+
+| Field Name       | Description                       |
++==================+===================================+
+| Type             | Garmin type code (e.g., "0x2C00") |
++------------------+-----------------------------------+
+| Label            | Feature label/name                |
++------------------+-----------------------------------+
+| Data0..Data9     | Coordinate data strings           |
++------------------+-----------------------------------+
+| EndLevel         | Maximum display zoom level (0-9)  |
++------------------+-----------------------------------+
+| Levels           | Display zoom range (e.g., "0-3")  |
++------------------+-----------------------------------+
+
+**Example: Converting Shapefile to Polish Map**::
+
+    # Convert roads shapefile - unknown fields like "ROAD_CLASS" are ignored
+    ogr2ogr -f "PolishMap" roads.mp roads.shp
+
+    # Convert with SQL to map source fields to Polish Map fields
+    ogr2ogr -f "PolishMap" output.mp input.shp \
+        -sql "SELECT NAME AS Label, TYPE_CODE AS Type FROM input"
 
 Dataset Creation Options
 ------------------------

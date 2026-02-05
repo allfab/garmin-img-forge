@@ -30,6 +30,8 @@
 
 #include "ogrsf_frmts.h"
 #include "ogr_spatialref.h"
+#include <set>
+#include <string>
 
 // Forward declarations
 class PolishMapParser;
@@ -87,6 +89,17 @@ private:
     // Story 2.3: Write mode support
     bool m_bWriteMode;                 // true if layer is in write mode
     PolishMapWriter* m_poWriter;       // Non-owning pointer to writer (write mode only)
+
+    /**
+     * @brief Set of field names mapped to Polish Map schema.
+     *
+     * Story 4.1: Tracks which source fields have been mapped to Polish Map
+     * attributes via CreateField(). Used for accept-and-map pattern to enable
+     * ogr2ogr compatibility with any source format.
+     *
+     * @see CreateField()
+     */
+    std::set<std::string> m_oMappedFields;
 
 public:
     /**
@@ -207,6 +220,30 @@ protected:
      * @note This is the protected implementation called by CreateFeature().
      */
     OGRErr ICreateFeature(OGRFeature* poFeature) override;
+
+    /**
+     * @brief Accept and map field definitions from source layer.
+     *
+     * Implements the "accept-and-map" pattern for ogr2ogr compatibility.
+     * All fields are accepted (returns OGRERR_NONE), but only fields matching
+     * the Polish Map schema are tracked for output:
+     * - Type: Feature type code
+     * - Label: Feature label/name
+     * - Data[0-9]+: Data fields
+     * - EndLevel: Maximum zoom level
+     * - Levels: Zoom level range
+     *
+     * Unknown fields are silently ignored to allow seamless conversion
+     * from any source format.
+     *
+     * @param poField Field definition to process.
+     * @param bApproxOK Approximate match flag (unused, always accepts).
+     * @return OGRERR_NONE always (accept-and-ignore pattern).
+     *
+     * @note Story 4.1: Enables ogr2ogr conversion from Shapefile to Polish Map.
+     * @see TestCapability(OLCCreateField)
+     */
+    OGRErr CreateField(const OGRFieldDefn* poField, int bApproxOK = TRUE) override;
 
 private:
     /**
