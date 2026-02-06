@@ -28,6 +28,7 @@
 #include "ogrpolishmaplayer.h"
 #include "polishmapparser.h"
 #include "polishmapwriter.h"
+#include "polishmapfields.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_string.h"
@@ -97,26 +98,17 @@ void OGRPolishMapLayer::InitializeLayerDefn(const char* pszLayerName,
     m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
 
-    // Add standard field definitions (FR38)
-    // Type: Garmin type code (e.g., "0x2C00")
-    OGRFieldDefn oFieldType("Type", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldType);
+    // Add field definitions based on layer type (extended attributes)
+    unsigned int nLayerFlag = GetLayerFlag(pszLayerName);
+    auto aoFields = GetFieldsForLayer(nLayerFlag);
+    for (const auto* pDef : aoFields) {
+        OGRFieldDefn oField(pDef->pszName, pDef->eType);
+        m_poFeatureDefn->AddFieldDefn(&oField);
+    }
 
-    // Label: Feature name/label
-    OGRFieldDefn oFieldLabel("Label", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldLabel);
-
-    // Data0: Numeric data field (unused for POI, coordinates in geometry)
+    // Data0: Numeric data field added separately (coordinates in geometry)
     OGRFieldDefn oFieldData0("Data0", OFTInteger);
     m_poFeatureDefn->AddFieldDefn(&oFieldData0);
-
-    // EndLevel: Maximum zoom level (0-9)
-    OGRFieldDefn oFieldEndLevel("EndLevel", OFTInteger);
-    m_poFeatureDefn->AddFieldDefn(&oFieldEndLevel);
-
-    // Levels: Level range string (e.g., "0-3")
-    OGRFieldDefn oFieldLevels("Levels", OFTString);
-    m_poFeatureDefn->AddFieldDefn(&oFieldLevels);
 }
 
 /************************************************************************/
@@ -228,6 +220,14 @@ OGRFeature* OGRPolishMapLayer::GetNextPOIFeature() {
             poFeature->SetField("Levels", oSection.osLevels.c_str());
         }
 
+        // Populate extended attributes from aoOtherFields
+        for (const auto& kv : oSection.aoOtherFields) {
+            int nFieldIdx = poFeature->GetFieldIndex(kv.first.c_str());
+            if (nFieldIdx >= 0) {
+                poFeature->SetField(nFieldIdx, kv.second.c_str());
+            }
+        }
+
         // Apply spatial and attribute filters (inherited from OGRLayer)
         if ((m_poFilterGeom == nullptr || FilterGeometry(poFeature->GetGeomFieldRef(0))) &&
             (m_poAttrQuery == nullptr || m_poAttrQuery->Evaluate(poFeature))) {
@@ -290,6 +290,14 @@ OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
 
         if (!oSection.osLevels.empty()) {
             poFeature->SetField("Levels", oSection.osLevels.c_str());
+        }
+
+        // Populate extended attributes from aoOtherFields
+        for (const auto& kv : oSection.aoOtherFields) {
+            int nFieldIdx = poFeature->GetFieldIndex(kv.first.c_str());
+            if (nFieldIdx >= 0) {
+                poFeature->SetField(nFieldIdx, kv.second.c_str());
+            }
         }
 
         // Apply spatial and attribute filters (inherited from OGRLayer)
@@ -373,6 +381,14 @@ OGRFeature* OGRPolishMapLayer::GetNextPolygonFeature() {
 
         if (!oSection.osLevels.empty()) {
             poFeature->SetField("Levels", oSection.osLevels.c_str());
+        }
+
+        // Populate extended attributes from aoOtherFields
+        for (const auto& kv : oSection.aoOtherFields) {
+            int nFieldIdx = poFeature->GetFieldIndex(kv.first.c_str());
+            if (nFieldIdx >= 0) {
+                poFeature->SetField(nFieldIdx, kv.second.c_str());
+            }
         }
 
         // Apply spatial and attribute filters (inherited from OGRLayer)
@@ -555,56 +571,52 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
 
     const char* pszFieldName = poField->GetNameRef();
 
-    // Task 1.2-1.3: Case-insensitive matching for known Polish Map fields
-    if (EQUAL(pszFieldName, "Type")) {
-        m_oMappedFields.insert("Type");
-        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to Type", pszFieldName);
-    }
-    else if (EQUAL(pszFieldName, "Label")) {
-        m_oMappedFields.insert("Label");
-        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to Label", pszFieldName);
-    }
-    else if (EQUAL(pszFieldName, "EndLevel")) {
-        m_oMappedFields.insert("EndLevel");
-        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to EndLevel", pszFieldName);
-    }
-    else if (EQUAL(pszFieldName, "Levels")) {
-        m_oMappedFields.insert("Levels");
-        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to Levels", pszFieldName);
-    }
-    else {
-        // Task 1.3: Check for Data[0-9]+ pattern (case-insensitive)
-        // Match: Data0, DATA1, data23, etc.
-        // Note: 4 = strlen("Data"), skip prefix to check numeric suffix
-        bool bIsDataField = false;
-        if (EQUALN(pszFieldName, "Data", 4)) {
-            const char* pszRest = pszFieldName + 4;  // Skip "Data" prefix
-            if (*pszRest != '\0') {
-                bIsDataField = true;
-                for (; *pszRest != '\0'; ++pszRest) {
-                    if (!isdigit(static_cast<unsigned char>(*pszRest))) {
-                        bIsDataField = false;
-                        break;
-                    }
+    // Check for Data[0-9]+ pattern first (case-insensitive)
+    bool bIsDataField = false;
+    if (EQUALN(pszFieldName, "Data", 4)) {
+        const char* pszRest = pszFieldName + 4;
+        if (*pszRest != '\0') {
+            bIsDataField = true;
+            for (; *pszRest != '\0'; ++pszRest) {
+                if (!isdigit(static_cast<unsigned char>(*pszRest))) {
+                    bIsDataField = false;
+                    break;
                 }
             }
         }
-
-        if (bIsDataField) {
-            // Normalize to canonical form (Data0, Data1, etc.)
-            std::string osNormalized = "Data";
-            osNormalized += (pszFieldName + 4);
-            m_oMappedFields.insert(osNormalized);
-            CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
-                     pszFieldName, osNormalized.c_str());
-        }
-        else {
-            // Task 1.5: Unknown fields silently ignored
-            CPLDebug("OGR_POLISHMAP", "CreateField: '%s' ignored (not a Polish Map field)",
-                     pszFieldName);
-        }
     }
 
-    // Task 1.4: Always return success (accept-and-ignore pattern)
+    if (bIsDataField) {
+        std::string osNormalized = "Data";
+        osNormalized += (pszFieldName + 4);
+        m_oMappedFields.insert(osNormalized);
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
+                 pszFieldName, osNormalized.c_str());
+        return OGRERR_NONE;
+    }
+
+    // Resolve alias (e.g., NOM->Label, VILLE->CityName, PAYS->CountryName)
+    std::string osCanonical = ResolveFieldAlias(pszFieldName);
+
+    if (osCanonical.empty()) {
+        // Unknown field - silently ignored
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' ignored (not a Polish Map field)",
+                 pszFieldName);
+        return OGRERR_NONE;
+    }
+
+    // Check if the resolved field is applicable to this layer type
+    unsigned int nLayerFlag = GetLayerFlag(m_osLayerType.c_str());
+    if (IsFieldForLayer(osCanonical.c_str(), nLayerFlag)) {
+        m_oMappedFields.insert(osCanonical);
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
+                 pszFieldName, osCanonical.c_str());
+    } else {
+        // Field not applicable to this layer type - silently ignored
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' -> '%s' not applicable to %s layer",
+                 pszFieldName, osCanonical.c_str(), m_osLayerType.c_str());
+    }
+
+    // Always return success (accept-and-ignore pattern)
     return OGRERR_NONE;
 }

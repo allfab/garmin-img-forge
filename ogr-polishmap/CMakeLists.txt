@@ -258,6 +258,17 @@ target_compile_definitions(test_multigeom PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - Extended Attributes
+add_executable(test_extended_attributes test/test_extended_attributes.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_extended_attributes PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_extended_attributes PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_extended_attributes PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

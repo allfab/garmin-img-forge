@@ -32,6 +32,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 #include "ogrsf_frmts.h"
+#include "polishmapfields.h"
 #include <string>
 #include <map>
 
@@ -209,6 +210,18 @@ private:
      * On failure, logs CE_Warning and returns original value as fallback.
      */
     std::string RecodeToCP1252(const std::string& osUTF8Value);
+
+    /**
+     * @brief Write extended attributes for a feature.
+     * @param poFeature Feature containing attributes
+     * @param nLayerFlag Layer bitmask (LAYER_POI, LAYER_POLYLINE, LAYER_POLYGON)
+     * @return true if successful, false on error
+     *
+     * Iterates over extended fields applicable to the layer type and writes
+     * any set, non-null fields as Key=Value lines. Skips fields already
+     * written explicitly (Type, Label, EndLevel, Levels).
+     */
+    bool WriteExtendedAttributes(OGRFeature* poFeature, unsigned int nLayerFlag);
 
     // Story 4.2: Helper methods for single geometry writing (multi-geometry decomposition)
 

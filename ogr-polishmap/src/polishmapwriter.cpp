@@ -26,9 +26,11 @@
  ****************************************************************************/
 
 #include "polishmapwriter.h"
+#include "polishmapfields.h"
 #include "cpl_error.h"
 #include "cpl_conv.h"
 #include <cstdarg>  // Story 3.1: For FormatString() helper
+#include <cstring>
 
 // Default POI type code when Type field is not set
 static const char* const DEFAULT_POI_TYPE = "0x0000";
@@ -349,6 +351,48 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 }
 
 /************************************************************************/
+/*                    WriteExtendedAttributes()                          */
+/*                                                                      */
+/* Write extended attributes for a feature based on layer type.          */
+/* Skips fields already written explicitly (Type, Label, EndLevel,      */
+/* Levels) and Data0 (coordinates).                                     */
+/************************************************************************/
+
+bool PolishMapWriter::WriteExtendedAttributes(OGRFeature* poFeature,
+                                               unsigned int nLayerFlag)
+{
+    auto aoFields = GetFieldsForLayer(nLayerFlag);
+    for (const auto* pDef : aoFields) {
+        // Skip fields already written explicitly
+        if (EQUAL(pDef->pszName, "Type") || EQUAL(pDef->pszName, "Label") ||
+            EQUAL(pDef->pszName, "EndLevel") || EQUAL(pDef->pszName, "Levels")) {
+            continue;
+        }
+
+        int nFieldIdx = poFeature->GetFieldIndex(pDef->pszName);
+        if (nFieldIdx < 0 || !poFeature->IsFieldSetAndNotNull(nFieldIdx)) {
+            continue;
+        }
+
+        if (pDef->eType == OFTInteger) {
+            int nValue = poFeature->GetFieldAsInteger(nFieldIdx);
+            if (!BufferedWrite(FormatString("%s=%d\n", pDef->pszName, nValue).c_str())) {
+                return false;
+            }
+        } else {
+            const char* pszValue = poFeature->GetFieldAsString(nFieldIdx);
+            if (pszValue != nullptr && pszValue[0] != '\0') {
+                std::string osCP1252 = RecodeToCP1252(pszValue);
+                if (!BufferedWrite(FormatString("%s=%s\n", pDef->pszName, osCP1252.c_str()).c_str())) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/************************************************************************/
 /*                         WriteSinglePOI()                              */
 /*                                                                      */
 /* Story 4.2 Task 4.1: Write a single Point geometry as [POI] section.   */
@@ -421,6 +465,12 @@ bool PolishMapWriter::WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature)
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write EndLevel");
             return false;
         }
+    }
+
+    // Write extended attributes
+    if (!WriteExtendedAttributes(poFeature, LAYER_POI)) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write extended attributes");
+        return false;
     }
 
     // Write [END] marker
@@ -650,6 +700,12 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Levels");
             return false;
         }
+    }
+
+    // Write extended attributes
+    if (!WriteExtendedAttributes(poFeature, LAYER_POLYLINE)) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write extended attributes");
+        return false;
     }
 
     // Write [END] marker
@@ -934,6 +990,12 @@ bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFe
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write EndLevel");
             return false;
         }
+    }
+
+    // Write extended attributes
+    if (!WriteExtendedAttributes(poFeature, LAYER_POLYGON)) {
+        CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write extended attributes");
+        return false;
     }
 
     // Write [END] marker

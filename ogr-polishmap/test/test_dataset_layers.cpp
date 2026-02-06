@@ -310,19 +310,21 @@ static bool Test_FeatureDefn_Field_Definitions() {
         return false;
     }
 
-    // Expected fields: Type, Label, Data0, EndLevel, Levels
+    // Expected core fields (present in all layer types): Type, Label, Data0, EndLevel, Levels
+    // POI layer has 16 fields total (15 extended + Data0)
     const char* apszExpectedFields[] = {"Type", "Label", "Data0", "EndLevel", "Levels"};
     OGRFieldType aeExpectedTypes[] = {OFTString, OFTString, OFTInteger, OFTInteger, OFTString};
-    int nExpectedCount = 5;
+    int nExpectedCoreFields = 5;
+    int nExpectedPOICount = 16;
 
-    if (poDefn->GetFieldCount() != nExpectedCount) {
-        std::cout << "FAILED (expected " << nExpectedCount << " fields, got "
+    if (poDefn->GetFieldCount() != nExpectedPOICount) {
+        std::cout << "FAILED (expected " << nExpectedPOICount << " fields, got "
                   << poDefn->GetFieldCount() << ")" << std::endl;
         bSuccess = false;
     }
 
     if (bSuccess) {
-        for (int i = 0; i < nExpectedCount; i++) {
+        for (int i = 0; i < nExpectedCoreFields; i++) {
             int nFieldIndex = poDefn->GetFieldIndex(apszExpectedFields[i]);
             if (nFieldIndex < 0) {
                 std::cout << "FAILED (field '" << apszExpectedFields[i]

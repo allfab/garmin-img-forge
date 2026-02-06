@@ -101,17 +101,23 @@ void TestSinglePOIFeature() {
 
             if (poDefn != nullptr) {
                 CHECK(poDefn->GetGeomType() == wkbPoint, "Geometry type is wkbPoint");
-                CHECK(poDefn->GetFieldCount() == 5, "Field count is 5");
+                CHECK(poDefn->GetFieldCount() == 16, "Field count is 16");
 
-                // Check field definitions
-                if (poDefn->GetFieldCount() >= 3) {
-                    CHECK(std::string(poDefn->GetFieldDefn(0)->GetNameRef()) == "Type", "Field 0 is 'Type'");
-                    CHECK(poDefn->GetFieldDefn(0)->GetType() == OFTString, "Type field is OFTString");
-                    CHECK(std::string(poDefn->GetFieldDefn(1)->GetNameRef()) == "Label", "Field 1 is 'Label'");
-                    CHECK(poDefn->GetFieldDefn(1)->GetType() == OFTString, "Label field is OFTString");
-                    CHECK(std::string(poDefn->GetFieldDefn(2)->GetNameRef()) == "Data0", "Field 2 is 'Data0'");
-                    CHECK(poDefn->GetFieldDefn(2)->GetType() == OFTInteger, "Data0 field is OFTInteger");
-                }
+                // Check key field definitions by name
+                int nTypeIdx = poDefn->GetFieldIndex("Type");
+                CHECK(nTypeIdx >= 0, "Field 'Type' exists");
+                if (nTypeIdx >= 0)
+                    CHECK(poDefn->GetFieldDefn(nTypeIdx)->GetType() == OFTString, "Type field is OFTString");
+
+                int nLabelIdx = poDefn->GetFieldIndex("Label");
+                CHECK(nLabelIdx >= 0, "Field 'Label' exists");
+                if (nLabelIdx >= 0)
+                    CHECK(poDefn->GetFieldDefn(nLabelIdx)->GetType() == OFTString, "Label field is OFTString");
+
+                int nData0Idx = poDefn->GetFieldIndex("Data0");
+                CHECK(nData0Idx >= 0, "Field 'Data0' exists");
+                if (nData0Idx >= 0)
+                    CHECK(poDefn->GetFieldDefn(nData0Idx)->GetType() == OFTInteger, "Data0 field is OFTInteger");
             }
 
             // Read first feature (AC1)

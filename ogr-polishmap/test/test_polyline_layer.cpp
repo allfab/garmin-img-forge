@@ -99,14 +99,14 @@ void TestSimplePolyline() {
             OGRFeatureDefn* poDefn = poLayer->GetLayerDefn();
             CHECK(poDefn != nullptr, "GetLayerDefn() returns non-null");
             CHECK(poDefn->GetGeomType() == wkbLineString, "Geometry type is wkbLineString");
-            CHECK(poDefn->GetFieldCount() == 5, "5 fields defined");
+            CHECK(poDefn->GetFieldCount() == 14, "14 fields defined");
 
-            // AC3: Verify field types (FR38)
-            CHECK(poDefn->GetFieldDefn(0)->GetType() == OFTString, "Type field is OFTString");
-            CHECK(poDefn->GetFieldDefn(1)->GetType() == OFTString, "Label field is OFTString");
-            CHECK(poDefn->GetFieldDefn(2)->GetType() == OFTInteger, "Data0 field is OFTInteger");
-            CHECK(poDefn->GetFieldDefn(3)->GetType() == OFTInteger, "EndLevel field is OFTInteger");
-            CHECK(poDefn->GetFieldDefn(4)->GetType() == OFTString, "Levels field is OFTString");
+            // AC3: Verify key field types by name (FR38)
+            CHECK(poDefn->GetFieldDefn(poDefn->GetFieldIndex("Type"))->GetType() == OFTString, "Type field is OFTString");
+            CHECK(poDefn->GetFieldDefn(poDefn->GetFieldIndex("Label"))->GetType() == OFTString, "Label field is OFTString");
+            CHECK(poDefn->GetFieldDefn(poDefn->GetFieldIndex("Data0"))->GetType() == OFTInteger, "Data0 field is OFTInteger");
+            CHECK(poDefn->GetFieldDefn(poDefn->GetFieldIndex("EndLevel"))->GetType() == OFTInteger, "EndLevel field is OFTInteger");
+            CHECK(poDefn->GetFieldDefn(poDefn->GetFieldIndex("Levels"))->GetType() == OFTString, "Levels field is OFTString");
 
             // Read first feature (AC1)
             OGRFeature* poFeature = poLayer->GetNextFeature();

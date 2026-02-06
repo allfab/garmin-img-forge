@@ -101,7 +101,7 @@ void TestSimplePolygon() {
             OGRFeatureDefn* poDefn = poLayer->GetLayerDefn();
             CHECK(poDefn != nullptr, "GetLayerDefn() returns non-null");
             CHECK(poDefn->GetGeomType() == wkbPolygon, "Geometry type is wkbPolygon (FR37)");
-            CHECK(poDefn->GetFieldCount() == 5, "5 fields defined (FR38)");
+            CHECK(poDefn->GetFieldCount() == 10, "10 fields defined (FR38)");
 
             // Read first feature (AC1)
             OGRFeature* poFeature = poLayer->GetNextFeature();
