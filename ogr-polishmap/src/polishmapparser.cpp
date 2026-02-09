@@ -225,8 +225,30 @@ bool PolishMapParser::ParseHeader() {
                     m_oHeaderData.osDatum = osValue;
                 } else if (EQUAL(osKey.c_str(), "Elevation")) {
                     m_oHeaderData.osElevation = osValue;
+                }
+                // Story 1.2 Extension: Parse critical header fields
+                else if (EQUAL(osKey.c_str(), "LBLcoding")) {
+                    m_oHeaderData.osLBLcoding = osValue;
+                } else if (EQUAL(osKey.c_str(), "Preprocess")) {
+                    m_oHeaderData.osPreprocess = osValue;
+                } else if (EQUAL(osKey.c_str(), "Levels")) {
+                    m_oHeaderData.osLevels = osValue;
+                } else if (EQUAL(osKey.c_str(), "TreeSize")) {
+                    m_oHeaderData.osTreeSize = osValue;
+                } else if (EQUAL(osKey.c_str(), "RgnLimit")) {
+                    m_oHeaderData.osRgnLimit = osValue;
+                }
+                // Story 1.2 Extension: Parse important header fields
+                else if (EQUAL(osKey.c_str(), "Transparent")) {
+                    m_oHeaderData.osTransparent = osValue;
+                } else if (EQUAL(osKey.c_str(), "SimplifyLevel")) {
+                    m_oHeaderData.osSimplifyLevel = osValue;
+                } else if (EQUAL(osKey.c_str(), "Marine")) {
+                    m_oHeaderData.osMarine = osValue;
+                } else if (EQUAL(osKey.c_str(), "LeftSideTraffic")) {
+                    m_oHeaderData.osLeftSideTraffic = osValue;
                 } else {
-                    // Store other fields in the map
+                    // Store other unrecognized fields in the map for round-trip preservation
                     m_oHeaderData.aoOtherFields[osKey] = osValue;
                 }
             }
@@ -245,10 +267,76 @@ bool PolishMapParser::ParseHeader() {
              m_oHeaderData.osName.c_str(), m_oHeaderData.osID.c_str(),
              m_oHeaderData.osCodePage.c_str(), m_oHeaderData.osDatum.c_str());
 
+    // Story 1.2 Extension: Validate required ID field (cGPSmapper spec requirement)
+    if (m_oHeaderData.osID.empty()) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Polish Map header: Missing required ID field in [IMG ID] section: %s",
+                 m_osFilePath.c_str());
+        return false;
+    }
+
+    // Story 1.2 Extension: Parse Level0-N definitions based on Levels count
+    ParseLevelDefinitions();
+
     // Story 1.4: Save position after header for POI reading
     m_nAfterHeaderPos = VSIFTellL(m_fpFile);
 
     return true;
+}
+
+/************************************************************************/
+/*                      ParseLevelDefinitions()                         */
+/*                                                                      */
+/* Story 1.2 Extension: Parse Level0-N definitions from header fields.  */
+/* Extracts multi-value Level fields based on Levels count and stores  */
+/* them in aoLevelDefs vector. Removes processed Level* from map.       */
+/************************************************************************/
+
+void PolishMapParser::ParseLevelDefinitions() {
+    // Check if Levels field is defined
+    if (m_oHeaderData.osLevels.empty()) {
+        // No Levels field defined - this is valid for single-level maps
+        CPLDebug("OGR_POLISHMAP", "No Levels field defined (single-level map)");
+        return;
+    }
+
+    // Parse Levels count
+    int nLevels = atoi(m_oHeaderData.osLevels.c_str());
+
+    // Validate level count (cGPSmapper spec: 1-10 levels)
+    if (nLevels <= 0 || nLevels > 10) {
+        CPLError(CE_Warning, CPLE_AppDefined,
+                 "Polish Map header: Levels=%d invalid (expected 1-10), skipping Level definitions",
+                 nLevels);
+        return;
+    }
+
+    CPLDebug("OGR_POLISHMAP", "Parsing %d Level definitions", nLevels);
+
+    // Reserve space in vector for efficiency
+    m_oHeaderData.aoLevelDefs.reserve(nLevels);
+
+    // Extract Level0, Level1, ..., Level(nLevels-1) from aoOtherFields
+    for (int i = 0; i < nLevels; i++) {
+        CPLString osLevelKey;
+        osLevelKey.Printf("Level%d", i);
+
+        auto it = m_oHeaderData.aoOtherFields.find(osLevelKey);
+        if (it != m_oHeaderData.aoOtherFields.end()) {
+            // Found Level definition - store and remove from map
+            m_oHeaderData.aoLevelDefs.push_back(it->second);
+            m_oHeaderData.aoOtherFields.erase(it);
+
+            CPLDebug("OGR_POLISHMAP", "  Level%d=%s", i, it->second.c_str());
+        } else {
+            // Level definition missing - log warning but continue
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "Polish Map header: Levels=%d but Level%d missing",
+                     nLevels, i);
+            // Add empty string to maintain index correspondence
+            m_oHeaderData.aoLevelDefs.push_back("");
+        }
+    }
 }
 
 /************************************************************************/

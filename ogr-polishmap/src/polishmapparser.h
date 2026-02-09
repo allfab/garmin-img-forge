@@ -137,18 +137,35 @@ struct PolishMapSection {
 /************************************************************************/
 
 struct PolishMapHeaderData {
+    // Basic fields (existing)
     std::string osName;           // Map name
-    std::string osID;             // Map ID
+    std::string osID;             // Map ID (REQUIRED field per cGPSmapper spec)
     std::string osCodePage;       // Encoding (default: 1252)
     std::string osDatum;          // Coordinate system (default: WGS 84)
     std::string osElevation;      // Elevation unit (M/F)
-    std::map<std::string, std::string> aoOtherFields;  // All other key=value pairs
+
+    // Critical fields (Story 1.2 Extension)
+    std::string osLBLcoding;      // Label encoding: 6/9/10 (default: 9 = 8-bit)
+    std::string osPreprocess;     // Preprocessing mode: G/F/P/N (default: F)
+    std::string osLevels;         // Number of zoom levels: 1-10 (e.g., "2")
+    std::vector<std::string> aoLevelDefs;  // Level definitions: Level0, Level1, ... (e.g., ["24", "18"])
+    std::string osTreeSize;       // Map tree size: 100-15000 (default: 3000)
+    std::string osRgnLimit;       // Region element limit: 50-1024 (default: 1024)
+
+    // Important fields (Story 1.2 Extension)
+    std::string osTransparent;    // Transparency: Y/N/S (default: N)
+    std::string osSimplifyLevel;  // Simplification level: 0-4 (default: 2)
+    std::string osMarine;         // Marine map: Y/N (default: N)
+    std::string osLeftSideTraffic;// Left-side traffic: Y/N (default: N)
+
+    std::map<std::string, std::string> aoOtherFields;  // All other unrecognized key=value pairs
 
     // Default values
     PolishMapHeaderData() : osCodePage("1252"), osDatum("WGS 84") {}
 
     // Clear all data
     // Story 3.1: Added shrink_to_fit() for memory optimization (NFR3)
+    // Story 1.2: Extended to clear new fields
     void Clear() {
         osName.clear();
         osName.shrink_to_fit();
@@ -158,6 +175,22 @@ struct PolishMapHeaderData {
         osDatum = "WGS 84";
         osElevation.clear();
         osElevation.shrink_to_fit();
+
+        // Clear critical fields
+        osLBLcoding.clear();
+        osPreprocess.clear();
+        osLevels.clear();
+        aoLevelDefs.clear();
+        aoLevelDefs.shrink_to_fit();
+        osTreeSize.clear();
+        osRgnLimit.clear();
+
+        // Clear important fields
+        osTransparent.clear();
+        osSimplifyLevel.clear();
+        osMarine.clear();
+        osLeftSideTraffic.clear();
+
         aoOtherFields.clear();
     }
 };
@@ -535,6 +568,18 @@ private:
      */
     int ParseCoordinateList(const CPLString& osValue,
                             std::vector<std::pair<double, double>>& aoCoords);
+
+    /**
+     * @brief Parse Level0-N definitions from header.
+     *
+     * Story 1.2 Extension: Parses multi-value Level0, Level1, ..., LevelN fields
+     * based on the Levels count. Extracts Level definitions from aoOtherFields
+     * and stores them in aoLevelDefs vector for structured access.
+     *
+     * Must be called after ParseHeader() has populated aoOtherFields.
+     * Removes Level0-N entries from aoOtherFields after extraction.
+     */
+    void ParseLevelDefinitions();
 };
 
 #endif /* POLISHMAPPARSER_H_INCLUDED */

@@ -169,11 +169,47 @@ bool PolishMapWriter::FlushBuffer()
 }
 
 /************************************************************************/
+/*                      GetDefaultHeaderData()                           */
+/*                                                                      */
+/* Story 2.2.4: Return intelligent default header values based on       */
+/* cGPSmapper best practices and specification recommendations.         */
+/************************************************************************/
+
+static std::map<std::string, std::string> GetDefaultHeaderData()
+{
+    std::map<std::string, std::string> aoDefaults;
+
+    // Basic fields
+    aoDefaults["ID"] = "1";                    // Required field (spec requirement)
+    aoDefaults["Name"] = "Untitled";           // Default map name
+    aoDefaults["CodePage"] = "1252";           // CP1252 (Windows Western European)
+    aoDefaults["Datum"] = "W84";               // WGS 84 (most common)
+
+    // Critical fields (Story 2.2.4)
+    aoDefaults["LBLcoding"] = "9";             // 9 = 8-bit encoding (smallest maps)
+    aoDefaults["Preprocess"] = "F";            // F = Full generalization (best compatibility)
+    aoDefaults["TreeSize"] = "3000";           // 3000 = Countryside maps (balanced)
+    aoDefaults["RgnLimit"] = "1024";           // 1024 = Maximum elements per region
+
+    // Important fields (Story 2.2.4)
+    aoDefaults["Transparent"] = "N";           // N = No transparency (default)
+    aoDefaults["SimplifyLevel"] = "2";         // 2 = Moderate simplification (balanced)
+    aoDefaults["Marine"] = "N";                // N = Not a marine map (default)
+    aoDefaults["LeftSideTraffic"] = "N";       // N = Right-side traffic (most common)
+
+    // Note: Levels and Level0-N are NOT defaulted - they require explicit user input
+    // based on the specific map's zoom level requirements
+
+    return aoDefaults;
+}
+
+/************************************************************************/
 /*                           WriteHeader()                               */
 /*                                                                      */
 /* Story 2.1 Task 3.2: Write minimal [IMG ID] header section.           */
 /* Story 2.2 Review: Refactored to delegate to WriteHeader(map) to      */
 /* avoid code duplication.                                               */
+/* Story 2.2.4: Now uses intelligent defaults from GetDefaultHeaderData() */
 /* Output:                                                              */
 /*   [IMG ID]                                                           */
 /*   Name=<name>                                                        */
@@ -287,18 +323,24 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         return true;  // Not a fatal error
     }
 
-    // Default values if not provided
+    // Story 2.2.4: Merge user metadata with intelligent defaults
+    // User-provided values override defaults
+    std::map<std::string, std::string> aoMergedMetadata = GetDefaultHeaderData();
+    for (const auto& kv : aoMetadata) {
+        aoMergedMetadata[kv.first] = kv.second;  // Override defaults with user values
+    }
+
+    // Extract Name and CodePage for special handling
     std::string osName = "Untitled";
     std::string osCodePage = "1252";
 
-    // Extract known fields from metadata
-    auto itName = aoMetadata.find("Name");
-    if (itName != aoMetadata.end()) {
+    auto itName = aoMergedMetadata.find("Name");
+    if (itName != aoMergedMetadata.end()) {
         osName = RecodeToCP1252(itName->second);  // UTF-8 → CP1252
     }
 
-    auto itCodePage = aoMetadata.find("CodePage");
-    if (itCodePage != aoMetadata.end()) {
+    auto itCodePage = aoMergedMetadata.find("CodePage");
+    if (itCodePage != aoMergedMetadata.end()) {
         osCodePage = itCodePage->second;  // CodePage is numeric, no recode needed
     }
 
@@ -317,15 +359,31 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         return false;
     }
 
-    // Write other metadata fields (ID, Elevation, Preprocess, etc.)
-    // Ordered set of known fields to write in logical order
+    // Write other metadata fields (ID, Elevation, etc.)
+    // Story 2.2 Extension: Ordered set of known fields to write in logical order
+    // Order follows cGPSmapper spec recommendations: critical fields first, then important
     static const char* const apszKnownFields[] = {
-        "ID", "Elevation", "Preprocess", nullptr
+        // Basic fields
+        "ID",              // Map ID (REQUIRED per cGPSmapper spec)
+        "Elevation",       // Elevation unit (M/F)
+        "Datum",           // Coordinate system (W84, etc.)
+        // Critical fields (Story 2.2.1)
+        "LBLcoding",       // Label encoding (6/9/10)
+        "Preprocess",      // Preprocessing mode (G/F/P/N)
+        "Levels",          // Number of zoom levels (1-10)
+        "TreeSize",        // Map tree size (100-15000)
+        "RgnLimit",        // Region element limit (50-1024)
+        // Important fields (Story 2.2.2)
+        "Transparent",     // Transparency (Y/N/S)
+        "SimplifyLevel",   // Simplification level (0-4)
+        "Marine",          // Marine map (Y/N)
+        "LeftSideTraffic", // Left-side traffic (Y/N)
+        nullptr
     };
 
     for (int i = 0; apszKnownFields[i] != nullptr; i++) {
-        auto it = aoMetadata.find(apszKnownFields[i]);
-        if (it != aoMetadata.end()) {
+        auto it = aoMergedMetadata.find(apszKnownFields[i]);
+        if (it != aoMergedMetadata.end()) {
             std::string osValue = RecodeToCP1252(it->second);
             if (!BufferedWrite(FormatString("%s=%s\n", it->first.c_str(), osValue.c_str()).c_str())) {
                 CPLError(CE_Failure, CPLE_FileIO,
@@ -336,8 +394,30 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         }
     }
 
-    // Write any remaining custom fields (not in known list)
-    for (const auto& kv : aoMetadata) {
+    // Story 2.2.3: Write Level0-N definitions if Levels field is present
+    auto itLevels = aoMergedMetadata.find("Levels");
+    if (itLevels != aoMergedMetadata.end()) {
+        int nLevels = atoi(itLevels->second.c_str());
+        if (nLevels > 0 && nLevels <= 10) {
+            for (int i = 0; i < nLevels; i++) {
+                std::string osLevelKey = FormatString("Level%d", i);
+                auto itLevel = aoMergedMetadata.find(osLevelKey);
+                if (itLevel != aoMergedMetadata.end()) {
+                    if (!BufferedWrite(FormatString("%s=%s\n", osLevelKey.c_str(),
+                                                     itLevel->second.c_str()).c_str())) {
+                        CPLError(CE_Failure, CPLE_FileIO,
+                                 "PolishMapWriter::WriteHeader() - failed to write %s",
+                                 osLevelKey.c_str());
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    // Story 2.2.5: Write any remaining custom fields (not in known list)
+    // This preserves aoOtherFields from parser for round-trip compatibility
+    for (const auto& kv : aoMergedMetadata) {
         // Skip already-written fields
         if (kv.first == "Name" || kv.first == "CodePage") {
             continue;
@@ -376,9 +456,10 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
 
     m_bHeaderWritten = true;
 
-    CPLDebug("OGR_POLISHMAP", "WriteHeader: Name=%s, CodePage=%s, %d fields total",
+    CPLDebug("OGR_POLISHMAP", "WriteHeader: Name=%s, CodePage=%s, ID=%s, %d fields total",
              osName.c_str(), osCodePage.c_str(),
-             static_cast<int>(aoMetadata.size()));
+             aoMergedMetadata["ID"].c_str(),
+             static_cast<int>(aoMergedMetadata.size()));
 
     return true;
 }

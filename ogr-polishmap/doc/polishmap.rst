@@ -109,6 +109,83 @@ Driver Capabilities
 
 \* OLCCreateField is only supported in write mode.
 
+Header Section ([IMG ID])
+--------------------------
+
+The driver supports reading and writing the ``[IMG ID]`` header section with
+extended metadata fields. The header contains map-level metadata that is used
+by cGPSmapper and Garmin devices for proper map compilation and display.
+
+**Story 1.2/2.2 Extension**: The driver now supports 15 standard header fields
+plus preservation of custom/unknown fields for round-trip compatibility.
+
+**Supported Header Fields**:
+
++------------------+-------------+-----------------------------------------------+
+| Field Name       | Default     | Description                                   |
++==================+=============+===============================================+
+| **ID**           | "1"         | Map identifier (REQUIRED by cGPSmapper spec)  |
++------------------+-------------+-----------------------------------------------+
+| **Name**         | "Untitled"  | Human-readable map name                       |
++------------------+-------------+-----------------------------------------------+
+| **CodePage**     | "1252"      | Character encoding (CP1252 = Western Europe)  |
++------------------+-------------+-----------------------------------------------+
+| **Datum**        | "W84"       | Coordinate system (W84 = WGS 84)              |
++------------------+-------------+-----------------------------------------------+
+| **Elevation**    | (none)      | Elevation unit: M (meters) or F (feet)        |
++------------------+-------------+-----------------------------------------------+
+| **LBLcoding**    | "9"         | Label encoding: 6/9/10 (9 = 8-bit, smallest)  |
++------------------+-------------+-----------------------------------------------+
+| **Preprocess**   | "F"         | Preprocessing: G/F/P/N (F = full, best compat)|
++------------------+-------------+-----------------------------------------------+
+| **Levels**       | (none)      | Number of zoom levels: 1-10                   |
++------------------+-------------+-----------------------------------------------+
+| **Level0-N**     | (none)      | Zoom level definitions (e.g., Level0=24)      |
++------------------+-------------+-----------------------------------------------+
+| **TreeSize**     | "3000"      | Map tree size: 100-15000 (3000 = countryside) |
++------------------+-------------+-----------------------------------------------+
+| **RgnLimit**     | "1024"      | Region element limit: 50-1024 (1024 = max)    |
++------------------+-------------+-----------------------------------------------+
+| **Transparent**  | "N"         | Transparency: Y (yes) / N (no) / S (semi)     |
++------------------+-------------+-----------------------------------------------+
+| **SimplifyLevel**| "2"         | Douglas-Peucker simplification: 0-4           |
++------------------+-------------+-----------------------------------------------+
+| **Marine**       | "N"         | Marine map: Y (yes) / N (no)                  |
++------------------+-------------+-----------------------------------------------+
+| **LeftSideTraffic** | "N"      | Left-side traffic: Y (yes) / N (no)           |
++------------------+-------------+-----------------------------------------------+
+
+**Intelligent Defaults**: When creating a new Polish Map file, the driver
+applies intelligent default values based on cGPSmapper best practices. These
+defaults ensure proper compilation and compatibility with Garmin devices.
+
+**Round-Trip Preservation**: The driver preserves all header fields during
+read-write operations, including unrecognized custom fields. This ensures
+100% metadata preservation for round-trip conversions.
+
+**Setting Header Metadata**: Use GDAL ``SetMetadataItem()`` API to set header
+fields programmatically, or use dataset creation options (NAME, ID, CODEPAGE).
+
+**Example - Reading header metadata**::
+
+    from osgeo import gdal
+    ds = gdal.Open("input.mp")
+    print(ds.GetMetadataItem("ID"))        # Map ID
+    print(ds.GetMetadataItem("Name"))      # Map name
+    print(ds.GetMetadataItem("LBLcoding")) # Label encoding
+
+**Example - Writing header metadata**::
+
+    from osgeo import ogr
+    driver = ogr.GetDriverByName("PolishMap")
+    ds = driver.CreateDataSource("output.mp")
+    ds.SetMetadataItem("Name", "My Custom Map")
+    ds.SetMetadataItem("ID", "12345")
+    ds.SetMetadataItem("LBLcoding", "9")
+    ds.SetMetadataItem("Preprocess", "F")
+    # ... add features ...
+    ds = None  # Close and write
+
 Field Mapping (CreateField Behavior)
 ------------------------------------
 

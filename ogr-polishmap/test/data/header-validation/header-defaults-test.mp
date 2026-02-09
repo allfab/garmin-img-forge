@@ -1,0 +1,5 @@
+[IMG ID]
+ID=400
+[END-IMG ID]
+
+[END]
