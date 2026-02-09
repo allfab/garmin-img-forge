@@ -31,6 +31,7 @@
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 #include "polishmapparser.h"
+#include "polishmapfieldmapper.h"
 #include <vector>
 #include <memory>
 #include <map>
@@ -84,6 +85,9 @@ private:
 
     // Story 2.2: Metadata storage for Polish Map header fields
     std::map<std::string, std::string> m_aoMetadata;
+
+    // Story 4.4: Field mapping support
+    std::unique_ptr<PolishMapFieldMapper> m_poFieldMapper;  // Field mapper (write mode only)
 
     // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
     void CreateLayers();
@@ -209,12 +213,16 @@ public:
      * POLYGON layers ready for feature writing.
      *
      * @param pszFilename Output file path.
+     * @param papszOptions Creation options (e.g., FIELD_MAPPING=path.yaml).
      * @return Pointer to new datasource on success, nullptr on failure.
      *         Caller takes ownership and must delete with delete operator or GDALClose().
      *
      * @note On failure, CPLError() is called with appropriate error message.
+     * @note Supported options:
+     *       - FIELD_MAPPING=path: Path to YAML field mapping config (Story 4.4)
      */
-    static OGRPolishMapDataSource* Create(const char* pszFilename);
+    static OGRPolishMapDataSource* Create(const char* pszFilename,
+                                           char** papszOptions = nullptr);
 
     /**
      * @brief Check if the datasource is in write/update mode.

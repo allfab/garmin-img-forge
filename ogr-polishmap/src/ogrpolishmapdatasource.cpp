@@ -291,7 +291,8 @@ void OGRPolishMapDataSource::CreateLayersForWriteMode() {
 /* Opens file for writing, creates 3 empty layers.                       */
 /************************************************************************/
 
-OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) {
+OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
+                                                        char** papszOptions) {
     // Validate input - NULL path is invalid
     if (pszFilename == nullptr) {
         CPLError(CE_Failure, CPLE_OpenFailed,
@@ -318,6 +319,20 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) 
     // Set description (file path)
     poDS->SetDescription(pszFilename);
 
+    // Story 4.4 Task 3.2: Read FIELD_MAPPING option and initialize mapper
+    const char* pszFieldMapping = CSLFetchNameValue(papszOptions, "FIELD_MAPPING");
+    if (pszFieldMapping != nullptr && pszFieldMapping[0] != '\0') {
+        poDS->m_poFieldMapper = std::make_unique<PolishMapFieldMapper>();
+        if (!poDS->m_poFieldMapper->LoadConfig(pszFieldMapping)) {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "Failed to load field mapping config: %s", pszFieldMapping);
+            // Continue without field mapper (use hardcoded aliases)
+            poDS->m_poFieldMapper.reset();
+        } else {
+            CPLDebug("OGR_POLISHMAP", "Field mapping config loaded: %s", pszFieldMapping);
+        }
+    }
+
     // Story 2.3 Task 3.2: Create writer BEFORE layers (so we can connect them)
     poDS->m_poWriter = std::make_unique<PolishMapWriter>(fp);
 
@@ -328,6 +343,11 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename) 
     PolishMapWriter* poWriter = poDS->m_poWriter.get();
     for (auto& poLayer : poDS->m_apoLayers) {
         poLayer->SetWriter(poWriter);
+
+        // Story 4.4 Task 3.4: Pass field mapper to layers
+        if (poDS->m_poFieldMapper) {
+            poLayer->SetFieldMapper(poDS->m_poFieldMapper.get());
+        }
     }
 
     CPLDebug("OGR_POLISHMAP", "Created new Polish Map dataset for writing: %s",

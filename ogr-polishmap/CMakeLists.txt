@@ -22,6 +22,8 @@ set(POLISHMAP_SOURCES
     src/ogrpolishmaplayer.cpp
     src/polishmapparser.cpp
     src/polishmapwriter.cpp
+    src/polishmapyamlparser.cpp
+    src/polishmapfieldmapper.cpp
 )
 
 # Build shared library (GDAL plugin)
@@ -266,6 +268,17 @@ target_include_directories(test_extended_attributes PRIVATE
 )
 target_link_libraries(test_extended_attributes PRIVATE ${GDAL_LIBRARIES})
 target_compile_definitions(test_extended_attributes PRIVATE
+    -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+)
+
+# Test executable - Field Mapping Config (Story 4.4)
+add_executable(test_field_mapping_config test/test_field_mapping_config.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_field_mapping_config PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_field_mapping_config PRIVATE ${GDAL_LIBRARIES})
+target_compile_definitions(test_field_mapping_config PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 

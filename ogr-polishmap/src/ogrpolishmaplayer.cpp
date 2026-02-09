@@ -29,6 +29,7 @@
 #include "polishmapparser.h"
 #include "polishmapwriter.h"
 #include "polishmapfields.h"
+#include "polishmapfieldmapper.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_string.h"
@@ -46,7 +47,8 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
                                      OGRwkbGeometryType eGeomType)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(nullptr), m_osLayerType(pszLayerName), m_bEOF(false),
-      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr) {
+      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr),
+      m_poFieldMapper(nullptr), m_bFieldMappingSet(false) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -61,7 +63,8 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
                                      PolishMapParser* poParser)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(poParser), m_osLayerType(pszLayerName), m_bEOF(false),
-      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr) {
+      m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr),
+      m_poFieldMapper(nullptr), m_bFieldMappingSet(false) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -483,6 +486,20 @@ void OGRPolishMapLayer::SetWriter(PolishMapWriter* poWriter) {
 }
 
 /************************************************************************/
+/*                         SetFieldMapper()                             */
+/*                                                                      */
+/* Story 4.4 Task 3.4: Associate field mapper with layer.              */
+/************************************************************************/
+
+void OGRPolishMapLayer::SetFieldMapper(PolishMapFieldMapper* poMapper) {
+    m_poFieldMapper = poMapper;
+
+    CPLDebug("OGR_POLISHMAP", "Layer %s: SetFieldMapper(%s)",
+             m_osLayerType.c_str(),
+             poMapper ? "configured" : "nullptr");
+}
+
+/************************************************************************/
 /*                          ICreateFeature()                             */
 /*                                                                      */
 /* Story 2.3 Task 1.4-1.5: Override ICreateFeature for POI writing.     */
@@ -502,6 +519,14 @@ OGRErr OGRPolishMapLayer::ICreateFeature(OGRFeature* poFeature) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "ICreateFeature: Layer not in write mode or writer not set");
         return OGRERR_FAILURE;
+    }
+
+    // Story 4.4 Task 5: Pass field mapping to writer on first feature write
+    if (!m_bFieldMappingSet) {
+        m_poWriter->SetFieldMapping(m_oMappedFields);
+        m_bFieldMappingSet = true;
+        CPLDebug("OGR_POLISHMAP", "ICreateFeature: Field mapping sent to writer (%zu mappings)",
+                 m_oMappedFields.size());
     }
 
     // Story 2.6: Dispatch based on feature geometry type (not layer type)
@@ -589,14 +614,33 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
     if (bIsDataField) {
         std::string osNormalized = "Data";
         osNormalized += (pszFieldName + 4);
-        m_oMappedFields.insert(osNormalized);
+        // Story 4.4 Task 5: Store canonical -> source mapping for writer
+        m_oMappedFields[osNormalized] = pszFieldName;
+
+        // Story 4.4 Task 5: Create field in layer definition with SOURCE name
+        if (m_poFeatureDefn->GetFieldIndex(pszFieldName) < 0) {
+            OGRFieldDefn oFieldDefn(pszFieldName, poField->GetType());
+            m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
+        }
+
         CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
                  pszFieldName, osNormalized.c_str());
         return OGRERR_NONE;
     }
 
-    // Resolve alias (e.g., NOM->Label, VILLE->CityName, PAYS->CountryName)
-    std::string osCanonical = ResolveFieldAlias(pszFieldName);
+    // Story 4.4 Task 4.1-4.2: Use field mapper if available, else fallback to hardcoded aliases
+    std::string osCanonical;
+    if (m_poFieldMapper != nullptr) {
+        // Priority 1: YAML config mapping
+        osCanonical = m_poFieldMapper->MapFieldName(pszFieldName);
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' -> '%s' (via mapper)",
+                 pszFieldName, osCanonical.empty() ? "(unmapped)" : osCanonical.c_str());
+    } else {
+        // Priority 2: Hardcoded aliases (backward compatibility)
+        osCanonical = ResolveFieldAlias(pszFieldName);
+        CPLDebug("OGR_POLISHMAP", "CreateField: '%s' -> '%s' (via hardcoded alias)",
+                 pszFieldName, osCanonical.empty() ? "(unmapped)" : osCanonical.c_str());
+    }
 
     if (osCanonical.empty()) {
         // Unknown field - silently ignored
@@ -608,7 +652,17 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
     // Check if the resolved field is applicable to this layer type
     unsigned int nLayerFlag = GetLayerFlag(m_osLayerType.c_str());
     if (IsFieldForLayer(osCanonical.c_str(), nLayerFlag)) {
-        m_oMappedFields.insert(osCanonical);
+        // Story 4.4 Task 5: Store canonical -> source mapping for writer
+        m_oMappedFields[osCanonical] = pszFieldName;
+
+        // Story 4.4 Task 5: Create field in layer definition with SOURCE name
+        // This allows ogr2ogr to set field values using source field names
+        // Only create if field doesn't already exist
+        if (m_poFeatureDefn->GetFieldIndex(pszFieldName) < 0) {
+            OGRFieldDefn oFieldDefn(pszFieldName, poField->GetType());
+            m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
+        }
+
         CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
                  pszFieldName, osCanonical.c_str());
     } else {
@@ -617,6 +671,6 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
                  pszFieldName, osCanonical.c_str(), m_osLayerType.c_str());
     }
 
-    // Always return success (accept-and-ignore pattern)
+    // Always return success (accept-and-map pattern)
     return OGRERR_NONE;
 }

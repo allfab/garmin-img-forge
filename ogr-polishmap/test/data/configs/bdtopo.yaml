@@ -1,0 +1,18 @@
+# BDTOPO Field Mapping Configuration
+# Maps IGN BDTOPO field names to Polish Map format
+# Story 4.4: Configurable field mapping system
+
+field_mapping:
+  # Core identification fields
+  NAME: Label           # Feature name (commune, lieu-dit, etc.)
+  MP_TYPE: Type         # Garmin type code (e.g., 0x54 for commune)
+
+  # Geographic administrative fields
+  Country: CountryName     # Country name (e.g., "France~[0x1d]FRA")
+  RegionName: RegionName   # Administrative region
+  CityName: CityName       # Municipality/city name
+  Zip: Zip                 # Postal code
+
+  # Display/rendering fields
+  MPBITLEVEL: Levels    # Bit level for map rendering (e.g., "17")
+  EndLevel: EndLevel    # Maximum display zoom level

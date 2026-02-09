@@ -56,6 +56,7 @@ static constexpr int LARGE_POLYGON_WARNING_THRESHOLD = 10000;
 PolishMapWriter::PolishMapWriter(VSILFILE* fpOutput)
     : m_fpOutput(fpOutput)
     , m_bHeaderWritten(false)
+    , m_oFieldMapping()  // Story 4.4: Initialize empty mapping
 {
     // File handle is borrowed - we don't own it
     // Story 3.1: Reserve buffer capacity to avoid reallocations
@@ -207,6 +208,38 @@ bool PolishMapWriter::Flush()
     }
 
     return VSIFFlushL(m_fpOutput) == 0;
+}
+
+/************************************************************************/
+/*                        SetFieldMapping()                              */
+/*                                                                      */
+/* Story 4.4 Task 5: Set field mapping for reading feature attributes.  */
+/* Enables reading from source fields that were mapped via CreateField().*/
+/************************************************************************/
+
+void PolishMapWriter::SetFieldMapping(const std::map<std::string, std::string>& aoMapping)
+{
+    m_oFieldMapping = aoMapping;
+    CPLDebug("OGR_POLISHMAP", "Writer: Field mapping set with %zu entries",
+             m_oFieldMapping.size());
+}
+
+/************************************************************************/
+/*                          GetFieldName()                               */
+/*                                                                      */
+/* Story 4.4 Task 5: Resolve field name using mapping.                  */
+/* Returns source field name if mapping exists, else canonical name.     */
+/************************************************************************/
+
+const char* PolishMapWriter::GetFieldName(const char* pszCanonicalField) const
+{
+    auto it = m_oFieldMapping.find(pszCanonicalField);
+    if (it != m_oFieldMapping.end()) {
+        // Mapped field - return source field name
+        return it->second.c_str();
+    }
+    // No mapping - return canonical field name (backward compatibility)
+    return pszCanonicalField;
 }
 
 /************************************************************************/
@@ -369,7 +402,9 @@ bool PolishMapWriter::WriteExtendedAttributes(OGRFeature* poFeature,
             continue;
         }
 
-        int nFieldIdx = poFeature->GetFieldIndex(pDef->pszName);
+        // Story 4.4 Task 5: Use field mapping to read from correct source field
+        const char* pszFieldName = GetFieldName(pDef->pszName);
+        int nFieldIdx = poFeature->GetFieldIndex(pszFieldName);
         if (nFieldIdx < 0 || !poFeature->IsFieldSetAndNotNull(nFieldIdx)) {
             continue;
         }
@@ -422,8 +457,10 @@ bool PolishMapWriter::WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature)
         return false;
     }
 
+    // Story 4.4 Task 5: Use field mapping to read from correct source field
     // Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
+    const char* pszTypeFieldName = GetFieldName("Type");
+    const char* pszType = poFeature->GetFieldAsString(pszTypeFieldName);
     if (pszType != nullptr && pszType[0] != '\0') {
         if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write Type");
@@ -438,7 +475,8 @@ bool PolishMapWriter::WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature)
     }
 
     // Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    const char* pszLabelFieldName = GetFieldName("Label");
+    const char* pszLabel = poFeature->GetFieldAsString(pszLabelFieldName);
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
         if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
@@ -458,9 +496,10 @@ bool PolishMapWriter::WriteSinglePOI(OGRPoint* poPoint, OGRFeature* poFeature)
     }
 
     // Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    const char* pszEndLevelFieldName = GetFieldName("EndLevel");
+    int nEndLevelIdx = poFeature->GetFieldIndex(pszEndLevelFieldName);
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        int nEndLevel = poFeature->GetFieldAsInteger(pszEndLevelFieldName);
         if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOI: failed to write EndLevel");
             return false;
@@ -637,8 +676,10 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
         return false;
     }
 
+    // Story 4.4 Task 5: Use field mapping to read from correct source field
     // Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
+    const char* pszTypeFieldName = GetFieldName("Type");
+    const char* pszType = poFeature->GetFieldAsString(pszTypeFieldName);
     if (pszType != nullptr && pszType[0] != '\0') {
         if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Type");
@@ -653,7 +694,8 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
     }
 
     // Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    const char* pszLabelFieldName = GetFieldName("Label");
+    const char* pszLabel = poFeature->GetFieldAsString(pszLabelFieldName);
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
         if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
@@ -684,9 +726,10 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
     }
 
     // Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    const char* pszEndLevelFieldName = GetFieldName("EndLevel");
+    int nEndLevelIdx = poFeature->GetFieldIndex(pszEndLevelFieldName);
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        int nEndLevel = poFeature->GetFieldAsInteger(pszEndLevelFieldName);
         if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write EndLevel");
             return false;
@@ -694,7 +737,8 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
     }
 
     // Extract and write Levels field (optional)
-    const char* pszLevels = poFeature->GetFieldAsString("Levels");
+    const char* pszLevelsFieldName = GetFieldName("Levels");
+    const char* pszLevels = poFeature->GetFieldAsString(pszLevelsFieldName);
     if (pszLevels != nullptr && pszLevels[0] != '\0') {
         if (!BufferedWrite(FormatString("Levels=%s\n", pszLevels).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Levels");
@@ -931,8 +975,10 @@ bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFe
         return false;
     }
 
+    // Story 4.4 Task 5: Use field mapping to read from correct source field
     // Extract and write Type field (required)
-    const char* pszType = poFeature->GetFieldAsString("Type");
+    const char* pszTypeFieldName = GetFieldName("Type");
+    const char* pszType = poFeature->GetFieldAsString(pszTypeFieldName);
     if (pszType != nullptr && pszType[0] != '\0') {
         if (!BufferedWrite(FormatString("Type=%s\n", pszType).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write Type");
@@ -947,7 +993,8 @@ bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFe
     }
 
     // Extract and write Label field (optional)
-    const char* pszLabel = poFeature->GetFieldAsString("Label");
+    const char* pszLabelFieldName = GetFieldName("Label");
+    const char* pszLabel = poFeature->GetFieldAsString(pszLabelFieldName);
     if (pszLabel != nullptr && pszLabel[0] != '\0') {
         std::string osLabelCP1252 = RecodeToCP1252(pszLabel);
         if (!BufferedWrite(FormatString("Label=%s\n", osLabelCP1252.c_str()).c_str())) {
@@ -983,9 +1030,10 @@ bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFe
     }
 
     // Extract and write EndLevel field (optional)
-    int nEndLevelIdx = poFeature->GetFieldIndex("EndLevel");
+    const char* pszEndLevelFieldName = GetFieldName("EndLevel");
+    int nEndLevelIdx = poFeature->GetFieldIndex(pszEndLevelFieldName);
     if (nEndLevelIdx >= 0 && poFeature->IsFieldSetAndNotNull(nEndLevelIdx)) {
-        int nEndLevel = poFeature->GetFieldAsInteger("EndLevel");
+        int nEndLevel = poFeature->GetFieldAsInteger(pszEndLevelFieldName);
         if (!BufferedWrite(FormatString("EndLevel=%d\n", nEndLevel).c_str())) {
             CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write EndLevel");
             return false;

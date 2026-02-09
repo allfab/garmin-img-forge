@@ -36,6 +36,7 @@
 // Forward declarations
 class PolishMapParser;
 class PolishMapWriter;
+class PolishMapFieldMapper;
 
 /************************************************************************/
 /*                         OGRPolishMapLayer                            */
@@ -90,16 +91,22 @@ private:
     bool m_bWriteMode;                 // true if layer is in write mode
     PolishMapWriter* m_poWriter;       // Non-owning pointer to writer (write mode only)
 
+    // Story 4.4: Field mapping support
+    PolishMapFieldMapper* m_poFieldMapper;  // Non-owning pointer to field mapper (write mode only)
+    bool m_bFieldMappingSet;           // Story 4.4 Task 5: Track if mapping sent to writer
+
     /**
-     * @brief Set of field names mapped to Polish Map schema.
+     * @brief Mapping from canonical Polish Map field names to source field names.
      *
-     * Story 4.1: Tracks which source fields have been mapped to Polish Map
-     * attributes via CreateField(). Used for accept-and-map pattern to enable
-     * ogr2ogr compatibility with any source format.
+     * Story 4.1, 4.4: Tracks which source fields have been mapped to Polish Map
+     * attributes via CreateField(). Enables reverse lookup: given a Polish Map
+     * field (e.g., "Label"), find the source field name (e.g., "NAME").
+     *
+     * Example: {"Label" -> "NAME", "Type" -> "MP_TYPE"}
      *
      * @see CreateField()
      */
-    std::set<std::string> m_oMappedFields;
+    std::map<std::string, std::string> m_oMappedFields;
 
 public:
     /**
@@ -205,21 +212,18 @@ public:
      */
     void SetWriter(PolishMapWriter* poWriter);
 
-protected:
     /**
-     * @brief Create and write a feature to the Polish Map file.
+     * @brief Set the field mapper for this layer (enables configurable field mapping).
      *
-     * Writes the feature to the file using the associated PolishMapWriter.
-     * The feature must have valid geometry matching the layer's geometry type.
+     * Associates a PolishMapFieldMapper with this layer, enabling YAML-based
+     * field name mapping for ogr2ogr conversions (Story 4.4).
      *
-     * @param poFeature Feature to write. Must have valid geometry.
-     * @return OGRERR_NONE on success, or error code on failure.
+     * @param poMapper Non-owning pointer to PolishMapFieldMapper instance.
      *
-     * @note The feature's FID is assigned by the layer after successful write.
-     * @note Required fields: geometry. Optional: Type, Label, EndLevel, Levels.
-     * @note This is the protected implementation called by CreateFeature().
+     * @note The mapper must remain valid for the lifetime of the layer.
+     * @note If not set, layer uses hardcoded aliases from polishmapfields.h.
      */
-    OGRErr ICreateFeature(OGRFeature* poFeature) override;
+    void SetFieldMapper(PolishMapFieldMapper* poMapper);
 
     /**
      * @brief Accept and map field definitions from source layer.
@@ -244,6 +248,22 @@ protected:
      * @see TestCapability(OLCCreateField)
      */
     OGRErr CreateField(const OGRFieldDefn* poField, int bApproxOK = TRUE) override;
+
+protected:
+    /**
+     * @brief Create and write a feature to the Polish Map file.
+     *
+     * Writes the feature to the file using the associated PolishMapWriter.
+     * The feature must have valid geometry matching the layer's geometry type.
+     *
+     * @param poFeature Feature to write. Must have valid geometry.
+     * @return OGRERR_NONE on success, or error code on failure.
+     *
+     * @note The feature's FID is assigned by the layer after successful write.
+     * @note Required fields: geometry. Optional: Type, Label, EndLevel, Levels.
+     * @note This is the protected implementation called by CreateFeature().
+     */
+    OGRErr ICreateFeature(OGRFeature* poFeature) override;
 
 private:
     /**

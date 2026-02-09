@@ -178,12 +178,27 @@ public:
      */
     bool IsHeaderWritten() const { return m_bHeaderWritten; }
 
+    /**
+     * @brief Set field mapping for reading feature attributes.
+     * @param aoMapping Map from canonical Polish Map fields to source field names
+     *
+     * Story 4.4 Task 5: Enables writer to read values from source fields that
+     * have been mapped to Polish Map fields via CreateField().
+     *
+     * Example: {"Label" -> "NAME", "Type" -> "MP_TYPE"}
+     * When writing, writer will read "NAME" field instead of "Label".
+     */
+    void SetFieldMapping(const std::map<std::string, std::string>& aoMapping);
+
 private:
     VSILFILE* m_fpOutput;      // Borrowed file handle (NOT owned)
     bool m_bHeaderWritten;     // Track if header section was written
 
     // Story 3.1: Buffered writing members (Architecture: Buffered I/O Pattern)
     std::string m_osWriteBuffer;  // Accumulation buffer for writes (NFR2: 10 MB < 3s)
+
+    // Story 4.4 Task 5: Field mapping (canonical Polish Map field -> source field name)
+    std::map<std::string, std::string> m_oFieldMapping;
 
     /**
      * @brief Write data to internal buffer, flush if necessary.
@@ -258,6 +273,16 @@ private:
      * Auto-closes open rings by duplicating first point.
      */
     bool WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFeature);
+
+    /**
+     * @brief Resolve field name using mapping (canonical -> source).
+     * @param pszCanonicalField Canonical Polish Map field name (e.g., "Label")
+     * @return Source field name if mapping exists, else canonical name
+     *
+     * Story 4.4 Task 5: Helper to read values from correctly mapped source fields.
+     * Example: GetFieldName("Label") returns "NAME" if mapping exists, else "Label".
+     */
+    const char* GetFieldName(const char* pszCanonicalField) const;
 };
 
 #endif /* POLISHMAPWRITER_H_INCLUDED */

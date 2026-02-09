@@ -182,9 +182,10 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
 GDALDataset* OGRPolishMapDriver::Create(const char* pszName, int /* nXSize */,
                                         int /* nYSize */, int /* nBands */,
                                         GDALDataType /* eType */,
-                                        char** /* papszOptions */) {
+                                        char** papszOptions) {
     // Task 1.2: Delegate to OGRPolishMapDataSource::Create()
-    return OGRPolishMapDataSource::Create(pszName);
+    // Story 4.4: Pass papszOptions for FIELD_MAPPING support
+    return OGRPolishMapDataSource::Create(pszName, papszOptions);
 }
 
 /************************************************************************/
