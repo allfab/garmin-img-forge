@@ -27,6 +27,7 @@
 
 #include "polishmapwriter.h"
 #include "polishmapfields.h"
+#include "polishmapparser.h"  // Story 2.2.8: For template parsing
 #include "cpl_error.h"
 #include "cpl_conv.h"
 #include <cstdarg>  // Story 3.1: For FormatString() helper
@@ -323,6 +324,15 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         return true;  // Not a fatal error
     }
 
+    // Story 2.2.8 Task 4: Check for HEADER_TEMPLATE option (priority 1)
+    auto itTemplate = aoMetadata.find("HEADER_TEMPLATE");
+    if (itTemplate != aoMetadata.end() && !itTemplate->second.empty()) {
+        // Template-based generation (AC4: template takes precedence)
+        return WriteHeaderFromTemplate(itTemplate->second.c_str());
+    }
+
+    // Fallback to metadata-based or defaults-based generation (priority 2/3)
+
     // Story 2.2.4: Merge user metadata with intelligent defaults
     // User-provided values override defaults
     std::map<std::string, std::string> aoMergedMetadata = GetDefaultHeaderData();
@@ -460,6 +470,175 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
              osName.c_str(), osCodePage.c_str(),
              aoMergedMetadata["ID"].c_str(),
              static_cast<int>(aoMergedMetadata.size()));
+
+    return true;
+}
+
+/************************************************************************/
+/*                      WriteHeaderFromTemplate()                        */
+/*                                                                      */
+/* Story 2.2.8 Task 3: Copy header from template file.                  */
+/* Parses template file's [IMG ID] section and writes all fields.       */
+/************************************************************************/
+
+bool PolishMapWriter::WriteHeaderFromTemplate(const char* pszTemplatePath)
+{
+    if (m_fpOutput == nullptr) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "PolishMapWriter::WriteHeaderFromTemplate() - file handle is null");
+        return false;
+    }
+
+    if (m_bHeaderWritten) {
+        CPLError(CE_Warning, CPLE_AppDefined,
+                 "PolishMapWriter::WriteHeaderFromTemplate() - header already written");
+        return true;  // Not a fatal error
+    }
+
+    // Story 2.2.8 Task 3.2: Validate template file exists (AC2)
+    VSIStatBufL sStat;
+    if (VSIStatL(pszTemplatePath, &sStat) != 0) {
+        CPLError(CE_Failure, CPLE_OpenFailed,
+                 "HEADER_TEMPLATE file not found: %s", pszTemplatePath);
+        return false;
+    }
+
+    // Story 2.2.8 Task 3.3: Parse template file
+    PolishMapParser oParser(pszTemplatePath);
+    if (!oParser.IsOpen()) {
+        CPLError(CE_Failure, CPLE_OpenFailed,
+                 "Failed to open HEADER_TEMPLATE file: %s", pszTemplatePath);
+        return false;
+    }
+
+    // Story 2.2.8 Task 3.4: Parse header (AC3)
+    if (!oParser.ParseHeader()) {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "HEADER_TEMPLATE file has invalid [IMG ID] section: %s",
+                 pszTemplatePath);
+        return false;
+    }
+
+    // Story 2.2.8 Task 3.5: Get header data
+    const PolishMapHeaderData& oHeader = oParser.GetHeaderData();
+
+    // Story 2.2.8 Task 3.6: Write [IMG ID] section
+    if (!BufferedWrite("[IMG ID]\n")) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "PolishMapWriter::WriteHeaderFromTemplate() - failed to write [IMG ID]");
+        return false;
+    }
+
+    // Write 15 standard fields (if present in template)
+    // Order: ID, Name, Elevation, Datum, LBLcoding, Preprocess, Levels, TreeSize, etc.
+
+    if (!oHeader.osID.empty()) {
+        if (!BufferedWrite(FormatString("ID=%s\n", oHeader.osID.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osName.empty()) {
+        std::string osNameCP1252 = RecodeToCP1252(oHeader.osName);
+        if (!BufferedWrite(FormatString("Name=%s\n", osNameCP1252.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osElevation.empty()) {
+        if (!BufferedWrite(FormatString("Elevation=%s\n", oHeader.osElevation.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osDatum.empty()) {
+        if (!BufferedWrite(FormatString("Datum=%s\n", oHeader.osDatum.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osLBLcoding.empty()) {
+        if (!BufferedWrite(FormatString("LBLcoding=%s\n", oHeader.osLBLcoding.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osPreprocess.empty()) {
+        if (!BufferedWrite(FormatString("Preprocess=%s\n", oHeader.osPreprocess.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osLevels.empty()) {
+        if (!BufferedWrite(FormatString("Levels=%s\n", oHeader.osLevels.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osTreeSize.empty()) {
+        if (!BufferedWrite(FormatString("TreeSize=%s\n", oHeader.osTreeSize.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osRgnLimit.empty()) {
+        if (!BufferedWrite(FormatString("RgnLimit=%s\n", oHeader.osRgnLimit.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osTransparent.empty()) {
+        if (!BufferedWrite(FormatString("Transparent=%s\n", oHeader.osTransparent.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osSimplifyLevel.empty()) {
+        if (!BufferedWrite(FormatString("SimplifyLevel=%s\n", oHeader.osSimplifyLevel.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osMarine.empty()) {
+        if (!BufferedWrite(FormatString("Marine=%s\n", oHeader.osMarine.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    if (!oHeader.osLeftSideTraffic.empty()) {
+        if (!BufferedWrite(FormatString("LeftSideTraffic=%s\n", oHeader.osLeftSideTraffic.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    // Story 2.2.8 Task 3.7: Write custom fields (aoOtherFields) for AC6
+    for (const auto& pair : oHeader.aoOtherFields) {
+        if (!BufferedWrite(FormatString("%s=%s\n", pair.first.c_str(), pair.second.c_str()).c_str())) {
+            CPLError(CE_Failure, CPLE_FileIO,
+                     "PolishMapWriter::WriteHeaderFromTemplate() - failed to write custom field %s",
+                     pair.first.c_str());
+            return false;
+        }
+    }
+
+    // CodePage always last before [END]
+    if (!oHeader.osCodePage.empty()) {
+        if (!BufferedWrite(FormatString("CodePage=%s\n", oHeader.osCodePage.c_str()).c_str())) {
+            return false;
+        }
+    }
+
+    // Write [END] marker
+    if (!BufferedWrite("[END]\n")) {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "PolishMapWriter::WriteHeaderFromTemplate() - failed to write [END]");
+        return false;
+    }
+
+    m_bHeaderWritten = true;
+
+    CPLDebug("OGR_POLISHMAP", "WriteHeaderFromTemplate: Copied header from %s (Name=%s)",
+             pszTemplatePath, oHeader.osName.c_str());
 
     return true;
 }

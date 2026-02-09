@@ -114,8 +114,24 @@ public:
      *
      * Story 2.2: Extended signature accepting metadata map.
      * Handles default values, field ordering, and UTF-8 to CP1252 conversion.
+     * Story 2.2.8: Also checks for HEADER_TEMPLATE key in metadata.
      */
     bool WriteHeader(const std::map<std::string, std::string>& aoMetadata);
+
+    /**
+     * @brief Write [IMG ID] header section copied from template file.
+     * @param pszTemplatePath Path to .mp file whose header will be copied
+     * @return true if successful, false on error
+     *
+     * Story 2.2.8 Task 3: Template-based header generation.
+     * Parses the template file's [IMG ID] section and writes it to output.
+     * Preserves all 15 standard fields plus custom fields (aoOtherFields).
+     *
+     * Error handling:
+     * - Template file not found → CE_Failure, return false
+     * - Template has invalid [IMG ID] section → CE_Failure, return false
+     */
+    bool WriteHeaderFromTemplate(const char* pszTemplatePath);
 
     /**
      * @brief Flush any pending writes to file.

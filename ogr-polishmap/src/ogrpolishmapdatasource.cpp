@@ -300,6 +300,33 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
         return nullptr;
     }
 
+    // Story 2.2.8 Task 2.2: Validate HEADER_TEMPLATE before creating dataset (AC2, AC3)
+    const char* pszHeaderTemplate = CSLFetchNameValue(papszOptions, "HEADER_TEMPLATE");
+    if (pszHeaderTemplate != nullptr && pszHeaderTemplate[0] != '\0') {
+        // Check if template file exists
+        VSIStatBufL sStat;
+        if (VSIStatL(pszHeaderTemplate, &sStat) != 0) {
+            CPLError(CE_Failure, CPLE_OpenFailed,
+                     "HEADER_TEMPLATE file not found: %s", pszHeaderTemplate);
+            return nullptr;
+        }
+
+        // Validate template has valid [IMG ID] section
+        PolishMapParser oTemplateParser(pszHeaderTemplate);
+        if (!oTemplateParser.IsOpen()) {
+            CPLError(CE_Failure, CPLE_OpenFailed,
+                     "Failed to open HEADER_TEMPLATE file: %s", pszHeaderTemplate);
+            return nullptr;
+        }
+        if (!oTemplateParser.ParseHeader()) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "HEADER_TEMPLATE file has invalid [IMG ID] section: %s",
+                     pszHeaderTemplate);
+            return nullptr;
+        }
+        CPLDebug("OGR_POLISHMAP", "HEADER_TEMPLATE validated: %s", pszHeaderTemplate);
+    }
+
     // Task 1.3: Create file with VSIFOpenL() in mode "w" (overwrites if exists)
     VSILFILE* fp = VSIFOpenL(pszFilename, "w");
     if (fp == nullptr) {
@@ -318,6 +345,11 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
 
     // Set description (file path)
     poDS->SetDescription(pszFilename);
+
+    // Story 2.2.8 Task 2.1: Store HEADER_TEMPLATE option in metadata (already validated above)
+    if (pszHeaderTemplate != nullptr && pszHeaderTemplate[0] != '\0') {
+        poDS->m_aoMetadata["HEADER_TEMPLATE"] = pszHeaderTemplate;
+    }
 
     // Story 4.4 Task 3.2: Read FIELD_MAPPING option and initialize mapper
     const char* pszFieldMapping = CSLFetchNameValue(papszOptions, "FIELD_MAPPING");

@@ -282,6 +282,14 @@ target_compile_definitions(test_field_mapping_config PRIVATE
     -DTEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
 )
 
+# Test executable - HEADER_TEMPLATE (Story 2.2.8)
+add_executable(test_header_template test/test_header_template.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_header_template PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_header_template PRIVATE ${GDAL_LIBRARIES})
+
 # Summary
 message(STATUS "=== OGR PolishMap Driver Configuration ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
