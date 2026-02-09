@@ -243,6 +243,18 @@ private:
     std::string RecodeToCP1252(const std::string& osUTF8Value);
 
     /**
+     * @brief Helper to write a single header field with error logging.
+     * @param pszKey Field name (e.g., "ID", "Name")
+     * @param osValue Field value
+     * @param bRecodeCP1252 If true, convert value from UTF-8 to CP1252
+     * @return true if successful, false on error
+     *
+     * M4/M5 fix: Factorizes repeated code and adds consistent error logging.
+     * Only writes if osValue is non-empty.
+     */
+    bool WriteHeaderField(const char* pszKey, const std::string& osValue, bool bRecodeCP1252 = false);
+
+    /**
      * @brief Write extended attributes for a feature.
      * @param poFeature Feature containing attributes
      * @param nLayerFlag Layer bitmask (LAYER_POI, LAYER_POLYLINE, LAYER_POLYGON)

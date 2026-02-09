@@ -60,13 +60,16 @@ OGRPolishMapDriver::OGRPolishMapDriver() {
     // SQL dialects supported (OGRSQL is the default OGR SQL)
     SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL");
 
-    // Story 2.2.8: Dataset creation options
+    // Story 2.2.8 + 4.4: Dataset creation options
     SetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST,
         "<CreationOptionList>"
         "  <Option name='HEADER_TEMPLATE' type='string' description="
         "'Path to a Polish Map file (.mp) whose header ([IMG ID] section) will be copied to the output file. "
         "If specified, this takes precedence over metadata set via SetMetadataItem(). "
         "The template file must contain a valid [IMG ID] section.'/>"
+        "  <Option name='FIELD_MAPPING' type='string' description="
+        "'Path to a YAML configuration file that defines field mappings from source to Polish Map fields. "
+        "Enables automatic field name translation (e.g., NAME to Label, ROAD_TYPE to Type) during ogr2ogr conversion.'/>"
         "</CreationOptionList>");
 
     // Function pointers for driver operations
