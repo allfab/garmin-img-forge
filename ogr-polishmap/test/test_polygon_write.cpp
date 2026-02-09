@@ -37,6 +37,11 @@
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 
+// Suppress warn_unused_result in tests where CreateFeature return is intentionally unchecked
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#endif
+
 // External declaration for driver registration
 extern "C" void RegisterOGRPolishMap();
 
@@ -207,7 +212,7 @@ static bool Test_4_2_File_Contains_POLYGON_Section() {
     oPolygon.addRing(&oRing);
     poFeature->SetGeometry(&oPolygon);
 
-    poPolygonLayer->CreateFeature(poFeature);
+    (void)poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     // Close to flush
@@ -312,7 +317,7 @@ static bool Test_4_3_Data0_OneLine_Format() {
     oPolygon.addRing(&oRing);
     poFeature->SetGeometry(&oPolygon);
 
-    poPolygonLayer->CreateFeature(poFeature);
+    (void)poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -374,7 +379,7 @@ static bool Test_4_4_Coordinates_6_Decimals() {
     oPolygon.addRing(&oRing);
     poFeature->SetGeometry(&oPolygon);
 
-    poPolygonLayer->CreateFeature(poFeature);
+    (void)poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -437,7 +442,7 @@ static bool Test_4_5_UTF8_To_CP1252_Label() {
     oPolygon.addRing(&oRing);
     poFeature->SetGeometry(&oPolygon);
 
-    poPolygonLayer->CreateFeature(poFeature);
+    (void)poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -513,7 +518,7 @@ static bool Test_4_6_Optional_Label_Omitted() {
     oPolygon.addRing(&oRing);
     poFeature->SetGeometry(&oPolygon);
 
-    poPolygonLayer->CreateFeature(poFeature);
+    (void)poPolygonLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -1015,7 +1020,7 @@ static bool Test_4_12_MixedFile_POI_POLYLINE_POLYGON() {
     poFeaturePOI->SetField("Label", "Test POI");
     OGRPoint oPt(2.3522, 48.8566);
     poFeaturePOI->SetGeometry(&oPt);
-    poPOILayer->CreateFeature(poFeaturePOI);
+    (void)poPOILayer->CreateFeature(poFeaturePOI);
     OGRFeature::DestroyFeature(poFeaturePOI);
 
     // Create POLYLINE feature
@@ -1026,7 +1031,7 @@ static bool Test_4_12_MixedFile_POI_POLYLINE_POLYGON() {
     oLine.addPoint(2.3522, 48.8566);
     oLine.addPoint(2.3533, 48.8577);
     poFeatureLine->SetGeometry(&oLine);
-    poPolylineLayer->CreateFeature(poFeatureLine);
+    (void)poPolylineLayer->CreateFeature(poFeatureLine);
     OGRFeature::DestroyFeature(poFeatureLine);
 
     // Create POLYGON feature
@@ -1041,7 +1046,7 @@ static bool Test_4_12_MixedFile_POI_POLYLINE_POLYGON() {
     oRing.addPoint(2.3522, 48.8566);
     oPolygon.addRing(&oRing);
     poFeaturePoly->SetGeometry(&oPolygon);
-    poPolygonLayer->CreateFeature(poFeaturePoly);
+    (void)poPolygonLayer->CreateFeature(poFeaturePoly);
     OGRFeature::DestroyFeature(poFeaturePoly);
 
     GDALClose(poDS);

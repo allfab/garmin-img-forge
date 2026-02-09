@@ -30,6 +30,11 @@
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 
+// Suppress warn_unused_result in tests where CreateFeature return is intentionally unchecked
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#endif
+
 // External declaration for driver registration
 extern "C" void RegisterOGRPolishMap();
 
@@ -189,7 +194,7 @@ static bool Test_CreateFeature_File_Contains_POI_Section() {
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     // Close to flush
@@ -280,7 +285,7 @@ static bool Test_CreateFeature_Coordinates_6_Decimals() {
     OGRPoint oPoint(2.3522, 48.8566);  // lon, lat
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -337,7 +342,7 @@ static bool Test_CreateFeature_UTF8_To_CP1252_Label() {
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -407,7 +412,7 @@ static bool Test_CreateFeature_Optional_Label_Omitted() {
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -482,7 +487,7 @@ static bool Test_CreateFeature_Optional_EndLevel_Omitted() {
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -543,7 +548,7 @@ static bool Test_CreateFeature_EndLevel_Written_When_Set() {
     OGRPoint oPoint(2.3522, 48.8566);
     poFeature->SetGeometry(&oPoint);
 
-    poPOILayer->CreateFeature(poFeature);
+    (void)poPOILayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);

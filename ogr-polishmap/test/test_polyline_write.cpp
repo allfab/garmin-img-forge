@@ -31,6 +31,11 @@
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
 
+// Suppress warn_unused_result in tests where CreateFeature return is intentionally unchecked
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#endif
+
 // External declaration for driver registration
 extern "C" void RegisterOGRPolishMap();
 
@@ -194,7 +199,7 @@ static bool Test_CreateFeature_Data0_OneLine_Format() {
     oLine.addPoint(2.3544, 48.8588);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -253,7 +258,7 @@ static bool Test_CreateFeature_File_Contains_POLYLINE_Section() {
     oLine.addPoint(2.3533, 48.8577);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     // Close to flush
@@ -346,7 +351,7 @@ static bool Test_CreateFeature_Coordinates_6_Decimals() {
     oLine.addPoint(2.3533, 48.8577);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -406,7 +411,7 @@ static bool Test_CreateFeature_UTF8_To_CP1252_Label() {
     oLine.addPoint(2.3533, 48.8577);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -478,7 +483,7 @@ static bool Test_CreateFeature_Optional_Label_Omitted() {
     oLine.addPoint(2.3533, 48.8577);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
@@ -997,7 +1002,7 @@ static bool Test_CreateFeature_Levels_And_EndLevel_Written() {
     oLine.addPoint(2.3533, 48.8577);
     poFeature->SetGeometry(&oLine);
 
-    poPolylineLayer->CreateFeature(poFeature);
+    (void)poPolylineLayer->CreateFeature(poFeature);
     OGRFeature::DestroyFeature(poFeature);
 
     GDALClose(poDS);
