@@ -244,6 +244,49 @@ The following dataset creation options are available:
 - **ID** (string): Map identifier for the [IMG ID] header section.
   Default: auto-generated.
 
+- **HEADER_TEMPLATE** (string): Path to a Polish Map (.mp) file whose [IMG ID]
+  header section will be copied to the output file. This option is useful for
+  batch production workflows where multiple output files should share the same
+  standardized header configuration.
+
+  Default: None (header generated from metadata or defaults).
+
+  When specified, the driver will:
+  - Validate that the template file exists and has a valid [IMG ID] section
+  - Copy all header fields from the template (including custom/unknown fields)
+  - Override any header metadata set via ``SetMetadataItem()`` or dataset
+    creation options (NAME, ID, CODEPAGE)
+
+  This option takes **precedence** over all other header configuration methods.
+
+  **Use case - Batch production with standardized headers**::
+
+      # Without HEADER_TEMPLATE (tedious, error-prone)
+      for region in *.shp; do
+        ogr2ogr -f "PolishMap" \
+          -mo "ID=12345678" \
+          -mo "Name=BDTOPO Q1 2026" \
+          -mo "LBLcoding=9" \
+          -mo "Preprocess=F" \
+          -mo "Levels=3" \
+          -mo "Level0=24" -mo "Level1=22" -mo "Level2=18" \
+          -mo "TreeSize=5000" -mo "RgnLimit=1024" \
+          # ... 15+ metadata fields
+          output_${region}.mp ${region}
+      done
+
+      # With HEADER_TEMPLATE (simple, consistent)
+      for region in *.shp; do
+        ogr2ogr -f "PolishMap" \
+          -dsco "HEADER_TEMPLATE=templates/bdtopo-base.mp" \
+          output_${region}.mp ${region}
+      done
+
+  **Benefits**:
+  - Reduces complexity: 15+ configuration lines → 1 line (93% reduction)
+  - Centralized maintenance: N scripts → 1 template file
+  - Guaranteed consistency: No transcription errors
+
 - **FIELD_MAPPING** (string): Path to a YAML configuration file that defines
   custom field name mappings from source fields to Polish Map fields.
   Default: None (uses hardcoded aliases).
