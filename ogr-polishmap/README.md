@@ -190,6 +190,58 @@ ogr-polishmap/
 | Spatial Filter | Yes | N/A |
 | Attribute Filter | Yes | N/A |
 | UTF-8 Labels | Yes | Yes (auto-converts to CP1252) |
+| Multi-Geometry Decomposition | N/A | Yes (MultiPolygon → N Polygon) |
+| YAML Field Mapping | N/A | Yes (-dsco FIELD_MAPPING=config.yaml) |
+
+## Examples with Real Datasets
+
+The driver has been validated against representative real-world datasets:
+
+### BDTOPO (IGN France)
+
+```bash
+# Convert COMMUNE shapefile with YAML field mapping
+ogr2ogr -f "PolishMap" communes.mp COMMUNE.shp \
+    -dsco FIELD_MAPPING=bdtopo_mapping.yaml
+
+# bdtopo_mapping.yaml:
+# field_mapping:
+#   NAME: Label
+#   MP_TYPE: Type
+#   Country: CountryName
+#   MPBITLEVEL: Levels
+#   EndLevel: EndLevel
+```
+
+MultiPolygon communes are automatically decomposed into separate `[POLYGON]` sections with attributes duplicated on each part.
+
+### OpenStreetMap
+
+```bash
+# Convert OSM roads GeoJSON with field mapping
+ogr2ogr -f "PolishMap" roads.mp osm_roads.geojson \
+    -dsco FIELD_MAPPING=osm_mapping.yaml
+
+# osm_mapping.yaml:
+# field_mapping:
+#   name: Label
+#   ref: RoadID
+#   highway: Type
+```
+
+MultiLineString roads are decomposed into separate `[POLYLINE]` sections.
+
+### Round-Trip Validation
+
+```bash
+# SHP → MP → SHP round-trip
+ogr2ogr -f "PolishMap" temp.mp input.shp
+ogr2ogr -f "ESRI Shapefile" output.shp temp.mp
+# Geometry count matches for simple geometries
+# Multi-geometry features expand: 1 Multi(N) → N simple features
+```
+
+See `test/data/real_world/` for synthetic test datasets and YAML configs.
 
 ## Contributing
 

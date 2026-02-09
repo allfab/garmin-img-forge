@@ -1,0 +1,9 @@
+# OSM Road Network Field Mapping Configuration
+# Maps OpenStreetMap field names to Polish Map format
+# Story 4.3: Real-World SIG Integration Tests
+
+field_mapping:
+  # Core identification
+  name: Label           # Road/POI name
+  ref: RoadID           # Road reference number (e.g., "N20", "A6")
+  highway: Type         # Road classification → Garmin type code

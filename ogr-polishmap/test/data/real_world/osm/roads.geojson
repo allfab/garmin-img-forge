@@ -1,0 +1,373 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rue de la Paix",
+        "highway": "residential",
+        "ref": null
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.3,
+            48.85
+          ],
+          [
+            2.3009999999999997,
+            48.850500000000004
+          ],
+          [
+            2.3019999999999996,
+            48.851
+          ],
+          [
+            2.303,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Avenue Victor Hugo",
+        "highway": "secondary",
+        "ref": "D42"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.3049999999999997,
+            48.85
+          ],
+          [
+            2.3059999999999996,
+            48.850500000000004
+          ],
+          [
+            2.3069999999999995,
+            48.851
+          ],
+          [
+            2.308,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Boulevard Gambetta",
+        "highway": "primary",
+        "ref": "N7"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.3099999999999996,
+            48.85
+          ],
+          [
+            2.3109999999999995,
+            48.850500000000004
+          ],
+          [
+            2.3119999999999994,
+            48.851
+          ],
+          [
+            2.3129999999999997,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rue des Fleurs",
+        "highway": "residential",
+        "ref": null
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.315,
+            48.85
+          ],
+          [
+            2.316,
+            48.850500000000004
+          ],
+          [
+            2.3169999999999997,
+            48.851
+          ],
+          [
+            2.318,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Route de Lyon",
+        "highway": "trunk",
+        "ref": "A43"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.32,
+            48.85
+          ],
+          [
+            2.3209999999999997,
+            48.850500000000004
+          ],
+          [
+            2.3219999999999996,
+            48.851
+          ],
+          [
+            2.323,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Chemin des Vignes",
+        "highway": "track",
+        "ref": null
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.3249999999999997,
+            48.85
+          ],
+          [
+            2.3259999999999996,
+            48.850500000000004
+          ],
+          [
+            2.3269999999999995,
+            48.851
+          ],
+          [
+            2.328,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Allée des Platanes",
+        "highway": "living_street",
+        "ref": null
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.3299999999999996,
+            48.85
+          ],
+          [
+            2.3309999999999995,
+            48.850500000000004
+          ],
+          [
+            2.3319999999999994,
+            48.851
+          ],
+          [
+            2.3329999999999997,
+            48.8515
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Route Nationale 20",
+        "highway": "primary",
+        "ref": "N20"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              2.35,
+              48.86
+            ],
+            [
+              2.351,
+              48.8605
+            ],
+            [
+              2.352,
+              48.861
+            ]
+          ],
+          [
+            [
+              2.353,
+              48.862
+            ],
+            [
+              2.354,
+              48.862500000000004
+            ],
+            [
+              2.355,
+              48.863
+            ]
+          ],
+          [
+            [
+              2.356,
+              48.864
+            ],
+            [
+              2.3569999999999998,
+              48.8645
+            ],
+            [
+              2.3579999999999997,
+              48.864999999999995
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Autoroute du Soleil",
+        "highway": "motorway",
+        "ref": "A6"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              2.36,
+              48.86
+            ],
+            [
+              2.3609999999999998,
+              48.8605
+            ],
+            [
+              2.3619999999999997,
+              48.861
+            ]
+          ],
+          [
+            [
+              2.363,
+              48.862
+            ],
+            [
+              2.364,
+              48.862500000000004
+            ],
+            [
+              2.3649999999999998,
+              48.863
+            ]
+          ],
+          [
+            [
+              2.3659999999999997,
+              48.864
+            ],
+            [
+              2.3669999999999995,
+              48.8645
+            ],
+            [
+              2.3679999999999994,
+              48.864999999999995
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Périphérique",
+        "highway": "motorway",
+        "ref": "BP"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              2.37,
+              48.86
+            ],
+            [
+              2.371,
+              48.8605
+            ],
+            [
+              2.372,
+              48.861
+            ]
+          ],
+          [
+            [
+              2.373,
+              48.862
+            ],
+            [
+              2.374,
+              48.862500000000004
+            ],
+            [
+              2.375,
+              48.863
+            ]
+          ],
+          [
+            [
+              2.376,
+              48.864
+            ],
+            [
+              2.377,
+              48.8645
+            ],
+            [
+              2.3779999999999997,
+              48.864999999999995
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

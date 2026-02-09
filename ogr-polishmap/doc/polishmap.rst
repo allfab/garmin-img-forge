@@ -383,6 +383,41 @@ Examples
 See ``docs/field-mapping-guide.md`` for comprehensive documentation on creating
 custom field mapping configurations.
 
+Real-World Dataset Examples
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**BDTOPO (IGN France) Conversion**::
+
+    # Convert BDTOPO COMMUNE Shapefile with YAML field mapping
+    # Maps: NAME→Label, MP_TYPE→Type, Country→CountryName, MPBITLEVEL→Levels
+    ogr2ogr -f "PolishMap" communes.mp COMMUNE.shp \
+        -dsco FIELD_MAPPING=bdtopo_mapping.yaml
+
+    # MultiPolygon communes are automatically decomposed into
+    # separate [POLYGON] sections (Story 4.2 feature)
+
+    # Convert BDTOPO routes
+    ogr2ogr -f "PolishMap" routes.mp ROUTE.shp \
+        -dsco FIELD_MAPPING=bdtopo_mapping.yaml
+
+**OpenStreetMap Export Conversion**::
+
+    # Convert OSM GeoJSON export with road mapping
+    # Maps: name→Label, ref→RoadID, highway→Type
+    ogr2ogr -f "PolishMap" roads.mp osm_roads.geojson \
+        -dsco FIELD_MAPPING=osm_mapping.yaml
+
+    # MultiLineString roads are decomposed into separate [POLYLINE] sections
+
+**Round-Trip Validation**::
+
+    # Shapefile → Polish Map → Shapefile
+    ogr2ogr -f "PolishMap" temp.mp input.shp
+    ogr2ogr -f "ESRI Shapefile" output.shp temp.mp
+
+    # Geometry count matches for simple geometries
+    # Multi-geometry features are decomposed (1 Multi(N) → N simple features)
+
 **Python example - Reading**:
 
 .. code-block:: python

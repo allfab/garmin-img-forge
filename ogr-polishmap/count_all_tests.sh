@@ -22,6 +22,9 @@ TESTS=(
     "test_createfield"
     "test_multigeom"
     "test_extended_attributes"
+    "test_field_mapping_config"
+    "test_header_template"
+    "test_real_world_integration"
 )
 
 for test in "${TESTS[@]}"; do
