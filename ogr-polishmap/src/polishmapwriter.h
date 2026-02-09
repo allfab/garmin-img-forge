@@ -206,9 +206,19 @@ public:
      */
     void SetFieldMapping(const std::map<std::string, std::string>& aoMapping);
 
+    /**
+     * @brief Set pointer to datasource metadata for header writing.
+     * @param paoMetadata Pointer to the datasource's metadata map (borrowed, NOT owned)
+     *
+     * When set, the safety net header writing in WritePOI/WritePOLYLINE/WritePOLYGON
+     * will use these metadata (including HEADER_TEMPLATE) instead of hardcoded defaults.
+     */
+    void SetMetadata(const std::map<std::string, std::string>* paoMetadata);
+
 private:
     VSILFILE* m_fpOutput;      // Borrowed file handle (NOT owned)
     bool m_bHeaderWritten;     // Track if header section was written
+    const std::map<std::string, std::string>* m_paoMetadata;  // Borrowed pointer to datasource metadata
 
     // Story 3.1: Buffered writing members (Architecture: Buffered I/O Pattern)
     std::string m_osWriteBuffer;  // Accumulation buffer for writes (NFR2: 10 MB < 3s)

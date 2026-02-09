@@ -368,6 +368,9 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
     // Story 2.3 Task 3.2: Create writer BEFORE layers (so we can connect them)
     poDS->m_poWriter = std::make_unique<PolishMapWriter>(fp);
 
+    // Give writer access to datasource metadata (for HEADER_TEMPLATE support in safety net)
+    poDS->m_poWriter->SetMetadata(&poDS->m_aoMetadata);
+
     // Task 2.3: Create 3 empty layers for write mode
     poDS->CreateLayersForWriteMode();
 

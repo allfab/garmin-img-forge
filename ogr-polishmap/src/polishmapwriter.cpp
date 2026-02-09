@@ -57,6 +57,7 @@ static constexpr int LARGE_POLYGON_WARNING_THRESHOLD = 10000;
 PolishMapWriter::PolishMapWriter(VSILFILE* fpOutput)
     : m_fpOutput(fpOutput)
     , m_bHeaderWritten(false)
+    , m_paoMetadata(nullptr)
     , m_oFieldMapping()  // Story 4.4: Initialize empty mapping
 {
     // File handle is borrowed - we don't own it
@@ -259,6 +260,18 @@ void PolishMapWriter::SetFieldMapping(const std::map<std::string, std::string>& 
     m_oFieldMapping = aoMapping;
     CPLDebug("OGR_POLISHMAP", "Writer: Field mapping set with %zu entries",
              m_oFieldMapping.size());
+}
+
+/************************************************************************/
+/*                          SetMetadata()                                */
+/*                                                                      */
+/* Store pointer to datasource metadata for use in safety net header    */
+/* writing within WritePOI/WritePOLYLINE/WritePOLYGON.                  */
+/************************************************************************/
+
+void PolishMapWriter::SetMetadata(const std::map<std::string, std::string>* paoMetadata)
+{
+    m_paoMetadata = paoMetadata;
 }
 
 /************************************************************************/
@@ -772,13 +785,21 @@ bool PolishMapWriter::WritePOI(OGRFeature* poFeature)
 
     // Ensure header is written before first feature
     if (!m_bHeaderWritten) {
-        std::map<std::string, std::string> aoDefaultMetadata;
-        aoDefaultMetadata["Name"] = "Untitled";
-        aoDefaultMetadata["CodePage"] = "1252";
-        if (!WriteHeader(aoDefaultMetadata)) {
-            CPLError(CE_Failure, CPLE_FileIO,
-                     "WritePOI: failed to write header");
-            return false;
+        if (m_paoMetadata != nullptr) {
+            if (!WriteHeader(*m_paoMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOI: failed to write header");
+                return false;
+            }
+        } else {
+            std::map<std::string, std::string> aoDefaultMetadata;
+            aoDefaultMetadata["Name"] = "Untitled";
+            aoDefaultMetadata["CodePage"] = "1252";
+            if (!WriteHeader(aoDefaultMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOI: failed to write header");
+                return false;
+            }
         }
     }
 
@@ -1012,13 +1033,21 @@ bool PolishMapWriter::WritePOLYLINE(OGRFeature* poFeature)
 
     // Ensure header is written before first feature
     if (!m_bHeaderWritten) {
-        std::map<std::string, std::string> aoDefaultMetadata;
-        aoDefaultMetadata["Name"] = "Untitled";
-        aoDefaultMetadata["CodePage"] = "1252";
-        if (!WriteHeader(aoDefaultMetadata)) {
-            CPLError(CE_Failure, CPLE_FileIO,
-                     "WritePOLYLINE: failed to write header");
-            return false;
+        if (m_paoMetadata != nullptr) {
+            if (!WriteHeader(*m_paoMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOLYLINE: failed to write header");
+                return false;
+            }
+        } else {
+            std::map<std::string, std::string> aoDefaultMetadata;
+            aoDefaultMetadata["Name"] = "Untitled";
+            aoDefaultMetadata["CodePage"] = "1252";
+            if (!WriteHeader(aoDefaultMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOLYLINE: failed to write header");
+                return false;
+            }
         }
     }
 
@@ -1308,13 +1337,21 @@ bool PolishMapWriter::WritePOLYGON(OGRFeature* poFeature)
 
     // Ensure header is written before first feature
     if (!m_bHeaderWritten) {
-        std::map<std::string, std::string> aoDefaultMetadata;
-        aoDefaultMetadata["Name"] = "Untitled";
-        aoDefaultMetadata["CodePage"] = "1252";
-        if (!WriteHeader(aoDefaultMetadata)) {
-            CPLError(CE_Failure, CPLE_FileIO,
-                     "WritePOLYGON: failed to write header");
-            return false;
+        if (m_paoMetadata != nullptr) {
+            if (!WriteHeader(*m_paoMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOLYGON: failed to write header");
+                return false;
+            }
+        } else {
+            std::map<std::string, std::string> aoDefaultMetadata;
+            aoDefaultMetadata["Name"] = "Untitled";
+            aoDefaultMetadata["CodePage"] = "1252";
+            if (!WriteHeader(aoDefaultMetadata)) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WritePOLYGON: failed to write header");
+                return false;
+            }
         }
     }
 

@@ -647,7 +647,12 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
     }
 
     if (osCanonical.empty()) {
-        // Unknown field - silently ignored
+        // Unknown field - accepted but ignored at write time
+        // Must add to layer definition to satisfy ogr2ogr's post-CreateField check
+        if (m_poFeatureDefn->GetFieldIndex(pszFieldName) < 0) {
+            OGRFieldDefn oFieldDefn(pszFieldName, poField->GetType());
+            m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
+        }
         CPLDebug("OGR_POLISHMAP", "CreateField: '%s' ignored (not a Polish Map field)",
                  pszFieldName);
         return OGRERR_NONE;
@@ -670,7 +675,12 @@ OGRErr OGRPolishMapLayer::CreateField(const OGRFieldDefn* poField,
         CPLDebug("OGR_POLISHMAP", "CreateField: '%s' mapped to %s",
                  pszFieldName, osCanonical.c_str());
     } else {
-        // Field not applicable to this layer type - silently ignored
+        // Field not applicable to this layer type - accepted but ignored at write time
+        // Must add to layer definition to satisfy ogr2ogr's post-CreateField check
+        if (m_poFeatureDefn->GetFieldIndex(pszFieldName) < 0) {
+            OGRFieldDefn oFieldDefn(pszFieldName, poField->GetType());
+            m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
+        }
         CPLDebug("OGR_POLISHMAP", "CreateField: '%s' -> '%s' not applicable to %s layer",
                  pszFieldName, osCanonical.c_str(), m_osLayerType.c_str());
     }
