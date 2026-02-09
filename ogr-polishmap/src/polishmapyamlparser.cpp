@@ -10,6 +10,7 @@
 #include "cpl_string.h"
 #include <algorithm>
 #include <cctype>
+#include <memory>
 
 /************************************************************************/
 /*                        PolishMapYAMLParser()                         */
@@ -40,8 +41,14 @@ bool PolishMapYAMLParser::LoadConfig(const char* pszConfigPath)
         return false;
     }
 
-    // Open file
-    VSILFILE* fp = VSIFOpenL(pszConfigPath, "r");
+    // Open file with RAII wrapper to ensure closure
+    struct VSILFileCloser {
+        void operator()(VSILFILE* fp) const {
+            if (fp) VSIFCloseL(fp);
+        }
+    };
+    std::unique_ptr<VSILFILE, VSILFileCloser> fp(VSIFOpenL(pszConfigPath, "r"));
+
     if (!fp) {
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Failed to open field mapping config: %s", pszConfigPath);
@@ -55,7 +62,7 @@ bool PolishMapYAMLParser::LoadConfig(const char* pszConfigPath)
     m_oMappings.clear();
 
     // Read file line by line
-    while ((pszLine = CPLReadLineL(fp)) != nullptr) {
+    while ((pszLine = CPLReadLineL(fp.get())) != nullptr) {
         nLineNum++;
 
         std::string osLine(pszLine);
@@ -107,7 +114,7 @@ bool PolishMapYAMLParser::LoadConfig(const char* pszConfigPath)
         }
     }
 
-    VSIFCloseL(fp);
+    // File automatically closed by unique_ptr destructor
 
     if (m_oMappings.empty()) {
         CPLError(CE_Warning, CPLE_AppDefined,

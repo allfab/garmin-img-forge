@@ -525,8 +525,12 @@ OGRErr OGRPolishMapLayer::ICreateFeature(OGRFeature* poFeature) {
     if (!m_bFieldMappingSet) {
         m_poWriter->SetFieldMapping(m_oMappedFields);
         m_bFieldMappingSet = true;
-        CPLDebug("OGR_POLISHMAP", "ICreateFeature: Field mapping sent to writer (%zu mappings)",
-                 m_oMappedFields.size());
+        if (m_oMappedFields.empty()) {
+            CPLDebug("OGR_POLISHMAP", "ICreateFeature: No field mappings defined - using hardcoded aliases");
+        } else {
+            CPLDebug("OGR_POLISHMAP", "ICreateFeature: Field mapping sent to writer (%zu mappings)",
+                     m_oMappedFields.size());
+        }
     }
 
     // Story 2.6: Dispatch based on feature geometry type (not layer type)

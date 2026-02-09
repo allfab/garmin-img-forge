@@ -167,6 +167,27 @@ The following dataset creation options are available:
 - **ID** (string): Map identifier for the [IMG ID] header section.
   Default: auto-generated.
 
+- **FIELD_MAPPING** (string): Path to a YAML configuration file that defines
+  custom field name mappings from source fields to Polish Map fields.
+  Default: None (uses hardcoded aliases).
+
+  This option enables automatic mapping of fields during ogr2ogr conversion.
+  For example, you can map IGN BDTOPO field names or OpenStreetMap tags to
+  Polish Map standard fields without using SQL SELECT statements.
+
+  **YAML file format**::
+
+      field_mapping:
+        SOURCE_FIELD: TARGET_FIELD
+        ANOTHER_SOURCE: ANOTHER_TARGET
+
+  **Available target fields**: Type, Label, EndLevel, Levels, Data0-Data9,
+  SubType, Marine, City, StreetDesc, HouseNumber, PhoneNumber, Highway,
+  CityName, RegionName, CountryName, Zip, DirIndicator, RouteParam
+
+  See ``examples/bdtopo-mapping.yaml`` for a complete example and
+  ``docs/field-mapping-guide.md`` for detailed documentation.
+
 **Example with creation options**::
 
     ogr2ogr -f "PolishMap" output.mp input.geojson \
@@ -220,6 +241,27 @@ Examples
 
     # Apply attribute filter
     ogr2ogr -f "GeoJSON" restaurants.geojson input.mp -where "Type='0x2C00'"
+
+**Converting with Field Mapping Configuration**::
+
+    # Convert IGN BDTOPO with custom field mapping
+    ogr2ogr -f "PolishMap" communes.mp COMMUNE.shp \
+        -dsco FIELD_MAPPING=bdtopo-mapping.yaml
+
+    # Convert OpenStreetMap data with field mapping
+    ogr2ogr -f "PolishMap" buildings.mp buildings.geojson \
+        -dsco FIELD_MAPPING=osm-mapping.yaml
+
+    # Field mapping with filters
+    ogr2ogr -f "PolishMap" grandes_villes.mp COMMUNE.shp \
+        -dsco FIELD_MAPPING=bdtopo-mapping.yaml \
+        -where "POPULATION > 10000"
+
+    # Without field mapping (uses hardcoded aliases)
+    ogr2ogr -f "PolishMap" output.mp input.shp
+
+See ``docs/field-mapping-guide.md`` for comprehensive documentation on creating
+custom field mapping configurations.
 
 **Python example - Reading**:
 

@@ -12,6 +12,7 @@ GDAL/OGR driver for reading and writing Polish Map (.mp) files used to create Ga
 - Read POI (Point of Interest), Polyline, and Polygon layers
 - Write features with full attribute support (Type, Label, EndLevel, Levels)
 - Bidirectional conversion with any GDAL-supported format (GeoJSON, Shapefile, GeoPackage, etc.)
+- Configurable field name mapping via YAML configuration (NEW!)
 - Spatial and attribute filtering support
 - Automatic UTF-8 to CP1252 encoding conversion
 
@@ -103,6 +104,58 @@ ds = None
 ```
 
 See the [examples/](examples/) directory for more comprehensive Python examples.
+
+## Field Mapping Configuration
+
+The driver supports configurable field name mapping to convert datasets (Shapefile, GeoJSON, BDTOPO, OSM, etc.) without using SQL SELECT statements. You can define a YAML configuration file that maps source field names to Polish Map standard fields.
+
+### Quick Example: Converting IGN BDTOPO
+
+```bash
+# Create field mapping configuration (bdtopo-mapping.yaml)
+# field_mapping:
+#   NAME: Label
+#   MP_TYPE: Type
+#   Country: CountryName
+#   CityName: CityName
+#   MPBITLEVEL: Levels
+
+# Convert with field mapping
+ogr2ogr -f "PolishMap" communes.mp COMMUNE.shp \
+    -dsco FIELD_MAPPING=bdtopo-mapping.yaml
+```
+
+### Quick Example: Converting OpenStreetMap
+
+```bash
+# Create field mapping configuration (osm-mapping.yaml)
+# field_mapping:
+#   name: Label
+#   building: Type
+#   "addr:city": CityName
+#   "addr:postcode": Zip
+
+# Convert with field mapping
+ogr2ogr -f "PolishMap" buildings.mp buildings.geojson \
+    -dsco FIELD_MAPPING=osm-mapping.yaml
+```
+
+### Available Polish Map Fields
+
+- **Core**: Type, Label, EndLevel, Levels, Data0-Data9
+- **Location**: CityName, RegionName, CountryName, Zip
+- **POI-specific**: SubType, Marine, City, StreetDesc, HouseNumber, PhoneNumber, Highway
+- **POLYLINE-specific**: DirIndicator, RouteParam
+
+### Without Field Mapping (Hardcoded Aliases)
+
+If no YAML configuration is provided, the driver uses built-in aliases:
+- `NAME` or `NOM` → Label
+- `MP_TYPE` → Type
+- `COUNTRY` → CountryName
+- etc.
+
+See [Field Mapping Guide](docs/field-mapping-guide.md) and [BDTOPO Example](examples/bdtopo-mapping.yaml) for complete documentation.
 
 ## Documentation
 
