@@ -24,8 +24,10 @@ pub struct SourceReader;
 impl SourceReader {
     /// Read features from a file-based GDAL source (Shapefile, GeoPackage, etc.).
     ///
+    /// Uses default error handling mode (fail-fast) for layer loading failures.
+    ///
     /// # Arguments
-    /// * `input` - InputSource configuration with path and optional layer
+    /// * `input` - InputSource configuration with path and optional layer/layers
     ///
     /// # Returns
     /// * `Result<Vec<Feature>>` - Vector of features read from the source
@@ -35,6 +37,26 @@ impl SourceReader {
     /// * GDAL driver not available
     /// * Invalid layer name
     pub fn read_file_source(input: &InputSource) -> Result<Vec<Feature>> {
+        Self::read_file_source_with_error_handling(input, "fail-fast")
+    }
+
+    /// Read features from a file-based GDAL source with configurable error handling.
+    ///
+    /// # Arguments
+    /// * `input` - InputSource configuration with path and optional layer/layers
+    /// * `error_handling` - Error handling mode: "continue" or "fail-fast"
+    ///
+    /// # Returns
+    /// * `Result<Vec<Feature>>` - Vector of features read from the source
+    ///
+    /// # Errors
+    /// * File not found or not readable
+    /// * GDAL driver not available
+    /// * Invalid layer name (in fail-fast mode)
+    fn read_file_source_with_error_handling(
+        input: &InputSource,
+        error_handling: &str,
+    ) -> Result<Vec<Feature>> {
         let path = input
             .path
             .as_ref()
@@ -46,17 +68,121 @@ impl SourceReader {
         let dataset =
             Dataset::open(path).with_context(|| format!("Failed to open dataset: {}", path))?;
 
-        // Get layer (either specified by name or default to first layer)
-        let mut layer = if let Some(layers) = &input.layers {
+        let wgs84 = SpatialRef::from_epsg(4326)?;
+        let mut all_features = Vec::new();
+
+        // Handle multi-layer or single-layer loading
+        if let Some(layers) = &input.layers {
             if layers.is_empty() {
-                dataset.layer(0)?
+                // Empty list: use default layer 0 with warning
+                warn!(path = %path, "Empty layers list, using default layer 0");
+                let features = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+                all_features.extend(features);
             } else {
-                dataset.layer_by_name(&layers[0])?
+                // Multi-layers: iterate over all configured layers
+                for layer_name in layers {
+                    info!(path = %path, layer = %layer_name, "Loading layer");
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84) {
+                        Ok(features) => {
+                            info!(
+                                path = %path,
+                                layer = %layer_name,
+                                count = features.len(),
+                                "Layer loaded"
+                            );
+                            all_features.extend(features);
+                        }
+                        Err(e) => {
+                            warn!(
+                                path = %path,
+                                layer = %layer_name,
+                                error = %e,
+                                "Failed to load layer"
+                            );
+
+                            // Apply error_handling mode for layer failures
+                            if error_handling == "fail-fast" {
+                                return Err(e);
+                            }
+                            // In continue mode: log and continue with next layer
+                        }
+                    }
+                }
             }
         } else {
-            dataset.layer(0)?
-        };
+            // None: default behavior (load layer 0 only, no warning)
+            let features = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+            all_features.extend(features);
+        }
 
+        // Log total statistics
+        let mut total_stats = ReaderStats::default();
+        for feature in &all_features {
+            match feature.geometry_type {
+                GeometryType::Point => total_stats.point_count += 1,
+                GeometryType::LineString => total_stats.linestring_count += 1,
+                GeometryType::Polygon => total_stats.polygon_count += 1,
+            }
+        }
+
+        info!(
+            path = %path,
+            count = all_features.len(),
+            points = total_stats.point_count,
+            linestrings = total_stats.linestring_count,
+            polygons = total_stats.polygon_count,
+            "Source loaded"
+        );
+
+        Ok(all_features)
+    }
+
+    /// Load features from a layer by index.
+    ///
+    /// Helper function to load features from a specific layer by index (e.g., layer 0).
+    /// Used for default layer loading.
+    fn load_layer_by_index(
+        dataset: &Dataset,
+        layer_index: usize,
+        path: &str,
+        wgs84: &SpatialRef,
+    ) -> Result<Vec<Feature>> {
+        let mut layer = dataset.layer(layer_index).with_context(|| {
+            format!(
+                "Failed to access layer {} in dataset: {}",
+                layer_index, path
+            )
+        })?;
+
+        Self::load_features_from_layer(&mut layer, path, wgs84)
+    }
+
+    /// Load features from a layer by name.
+    ///
+    /// Helper function to load features from a specific layer by name.
+    /// Used for multi-layer GeoPackage loading.
+    fn load_layer_by_name(
+        dataset: &Dataset,
+        layer_name: &str,
+        path: &str,
+        wgs84: &SpatialRef,
+    ) -> Result<Vec<Feature>> {
+        let mut layer = dataset.layer_by_name(layer_name).with_context(|| {
+            format!("Layer '{}' not found in dataset: {}", layer_name, path)
+        })?;
+
+        Self::load_features_from_layer(&mut layer, path, wgs84)
+    }
+
+    /// Load all features from a given layer with SRS transformation.
+    ///
+    /// Core feature loading logic extracted to avoid duplication.
+    /// Handles SRS transformation to WGS84 if needed.
+    fn load_features_from_layer(
+        layer: &mut gdal::vector::Layer,
+        path: &str,
+        wgs84: &SpatialRef,
+    ) -> Result<Vec<Feature>> {
         // Check spatial reference and transform to WGS84 if needed
         let needs_transform = if let Some(spatial_ref) = layer.spatial_ref() {
             if let Ok(auth_code) = spatial_ref.auth_code() {
@@ -79,41 +205,27 @@ impl SourceReader {
             false
         };
 
-        let wgs84 = SpatialRef::from_epsg(4326)?;
-
         // Read all features from the layer
         let mut features = Vec::new();
-        let mut stats = ReaderStats::default();
 
         for gdal_feature in layer.features() {
             // Transform geometry to WGS84 if needed
-            // Note: GDAL's transform_to modifies geometry in-place via &mut self
             if needs_transform {
                 if let Some(geometry) = gdal_feature.geometry() {
-                    // geometry() returns a mutable reference, transform_to() uses &mut self
-                    if let Err(e) = geometry.transform_to(&wgs84) {
+                    if let Err(e) = geometry.transform_to(wgs84) {
                         warn!(error = %e, "Failed to transform feature geometry to WGS84, skipping");
                         continue;
                     }
-                    // Geometry is already transformed in-place, continue processing
                 }
             }
 
             match Feature::from_gdal_feature(&gdal_feature) {
                 Ok(feature) => {
-                    // Update statistics
-                    match feature.geometry_type {
-                        GeometryType::Point => stats.point_count += 1,
-                        GeometryType::LineString => stats.linestring_count += 1,
-                        GeometryType::Polygon => stats.polygon_count += 1,
-                    }
-
                     debug!(
                         geometry_type = ?feature.geometry_type,
                         coords_count = feature.geometry.len(),
                         "Feature loaded"
                     );
-
                     features.push(feature);
                 }
                 Err(e) => {
@@ -121,15 +233,6 @@ impl SourceReader {
                 }
             }
         }
-
-        info!(
-            path = %path,
-            count = features.len(),
-            points = stats.point_count,
-            linestrings = stats.linestring_count,
-            polygons = stats.polygon_count,
-            "Source loaded"
-        );
 
         Ok(features)
     }
@@ -162,7 +265,7 @@ impl SourceReader {
                 "Loading source"
             );
 
-            match Self::read_file_source(input) {
+            match Self::read_file_source_with_error_handling(input, &config.error_handling) {
                 Ok(features) => {
                     let count = features.len();
 

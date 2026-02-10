@@ -50,28 +50,67 @@ Defines a single data source. Can be a file path or database connection.
 **File-based source:**
 ```yaml
 - path: <string>           # File path (supports wildcards)
-  layers: [<string>]       # Optional: specific layers to read
+  layers: [<string>]       # Optional: specific layers to read (see Layer Selection below)
 ```
 
 **Database connection:**
 ```yaml
 - connection: <string>     # GDAL connection string
-  layer: <string>          # Layer name (required for connections)
-  layers: [<string>]       # Alternative: multiple layers
+  layer: <string>          # Single layer name (backward compatibility)
+  layers: [<string>]       # Multiple layers (recommended)
 ```
+
+#### Layer Selection
+
+The `layer` (singular) and `layers` (plural) fields control which layers are loaded from multi-layer formats like GeoPackage or PostGIS:
+
+| Field      | Type          | Behavior                                                                 |
+|------------|---------------|--------------------------------------------------------------------------|
+| `layers`   | List[String]  | **Recommended.** Load all specified layers. Supports multi-layer loading.|
+| `layer`    | String        | **Deprecated.** Load a single layer. Use `layers` for consistency.       |
+| _(none)_   | -             | **Default.** Load layer 0 (first layer in dataset).                      |
+
+**Precedence:** If both `layer` and `layers` are specified, `layers` takes precedence.
 
 **Examples:**
 ```yaml
-# Shapefile with wildcard
+# Shapefile with wildcard (single-layer format)
 - path: "data/*.shp"
 
-# GeoPackage with specific layers
-- path: "data/poi.gpkg"
-  layers: ["restaurants", "hotels"]
+# GeoPackage with multiple layers (STORY 5.5)
+- path: "data/bdtopo.gpkg"
+  layers: ["buildings", "roads", "water"]
 
-# PostGIS connection
+# GeoPackage with empty list (uses default layer 0 with warning)
+- path: "data/poi.gpkg"
+  layers: []
+
+# GeoPackage without layers field (uses default layer 0, no warning)
+- path: "data/single.gpkg"
+
+# PostGIS with single layer (backward compatibility)
 - connection: "PG:host=localhost dbname=gis user=postgres"
   layer: "roads"
+
+# PostGIS with multiple layers (recommended)
+- connection: "PG:host=localhost dbname=gis"
+  layers: ["roads", "buildings", "poi"]
+```
+
+**Error Handling for Invalid Layers:**
+
+If a specified layer does not exist in the dataset:
+
+- **`error_handling: "continue"`** (default): Log a warning and continue loading other valid layers
+- **`error_handling: "fail-fast"`**: Stop immediately with an error message
+
+**Example with invalid layer:**
+```yaml
+inputs:
+  - path: "data/bdtopo.gpkg"
+    layers: ["buildings", "invalid_layer", "roads"]  # "invalid_layer" doesn't exist
+
+error_handling: "continue"  # Loads "buildings" and "roads", skips "invalid_layer"
 ```
 
 ### OutputConfig
@@ -112,6 +151,8 @@ filters:
 
 ## Complete Example
 
+**Example 1: Mixed sources with multi-layer GeoPackage**
+
 ```yaml
 version: 1
 
@@ -121,11 +162,16 @@ grid:
   origin: [0.0, 0.0]
 
 inputs:
+  # Shapefile (single-layer format)
   - path: "data/buildings.shp"
+
+  # GeoPackage with multiple layers (STORY 5.5)
   - path: "data/roads.gpkg"
-    layers: ["primary", "secondary"]
+    layers: ["primary", "secondary", "tertiary"]
+
+  # PostGIS connection with multiple layers
   - connection: "PG:host=localhost dbname=gis"
-    layer: "poi"
+    layers: ["poi", "parks"]
 
 output:
   directory: "tiles/"
@@ -135,6 +181,49 @@ filters:
   bbox: [-5.0, 41.0, 10.0, 51.5]
 
 error_handling: "continue"
+```
+
+**Example 2: Real-world BDTOPO configuration (50 layers)**
+
+```yaml
+version: 1
+
+grid:
+  cell_size: 0.15
+  overlap: 0.01
+
+inputs:
+  # BDTOPO Réunion - Single GeoPackage with ~50 layers
+  - path: "data/bdtopo_reunion.gpkg"
+    layers:
+      # Buildings
+      - "batiment"
+      - "construction_lineaire"
+      - "construction_ponctuelle"
+      # Transportation
+      - "route"
+      - "troncon_de_route"
+      - "noeud_routier"
+      - "voie_ferree"
+      - "troncon_de_voie_ferree"
+      # Water features
+      - "cours_d_eau"
+      - "plan_d_eau"
+      - "troncon_hydrographique"
+      # Administrative
+      - "commune"
+      - "arrondissement"
+      - "departement"
+      # Land use
+      - "zone_vegetation"
+      - "terrain_sport"
+      # ... (add other relevant layers)
+
+output:
+  directory: "tiles/"
+  filename_pattern: "reunion_{x}_{y}.mp"
+
+error_handling: "continue"  # Continue even if some layers are missing
 ```
 
 ## Validation Rules
@@ -316,6 +405,11 @@ File paths support glob-style wildcards:
 - **Output directory:** Created automatically if it doesn't exist
 - **Validation:** Configuration is validated at load time; errors provide clear messages indicating the problem
 
-## Implementation Note
+## Implementation Notes
 
-Configuration parsing and validation implemented in **Story 5.2** (2026-02-10).
+- **Configuration parsing and validation:** Story 5.2 (2026-02-10)
+- **Multi-layer GeoPackage support:** Story 5.5 (2026-02-10)
+  - Fixed bug where only first layer (`layers[0]`) was loaded
+  - Now correctly iterates over all specified layers
+  - Supports `error_handling` mode for invalid layer names
+  - Backward compatible with `layer` (singular) field

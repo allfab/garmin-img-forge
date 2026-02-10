@@ -364,3 +364,140 @@ fn test_read_all_sources_fail_fast_mode() {
     let result = SourceReader::read_all_sources(&config);
     assert!(result.is_err(), "Should fail immediately in fail-fast mode");
 }
+
+// ============================================================================
+// Story 5.5: Multi-Layer GeoPackage Integration Tests
+// ============================================================================
+
+#[test]
+fn test_geopackage_multi_layers_integration() {
+    // Task 5.2: Test end-to-end: GeoPackage 3 layers → features chargées
+    // Verify that multi-layer GeoPackage loading works in real-world scenario
+    let gpkg_path = get_test_data_path("multi_layers.gpkg");
+
+    let input = InputSource {
+        path: Some(gpkg_path.clone()),
+        layers: Some(vec![
+            "pois".to_string(),
+            "roads".to_string(),
+            "buildings".to_string(),
+        ]),
+        connection: None,
+        layer: None,
+    };
+
+    let features = SourceReader::read_file_source(&input).unwrap();
+
+    // Verify total count (5 + 10 + 8 = 23)
+    assert_eq!(
+        features.len(),
+        23,
+        "Expected 23 features from 3 layers in multi_layers.gpkg"
+    );
+
+    // Verify geometry type distribution
+    let points = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::Point)
+        .count();
+    let linestrings = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::LineString)
+        .count();
+    let polygons = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::Polygon)
+        .count();
+
+    assert_eq!(points, 5, "Expected 5 points from pois layer");
+    assert_eq!(linestrings, 10, "Expected 10 linestrings from roads layer");
+    assert_eq!(polygons, 8, "Expected 8 polygons from buildings layer");
+
+    // Verify all features have attributes
+    for feature in &features {
+        assert!(
+            feature.attributes.contains_key("name"),
+            "All features should have 'name' attribute"
+        );
+        assert!(
+            feature.attributes.contains_key("Type"),
+            "All features should have 'Type' attribute"
+        );
+    }
+}
+
+#[test]
+fn test_multi_source_with_multi_layer_geopackage() {
+    // Task 5.3: Test multi-source pipeline with multi-layer GeoPackage
+    // Verify that multi-layer GeoPackage works correctly in multi-source context
+    use mpforge_cli::config::{GridConfig, OutputConfig};
+
+    let config = Config {
+        version: 1,
+        inputs: vec![
+            InputSource {
+                path: Some(get_test_data_path("file1.shp")), // 3 points
+                layers: None,
+                connection: None,
+                layer: None,
+            },
+            InputSource {
+                path: Some(get_test_data_path("multi_layers.gpkg")), // 23 features (3 layers)
+                layers: Some(vec![
+                    "pois".to_string(),
+                    "roads".to_string(),
+                    "buildings".to_string(),
+                ]),
+                connection: None,
+                layer: None,
+            },
+            InputSource {
+                path: Some(get_test_data_path("file2.shp")), // 2 linestrings
+                layers: None,
+                connection: None,
+                layer: None,
+            },
+        ],
+        grid: GridConfig {
+            cell_size: 0.1,
+            overlap: 0.01,
+            origin: None,
+        },
+        output: OutputConfig {
+            directory: "output".to_string(),
+            filename_pattern: "tile_{x}_{y}.mp".to_string(),
+        },
+        filters: None,
+        error_handling: "continue".to_string(),
+    };
+
+    let features = SourceReader::read_all_sources(&config).unwrap();
+
+    // Total: 3 (file1.shp) + 23 (multi_layers.gpkg) + 2 (file2.shp) = 28 features
+    assert_eq!(
+        features.len(),
+        28,
+        "Expected 28 features from multi-source with multi-layer GeoPackage"
+    );
+
+    // Verify geometry type distribution
+    let points = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::Point)
+        .count();
+    let linestrings = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::LineString)
+        .count();
+    let polygons = features
+        .iter()
+        .filter(|f| f.geometry_type == GeometryType::Polygon)
+        .count();
+
+    // Points: 3 (file1.shp) + 5 (pois) = 8
+    // LineStrings: 10 (roads) + 2 (file2.shp) = 12
+    // Polygons: 8 (buildings)
+    assert_eq!(points, 8, "Expected 8 points total");
+    assert_eq!(linestrings, 12, "Expected 12 linestrings total");
+    assert_eq!(polygons, 8, "Expected 8 polygons total");
+}

@@ -1,5 +1,11 @@
 # Production configuration example for mpforge-cli
 # Real-world setup for processing BDTOPO data (35 GB)
+#
+# BDTOPO can be distributed in two formats:
+# - 24+ Shapefile files (one per layer)
+# - Single GeoPackage file with ~50 layers (recommended)
+#
+# This example shows both approaches.
 
 version: 1  # Configuration version
 
@@ -9,41 +15,74 @@ grid:
   origin: [-5.5, 41.0] # Southwest France [lon, lat] - OPTIONAL
 
 inputs:
-  # Multiple BDTOPO shapefiles
-  # Each input must have EITHER 'path' OR 'connection', not both
-  # At least one input source is REQUIRED
-  - path: "bdtopo/BATI_INDIFFERENCIE.shp"
-    layers: ["BATI_INDIFFERENCIE"]  # OPTIONAL: Specific layers to extract
+  # ============================================================================
+  # OPTION 1: Single GeoPackage with multiple layers (RECOMMENDED)
+  # ============================================================================
+  # Benefits:
+  # - Single file to manage instead of 24+ shapefiles
+  # - Faster loading (SQLite database)
+  # - Multi-layer support (Story 5.5)
+  #
+  # Use this format for BDTOPO Réunion, Martinique, Guadeloupe, etc.
+  - path: "bdtopo/BDTOPO_reunion.gpkg"
+    layers:
+      # Buildings
+      - "batiment"
+      - "construction_lineaire"
+      - "construction_ponctuelle"
+      # Transportation
+      - "route"
+      - "troncon_de_route"
+      - "noeud_routier"
+      - "voie_ferree"
+      - "troncon_de_voie_ferree"
+      - "aerodrome"
+      - "piste_aerodrome"
+      # Water features
+      - "cours_d_eau"
+      - "plan_d_eau"
+      - "troncon_hydrographique"
+      - "surface_hydrographique"
+      # Administrative boundaries
+      - "commune"
+      - "arrondissement"
+      - "departement"
+      - "epci"
+      # Land use
+      - "zone_vegetation"
+      - "terrain_sport"
+      - "cimetiere"
+      # Points of interest
+      - "pai_administratif"
+      - "pai_culture_loisirs"
+      - "pai_sante"
+      - "pai_enseignement"
+      - "pai_transport"
+      - "pai_gestion_eaux"
+      # Energy and utilities
+      - "ligne_electrique"
+      - "poste_transformation"
+      - "reservoir"
+      # Add other layers as needed...
+      # Note: If a layer doesn't exist in the GeoPackage, it will be skipped
+      #       in "continue" mode (default) or cause an error in "fail-fast" mode
 
-  - path: "bdtopo/ROUTE_PRIMAIRE.shp"
-    layers: ["ROUTE_PRIMAIRE"]
-
-  - path: "bdtopo/ROUTE_SECONDAIRE.shp"
-    layers: ["ROUTE_SECONDAIRE"]
-
-  - path: "bdtopo/TERRAIN_SPORT.shp"
-    layers: ["TERRAIN_SPORT"]
-
-  - path: "bdtopo/ZONE_VEGETATION.shp"
-    layers: ["ZONE_VEGETATION"]
-
-  - path: "bdtopo/COURS_EAU.shp"
-    layers: ["COURS_EAU"]
-
-  - path: "bdtopo/SURFACE_EAU.shp"
-    layers: ["SURFACE_EAU"]
-
-  - path: "bdtopo/PAI_ADMINISTRATIF.shp"
-    layers: ["PAI_ADMINISTRATIF"]
-
-  - path: "bdtopo/PAI_CULTURE_LOISIRS.shp"
-    layers: ["PAI_CULTURE_LOISIRS"]
-
-  - path: "bdtopo/PAI_SANTE.shp"
-    layers: ["PAI_SANTE"]
-
-  - path: "bdtopo/PAI_ENSEIGNEMENT.shp"
-    layers: ["PAI_ENSEIGNEMENT"]
+  # ============================================================================
+  # OPTION 2: Multiple Shapefiles (one per layer)
+  # ============================================================================
+  # Use this format if you have legacy BDTOPO Shapefile distribution.
+  # Each shapefile is a single-layer source (no need for 'layers' field).
+  #
+  # Uncomment if using Shapefiles instead of GeoPackage:
+  #
+  # - path: "bdtopo/BATI_INDIFFERENCIE.shp"
+  # - path: "bdtopo/ROUTE_PRIMAIRE.shp"
+  # - path: "bdtopo/ROUTE_SECONDAIRE.shp"
+  # - path: "bdtopo/TERRAIN_SPORT.shp"
+  # - path: "bdtopo/ZONE_VEGETATION.shp"
+  # - path: "bdtopo/COURS_EAU.shp"
+  # - path: "bdtopo/SURFACE_EAU.shp"
+  # - path: "bdtopo/PAI_*.shp"  # Wildcard for all PAI layers
 
 output:
   directory: "tiles_bdtopo/"
