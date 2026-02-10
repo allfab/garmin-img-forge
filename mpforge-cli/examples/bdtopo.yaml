@@ -1,0 +1,54 @@
+# Production configuration example for mpforge-cli
+# Real-world setup for processing BDTOPO data (35 GB)
+
+version: 1
+
+grid:
+  cell_size: 0.15      # Grid cell size in degrees (~16.5 km)
+  overlap: 0.01        # 1% overlap for edge continuity
+  origin: [-5.5, 41.0] # Southwest France
+
+inputs:
+  # Multiple BDTOPO shapefiles
+  - path: "bdtopo/BATI_INDIFFERENCIE.shp"
+    layers: ["BATI_INDIFFERENCIE"]
+
+  - path: "bdtopo/ROUTE_PRIMAIRE.shp"
+    layers: ["ROUTE_PRIMAIRE"]
+
+  - path: "bdtopo/ROUTE_SECONDAIRE.shp"
+    layers: ["ROUTE_SECONDAIRE"]
+
+  - path: "bdtopo/TERRAIN_SPORT.shp"
+    layers: ["TERRAIN_SPORT"]
+
+  - path: "bdtopo/ZONE_VEGETATION.shp"
+    layers: ["ZONE_VEGETATION"]
+
+  - path: "bdtopo/COURS_EAU.shp"
+    layers: ["COURS_EAU"]
+
+  - path: "bdtopo/SURFACE_EAU.shp"
+    layers: ["SURFACE_EAU"]
+
+  - path: "bdtopo/PAI_ADMINISTRATIF.shp"
+    layers: ["PAI_ADMINISTRATIF"]
+
+  - path: "bdtopo/PAI_CULTURE_LOISIRS.shp"
+    layers: ["PAI_CULTURE_LOISIRS"]
+
+  - path: "bdtopo/PAI_SANTE.shp"
+    layers: ["PAI_SANTE"]
+
+  - path: "bdtopo/PAI_ENSEIGNEMENT.shp"
+    layers: ["PAI_ENSEIGNEMENT"]
+
+output:
+  directory: "tiles_bdtopo/"
+  filename_pattern: "france_{x}_{y}.mp"
+
+filters:
+  # Bounding box for metropolitan France
+  bbox: [-5.5, 41.0, 10.0, 51.5]  # [min_lon, min_lat, max_lon, max_lat]
+
+error_handling: "continue"  # Continue processing on individual tile errors

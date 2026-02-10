@@ -1,0 +1,17 @@
+# Simple configuration example for mpforge-cli
+# Minimal setup for basic tiling operations
+
+version: 1
+
+grid:
+  cell_size: 0.15  # Grid cell size in degrees
+  overlap: 0.0     # No overlap between tiles
+
+inputs:
+  - path: "data/input.shp"  # Single shapefile input
+
+output:
+  directory: "tiles/"          # Output directory for .mp files
+  filename_pattern: "{x}_{y}.mp"  # Tile naming pattern
+
+error_handling: "continue"  # Continue on errors
