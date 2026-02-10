@@ -61,10 +61,14 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     info!("Phase 1.5: Clipping features to tile boundaries");
     let clipping_start = Instant::now();
 
-    let error_mode = ErrorMode::from_str(&config.error_handling).unwrap_or_default();
+    let error_mode = config
+        .error_handling
+        .parse::<ErrorMode>()
+        .unwrap_or_default();
     let mut tile_features: Vec<(TileBounds, Vec<Feature>)> = Vec::new();
     let mut total_clipped = 0;
     let mut total_skipped = 0;
+    let mut clipping_errors: Vec<(String, usize, String)> = Vec::new(); // (tile_id, feature_id, error)
 
     for (tile_bounds, feature_ids) in tile_assignments {
         let tile_bbox_geom = tile_bounds.to_gdal_polygon()?;
@@ -83,7 +87,14 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
                 }
                 Err(e) => {
                     // In fail-fast mode, this would have already bailed
-                    warn!(error = %e, "Failed to clip feature");
+                    // In continue mode, collect error for final report
+                    warn!(
+                        tile_id = %tile_bounds.tile_id(),
+                        feature_id,
+                        error = %e,
+                        "Failed to clip feature"
+                    );
+                    clipping_errors.push((tile_bounds.tile_id(), feature_id, e.to_string()));
                 }
             }
         }
@@ -100,11 +111,22 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     }
 
     let clipping_elapsed = clipping_start.elapsed();
+
+    // Report clipping errors if any (mode Continue)
+    if !clipping_errors.is_empty() {
+        warn!(
+            error_count = clipping_errors.len(),
+            "Geometry clipping completed with errors"
+        );
+        // TODO Story 7.3: Include clipping_errors in execution report JSON
+    }
+
     info!(
         duration_ms = clipping_elapsed.as_millis(),
         tiles_processed = tile_features.len(),
         features_clipped = total_clipped,
         features_skipped = total_skipped,
+        features_failed = clipping_errors.len(),
         "Geometry clipping completed"
     );
 

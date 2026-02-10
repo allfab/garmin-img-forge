@@ -86,13 +86,17 @@ impl Default for ErrorMode {
     }
 }
 
-impl ErrorMode {
-    /// Parse ErrorMode from config string.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for ErrorMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "continue" => Some(Self::Continue),
-            "fail-fast" => Some(Self::FailFast),
-            _ => None,
+            "continue" => Ok(Self::Continue),
+            "fail-fast" => Ok(Self::FailFast),
+            _ => anyhow::bail!(
+                "Invalid error_handling mode '{}', expected 'continue' or 'fail-fast'",
+                s
+            ),
         }
     }
 }

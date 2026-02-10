@@ -359,6 +359,12 @@ pub fn clip_feature_to_tile(
         return Ok(Some(feature.clone()));
     }
 
+    // Validate source geometry before intersection (catch invalid geometries early)
+    if !src_geom.is_valid() {
+        warn!("Source geometry is invalid, cannot clip");
+        return handle_invalid_geometry(error_mode);
+    }
+
     // Perform GDAL Intersection
     let clipped_geom = match src_geom.intersection(tile_bbox) {
         Some(geom) => {
@@ -377,7 +383,9 @@ pub fn clip_feature_to_tile(
             geom
         }
         None => {
-            warn!("Intersection failed or returned None");
+            // None indicates GDAL error during intersection (not empty result)
+            // Empty intersections return Some(empty_geom) with is_empty() = true
+            warn!("GDAL intersection operation failed");
             return handle_invalid_geometry(error_mode);
         }
     };
@@ -453,7 +461,7 @@ fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
             } else {
                 format!("{}, {} {}", coords.join(", "), first.0, first.1)
             };
-            format!("POLYGON(({})))", ring)
+            format!("POLYGON(({}))", ring)
         }
     };
 
@@ -461,6 +469,16 @@ fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
 }
 
 /// Extract coordinates from GDAL Geometry to internal format.
+///
+/// # Limitations
+/// This is a simplified WKT parser that handles Point, LineString, and simple Polygon.
+/// It may fail on:
+/// - MultiPolygon, MultiLineString, GeometryCollection
+/// - Polygons with interior rings (holes)
+/// - Nested complex geometries
+///
+/// For MVP, this is acceptable as GDAL Intersection typically returns simple geometries
+/// for tile clipping. Future improvement: use GDAL API `get_point()` directly.
 fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
     let wkt = geom.wkt().map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
 
