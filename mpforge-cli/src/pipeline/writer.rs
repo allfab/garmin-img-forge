@@ -1,6 +1,5 @@
 //! Polish Map (.mp) file writing using GDAL PolishMap driver.
 
-use crate::config::OutputConfig;
 use crate::pipeline::reader::{Feature, GeometryType};
 use anyhow::{anyhow, Context, Result};
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
@@ -25,10 +24,10 @@ pub struct MpWriter {
 }
 
 impl MpWriter {
-    /// Create a new MpWriter and initialize GDAL dataset with 3 layers.
+    /// Create a new MpWriter for a specific output file.
     ///
     /// # Arguments
-    /// * `config` - Output configuration with directory and filename pattern
+    /// * `output_path` - Complete path to output .mp file (e.g., "tiles/45_12.mp")
     ///
     /// # Returns
     /// * `Result<Self>` - Initialized writer ready to accept features
@@ -37,21 +36,16 @@ impl MpWriter {
     /// * GDAL driver "PolishMap" not found
     /// * Failed to create output directory
     /// * Failed to create dataset or layers
-    #[instrument(skip(config))]
-    pub fn new(config: &OutputConfig) -> Result<Self> {
-        info!(
-            directory = %config.directory,
-            pattern = %config.filename_pattern,
-            "Initializing MpWriter"
-        );
+    ///
+    /// # Breaking Change (Story 6.4)
+    /// Previous signature was `new(config: &OutputConfig)`.
+    /// Now accepts PathBuf directly for multi-tile support.
+    #[instrument(skip_all, fields(output_path = %output_path.display()))]
+    pub fn new(output_path: PathBuf) -> Result<Self> {
+        info!(path = %output_path.display(), "Initializing MpWriter");
 
-        // Construct output path
-        let output_path = PathBuf::from(&config.directory).join(&config.filename_pattern);
-
-        // Ensure output directory exists
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent).context("Failed to create output directory")?;
-        }
+        // Note: Output directory creation is handled by caller (pipeline/mod.rs)
+        // to avoid repeated filesystem calls when creating multiple tiles.
 
         // Get GDAL PolishMap driver
         let driver = DriverManager::get_driver_by_name("PolishMap")

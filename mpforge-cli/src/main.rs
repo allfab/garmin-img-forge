@@ -37,14 +37,12 @@ fn main() -> anyhow::Result<()> {
             let config = config::load_config(&args.config)?;
 
             // Run the pipeline
-            // TODO: Story 5.3+ - pipeline::run is currently a stub (Story 5.1)
-            // Will be implemented in upcoming stories (reader, tiler, writer)
-            pipeline::run(&config, args)?;
+            let summary = pipeline::run(&config, args)?;
 
             // TODO: Story 7.3 - Export execution report if requested
-            // report module is currently a stub (Story 5.1)
             if let Some(_report_path) = &args.report {
-                // report::save_report(report_path)?;
+                // report::save_report(report_path, &summary)?;
+                let _ = summary; // Use summary to avoid unused variable warning
             }
 
             Ok(())

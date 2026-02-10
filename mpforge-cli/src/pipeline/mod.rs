@@ -8,15 +8,67 @@ use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode};
 use crate::pipeline::reader::{Feature, SourceReader};
 use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
-use crate::pipeline::writer::MpWriter;
-use anyhow::{Context, Result};
-use std::time::Instant;
+use crate::pipeline::writer::{ExportStats, MpWriter};
+use anyhow::{anyhow, Context, Result};
+use std::path::PathBuf;
+use std::time::{Instant, SystemTime};
 use tracing::{info, warn};
+
+/// Summary of multi-tile export operation.
+#[derive(Debug, Clone)]
+pub struct TileExportSummary {
+    pub tiles_succeeded: usize,
+    pub tiles_failed: usize,
+    pub tiles_skipped: usize,
+    pub global_stats: ExportStats,
+    pub export_errors: Vec<TileExportError>,
+}
+
+/// Error details for a failed tile export.
+#[derive(Debug, Clone)]
+pub struct TileExportError {
+    pub tile_id: String,
+    pub error_message: String,
+    pub attempt_time: SystemTime,
+}
+
+impl TileExportSummary {
+    /// Create summary from export results.
+    pub fn new(
+        tiles_succeeded: usize,
+        tiles_failed: usize,
+        tiles_skipped: usize,
+        global_stats: ExportStats,
+        export_errors: Vec<TileExportError>,
+    ) -> Self {
+        Self {
+            tiles_succeeded,
+            tiles_failed,
+            tiles_skipped,
+            global_stats,
+            export_errors,
+        }
+    }
+
+    /// Total features exported across all tiles.
+    pub fn total_features(&self) -> usize {
+        self.global_stats.point_count
+            + self.global_stats.linestring_count
+            + self.global_stats.polygon_count
+    }
+
+    /// Check if export was successful (0 failures).
+    pub fn is_success(&self) -> bool {
+        self.tiles_failed == 0
+    }
+}
 
 /// Run the complete tiling pipeline.
 /// Orchestrates reader, tiler, and writer components.
+///
+/// Returns `TileExportSummary` with export statistics and errors.
 #[tracing::instrument(skip(config, args))]
-pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
+pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     info!(
         "Pipeline started with config version {} and {} jobs",
         config.version, args.jobs
@@ -64,7 +116,14 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     let error_mode = config
         .error_handling
         .parse::<ErrorMode>()
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            warn!(
+                error_handling = %config.error_handling,
+                error = %e,
+                "Invalid error_handling mode in config, defaulting to 'continue'"
+            );
+            ErrorMode::default()
+        });
     let mut tile_features: Vec<(TileBounds, Vec<Feature>)> = Vec::new();
     let mut total_clipped = 0;
     let mut total_skipped = 0;
@@ -135,64 +194,155 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
         "Tiling pipeline ready"
     );
 
-    // TODO: Story 6.4 - Export multi-tiles .mp (one .mp file per tile)
-    // For now, we continue with the original single-file export for backward compatibility
-
-    // Story 5.4 - Export to Polish Map format
-    info!("Phase 2: Writing MP file");
+    // Story 6.4 - Export multi-tiles .mp (one .mp file per tile)
+    info!(
+        "Phase 2: Exporting {} tiles as .mp files",
+        tile_features.len()
+    );
     let export_start = Instant::now();
 
-    // Warn if no features (AC5)
-    if features.is_empty() {
-        warn!(
-            "No features loaded from {} source(s). Creating empty dataset.",
-            config.inputs.len()
+    // Ensure output directory exists
+    std::fs::create_dir_all(&config.output.directory)
+        .context("Failed to create output directory")?;
+
+    let mut succeeded = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    let mut global_stats = ExportStats::default();
+    let mut export_errors: Vec<TileExportError> = Vec::new();
+
+    for (tile_bounds, features) in tile_features {
+        let tile_id = tile_bounds.tile_id();
+
+        // Skip empty tiles
+        if features.is_empty() {
+            tracing::debug!(tile_id = %tile_id, "Tile has no features, skipping export");
+            skipped += 1;
+            continue;
+        }
+
+        // Resolve tile filename
+        let tile_filename = format!("{}.mp", tile_id);
+        let tile_path = PathBuf::from(&config.output.directory).join(tile_filename);
+
+        // Create writer for this tile
+        let mut writer = match MpWriter::new(tile_path) {
+            Ok(w) => w,
+            Err(e) => {
+                handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+                continue;
+            }
+        };
+
+        // Write features
+        let tile_stats = match writer.write_features(&features) {
+            Ok(stats) => stats,
+            Err(e) => {
+                handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+                continue;
+            }
+        };
+
+        // Finalize tile dataset
+        if let Err(e) = writer.finalize() {
+            handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+            continue;
+        }
+
+        info!(
+            tile_id = %tile_id,
+            points = tile_stats.point_count,
+            linestrings = tile_stats.linestring_count,
+            polygons = tile_stats.polygon_count,
+            "Tile export succeeded"
         );
+
+        // Aggregate global stats
+        global_stats.point_count += tile_stats.point_count;
+        global_stats.linestring_count += tile_stats.linestring_count;
+        global_stats.polygon_count += tile_stats.polygon_count;
+        succeeded += 1;
     }
-
-    // Initialize MP writer
-    let mut writer = MpWriter::new(&config.output).context("Failed to initialize MP writer")?;
-
-    // Write features to .mp file
-    let stats = writer
-        .write_features(&features)
-        .context("Failed to write features to MP file")?;
-
-    // Finalize and close dataset
-    writer.finalize().context("Failed to finalize MP file")?;
 
     let export_elapsed = export_start.elapsed();
 
-    // Display summary (AC4)
+    // Report export errors if any (mode Continue)
+    if !export_errors.is_empty() {
+        warn!(
+            error_count = export_errors.len(),
+            "Multi-tile export completed with errors"
+        );
+        // TODO Story 7.3: Include export_errors in execution report JSON
+    }
+
+    let summary = TileExportSummary::new(succeeded, failed, skipped, global_stats, export_errors);
+
+    // Display final summary (AC4)
     info!(
         duration_ms = export_elapsed.as_millis(),
-        points = stats.point_count,
-        linestrings = stats.linestring_count,
-        polygons = stats.polygon_count,
-        total_features = stats.point_count + stats.linestring_count + stats.polygon_count,
-        "MP export completed"
+        tiles_succeeded = summary.tiles_succeeded,
+        tiles_failed = summary.tiles_failed,
+        tiles_skipped = summary.tiles_skipped,
+        total_features = summary.total_features(),
+        "Multi-tile export completed"
     );
 
     // Console summary output (AC4)
-    let output_path =
-        std::path::PathBuf::from(&config.output.directory).join(&config.output.filename_pattern);
-
     println!("\n✅ Export completed successfully!");
-    println!("   Output file: {}", output_path.display());
+    println!("   Output directory: {}", config.output.directory);
+    println!("   Tiles generated:");
+    println!("     - Succeeded: {}", summary.tiles_succeeded);
+    println!("     - Failed:    {}", summary.tiles_failed);
+    println!("     - Skipped:   {} (empty tiles)", summary.tiles_skipped);
     println!("   Features exported:");
-    println!("     - POI (points):     {}", stats.point_count);
-    println!("     - POLYLINE (lines): {}", stats.linestring_count);
-    println!("     - POLYGON (areas):  {}", stats.polygon_count);
-    println!(
-        "   Total: {} features",
-        stats.point_count + stats.linestring_count + stats.polygon_count
-    );
+    println!("     - POI (points):     {}", summary.global_stats.point_count);
+    println!("     - POLYLINE (lines): {}", summary.global_stats.linestring_count);
+    println!("     - POLYGON (areas):  {}", summary.global_stats.polygon_count);
+    println!("   Total: {} features", summary.total_features());
     println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
 
-    // TODO: Story 6.3 - Clip geometries at tile boundaries
-    // TODO: Story 6.4 - Process tiles with error handling and export multi-tiles .mp
-    // TODO: Story 7.3 - Generate execution report
+    // Fail if any tiles failed (exit code non-zero)
+    if !summary.is_success() {
+        return Err(anyhow!(
+            "Multi-tile export failed: {} tile(s) failed to export",
+            summary.tiles_failed
+        ));
+    }
+
+    // TODO: Story 7.3 - Generate execution report JSON
 
     info!("Pipeline completed successfully");
-    Ok(())
+    Ok(summary)
+}
+
+/// Handle tile export error based on ErrorMode.
+fn handle_export_error(
+    tile_id: &str,
+    error: anyhow::Error,
+    error_mode: ErrorMode,
+    failed_count: &mut usize,
+    error_list: &mut Vec<TileExportError>,
+) -> Result<()> {
+    *failed_count += 1;
+
+    match error_mode {
+        ErrorMode::Continue => {
+            warn!(
+                tile_id = %tile_id,
+                error = %error,
+                "Tile export failed, continuing with next tile"
+            );
+            error_list.push(TileExportError {
+                tile_id: tile_id.to_string(),
+                error_message: error.to_string(),
+                attempt_time: SystemTime::now(),
+            });
+            Ok(()) // Continue pipeline
+        }
+        ErrorMode::FailFast => Err(anyhow!(
+            "Tile export failed (fail-fast mode): tile {} - {}",
+            tile_id,
+            error
+        )),
+    }
 }

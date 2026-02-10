@@ -50,6 +50,7 @@ fn create_test_args() -> BuildArgs {
 #[test]
 fn test_end_to_end_shapefile_to_mp() {
     // AC1: Pipeline complet avec fixtures Shapefile → .mp
+    // Note Story 6.4: Pipeline now generates multi-tile output (col_row.mp files)
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
     // Use existing test fixtures from Story 5.3
@@ -74,22 +75,34 @@ fn test_end_to_end_shapefile_to_mp() {
         result.err()
     );
 
-    // Verify .mp file exists
-    let output_path = temp_dir.path().join("output.mp");
+    // Story 6.4: Verify at least one .mp tile file exists
+    let mp_files: Vec<_> = fs::read_dir(temp_dir.path())
+        .expect("Failed to read output directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext == "mp")
+                .unwrap_or(false)
+        })
+        .collect();
+
     assert!(
-        output_path.exists(),
-        "Output .mp file should exist at: {}",
-        output_path.display()
+        !mp_files.is_empty(),
+        "At least one .mp tile file should exist in output directory"
     );
 
-    // Verify file is not empty
-    let metadata = fs::metadata(&output_path).expect("Failed to get file metadata");
-    assert!(metadata.len() > 0, "Output .mp file should not be empty");
+    // Verify first tile file is not empty
+    let first_tile = &mp_files[0];
+    let metadata = fs::metadata(first_tile.path()).expect("Failed to get file metadata");
+    assert!(metadata.len() > 0, "Output .mp tile file should not be empty");
 }
 
 #[test]
 fn test_mp_file_readable_with_ogrinfo() {
     // AC3: Vérification .mp avec ogrinfo (driver ogr-polishmap)
+    // Note Story 6.4: Pipeline now generates multi-tile output
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
     let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
@@ -106,19 +119,36 @@ fn test_mp_file_readable_with_ogrinfo() {
     // Run pipeline
     pipeline::run(&config, &args).expect("Pipeline should succeed");
 
-    let output_path = temp_dir.path().join("output.mp");
+    // Story 6.4: Find first generated tile file
+    let mp_files: Vec<_> = fs::read_dir(temp_dir.path())
+        .expect("Failed to read output directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext == "mp")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        !mp_files.is_empty(),
+        "At least one .mp tile file should exist"
+    );
+
+    let output_path = mp_files[0].path();
 
     // Run ogrinfo to verify file is readable
-    let output = Command::new("ogrinfo")
-        .arg("-ro")
-        .arg("-so")
-        .arg(&output_path)
-        .env(
-            "GDAL_DRIVER_PATH",
-            "/home/allfab/code/forgejo/mpforge/ogr-polishmap/build",
-        )
-        .output()
-        .expect("Failed to execute ogrinfo");
+    let mut cmd = Command::new("ogrinfo");
+    cmd.arg("-ro").arg("-so").arg(&output_path);
+
+    // Use GDAL_DRIVER_PATH from environment if set (for custom driver locations)
+    if let Ok(driver_path) = std::env::var("GDAL_DRIVER_PATH") {
+        cmd.env("GDAL_DRIVER_PATH", driver_path);
+    }
+
+    let output = cmd.output().expect("Failed to execute ogrinfo");
 
     // Check that ogrinfo succeeded
     assert!(
