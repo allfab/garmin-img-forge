@@ -1,0 +1,9 @@
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs: []
+
+output:
+  directory: "tiles/"

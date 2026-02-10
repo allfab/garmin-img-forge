@@ -1,0 +1,11 @@
+# Minimal test configuration for CLI integration tests
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs:
+  - path: "data/test.shp"
+
+output:
+  directory: "tiles/"

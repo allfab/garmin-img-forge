@@ -1,13 +1,7 @@
 //! mpforge-cli: Polish Map tiling and export tool
 
-mod cli;
-mod config;
-mod error;
-mod pipeline;
-mod report;
-
 use clap::Parser;
-use cli::{Cli, Commands};
+use mpforge_cli::{cli::{Cli, Commands}, config, pipeline};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -36,32 +30,16 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("Warning: Failed to set tracing subscriber: {}", e);
             }
 
-            // Load configuration (stub - will fail in this story)
-            // TODO: Story 5.2 - Enable actual config loading
-            // let config = config::load_config(&args.config)?;
-
-            // For now, create a placeholder config to test compilation
-            // This will be replaced in Story 5.2
-            let config = config::Config {
-                version: 1,
-                grid: config::GridConfig {
-                    cell_size: 0.15,
-                    overlap: 0.0,
-                    origin: None,
-                },
-                inputs: vec![],
-                output: config::OutputConfig {
-                    directory: "tiles/".to_string(),
-                    filename_pattern: "{x}_{y}.mp".to_string(),
-                },
-                filters: None,
-                error_handling: "continue".to_string(),
-            };
+            // Load configuration from YAML file
+            let config = config::load_config(&args.config)?;
 
             // Run the pipeline
+            // TODO: Story 5.3+ - pipeline::run is currently a stub (Story 5.1)
+            // Will be implemented in upcoming stories (reader, tiler, writer)
             pipeline::run(&config, args)?;
 
             // TODO: Story 7.3 - Export execution report if requested
+            // report module is currently a stub (Story 5.1)
             if let Some(_report_path) = &args.report {
                 // report::save_report(report_path)?;
             }

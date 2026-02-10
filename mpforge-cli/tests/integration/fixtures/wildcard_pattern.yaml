@@ -1,0 +1,10 @@
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs:
+  - path: "tests/integration/fixtures/test_data/*.shp"
+
+output:
+  directory: "tiles/"

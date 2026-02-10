@@ -1,0 +1,13 @@
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs:
+  - path: "data/test.shp"
+
+output:
+  directory: "tiles/"
+
+filters:
+  bbox: [-5.0, 41.0, 10.0, 51.5]

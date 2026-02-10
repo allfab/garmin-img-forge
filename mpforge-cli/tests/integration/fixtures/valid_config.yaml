@@ -1,0 +1,17 @@
+version: 1
+
+grid:
+  cell_size: 0.15
+  overlap: 0.005
+  origin: [0.0, 0.0]
+
+inputs:
+  - path: "data/test.shp"
+  - path: "data/poi.gpkg"
+    layers: ["restaurants"]
+
+output:
+  directory: "tiles/"
+  filename_pattern: "{x}_{y}.mp"
+
+error_handling: "continue"

@@ -1,0 +1,3 @@
+# Dummy GeoPackage for wildcard testing
+# This is a placeholder file to satisfy test fixtures
+# Real GeoPackage would be an SQLite database, but tests use tempfile for actual wildcard resolution

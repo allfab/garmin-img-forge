@@ -1,0 +1,3 @@
+# Dummy Shapefile for wildcard testing
+# This is a placeholder file to satisfy test fixtures
+# Real shapefile structure would be binary, but tests use tempfile for actual wildcard resolution

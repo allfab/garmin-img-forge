@@ -1,0 +1,11 @@
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs:
+  - connection: "PG:host=localhost dbname=gis"
+    layer: "roads"
+
+output:
+  directory: "tiles/"

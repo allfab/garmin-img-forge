@@ -1,0 +1,6 @@
+version: 1
+grid:
+  cell_size: 0.15
+  invalid yaml syntax here [[[
+inputs:
+  - path: "test.shp"
