@@ -70,6 +70,33 @@ pub enum SourceType {
     PostGIS,
 }
 
+/// Error handling mode for geometry clipping operations.
+/// Story 6.3: Controls behavior when encountering invalid geometries during clipping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorMode {
+    /// Continue processing, skip invalid features (production-friendly default)
+    Continue,
+    /// Stop pipeline on first error (useful for debugging)
+    FailFast,
+}
+
+impl Default for ErrorMode {
+    fn default() -> Self {
+        Self::Continue
+    }
+}
+
+impl ErrorMode {
+    /// Parse ErrorMode from config string.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "continue" => Some(Self::Continue),
+            "fail-fast" => Some(Self::FailFast),
+            _ => None,
+        }
+    }
+}
+
 impl InputSource {
     /// Detect source type based on connection string pattern.
     pub fn source_type(&self) -> SourceType {

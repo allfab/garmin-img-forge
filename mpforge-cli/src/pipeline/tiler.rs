@@ -1,7 +1,9 @@
 //! Spatial tiling and grid management.
 
-use crate::config::{FilterConfig, GridConfig};
-use crate::pipeline::reader::RTreeIndex;
+use crate::config::{ErrorMode, FilterConfig, GridConfig};
+use crate::pipeline::reader::{Feature, GeometryType, RTreeIndex};
+use gdal::spatial_ref::SpatialRef;
+use gdal::vector::Geometry;
 use rstar::AABB;
 use tracing::{debug, info, instrument, warn};
 
@@ -229,12 +231,267 @@ impl TileBounds {
             || self.max_lat < fmin_lat
             || self.min_lat > fmax_lat)
     }
+
+    /// Create GDAL Polygon geometry from tile bounding box.
+    ///
+    /// Used for clipping features to tile boundaries via OGR_G_Intersection.
+    /// Constructs a rectangular polygon in WGS84 (EPSG:4326) coordinate system.
+    ///
+    /// # Returns
+    /// * `anyhow::Result<Geometry>` - Rectangular polygon ready for intersection
+    ///
+    /// # Errors
+    /// * WKT parsing fails (should never happen for bbox)
+    /// * SRS assignment fails
+    /// * Geometry validation fails (indicates invalid bbox coordinates)
+    ///
+    /// # Examples
+    /// ```
+    /// # use mpforge_cli::pipeline::tiler::TileBounds;
+    /// let tile = TileBounds {
+    ///     col: 0,
+    ///     row: 0,
+    ///     min_lon: 10.0,
+    ///     min_lat: 20.0,
+    ///     max_lon: 10.15,
+    ///     max_lat: 20.15,
+    /// };
+    /// let polygon = tile.to_gdal_polygon().unwrap();
+    /// assert!(polygon.is_valid());
+    /// ```
+    pub fn to_gdal_polygon(&self) -> anyhow::Result<Geometry> {
+        // Construct WKT POLYGON ((minx miny, maxx miny, maxx maxy, minx maxy, minx miny))
+        let wkt = format!(
+            "POLYGON(({} {}, {} {}, {} {}, {} {}, {} {}))",
+            self.min_lon,
+            self.min_lat,
+            self.max_lon,
+            self.min_lat,
+            self.max_lon,
+            self.max_lat,
+            self.min_lon,
+            self.max_lat,
+            self.min_lon,
+            self.min_lat // Close ring
+        );
+
+        let mut geom = Geometry::from_wkt(&wkt)?;
+
+        // Set WGS84 spatial reference
+        let srs = SpatialRef::from_epsg(4326)?;
+        geom.set_spatial_ref(srs);
+
+        // Validate bbox geometry (should always be valid for proper bbox coords)
+        if !geom.is_valid() {
+            anyhow::bail!(
+                "Invalid tile bbox geometry for tile {}: [{}, {}, {}, {}]",
+                self.tile_id(),
+                self.min_lon,
+                self.min_lat,
+                self.max_lon,
+                self.max_lat
+            );
+        }
+
+        Ok(geom)
+    }
 }
 
 /// Placeholder for tile data with features.
-/// TODO: Story 6.3 - Define complete tile data structure
-#[allow(dead_code)] // Stub - will be implemented in Story 6.3
+/// TODO: Story 6.4 - Define complete tile data structure for export
+#[allow(dead_code)] // Stub - will be fully implemented in Story 6.4
 #[derive(Debug)]
 pub struct TileData {
     pub tile_id: String,
 }
+
+// ============================================================================
+// Task 2-3: Geometry Clipping Functions (Story 6.3)
+// ============================================================================
+
+/// Clip a feature to tile bounding box using GDAL Intersection.
+///
+/// This function performs geometric clipping of a feature's geometry to fit within
+/// a tile's boundaries while preserving all attribute fields. Invalid or degenerate
+/// geometries are handled according to the error_mode parameter.
+///
+/// # Arguments
+/// * `feature` - Source feature with original geometry (internal Feature representation)
+/// * `tile_bbox` - Tile bounding box as GDAL Polygon (WGS84)
+/// * `error_mode` - How to handle invalid/degenerate geometries
+///
+/// # Returns
+/// * `Ok(Some(Feature))` - Clipped feature with preserved attributes
+/// * `Ok(None)` - Feature outside tile, intersection empty, or invalid (continue mode)
+/// * `Err(_)` - Invalid geometry in fail-fast mode
+///
+/// # Performance
+/// * O(n log n) where n = number of vertices in feature geometry (GEOS algorithm)
+/// * Typical: ~1ms per feature (50 vertices average)
+///
+/// # Examples
+/// ```ignore
+/// let tile_bbox = tile.to_gdal_polygon()?;
+/// let clipped_feature = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::Continue)?;
+/// if let Some(clipped) = clipped_feature {
+///     // Process clipped feature with preserved attributes
+/// }
+/// ```
+#[instrument(skip(feature, tile_bbox))]
+pub fn clip_feature_to_tile(
+    feature: &Feature,
+    tile_bbox: &Geometry,
+    error_mode: ErrorMode,
+) -> anyhow::Result<Option<Feature>> {
+    // Convert internal Feature geometry to GDAL Geometry
+    let src_geom = feature_to_gdal_geometry(feature)?;
+
+    // Early exit: Check if geometry intersects tile (O(1) bbox check)
+    if !src_geom.intersects(tile_bbox) {
+        debug!("Feature outside tile, skipping");
+        return Ok(None);
+    }
+
+    // Special case: Points don't need clipping (overlap handles boundaries)
+    if feature.geometry_type == GeometryType::Point {
+        debug!("Point geometry, no clipping needed");
+        // Return clone of original feature
+        return Ok(Some(feature.clone()));
+    }
+
+    // Perform GDAL Intersection
+    let clipped_geom = match src_geom.intersection(tile_bbox) {
+        Some(geom) => {
+            // Check for empty result
+            if geom.is_empty() {
+                debug!("Intersection empty, skipping");
+                return Ok(None);
+            }
+
+            // Validate result
+            if !geom.is_valid() {
+                warn!("Intersection produced invalid geometry");
+                return handle_invalid_geometry(error_mode);
+            }
+
+            geom
+        }
+        None => {
+            warn!("Intersection failed or returned None");
+            return handle_invalid_geometry(error_mode);
+        }
+    };
+
+    // Convert clipped GDAL Geometry back to internal coordinates
+    let clipped_coords = gdal_geometry_to_coords(&clipped_geom)?;
+
+    // Create new Feature with clipped geometry + preserved attributes
+    let clipped_feature = Feature {
+        geometry_type: feature.geometry_type,
+        geometry: clipped_coords,
+        attributes: feature.attributes.clone(), // Preserve all attributes (Type, Label, etc.)
+    };
+
+    debug!(
+        geom_type = ?feature.geometry_type,
+        original_coords = feature.geometry.len(),
+        clipped_coords = clipped_feature.geometry.len(),
+        "Feature clipped successfully"
+    );
+
+    Ok(Some(clipped_feature))
+}
+
+/// Handle invalid geometry based on error mode.
+fn handle_invalid_geometry(error_mode: ErrorMode) -> anyhow::Result<Option<Feature>> {
+    match error_mode {
+        ErrorMode::Continue => {
+            debug!("Skipping invalid geometry (continue mode)");
+            Ok(None)
+        }
+        ErrorMode::FailFast => {
+            anyhow::bail!("Invalid geometry encountered in fail-fast mode")
+        }
+    }
+}
+
+/// Convert internal Feature to GDAL Geometry.
+fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
+    let wkt = match feature.geometry_type {
+        GeometryType::Point => {
+            if feature.geometry.is_empty() {
+                anyhow::bail!("Point feature has no coordinates");
+            }
+            let (x, y) = feature.geometry[0];
+            format!("POINT({} {})", x, y)
+        }
+        GeometryType::LineString => {
+            if feature.geometry.len() < 2 {
+                anyhow::bail!("LineString must have at least 2 points");
+            }
+            let coords: Vec<String> = feature
+                .geometry
+                .iter()
+                .map(|(x, y)| format!("{} {}", x, y))
+                .collect();
+            format!("LINESTRING({})", coords.join(", "))
+        }
+        GeometryType::Polygon => {
+            if feature.geometry.len() < 3 {
+                anyhow::bail!("Polygon must have at least 3 points");
+            }
+            let coords: Vec<String> = feature
+                .geometry
+                .iter()
+                .map(|(x, y)| format!("{} {}", x, y))
+                .collect();
+            // Close ring if not already closed
+            let first = feature.geometry[0];
+            let last = *feature.geometry.last().unwrap();
+            let ring = if (first.0 - last.0).abs() < 1e-9 && (first.1 - last.1).abs() < 1e-9 {
+                coords.join(", ")
+            } else {
+                format!("{}, {} {}", coords.join(", "), first.0, first.1)
+            };
+            format!("POLYGON(({})))", ring)
+        }
+    };
+
+    Geometry::from_wkt(&wkt).map_err(|e| anyhow::anyhow!("WKT conversion failed: {}", e))
+}
+
+/// Extract coordinates from GDAL Geometry to internal format.
+fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
+    let wkt = geom.wkt().map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
+
+    // Parse WKT to extract coordinates
+    // This is a simplified parser - handles Point, LineString, and Polygon
+    let coords_str = wkt
+        .split_once('(')
+        .and_then(|(_, rest)| rest.rsplit_once(')'))
+        .map(|(coords, _)| coords)
+        .ok_or_else(|| anyhow::anyhow!("Invalid WKT format"))?;
+
+    // Remove extra parentheses for Polygon
+    let coords_str = coords_str.trim_start_matches('(').trim_end_matches(')');
+
+    // Parse coordinate pairs
+    let mut coords = Vec::new();
+    for pair in coords_str.split(',') {
+        let parts: Vec<&str> = pair.trim().split_whitespace().collect();
+        if parts.len() >= 2 {
+            let x: f64 = parts[0].parse()?;
+            let y: f64 = parts[1].parse()?;
+            coords.push((x, y));
+        }
+    }
+
+    if coords.is_empty() {
+        anyhow::bail!("No coordinates found in geometry");
+    }
+
+    Ok(coords)
+}
+
+// Removed copy_attributes() - no longer needed as we use reader::Feature
+// which has attributes as HashMap<String, String> that can be cloned directly

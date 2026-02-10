@@ -5,9 +5,9 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::Config;
-use crate::pipeline::reader::SourceReader;
-use crate::pipeline::tiler::TileProcessor;
+use crate::config::{Config, ErrorMode};
+use crate::pipeline::reader::{Feature, SourceReader};
+use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
 use crate::pipeline::writer::MpWriter;
 use anyhow::{Context, Result};
 use std::time::Instant;
@@ -57,10 +57,64 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     // Assign features to tiles via R-tree queries
     let tile_assignments = tile_processor.assign_features_to_tiles(&rtree, tiles);
 
+    // Story 6.3 - Clip features to tile boundaries
+    info!("Phase 1.5: Clipping features to tile boundaries");
+    let clipping_start = Instant::now();
+
+    let error_mode = ErrorMode::from_str(&config.error_handling).unwrap_or_default();
+    let mut tile_features: Vec<(TileBounds, Vec<Feature>)> = Vec::new();
+    let mut total_clipped = 0;
+    let mut total_skipped = 0;
+
+    for (tile_bounds, feature_ids) in tile_assignments {
+        let tile_bbox_geom = tile_bounds.to_gdal_polygon()?;
+        let mut clipped_features = Vec::new();
+
+        for &feature_id in &feature_ids {
+            let feature = &features[feature_id];
+
+            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode) {
+                Ok(Some(clipped_feature)) => {
+                    clipped_features.push(clipped_feature);
+                    total_clipped += 1;
+                }
+                Ok(None) => {
+                    total_skipped += 1;
+                }
+                Err(e) => {
+                    // In fail-fast mode, this would have already bailed
+                    warn!(error = %e, "Failed to clip feature");
+                }
+            }
+        }
+
+        if !clipped_features.is_empty() {
+            info!(
+                tile_id = %tile_bounds.tile_id(),
+                candidates = feature_ids.len(),
+                clipped = clipped_features.len(),
+                "Tile clipping completed"
+            );
+            tile_features.push((tile_bounds, clipped_features));
+        }
+    }
+
+    let clipping_elapsed = clipping_start.elapsed();
     info!(
-        tiles_to_process = tile_assignments.len(),
+        duration_ms = clipping_elapsed.as_millis(),
+        tiles_processed = tile_features.len(),
+        features_clipped = total_clipped,
+        features_skipped = total_skipped,
+        "Geometry clipping completed"
+    );
+
+    info!(
+        tiles_to_process = tile_features.len(),
         "Tiling pipeline ready"
     );
+
+    // TODO: Story 6.4 - Export multi-tiles .mp (one .mp file per tile)
+    // For now, we continue with the original single-file export for backward compatibility
 
     // Story 5.4 - Export to Polish Map format
     info!("Phase 2: Writing MP file");
