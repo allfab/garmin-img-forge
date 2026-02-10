@@ -22,7 +22,6 @@ struct ReaderStats {
 pub struct SourceReader;
 
 impl SourceReader {
-
     /// Read features from a file-based GDAL source (Shapefile, GeoPackage, etc.).
     ///
     /// # Arguments
@@ -44,8 +43,8 @@ impl SourceReader {
         info!("Loading source: {}", path);
 
         // Open GDAL dataset
-        let dataset = Dataset::open(path)
-            .with_context(|| format!("Failed to open dataset: {}", path))?;
+        let dataset =
+            Dataset::open(path).with_context(|| format!("Failed to open dataset: {}", path))?;
 
         // Get layer (either specified by name or default to first layer)
         let mut layer = if let Some(layers) = &input.layers {
@@ -179,9 +178,18 @@ impl SourceReader {
                     info!(
                         source_index = idx + 1,
                         feature_count = count,
-                        points = features.iter().filter(|f| f.geometry_type == GeometryType::Point).count(),
-                        linestrings = features.iter().filter(|f| f.geometry_type == GeometryType::LineString).count(),
-                        polygons = features.iter().filter(|f| f.geometry_type == GeometryType::Polygon).count(),
+                        points = features
+                            .iter()
+                            .filter(|f| f.geometry_type == GeometryType::Point)
+                            .count(),
+                        linestrings = features
+                            .iter()
+                            .filter(|f| f.geometry_type == GeometryType::LineString)
+                            .count(),
+                        polygons = features
+                            .iter()
+                            .filter(|f| f.geometry_type == GeometryType::Polygon)
+                            .count(),
                         "Source loaded successfully"
                     );
 
@@ -261,12 +269,7 @@ impl Feature {
             OGRwkbGeometryType::wkbPoint => GeometryType::Point,
             OGRwkbGeometryType::wkbLineString => GeometryType::LineString,
             OGRwkbGeometryType::wkbPolygon => GeometryType::Polygon,
-            other => {
-                return Err(anyhow!(
-                    "Unsupported geometry type: {:?}",
-                    other
-                ))
-            }
+            other => return Err(anyhow!("Unsupported geometry type: {:?}", other)),
         };
 
         // 2. Extract coordinates
@@ -286,16 +289,40 @@ impl Feature {
                 Some(gdal::vector::FieldValue::DateTimeValue(dt)) => format!("{:?}", dt),
                 // Handle list types by converting to JSON-like string
                 Some(gdal::vector::FieldValue::IntegerListValue(list)) => {
-                    format!("[{}]", list.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
                 }
                 Some(gdal::vector::FieldValue::Integer64ListValue(list)) => {
-                    format!("[{}]", list.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
                 }
                 Some(gdal::vector::FieldValue::RealListValue(list)) => {
-                    format!("[{}]", list.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
                 }
                 Some(gdal::vector::FieldValue::StringListValue(list)) => {
-                    format!("[{}]", list.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(","))
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|s| format!("\"{}\"", s))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
                 }
                 None => String::new(),
             };
@@ -398,18 +425,17 @@ mod tests {
         assert_eq!(feature.geometry.len(), 1);
         assert_eq!(feature.geometry[0], (2.3488, 48.8534));
         assert_eq!(feature.attributes.get("Type"), Some(&"0x0100".to_string()));
-        assert_eq!(feature.attributes.get("Label"), Some(&"Test Point".to_string()));
+        assert_eq!(
+            feature.attributes.get("Label"),
+            Some(&"Test Point".to_string())
+        );
         assert_eq!(feature.attributes.get("EndLevel"), Some(&"3".to_string()));
     }
 
     #[test]
     fn test_feature_multiple_coordinates() {
         // Test Feature can hold multiple coordinates (for LineString/Polygon)
-        let coords = vec![
-            (2.3488, 48.8534),
-            (2.3500, 48.8550),
-            (2.3520, 48.8570),
-        ];
+        let coords = vec![(2.3488, 48.8534), (2.3500, 48.8550), (2.3520, 48.8570)];
 
         let feature = Feature {
             geometry_type: GeometryType::LineString,

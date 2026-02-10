@@ -70,20 +70,16 @@ error_handling: continue
         verbose: 0,
     };
 
-    // Run the pipeline - should fail with no sources
+    // Run the pipeline - Story 5.4 AC5: empty datasets are now supported
     let result = pipeline::run(&config, &args);
 
     assert!(
-        result.is_err(),
-        "Pipeline should fail when no features are loaded"
+        result.is_ok(),
+        "Pipeline should succeed with empty dataset (Story 5.4 AC5): {:?}",
+        result.err()
     );
 
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("No features loaded"),
-        "Error should mention no features loaded: {}",
-        err_msg
-    );
+    // Story 5.4 AC5: Empty datasets are now valid - file is created with warning logged
 }
 
 #[test]

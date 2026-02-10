@@ -68,8 +68,10 @@ fn test_load_config_negative_cell_size() {
     let err_msg = result.unwrap_err().to_string();
     // The error chain includes both the context and the root cause
     assert!(
-        err_msg.contains("Config validation failed") || err_msg.contains("cell_size must be positive"),
-        "Expected validation error, got: {}", err_msg
+        err_msg.contains("Config validation failed")
+            || err_msg.contains("cell_size must be positive"),
+        "Expected validation error, got: {}",
+        err_msg
     );
 }
 
@@ -81,8 +83,10 @@ fn test_load_config_no_inputs() {
     let err_msg = result.unwrap_err().to_string();
     // The error chain includes both the context and the root cause
     assert!(
-        err_msg.contains("Config validation failed") || err_msg.contains("At least one input source"),
-        "Expected validation error, got: {}", err_msg
+        err_msg.contains("Config validation failed")
+            || err_msg.contains("At least one input source"),
+        "Expected validation error, got: {}",
+        err_msg
     );
 }
 

@@ -12,3 +12,7 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Test artifacts / Output directories
+tiles/
+*.mp

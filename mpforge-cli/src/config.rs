@@ -294,7 +294,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("cell_size must be positive"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("cell_size must be positive"));
     }
 
     #[test]
@@ -311,7 +314,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("cell_size must be positive"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("cell_size must be positive"));
     }
 
     #[test]
@@ -345,7 +351,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("overlap cannot be negative"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("overlap cannot be negative"));
     }
 
     #[test]
@@ -392,7 +401,10 @@ error_handling: "invalid"
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("error_handling must be"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("error_handling must be"));
     }
 
     #[test]
@@ -408,7 +420,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("At least one input source"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("At least one input source"));
     }
 
     #[test]
@@ -462,14 +477,20 @@ output:
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must have either 'path' or 'connection'"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must have either 'path' or 'connection'"));
 
         // Invalid: has neither
         config.inputs[0].path = None;
         config.inputs[0].connection = None;
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must have either 'path' or 'connection'"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must have either 'path' or 'connection'"));
     }
 
     #[test]
@@ -504,7 +525,10 @@ filters:
         let config: Config = serde_yml::from_str(yaml_invalid_lon).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("min_lon must be < max_lon"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("min_lon must be < max_lon"));
 
         // Invalid: min_lat >= max_lat
         let yaml_invalid_lat = r#"
@@ -521,7 +545,10 @@ filters:
         let config: Config = serde_yml::from_str(yaml_invalid_lat).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("min_lat must be < max_lat"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("min_lat must be < max_lat"));
     }
 
     #[test]
@@ -581,8 +608,12 @@ filters:
         let resolved = resolve_wildcard_paths(&pattern).unwrap();
 
         assert_eq!(resolved.len(), 2);
-        assert!(resolved.iter().any(|p| p.file_name().unwrap() == "file1.shp"));
-        assert!(resolved.iter().any(|p| p.file_name().unwrap() == "file2.shp"));
+        assert!(resolved
+            .iter()
+            .any(|p| p.file_name().unwrap() == "file1.shp"));
+        assert!(resolved
+            .iter()
+            .any(|p| p.file_name().unwrap() == "file2.shp"));
 
         // Test no matches (warning logged)
         let pattern_no_match = format!("{}/*.xyz", temp_path.display());

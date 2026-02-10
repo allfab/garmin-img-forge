@@ -1,7 +1,10 @@
 //! mpforge-cli: Polish Map tiling and export tool
 
 use clap::Parser;
-use mpforge_cli::{cli::{Cli, Commands}, config, pipeline};
+use mpforge_cli::{
+    cli::{Cli, Commands},
+    config, pipeline,
+};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
