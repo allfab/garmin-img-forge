@@ -5,8 +5,9 @@ use anyhow::{anyhow, Context, Result};
 use gdal::spatial_ref::SpatialRef;
 use gdal::vector::{LayerAccess, OGRwkbGeometryType};
 use gdal::Dataset;
+use rstar::{RTree, RTreeObject, AABB};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// Statistics for source reading.
 #[derive(Debug, Default)]
@@ -14,6 +15,170 @@ struct ReaderStats {
     point_count: usize,
     linestring_count: usize,
     polygon_count: usize,
+}
+
+/// Feature envelope for R-tree indexing.
+///
+/// Wraps a feature with its spatial bounding box for efficient spatial queries.
+#[derive(Debug, Clone)]
+pub struct FeatureEnvelope {
+    /// Feature unique index in the global feature vector.
+    pub feature_id: usize,
+    /// Bounding box of the feature geometry.
+    pub bbox: AABB<[f64; 2]>,
+}
+
+impl RTreeObject for FeatureEnvelope {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        self.bbox
+    }
+}
+
+/// Spatial index for efficient tile-based queries.
+///
+/// Uses R-tree data structure to enable O(log n + k) spatial queries
+/// instead of O(n) naive iteration over all features.
+#[derive(Debug)]
+pub struct RTreeIndex {
+    tree: RTree<FeatureEnvelope>,
+    /// Total bounding box of all indexed features (for grid calculation).
+    global_bbox: AABB<[f64; 2]>,
+}
+
+impl RTreeIndex {
+    /// Build R-tree index from feature vector.
+    ///
+    /// # Arguments
+    /// * `features` - All features from all sources
+    ///
+    /// # Returns
+    /// * `Result<RTreeIndex>` - R-tree index with all features indexed by bounding box
+    ///
+    /// # Errors
+    /// * Currently infallible - Result signature maintained for API consistency and future extensibility
+    ///   (e.g., validation of bbox validity, memory allocation failures in extreme cases)
+    pub fn build(features: &[Feature]) -> Result<Self> {
+        // Handle empty feature vector
+        if features.is_empty() {
+            info!("Building R-tree index from 0 features");
+            let tree = RTree::new();
+            // Note: global_bbox is set to [0,0]->[0,0] for empty index (invalid but consistent)
+            // Callers MUST check tree.is_empty() before using global_bbox for grid calculation
+            let global_bbox = AABB::from_corners([0.0, 0.0], [0.0, 0.0]);
+            return Ok(RTreeIndex { tree, global_bbox });
+        }
+
+        let mut envelopes = Vec::with_capacity(features.len());
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut max_y = f64::MIN;
+
+        for (id, feature) in features.iter().enumerate() {
+            // Calculate feature bounding box
+            let (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) =
+                Self::calculate_feature_bbox(feature);
+
+            // Update global bbox
+            min_x = min_x.min(bbox_min_x);
+            min_y = min_y.min(bbox_min_y);
+            max_x = max_x.max(bbox_max_x);
+            max_y = max_y.max(bbox_max_y);
+
+            // Create envelope (with sanity check for valid bbox)
+            debug_assert!(
+                bbox_min_x <= bbox_max_x && bbox_min_y <= bbox_max_y,
+                "Invalid bbox for feature {}: min ({}, {}) > max ({}, {})",
+                id, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y
+            );
+            let aabb = AABB::from_corners([bbox_min_x, bbox_min_y], [bbox_max_x, bbox_max_y]);
+            envelopes.push(FeatureEnvelope {
+                feature_id: id,
+                bbox: aabb,
+            });
+        }
+
+        let tree = RTree::bulk_load(envelopes);
+        let global_bbox = AABB::from_corners([min_x, min_y], [max_x, max_y]);
+
+        info!(
+            features = features.len(),
+            bbox_min_x = min_x,
+            bbox_min_y = min_y,
+            bbox_max_x = max_x,
+            bbox_max_y = max_y,
+            "R-tree index built"
+        );
+
+        Ok(RTreeIndex { tree, global_bbox })
+    }
+
+    /// Calculate bounding box of a feature.
+    ///
+    /// Note: Manual iteration used instead of geo::BoundingRect because Feature stores
+    /// coordinates as Vec<(f64, f64)> rather than geo::Geometry types. This is optimal
+    /// for the current data structure (single-pass O(n) over coordinates).
+    ///
+    /// # Arguments
+    /// * `feature` - Feature to calculate bbox for
+    ///
+    /// # Returns
+    /// * `(min_x, min_y, max_x, max_y)` - Bounding box coordinates
+    fn calculate_feature_bbox(feature: &Feature) -> (f64, f64, f64, f64) {
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut max_y = f64::MIN;
+
+        for &(x, y) in &feature.geometry {
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+
+        (min_x, min_y, max_x, max_y)
+    }
+
+    /// Query features intersecting a bounding box.
+    ///
+    /// # Arguments
+    /// * `query_bbox` - Bounding box to query (typically a tile bbox)
+    ///
+    /// # Returns
+    /// * `Vec<usize>` - Feature IDs whose bboxes intersect the query bbox
+    pub fn query_intersecting(&self, query_bbox: &AABB<[f64; 2]>) -> Vec<usize> {
+        let candidates: Vec<usize> = self
+            .tree
+            .locate_in_envelope_intersecting(query_bbox)
+            .map(|envelope| envelope.feature_id)
+            .collect();
+
+        trace!(
+            candidates = candidates.len(),
+            "R-tree query completed"
+        );
+
+        candidates
+    }
+
+    /// Get the global bounding box of all indexed features.
+    ///
+    /// # Returns
+    /// * `AABB<[f64; 2]>` - Global bounding box
+    pub fn global_bbox(&self) -> AABB<[f64; 2]> {
+        self.global_bbox
+    }
+
+    /// Get the number of features in the R-tree index.
+    ///
+    /// # Returns
+    /// * `usize` - Number of indexed features
+    pub fn tree_size(&self) -> usize {
+        self.tree.size()
+    }
 }
 
 /// Reads features from GDAL sources.
@@ -237,18 +402,19 @@ impl SourceReader {
         Ok(features)
     }
 
-    /// Read features from all sources configured in the configuration.
+    /// Read features from all sources and build R-tree spatial index.
     ///
     /// # Arguments
     /// * `config` - Configuration with list of input sources
     ///
     /// # Returns
-    /// * `Result<Vec<Feature>>` - All features from all sources combined
+    /// * `Result<(Vec<Feature>, RTreeIndex)>` - All features and R-tree index
     ///
     /// # Errors
     /// * File not found or not readable (depending on error_handling mode)
     /// * GDAL errors
-    pub fn read_all_sources(config: &Config) -> Result<Vec<Feature>> {
+    /// * R-tree construction errors (should never happen in practice)
+    pub fn read_all_sources(config: &Config) -> Result<(Vec<Feature>, RTreeIndex)> {
         let mut all_features = Vec::new();
         let mut total_stats = ReaderStats::default();
 
@@ -319,14 +485,17 @@ impl SourceReader {
             points = total_stats.point_count,
             linestrings = total_stats.linestring_count,
             polygons = total_stats.polygon_count,
-            "All sources loaded"
+            "All sources loaded, building R-tree index"
         );
 
         if all_features.is_empty() {
             warn!("No features loaded from any source");
         }
 
-        Ok(all_features)
+        // Build R-tree spatial index (currently infallible, but Result kept for API consistency)
+        let rtree = RTreeIndex::build(&all_features)?;
+
+        Ok((all_features, rtree))
     }
 }
 

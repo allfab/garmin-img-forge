@@ -121,7 +121,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
         "Should succeed in continue mode despite invalid layer"
     );
 
-    let features = result.unwrap();
+    let (features, _rtree) = result.unwrap();
 
     // Should have features from valid layers only: pois (5) + roads (10) = 15
     assert_eq!(

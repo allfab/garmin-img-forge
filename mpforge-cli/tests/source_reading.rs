@@ -225,7 +225,7 @@ fn test_read_multiple_sources() {
         error_handling: "continue".to_string(),
     };
 
-    let features = SourceReader::read_all_sources(&config).unwrap();
+    let (features, _rtree) = SourceReader::read_all_sources(&config).unwrap();
 
     // Count by geometry type
     let point_count = features
@@ -311,7 +311,7 @@ fn test_read_all_sources_continue_mode() {
     let result = SourceReader::read_all_sources(&config);
     assert!(result.is_ok(), "Should not fail in continue mode");
 
-    let features = result.unwrap();
+    let (features, _rtree) = result.unwrap();
     // Should have features from file1.shp (3) + file2.shp (2) = 5
     assert_eq!(
         features.len(),
@@ -471,7 +471,7 @@ fn test_multi_source_with_multi_layer_geopackage() {
         error_handling: "continue".to_string(),
     };
 
-    let features = SourceReader::read_all_sources(&config).unwrap();
+    let (features, _rtree) = SourceReader::read_all_sources(&config).unwrap();
 
     // Total: 3 (file1.shp) + 23 (multi_layers.gpkg) + 2 (file2.shp) = 28 features
     assert_eq!(

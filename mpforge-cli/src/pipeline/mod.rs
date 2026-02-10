@@ -25,16 +25,26 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     info!("Error handling mode: {}", config.error_handling);
 
     // Story 5.3 - Read all sources
-    info!("Phase 1: Reading sources");
+    // Story 6.1 - Build R-tree spatial index
+    info!("Phase 1: Reading sources and building spatial index");
     let start_time = Instant::now();
 
-    let features = SourceReader::read_all_sources(config)?;
+    let (features, rtree) = SourceReader::read_all_sources(config)?;
 
     let elapsed = start_time.elapsed();
     info!(
         duration_ms = elapsed.as_millis(),
         feature_count = features.len(),
         "Source reading completed"
+    );
+
+    // Log R-tree index statistics
+    let global_bbox = rtree.global_bbox();
+    info!(
+        rtree_size = rtree.tree_size(),
+        bbox_min = ?global_bbox.lower(),
+        bbox_max = ?global_bbox.upper(),
+        "R-tree index ready for tiling"
     );
 
     // Story 5.4 - Export to Polish Map format
@@ -88,9 +98,10 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     );
     println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
 
-    // TODO: Story 6.2 - Initialize TileProcessor
+    // TODO: Story 6.2 - Initialize TileProcessor with rtree spatial index
     // TODO: Story 6.4 - Process tiles with error handling
     // TODO: Story 7.3 - Generate execution report
+    // Note: rtree is available for Story 6.2 tiling algorithm
 
     info!("Pipeline completed successfully");
     Ok(())
