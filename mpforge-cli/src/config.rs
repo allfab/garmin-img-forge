@@ -26,7 +26,9 @@ fn default_error_handling() -> String {
     "continue".to_string()
 }
 
-#[derive(Debug, Deserialize)]
+/// Grid configuration for spatial tiling.
+/// Story 6.2: Clone trait required for TileProcessor ownership in pipeline orchestration.
+#[derive(Debug, Clone, Deserialize)]
 pub struct GridConfig {
     pub cell_size: f64,
     #[serde(default)]

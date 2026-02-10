@@ -283,7 +283,10 @@ fn test_geopackage_mixed_geometry_types() {
     };
 
     let result = SourceReader::read_file_source(&input);
-    assert!(result.is_ok(), "Should succeed loading mixed geometry types");
+    assert!(
+        result.is_ok(),
+        "Should succeed loading mixed geometry types"
+    );
 
     let features = result.unwrap();
 

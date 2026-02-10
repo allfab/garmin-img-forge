@@ -7,6 +7,7 @@ pub mod writer;
 use crate::cli::BuildArgs;
 use crate::config::Config;
 use crate::pipeline::reader::SourceReader;
+use crate::pipeline::tiler::TileProcessor;
 use crate::pipeline::writer::MpWriter;
 use anyhow::{Context, Result};
 use std::time::Instant;
@@ -45,6 +46,20 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
         bbox_min = ?global_bbox.lower(),
         bbox_max = ?global_bbox.upper(),
         "R-tree index ready for tiling"
+    );
+
+    // Story 6.2 - Initialize TileProcessor and generate grid
+    let tile_processor = TileProcessor::new(config.grid.clone());
+
+    // Generate tile grid with optional spatial filtering
+    let tiles = tile_processor.generate_tiles(&rtree, &config.filters);
+
+    // Assign features to tiles via R-tree queries
+    let tile_assignments = tile_processor.assign_features_to_tiles(&rtree, tiles);
+
+    info!(
+        tiles_to_process = tile_assignments.len(),
+        "Tiling pipeline ready"
     );
 
     // Story 5.4 - Export to Polish Map format
@@ -98,10 +113,9 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<()> {
     );
     println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
 
-    // TODO: Story 6.2 - Initialize TileProcessor with rtree spatial index
-    // TODO: Story 6.4 - Process tiles with error handling
+    // TODO: Story 6.3 - Clip geometries at tile boundaries
+    // TODO: Story 6.4 - Process tiles with error handling and export multi-tiles .mp
     // TODO: Story 7.3 - Generate execution report
-    // Note: rtree is available for Story 6.2 tiling algorithm
 
     info!("Pipeline completed successfully");
     Ok(())

@@ -57,9 +57,9 @@ fn test_rtree_build_with_mixed_geometry_types() {
     // AC1, AC2: R-tree indexe tous les types géométriques
 
     let features = vec![
-        create_point_feature(0.0, 0.0),                  // Point
-        create_line_feature(1.0, 1.0, 2.0, 2.0),         // LineString
-        create_polygon_feature(3.0, 3.0, 4.0, 4.0),      // Polygon
+        create_point_feature(0.0, 0.0),             // Point
+        create_line_feature(1.0, 1.0, 2.0, 2.0),    // LineString
+        create_polygon_feature(3.0, 3.0, 4.0, 4.0), // Polygon
     ];
 
     let rtree = RTreeIndex::build(&features).expect("Failed to build R-tree");
@@ -133,9 +133,9 @@ fn test_rtree_global_bbox_calculation() {
     // AC1: Global bbox encompasses all features
 
     let features = vec![
-        create_point_feature(-10.0, -5.0),  // Min corner
-        create_point_feature(20.0, 15.0),   // Max corner
-        create_point_feature(0.0, 0.0),     // Middle
+        create_point_feature(-10.0, -5.0), // Min corner
+        create_point_feature(20.0, 15.0),  // Max corner
+        create_point_feature(0.0, 0.0),    // Middle
     ];
 
     let rtree = RTreeIndex::build(&features).expect("Failed to build R-tree");
@@ -177,8 +177,8 @@ fn test_rtree_query_intersecting_features() {
     // AC3: Spatial query returns only intersecting features
 
     let features = vec![
-        create_point_feature(0.5, 0.5),  // Inside tile [0,0,1,1]
-        create_point_feature(5.0, 5.0),  // Outside tile
+        create_point_feature(0.5, 0.5), // Inside tile [0,0,1,1]
+        create_point_feature(5.0, 5.0), // Outside tile
     ];
 
     let rtree = RTreeIndex::build(&features).expect("Failed to build R-tree");

@@ -91,7 +91,11 @@ impl RTreeIndex {
             debug_assert!(
                 bbox_min_x <= bbox_max_x && bbox_min_y <= bbox_max_y,
                 "Invalid bbox for feature {}: min ({}, {}) > max ({}, {})",
-                id, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y
+                id,
+                bbox_min_x,
+                bbox_min_y,
+                bbox_max_x,
+                bbox_max_y
             );
             let aabb = AABB::from_corners([bbox_min_x, bbox_min_y], [bbox_max_x, bbox_max_y]);
             envelopes.push(FeatureEnvelope {
@@ -156,10 +160,7 @@ impl RTreeIndex {
             .map(|envelope| envelope.feature_id)
             .collect();
 
-        trace!(
-            candidates = candidates.len(),
-            "R-tree query completed"
-        );
+        trace!(candidates = candidates.len(), "R-tree query completed");
 
         candidates
     }
@@ -332,9 +333,9 @@ impl SourceReader {
         path: &str,
         wgs84: &SpatialRef,
     ) -> Result<Vec<Feature>> {
-        let mut layer = dataset.layer_by_name(layer_name).with_context(|| {
-            format!("Layer '{}' not found in dataset: {}", layer_name, path)
-        })?;
+        let mut layer = dataset
+            .layer_by_name(layer_name)
+            .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
 
         Self::load_features_from_layer(&mut layer, path, wgs84)
     }
