@@ -5,7 +5,7 @@ grid:
   cell_size: 0.15
 
 inputs:
-  - path: "data/test.shp"
+  - path: "tests/integration/fixtures/test_data/file1.shp"
 
 output:
   directory: "tiles/"
