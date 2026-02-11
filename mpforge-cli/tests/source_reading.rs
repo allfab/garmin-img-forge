@@ -220,6 +220,7 @@ fn test_read_multiple_sources() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "continue".to_string(),
@@ -302,6 +303,7 @@ fn test_read_all_sources_continue_mode() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "continue".to_string(),
@@ -355,6 +357,7 @@ fn test_read_all_sources_fail_fast_mode() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "fail-fast".to_string(),
@@ -466,6 +469,7 @@ fn test_multi_source_with_multi_layer_geopackage() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "continue".to_string(),

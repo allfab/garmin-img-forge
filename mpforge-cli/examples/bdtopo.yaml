@@ -87,6 +87,10 @@ inputs:
 output:
   directory: "tiles_bdtopo/"
   filename_pattern: "france_{x}_{y}.mp"
+  # OPTIONAL: Field mapping configuration (Story 7.4)
+  # Uncomment to enable YAML-based field mapping for Polish Map output.
+  # Maps source field names (e.g., MP_TYPE, NAME) to canonical Polish Map fields (Type, Label).
+  # field_mapping_path: "examples/bdtopo-mapping.yaml"
 
 filters:
   # OPTIONAL: Spatial filters

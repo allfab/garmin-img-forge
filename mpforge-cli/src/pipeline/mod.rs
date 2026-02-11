@@ -14,7 +14,7 @@ use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -417,8 +417,9 @@ fn export_tiles_sequential(
         let tile_filename = format!("{}.mp", tile_id);
         let tile_path = PathBuf::from(&config.output.directory).join(tile_filename);
 
-        // Create writer for this tile
-        let mut writer = match MpWriter::new(tile_path) {
+        // Create writer for this tile (Story 7.4: with optional field mapping)
+        let field_mapping = config.output.field_mapping_path.as_deref();
+        let mut writer = match MpWriter::new(tile_path, field_mapping) {
             Ok(w) => w,
             Err(e) => {
                 handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
@@ -517,6 +518,7 @@ fn export_tiles_parallel(
     info!(jobs = jobs, tiles = tile_features.len(), "Starting parallel export");
 
     // Create shared export context (reduces parameter count)
+    // Story 7.4: Added field_mapping_path to context
     let ctx = TileExportContext {
         succeeded: &succeeded,
         failed: &failed,
@@ -527,6 +529,7 @@ fn export_tiles_parallel(
         export_errors: &export_errors,
         progress,
         error_mode,
+        field_mapping_path: config.output.field_mapping_path.as_deref(),
     };
 
     // Execute parallel export
@@ -602,6 +605,8 @@ struct TileExportContext<'a> {
     export_errors: &'a Arc<Mutex<Vec<TileExportError>>>,
     progress: &'a Option<Arc<ProgressBar>>,
     error_mode: ErrorMode,
+    /// Optional YAML field mapping path for ogr-polishmap driver (Story 7.4)
+    field_mapping_path: Option<&'a Path>,
 }
 
 /// Export a single tile (thread-safe, called from parallel loop).
@@ -664,7 +669,8 @@ fn export_single_tile(
     };
 
     // Create writer, write features, finalize (with error handling)
-    let mut writer = match MpWriter::new(tile_path) {
+    // Story 7.4: Pass field mapping path from context
+    let mut writer = match MpWriter::new(tile_path, ctx.field_mapping_path) {
         Ok(w) => w,
         Err(e) => return handle_error(e),
     };

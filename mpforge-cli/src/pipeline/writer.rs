@@ -2,10 +2,11 @@
 
 use crate::pipeline::reader::{Feature, GeometryType};
 use anyhow::{anyhow, Context, Result};
+use gdal::cpl::CslStringList;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
 use gdal::{Dataset, DriverManager};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{info, instrument, warn};
 
 /// Statistics for export operations.
@@ -28,6 +29,7 @@ impl MpWriter {
     ///
     /// # Arguments
     /// * `output_path` - Complete path to output .mp file (e.g., "tiles/45_12.mp")
+    /// * `field_mapping_path` - Optional path to YAML field mapping config for ogr-polishmap driver (Story 7.4)
     ///
     /// # Returns
     /// * `Result<Self>` - Initialized writer ready to accept features
@@ -36,12 +38,16 @@ impl MpWriter {
     /// * GDAL driver "PolishMap" not found
     /// * Failed to create output directory
     /// * Failed to create dataset or layers
+    /// * Field mapping path encoding is invalid (non-UTF8)
     ///
     /// # Breaking Change (Story 6.4)
     /// Previous signature was `new(config: &OutputConfig)`.
     /// Now accepts PathBuf directly for multi-tile support.
-    #[instrument(skip_all, fields(output_path = %output_path.display()))]
-    pub fn new(output_path: PathBuf) -> Result<Self> {
+    ///
+    /// # Story 7.4
+    /// Added optional `field_mapping_path` parameter to support YAML-based field mapping.
+    #[instrument(skip_all, fields(output_path = %output_path.display(), field_mapping = ?field_mapping_path))]
+    pub fn new(output_path: PathBuf, field_mapping_path: Option<&Path>) -> Result<Self> {
         info!(path = %output_path.display(), "Initializing MpWriter");
 
         // Note: Output directory creation is handled by caller (pipeline/mod.rs)
@@ -53,10 +59,58 @@ impl MpWriter {
 
         info!(path = %output_path.display(), "Creating MP dataset");
 
-        // Create dataset (for vector drivers, create_vector_only() is used)
-        let mut dataset = driver
-            .create_vector_only(&output_path)
-            .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?;
+        // Story 7.4: Branch based on field_mapping_path presence
+        let mut dataset = if let Some(mapping_path) = field_mapping_path {
+            // Validate file exists before processing (H3 fix - validation moved here)
+            if !mapping_path.exists() {
+                anyhow::bail!(
+                    "Field mapping file does not exist: {}. Please provide a valid YAML mapping file.",
+                    mapping_path.display()
+                );
+            }
+
+            // Convert path to absolute path string for GDAL
+            // Use canonicalize with fallback for symlinks/permissions edge cases (M2 fix)
+            let mapping_path_abs = std::fs::canonicalize(mapping_path)
+                .or_else(|_| {
+                    // Fallback: use path as-is if canonicalize fails (symlinks, permissions)
+                    std::env::current_dir().map(|cwd| cwd.join(mapping_path))
+                        .with_context(|| format!(
+                            "Failed to resolve field mapping path: {}. Ensure the file is readable.",
+                            mapping_path.display()
+                        ))
+                })?;
+
+            let mapping_path_str = mapping_path_abs
+                .to_str()
+                .context("Invalid field mapping path encoding (non-UTF8)")?;
+
+            info!(
+                field_mapping = %mapping_path_str,
+                "Creating dataset with field mapping configuration"
+            );
+
+            // Create dataset with FIELD_MAPPING creation option
+            let mut options = CslStringList::new();
+            options.set_name_value("FIELD_MAPPING", mapping_path_str)?;
+
+            driver
+                .create_with_band_type_with_options::<u8, _>(
+                    &output_path,
+                    0, 0, 0,  // Vector-only dataset (0 dimensions, 0 bands)
+                    &options,
+                )
+                .with_context(|| format!(
+                    "Failed to create dataset with field mapping: {}",
+                    output_path.display()
+                ))?
+        } else {
+            // No field mapping - use hardcoded aliases (backward compatible)
+            info!("Field mapping not configured, using driver hardcoded aliases (backward compatible)");
+            driver
+                .create_vector_only(&output_path)
+                .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?
+        };
 
         // Create POI layer
         let _poi_layer = dataset

@@ -132,6 +132,65 @@ Voir le répertoire [`examples/`](examples/) :
 - **[simple.yaml](examples/simple.yaml)** : Configuration minimale pour débuter
 - **[bdtopo.yaml](examples/bdtopo.yaml)** : Configuration production pour BDTOPO (35 GB, 50+ couches)
 
+### Field Mapping Configuration
+
+**mpforge-cli** supporte le mappage personnalisé des champs sources vers les champs canoniques du format Polish Map via un fichier YAML.
+
+#### Pourquoi utiliser le field mapping ?
+
+Lorsque vos données sources utilisent des noms de champs personnalisés (par exemple, `MP_TYPE`, `NAME` dans BDTOPO), le field mapping permet de les transposer automatiquement vers les champs standards Polish Map (`Type`, `Label`) sans modifier vos données sources.
+
+#### Configuration
+
+Ajoutez `field_mapping_path` dans la section `output` de votre configuration :
+
+```yaml
+output:
+  directory: "tiles/"
+  filename_pattern: "{x}_{y}.mp"
+  field_mapping_path: "examples/bdtopo-mapping.yaml"  # Chemin vers le fichier de mapping
+  # Note: Les chemins relatifs sont résolus depuis le répertoire de travail actuel (pwd).
+  #       Utilisez un chemin absolu pour éviter toute ambiguïté.
+```
+
+#### Format du fichier de mapping
+
+Le fichier YAML définit les correspondances source → destination :
+
+```yaml
+field_mapping:
+  # Champs principaux
+  MP_TYPE: Type          # Code type Garmin (ex: 0x4e00)
+  NAME: Label            # Nom de la feature
+
+  # Localisation
+  Country: CountryName   # Pays (ex: "France~[0x1d]FRA")
+  CityName: CityName     # Ville/commune
+  Zip: Zip              # Code postal
+
+  # Paramètres d'affichage
+  MPBITLEVEL: Levels    # Niveaux de zoom (ex: "0-3")
+  EndLevel: EndLevel    # Niveau max (0-9)
+```
+
+Exemple complet : [`examples/bdtopo-mapping.yaml`](examples/bdtopo-mapping.yaml)
+
+#### Équivalent ogr2ogr
+
+Cette fonctionnalité est équivalente à :
+
+```bash
+ogr2ogr -f "PolishMap" \
+  -dsco FIELD_MAPPING=bdtopo-mapping.yaml \
+  output.mp input.shp
+```
+
+**mpforge-cli** passe automatiquement cette option au driver `ogr-polishmap` lors de la création des fichiers `.mp`.
+
+#### Backward compatibility
+
+Si `field_mapping_path` n'est pas spécifié, le driver utilise ses aliases hardcodés (comportement par défaut des versions précédentes). Vos configurations existantes continuent de fonctionner sans modification.
+
 ## Options CLI
 
 ### Commande `build`

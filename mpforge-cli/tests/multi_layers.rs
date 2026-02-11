@@ -110,6 +110,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "continue".to_string(),
@@ -174,6 +175,7 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
         output: OutputConfig {
             directory: "output".to_string(),
             filename_pattern: "tile_{x}_{y}.mp".to_string(),
+            field_mapping_path: None,
         },
         filters: None,
         error_handling: "fail-fast".to_string(),

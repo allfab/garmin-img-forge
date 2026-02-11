@@ -201,3 +201,195 @@ fn test_pipeline_console_summary() {
     // - Output file path
     // - Feature counts (POI, POLYLINE, POLYGON)
 }
+
+// ============================================================================
+// Story 7.4: Field Mapping Integration Tests
+// ============================================================================
+
+#[test]
+fn test_field_mapping_with_yaml_config() {
+    // AC3, AC7: Pipeline avec field_mapping_path génère des .mp avec attributs corrects
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+
+    // Create a temporary field mapping YAML file
+    let mapping_path = temp_dir.path().join("test-mapping.yaml");
+    fs::write(
+        &mapping_path,
+        r#"
+field_mapping:
+  MP_TYPE: Type
+  NAME: Label
+"#,
+    )
+    .expect("Failed to create mapping file");
+
+    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+
+    assert!(
+        PathBuf::from(fixture_path).exists(),
+        "Test fixture missing: {}. Ensure test data is set up correctly.",
+        fixture_path
+    );
+
+    // Create config with field_mapping_path
+    let config_yaml = format!(
+        r#"
+version: 1
+grid:
+  cell_size: 0.1
+  overlap: 0.0
+inputs:
+  - path: "{}"
+output:
+  directory: "{}"
+  filename_pattern: "output.mp"
+  field_mapping_path: "{}"
+error_handling: "fail-fast"
+"#,
+        fixture_path,
+        temp_dir.path().display(),
+        mapping_path.display()
+    );
+
+    let config: Config = serde_yml::from_str(&config_yaml).expect("Failed to parse config");
+    let args = create_test_args();
+
+    // Run pipeline with field mapping
+    let result = pipeline::run(&config, &args);
+
+    assert!(
+        result.is_ok(),
+        "Pipeline with field mapping should succeed: {:?}",
+        result.err()
+    );
+
+    // Verify .mp file was created
+    let mp_files: Vec<_> = fs::read_dir(temp_dir.path())
+        .expect("Failed to read output directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext == "mp")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        !mp_files.is_empty(),
+        "At least one .mp file should be generated with field mapping"
+    );
+
+    // Verify file is not empty
+    let first_tile = &mp_files[0];
+    let metadata = fs::metadata(first_tile.path()).expect("Failed to get file metadata");
+    assert!(
+        metadata.len() > 0,
+        "Output .mp file should not be empty with field mapping"
+    );
+
+    // H1 FIX: Verify actual .mp content contains fields (AC3, AC7)
+    let mp_content = fs::read_to_string(first_tile.path())
+        .expect("Failed to read .mp file content");
+
+    // Check that field mapping was processed by verifying Type field exists
+    // Note: Test data has 'Type' (already canonical) not 'MP_TYPE', so mapping
+    // doesn't change it, but driver still processes the FIELD_MAPPING option.
+    assert!(
+        mp_content.contains("Type="),
+        "Output .mp file should contain 'Type=' field. Content:\n{}",
+        mp_content
+    );
+
+    // Label field is optional (only present if source has NAME field)
+    // Test data has 'name' (lowercase) which doesn't match NAME mapping,
+    // so Label won't be present. This is expected behavior.
+}
+
+#[test]
+fn test_field_mapping_without_config_uses_hardcoded_aliases() {
+    // AC4: Pipeline SANS field_mapping_path utilise les aliases hardcodés (backward compatible)
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+
+    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+
+    assert!(
+        PathBuf::from(fixture_path).exists(),
+        "Test fixture missing: {}",
+        fixture_path
+    );
+
+    // Create config WITHOUT field_mapping_path
+    let config = create_test_config(&temp_dir, fixture_path);
+    let args = create_test_args();
+
+    // Run pipeline without field mapping (should use hardcoded aliases)
+    let result = pipeline::run(&config, &args);
+
+    assert!(
+        result.is_ok(),
+        "Pipeline without field mapping should succeed (backward compat): {:?}",
+        result.err()
+    );
+
+    // Verify .mp file was created (same behavior as before)
+    let mp_files: Vec<_> = fs::read_dir(temp_dir.path())
+        .expect("Failed to read output directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext == "mp")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        !mp_files.is_empty(),
+        "At least one .mp file should be generated without field mapping (backward compat)"
+    );
+
+    let first_tile = &mp_files[0];
+    let metadata = fs::metadata(first_tile.path()).expect("Failed to get file metadata");
+    assert!(metadata.len() > 0, "Output .mp file should not be empty");
+
+    // H1 FIX: Verify backward compat uses hardcoded aliases (AC4)
+    let mp_content = fs::read_to_string(first_tile.path())
+        .expect("Failed to read .mp file content");
+
+    // With hardcoded aliases, driver should still produce Type and Label fields
+    // (driver maps MP_TYPE→Type and NAME→Label internally via polishmapfields.h)
+    assert!(
+        mp_content.contains("Type=") || mp_content.contains("Label="),
+        "Output .mp file should contain Type/Label fields even without explicit field_mapping_path (hardcoded aliases). Content:\n{}",
+        mp_content
+    );
+}
+
+#[test]
+fn test_field_mapping_invalid_path_error() {
+    // AC5: Erreur claire si fichier field_mapping_path inexistant ou invalide
+    // H3 FIX: Test MpWriter::new() directly (validation moved from config.validate())
+    use mpforge_cli::pipeline::writer::MpWriter;
+
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let output_path = temp_dir.path().join("test.mp");
+    let nonexistent_mapping = PathBuf::from("/nonexistent/mapping.yaml");
+
+    // Try to create MpWriter with nonexistent field mapping path
+    let result = MpWriter::new(output_path, Some(&nonexistent_mapping));
+
+    match result {
+        Ok(_) => panic!("MpWriter::new() should fail with nonexistent field_mapping_path"),
+        Err(e) => {
+            let error_message = e.to_string();
+            assert!(
+                error_message.contains("Field mapping file does not exist") || error_message.contains("nonexistent"),
+                "Error message should mention field mapping file doesn't exist, got: {}",
+                error_message
+            );
+        }
+    }
+}

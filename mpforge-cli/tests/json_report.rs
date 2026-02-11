@@ -129,7 +129,7 @@ fn test_json_report_not_generated_when_flag_absent() {
     let json_files: Vec<_> = fs::read_dir(temp_dir.path())
         .expect("Failed to read temp dir")
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
         .collect();
 
     assert_eq!(json_files.len(), 0, "No JSON files should be created without --report flag");
@@ -172,10 +172,8 @@ fn test_json_schema_matches_epic_specification() {
     assert!(report["errors"].is_array());
 
     // Verify no extra fields (schema compliance)
-    let expected_keys = vec![
-        "status", "tiles_generated", "tiles_failed", "tiles_skipped",
-        "features_processed", "duration_seconds", "errors"
-    ];
+    let expected_keys = ["status", "tiles_generated", "tiles_failed", "tiles_skipped",
+        "features_processed", "duration_seconds", "errors"];
     let actual_keys: Vec<String> = report.as_object().unwrap().keys().cloned().collect();
     assert_eq!(actual_keys.len(), expected_keys.len(), "Schema should have exactly 7 fields");
 }

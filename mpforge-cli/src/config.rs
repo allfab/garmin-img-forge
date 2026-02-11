@@ -3,6 +3,7 @@
 use anyhow::Context;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Deserialize)]
@@ -50,6 +51,10 @@ pub struct OutputConfig {
     pub directory: String,
     #[serde(default = "default_filename_pattern")]
     pub filename_pattern: String,
+    /// Optional path to YAML field mapping config for ogr-polishmap driver.
+    /// Story 7.4: Maps source field names (e.g., MP_TYPE, NAME) to Polish Map canonical names (Type, Label).
+    #[serde(default)]
+    pub field_mapping_path: Option<PathBuf>,
 }
 
 fn default_filename_pattern() -> String {
@@ -144,13 +149,9 @@ impl Config {
             }
         }
 
-        // Error handling validation
-        if self.error_handling != "continue" && self.error_handling != "fail-fast" {
-            anyhow::bail!(
-                "error_handling must be 'continue' or 'fail-fast', got: '{}'",
-                self.error_handling
-            );
-        }
+        // Error handling validation (use ErrorMode::from_str for consistency)
+        ErrorMode::from_str(&self.error_handling)
+            .with_context(|| format!("Invalid error_handling value: '{}'", self.error_handling))?;
 
         // Filters validation (if present)
         if let Some(filters) = &self.filters {
@@ -170,6 +171,11 @@ impl Config {
                 );
             }
         }
+
+        // Output field_mapping_path validation removed (Story 7.4)
+        // Validation moved to MpWriter::new() to avoid race condition in parallel mode
+        // where file could be deleted between config validation and usage.
+        // See writer.rs:65-69 for canonicalize() with proper error context.
 
         Ok(())
     }
@@ -430,10 +436,9 @@ error_handling: "invalid"
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("error_handling must be"));
+        // Updated for L2 fix: validation now uses ErrorMode::from_str
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Invalid error_handling") || error_msg.contains("expected 'continue' or 'fail-fast'"));
     }
 
     #[test]
@@ -500,6 +505,7 @@ output:
             output: OutputConfig {
                 directory: "tiles/".to_string(),
                 filename_pattern: "{x}_{y}.mp".to_string(),
+                field_mapping_path: None,
             },
             filters: None,
             error_handling: "continue".to_string(),
@@ -649,4 +655,60 @@ filters:
         let resolved_empty = resolve_wildcard_paths(&pattern_no_match).unwrap();
         assert_eq!(resolved_empty.len(), 0);
     }
+
+    // Story 7.4: field_mapping_path tests
+    #[test]
+    fn test_config_with_field_mapping_path() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create temp file for mapping
+        let temp_dir = TempDir::new().unwrap();
+        let mapping_path = temp_dir.path().join("mapping.yaml");
+        fs::write(&mapping_path, "MP_TYPE: Type\nNAME: Label").unwrap();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  field_mapping_path: "{}"
+"#,
+            mapping_path.display()
+        );
+        let config: Config = serde_yml::from_str(&yaml).unwrap();
+        assert!(config.output.field_mapping_path.is_some());
+        assert_eq!(
+            config.output.field_mapping_path.as_ref().unwrap(),
+            &mapping_path
+        );
+        // Validation should pass when file exists
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_without_field_mapping_path() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.output.field_mapping_path.is_none());
+        // Validation should pass even without field_mapping_path (backward compat)
+        assert!(config.validate().is_ok());
+    }
+
+    // Test removed (Story 7.4 Code Review Fix H3):
+    // field_mapping_path validation moved from config.validate() to MpWriter::new()
+    // to avoid race condition in parallel mode. See test_field_mapping_invalid_path_error
+    // in tests/integration_export.rs for validation coverage.
 }
