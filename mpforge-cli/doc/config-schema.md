@@ -393,6 +393,52 @@ File paths support glob-style wildcards:
 - A warning is logged if no files match the pattern
 - Processing continues even if wildcards match no files
 
+## CLI Options
+
+### Parallel Processing
+
+**Option:** `--jobs N` or `-j N`
+
+**Description:** Configure parallel processing for tile export using N threads.
+
+**Default:** `1` (sequential processing)
+
+**Behavior:**
+- **`--jobs 1`**: Sequential processing (debug mode, same as Epic 6 behavior)
+- **`--jobs 2-8`**: Parallel processing (production mode, recommended for large datasets)
+- **`--jobs > num_cpus`**: Warning logged; may degrade performance
+
+**Examples:**
+
+```bash
+# Sequential export (default, debug mode)
+mpforge-cli build --config config.yaml
+
+# Parallel export with 4 threads (production mode)
+mpforge-cli build --config config.yaml --jobs 4
+
+# Parallel export with 8 threads (high-performance mode)
+mpforge-cli build --config config.yaml -j 8
+```
+
+**Performance Notes:**
+
+- **Small datasets (<50 tiles):** Use `--jobs 1` (parallel overhead not worth it)
+- **Medium datasets (50-500 tiles):** Use `--jobs 2-4` (2× speedup expected)
+- **Large datasets (>500 tiles):** Use `--jobs 4-8` (2-3× speedup expected)
+- **CPU count:** Run `nproc` or `sysctl -n hw.ncpu` to check available CPUs
+- **Recommendation:** Start with `--jobs 4` and adjust based on performance
+
+**Thread Safety:**
+
+The parallel implementation uses rayon for thread-safe data parallelism:
+- Thread-safe error collection in `continue` mode
+- Fail-fast mode interrupts all threads on first error
+- Atomic counters for statistics aggregation
+- Each tile creates its own GDAL dataset (no shared state)
+
+**Story:** Epic 7 Story 7.1 - Parallélisation du Traitement des Tuiles (2026-02-11)
+
 ## Notes
 
 - **Version:** Currently only version `1` is supported
@@ -404,6 +450,7 @@ File paths support glob-style wildcards:
 - **Input paths:** Relative to current working directory or absolute paths
 - **Output directory:** Created automatically if it doesn't exist
 - **Validation:** Configuration is validated at load time; errors provide clear messages indicating the problem
+- **Parallel processing:** Use `--jobs N` to enable multi-threaded tile export (Story 7.1)
 
 ## Implementation Notes
 

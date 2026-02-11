@@ -10,9 +10,12 @@ use crate::pipeline::reader::{Feature, SourceReader};
 use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
 use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{anyhow, Context, Result};
+use rayon::prelude::*;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant, SystemTime};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Summary of multi-tile export operation.
 #[derive(Debug, Clone)]
@@ -194,13 +197,72 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         "Tiling pipeline ready"
     );
 
-    // Story 6.4 - Export multi-tiles .mp (one .mp file per tile)
+    // Validate jobs parameter
+    let jobs = args.validate_jobs()?;
+
+    // Story 6.4 & 7.1 - Export multi-tiles .mp (sequential or parallel)
     info!(
-        "Phase 2: Exporting {} tiles as .mp files",
-        tile_features.len()
+        "Phase 2: Exporting {} tiles as .mp files (jobs: {})",
+        tile_features.len(),
+        jobs
     );
     let export_start = Instant::now();
 
+    // Choose export strategy based on jobs parameter
+    let summary = if jobs == 1 {
+        // Sequential export (Epic 6 behavior, debug mode)
+        export_tiles_sequential(tile_features, config, error_mode)?
+    } else {
+        // Parallel export (Epic 7 Story 7.1)
+        export_tiles_parallel(tile_features, config, error_mode, jobs)?
+    };
+
+    let export_elapsed = export_start.elapsed();
+
+    // Display final summary (AC4)
+    info!(
+        duration_ms = export_elapsed.as_millis(),
+        tiles_succeeded = summary.tiles_succeeded,
+        tiles_failed = summary.tiles_failed,
+        tiles_skipped = summary.tiles_skipped,
+        total_features = summary.total_features(),
+        "Multi-tile export completed"
+    );
+
+    // Console summary output (AC4)
+    println!("\n✅ Export completed successfully!");
+    println!("   Output directory: {}", config.output.directory);
+    println!("   Tiles generated:");
+    println!("     - Succeeded: {}", summary.tiles_succeeded);
+    println!("     - Failed:    {}", summary.tiles_failed);
+    println!("     - Skipped:   {} (empty tiles)", summary.tiles_skipped);
+    println!("   Features exported:");
+    println!("     - POI (points):     {}", summary.global_stats.point_count);
+    println!("     - POLYLINE (lines): {}", summary.global_stats.linestring_count);
+    println!("     - POLYGON (areas):  {}", summary.global_stats.polygon_count);
+    println!("   Total: {} features", summary.total_features());
+    println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
+
+    // Fail if any tiles failed (exit code non-zero)
+    if !summary.is_success() {
+        return Err(anyhow!(
+            "Multi-tile export failed: {} tile(s) failed to export",
+            summary.tiles_failed
+        ));
+    }
+
+    // TODO: Story 7.3 - Generate execution report JSON
+
+    info!("Pipeline completed successfully");
+    Ok(summary)
+}
+
+/// Export tiles sequentially (Epic 6 behavior, debug mode).
+fn export_tiles_sequential(
+    tile_features: Vec<(TileBounds, Vec<Feature>)>,
+    config: &Config,
+    error_mode: ErrorMode,
+) -> Result<TileExportSummary> {
     // Ensure output directory exists
     std::fs::create_dir_all(&config.output.directory)
         .context("Failed to create output directory")?;
@@ -216,7 +278,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
         // Skip empty tiles
         if features.is_empty() {
-            tracing::debug!(tile_id = %tile_id, "Tile has no features, skipping export");
+            debug!(tile_id = %tile_id, "Tile has no features, skipping export");
             skipped += 1;
             continue;
         }
@@ -264,55 +326,209 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         succeeded += 1;
     }
 
-    let export_elapsed = export_start.elapsed();
-
     // Report export errors if any (mode Continue)
     if !export_errors.is_empty() {
         warn!(
             error_count = export_errors.len(),
             "Multi-tile export completed with errors"
         );
-        // TODO Story 7.3: Include export_errors in execution report JSON
     }
 
-    let summary = TileExportSummary::new(succeeded, failed, skipped, global_stats, export_errors);
+    Ok(TileExportSummary::new(succeeded, failed, skipped, global_stats, export_errors))
+}
 
-    // Display final summary (AC4)
+/// Export tiles in parallel using rayon thread pool (Epic 7 Story 7.1).
+#[tracing::instrument(skip(tile_features, config))]
+fn export_tiles_parallel(
+    tile_features: Vec<(TileBounds, Vec<Feature>)>,
+    config: &Config,
+    error_mode: ErrorMode,
+    jobs: usize,
+) -> Result<TileExportSummary> {
+    // Thread-safe shared state with lock-free atomic counters for better performance
+    let succeeded = Arc::new(AtomicUsize::new(0));
+    let failed = Arc::new(AtomicUsize::new(0));
+    let skipped = Arc::new(AtomicUsize::new(0));
+    // Use separate AtomicUsize for stats to avoid mutex contention (performance optimization)
+    let point_count = Arc::new(AtomicUsize::new(0));
+    let linestring_count = Arc::new(AtomicUsize::new(0));
+    let polygon_count = Arc::new(AtomicUsize::new(0));
+    let export_errors = Arc::new(Mutex::new(Vec::new()));
+
+    // Ensure output directory exists ONCE (before parallel loop)
+    std::fs::create_dir_all(&config.output.directory)
+        .context("Failed to create output directory")?;
+
+    // Create rayon thread pool
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(jobs)
+        .build()
+        .context("Failed to create rayon thread pool")?;
+
+    info!(jobs = jobs, tiles = tile_features.len(), "Starting parallel export");
+
+    // Execute parallel export
+    let result = pool.install(|| {
+        match error_mode {
+            ErrorMode::Continue => {
+                // Use .for_each() - collect all errors
+                tile_features.par_iter().for_each(|(tile_bounds, features)| {
+                    // export_single_tile handles its own errors in Continue mode
+                    let _ = export_single_tile(
+                        tile_bounds,
+                        features,
+                        &config.output.directory,
+                        &succeeded,
+                        &failed,
+                        &skipped,
+                        &point_count,
+                        &linestring_count,
+                        &polygon_count,
+                        &export_errors,
+                        error_mode,
+                    );
+                });
+                Ok(())
+            }
+            ErrorMode::FailFast => {
+                // Use .try_for_each() - early exit on first error
+                tile_features.par_iter().try_for_each(|(tile_bounds, features)| {
+                    export_single_tile(
+                        tile_bounds,
+                        features,
+                        &config.output.directory,
+                        &succeeded,
+                        &failed,
+                        &skipped,
+                        &point_count,
+                        &linestring_count,
+                        &polygon_count,
+                        &export_errors,
+                        error_mode,
+                    )
+                })
+            }
+        }
+    });
+
+    // Handle fail-fast error
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        // Extract tile_id from error context if available
+        return Err(e).context(format!("Parallel export failed in fail-fast mode: {}", error_msg));
+    }
+
+    // Extract final results from Arc wrappers
+    let succeeded_count = succeeded.load(Ordering::SeqCst);
+    let failed_count = failed.load(Ordering::SeqCst);
+    let skipped_count = skipped.load(Ordering::SeqCst);
+
+    // Build final stats from atomic counters (lock-free)
+    let final_stats = ExportStats {
+        point_count: point_count.load(Ordering::SeqCst),
+        linestring_count: linestring_count.load(Ordering::SeqCst),
+        polygon_count: polygon_count.load(Ordering::SeqCst),
+    };
+    let final_errors = export_errors.lock().unwrap().clone();
+
     info!(
-        duration_ms = export_elapsed.as_millis(),
-        tiles_succeeded = summary.tiles_succeeded,
-        tiles_failed = summary.tiles_failed,
-        tiles_skipped = summary.tiles_skipped,
-        total_features = summary.total_features(),
-        "Multi-tile export completed"
+        tiles_succeeded = succeeded_count,
+        tiles_failed = failed_count,
+        tiles_skipped = skipped_count,
+        total_features = final_stats.point_count + final_stats.linestring_count + final_stats.polygon_count,
+        "Parallel export completed"
     );
 
-    // Console summary output (AC4)
-    println!("\n✅ Export completed successfully!");
-    println!("   Output directory: {}", config.output.directory);
-    println!("   Tiles generated:");
-    println!("     - Succeeded: {}", summary.tiles_succeeded);
-    println!("     - Failed:    {}", summary.tiles_failed);
-    println!("     - Skipped:   {} (empty tiles)", summary.tiles_skipped);
-    println!("   Features exported:");
-    println!("     - POI (points):     {}", summary.global_stats.point_count);
-    println!("     - POLYLINE (lines): {}", summary.global_stats.linestring_count);
-    println!("     - POLYGON (areas):  {}", summary.global_stats.polygon_count);
-    println!("   Total: {} features", summary.total_features());
-    println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
+    Ok(TileExportSummary::new(succeeded_count, failed_count, skipped_count, final_stats, final_errors))
+}
 
-    // Fail if any tiles failed (exit code non-zero)
-    if !summary.is_success() {
-        return Err(anyhow!(
-            "Multi-tile export failed: {} tile(s) failed to export",
-            summary.tiles_failed
-        ));
+/// Export a single tile (thread-safe, called from parallel loop).
+/// Handles errors according to error_mode:
+/// - Continue: Logs error, updates failed counter, collects error details, returns Ok(())
+/// - FailFast: Returns Err() to propagate to caller for immediate termination
+fn export_single_tile(
+    tile_bounds: &TileBounds,
+    features: &[Feature],
+    output_directory: &str,
+    succeeded: &Arc<AtomicUsize>,
+    failed: &Arc<AtomicUsize>,
+    skipped: &Arc<AtomicUsize>,
+    point_count: &Arc<AtomicUsize>,
+    linestring_count: &Arc<AtomicUsize>,
+    polygon_count: &Arc<AtomicUsize>,
+    export_errors: &Arc<Mutex<Vec<TileExportError>>>,
+    error_mode: ErrorMode,
+) -> Result<()> {
+    let tile_id = tile_bounds.tile_id();
+
+    // Skip empty tiles
+    if features.is_empty() {
+        debug!(tile_id = %tile_id, "Skipping empty tile");
+        skipped.fetch_add(1, Ordering::SeqCst);
+        return Ok(());
     }
 
-    // TODO: Story 7.3 - Generate execution report JSON
+    // Resolve tile filename
+    let tile_filename = format!("{}.mp", tile_id);
+    let tile_path = PathBuf::from(output_directory).join(tile_filename);
 
-    info!("Pipeline completed successfully");
-    Ok(summary)
+    // Helper to handle errors based on mode
+    let handle_error = |error: anyhow::Error| -> Result<()> {
+        failed.fetch_add(1, Ordering::SeqCst);
+
+        match error_mode {
+            ErrorMode::Continue => {
+                // Log warning and collect error details
+                warn!(
+                    tile_id = %tile_id,
+                    error = %error,
+                    "Tile export failed, continuing with next tile"
+                );
+                export_errors.lock().unwrap().push(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: error.to_string(),
+                    attempt_time: SystemTime::now(),
+                });
+                Ok(()) // Continue processing
+            }
+            ErrorMode::FailFast => {
+                // Propagate error for immediate termination
+                Err(error).context(format!("Tile export failed (fail-fast mode): tile {}", tile_id))
+            }
+        }
+    };
+
+    // Create writer, write features, finalize (with error handling)
+    let mut writer = match MpWriter::new(tile_path) {
+        Ok(w) => w,
+        Err(e) => return handle_error(e.into()),
+    };
+
+    let tile_stats = match writer.write_features(features) {
+        Ok(stats) => stats,
+        Err(e) => return handle_error(e.into()),
+    };
+
+    if let Err(e) = writer.finalize() {
+        return handle_error(e.into());
+    }
+
+    // Log success
+    info!(
+        tile_id = %tile_id,
+        points = tile_stats.point_count,
+        linestrings = tile_stats.linestring_count,
+        polygons = tile_stats.polygon_count,
+        "Tile export succeeded"
+    );
+
+    // Update global stats (lock-free atomic operations for better performance)
+    point_count.fetch_add(tile_stats.point_count, Ordering::Relaxed);
+    linestring_count.fetch_add(tile_stats.linestring_count, Ordering::Relaxed);
+    polygon_count.fetch_add(tile_stats.polygon_count, Ordering::Relaxed);
+
+    succeeded.fetch_add(1, Ordering::SeqCst);
+    Ok(())
 }
 
 /// Handle tile export error based on ErrorMode.

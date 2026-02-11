@@ -1,6 +1,9 @@
 //! CLI argument parsing using clap.
 
 use clap::{Parser, Subcommand};
+use anyhow;
+use num_cpus;
+use tracing;
 
 #[derive(Parser, Debug)]
 #[command(name = "mpforge-cli")]
@@ -31,6 +34,10 @@ pub struct BuildArgs {
     pub output: Option<String>,
 
     /// Number of parallel jobs (default: 1)
+    ///
+    /// Use 1 for sequential processing (debug mode).
+    /// Use 2-8 for parallel processing (production mode).
+    /// Warning: Values > num_cpus may degrade performance.
     #[arg(short, long, default_value = "1")]
     pub jobs: usize,
 
@@ -45,6 +52,30 @@ pub struct BuildArgs {
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+}
+
+impl BuildArgs {
+    /// Validate and normalize jobs parameter.
+    ///
+    /// Returns validated jobs count or error if invalid.
+    /// Logs warning if jobs > num_cpus.
+    pub fn validate_jobs(&self) -> anyhow::Result<usize> {
+        if self.jobs == 0 {
+            anyhow::bail!("--jobs must be > 0 (greater than 0)");
+        }
+
+        let num_cpus = num_cpus::get();
+        if self.jobs > num_cpus {
+            tracing::warn!(
+                jobs = self.jobs,
+                num_cpus = num_cpus,
+                "WARNING: --jobs exceeds available CPUs, may degrade performance"
+            );
+        }
+
+        tracing::info!(jobs = self.jobs, "Parallel jobs configured");
+        Ok(self.jobs)
+    }
 }
 
 #[cfg(test)]
