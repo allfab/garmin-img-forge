@@ -498,6 +498,122 @@ mpforge-cli build --config config.yaml --jobs 4 -vvv
 - **Validation:** Configuration is validated at load time; errors provide clear messages indicating the problem
 - **Parallel processing:** Use `--jobs N` to enable multi-threaded tile export (Story 7.1)
 
+## JSON Execution Report (Story 7.3)
+
+The CLI can generate a structured JSON report for CI/CD integration and automation.
+
+### Usage
+
+```bash
+mpforge-cli build --config config.yaml --report report.json
+```
+
+The `--report` option is **optional**. If not specified, only the console summary is displayed.
+
+### JSON Schema
+
+When `--report` is specified, a JSON file is created with the following schema:
+
+```json
+{
+  "status": "success",           // "success" | "failure"
+  "tiles_generated": 2047,        // Number of successfully exported tiles
+  "tiles_failed": 3,              // Number of failed tiles
+  "tiles_skipped": 150,           // Number of skipped empty tiles
+  "features_processed": 1234567,  // Total features exported across all tiles
+  "duration_seconds": 1845.3,     // Total execution time (float for precision)
+  "errors": [                     // Detailed error information (empty if success)
+    {
+      "tile": "12_45",            // Tile identifier
+      "error": "GDAL error: Invalid geometry at feature 12345"  // Complete error message
+    }
+  ]
+}
+```
+
+### Field Descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Overall execution status: `"success"` if no failures, `"failure"` otherwise |
+| `tiles_generated` | integer | Number of tiles successfully exported to `.mp` files |
+| `tiles_failed` | integer | Number of tiles that failed to export (0 if success) |
+| `tiles_skipped` | integer | Number of tiles skipped because they were empty (no features) |
+| `features_processed` | integer | Total number of features (points, linestrings, polygons) exported across all tiles |
+| `duration_seconds` | float | Total pipeline execution duration in seconds (includes reading, tiling, and writing) |
+| `errors` | array | Array of error objects with `tile` (ID) and `error` (message) fields. Empty if `status == "success"` |
+
+### Exit Codes
+
+The CLI returns appropriate exit codes for CI/CD integration:
+
+- **Exit code 0:** Success (all tiles exported, no errors)
+- **Exit code 1:** Failure (one or more tiles failed to export)
+
+**Example CI/CD usage:**
+
+```bash
+#!/bin/bash
+# Production BDTOPO pipeline with JSON report
+mpforge-cli build --config bdtopo.yaml --jobs 8 --report report.json
+
+# Exit code determines CI/CD success/failure
+if [ $? -eq 0 ]; then
+  echo "Pipeline succeeded - archiving report"
+  cp report.json /archive/$(date +%Y%m%d)-report.json
+else
+  echo "Pipeline failed - triggering alerts"
+  # Parse JSON for error details
+  jq '.errors[] | "\(.tile): \(.error)"' report.json
+  exit 1
+fi
+```
+
+### Parsing JSON Reports
+
+**Using jq (command-line JSON processor):**
+
+```bash
+# Extract status
+jq '.status' report.json
+
+# Count failures
+jq '.tiles_failed' report.json
+
+# List all errors
+jq '.errors[] | "\(.tile): \(.error)"' report.json
+
+# Calculate success rate
+jq '(.tiles_generated / (.tiles_generated + .tiles_failed) * 100) | floor' report.json
+```
+
+**Using Python:**
+
+```python
+import json
+
+with open('report.json') as f:
+    report = json.load(f)
+
+print(f"Status: {report['status']}")
+print(f"Success rate: {report['tiles_generated']}/{report['tiles_generated'] + report['tiles_failed']}")
+
+if report['status'] == 'failure':
+    print(f"\nErrors ({len(report['errors'])}):")
+    for err in report['errors']:
+        print(f"  - Tile {err['tile']}: {err['error']}")
+```
+
+### Behavior Notes
+
+- **Report generation:** JSON report is written **after** pipeline completion, even if errors occurred
+- **Write errors:** If JSON write fails (e.g., permission denied), a warning is logged but the pipeline does not crash
+- **Console summary:** Always displayed regardless of `--report` option
+- **Error truncation:** If more than 5 errors, console shows only top 5 (full list in JSON report)
+- **Pretty formatting:** JSON is formatted with indentation for human readability
+
+**Story:** Epic 7 Story 7.3 - Rapport d'Exécution & Intégration CI/CD (2026-02-11)
+
 ## Implementation Notes
 
 - **Configuration parsing and validation:** Story 5.2 (2026-02-10)
@@ -506,3 +622,8 @@ mpforge-cli build --config config.yaml --jobs 4 -vvv
   - Now correctly iterates over all specified layers
   - Supports `error_handling` mode for invalid layer names
   - Backward compatible with `layer` (singular) field
+- **JSON execution report:** Story 7.3 (2026-02-11)
+  - Optional `--report` CLI flag for CI/CD integration
+  - Structured JSON schema with status, counts, duration, and detailed errors
+  - Exit code 0 (success) / 1 (failure) for automation
+  - French i18n console summary with top 5 errors display

@@ -496,7 +496,7 @@ fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
     // Parse coordinate pairs
     let mut coords = Vec::new();
     for pair in coords_str.split(',') {
-        let parts: Vec<&str> = pair.trim().split_whitespace().collect();
+        let parts: Vec<&str> = pair.split_whitespace().collect();
         if parts.len() >= 2 {
             let x: f64 = parts[0].parse()?;
             let y: f64 = parts[1].parse()?;

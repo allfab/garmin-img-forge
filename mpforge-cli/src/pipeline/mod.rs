@@ -15,8 +15,12 @@ use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 use tracing::{debug, info, warn};
+
+/// Maximum number of errors to display in console summary.
+/// Story 7.3 - M4 Fix: Named constant instead of magic number.
+const MAX_CONSOLE_ERRORS: usize = 5;
 
 /// Summary of multi-tile export operation.
 #[derive(Debug, Clone)]
@@ -29,11 +33,11 @@ pub struct TileExportSummary {
 }
 
 /// Error details for a failed tile export.
+/// Story 7.3 - M2 Fix: Removed unused attempt_time field.
 #[derive(Debug, Clone)]
 pub struct TileExportError {
     pub tile_id: String,
     pub error_message: String,
-    pub attempt_time: SystemTime,
 }
 
 impl TileExportSummary {
@@ -175,13 +179,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     let clipping_elapsed = clipping_start.elapsed();
 
+    // Convert clipping errors to TileExportError format (Story 7.3 - H1 Fix)
+    let clipping_export_errors: Vec<TileExportError> = clipping_errors
+        .iter()
+        .map(|(tile_id, feature_id, error_msg)| TileExportError {
+            tile_id: tile_id.clone(),
+            error_message: format!("Clipping failed for feature {}: {}", feature_id, error_msg),
+        })
+        .collect();
+
     // Report clipping errors if any (mode Continue)
-    if !clipping_errors.is_empty() {
+    if !clipping_export_errors.is_empty() {
         warn!(
-            error_count = clipping_errors.len(),
+            error_count = clipping_export_errors.len(),
             "Geometry clipping completed with errors"
         );
-        // TODO Story 7.3: Include clipping_errors in execution report JSON
     }
 
     info!(
@@ -218,13 +230,16 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     };
 
     // Choose export strategy based on jobs parameter
-    let summary = if jobs == 1 {
+    let mut summary = if jobs == 1 {
         // Sequential export (Epic 6 behavior, debug mode)
         export_tiles_sequential(tile_features, config, error_mode, &progress)?
     } else {
         // Parallel export (Epic 7 Story 7.1)
         export_tiles_parallel(tile_features, config, error_mode, jobs, &progress)?
     };
+
+    // Story 7.3 - H1 Fix: Merge clipping errors into export errors
+    summary.export_errors.extend(clipping_export_errors);
 
     // Story 7.2 - Finalize progress bar
     if let Some(pb) = progress {
@@ -247,30 +262,56 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         "Multi-tile export completed"
     );
 
-    // Console summary output (AC4)
-    println!("\n✅ Export terminé avec succès !");
-    println!("   Répertoire de sortie : {}", config.output.directory);
-    println!("   Tuiles générées :");
-    println!("     - Réussies : {}", summary.tiles_succeeded);
-    println!("     - Échouées : {}", summary.tiles_failed);
-    println!("     - Ignorées : {} (tuiles vides)", summary.tiles_skipped);
-    println!("   Features exportées :");
-    println!("     - POI (points) :     {}", summary.global_stats.point_count);
-    println!("     - POLYLINE (lignes) : {}", summary.global_stats.linestring_count);
-    println!("     - POLYGON (zones) :  {}", summary.global_stats.polygon_count);
-    println!("   Total : {} features", summary.total_features());
-    println!("   Durée : {:.2}s", export_elapsed.as_secs_f64());
-    println!("\n💡 Astuce : Utilisez -vv pour des logs de débogage détaillés");
+    // Story 7.3 - Task 4: Calculate total pipeline duration
+    let total_duration = start_time.elapsed().as_secs_f64();
 
-    // Fail if any tiles failed (exit code non-zero)
-    if !summary.is_success() {
-        return Err(anyhow!(
-            "Multi-tile export failed: {} tile(s) failed to export",
-            summary.tiles_failed
-        ));
+    // Story 7.3 - Task 5: Build ExecutionReport from TileExportSummary
+    let report = crate::report::ExecutionReport {
+        status: if summary.is_success() {
+            crate::report::ReportStatus::Success
+        } else {
+            crate::report::ReportStatus::Failure
+        },
+        tiles_generated: summary.tiles_succeeded,
+        tiles_failed: summary.tiles_failed,
+        tiles_skipped: summary.tiles_skipped,
+        features_processed: summary.total_features(),
+        duration_seconds: total_duration,
+        errors: summary
+            .export_errors
+            .iter()
+            .map(|e| crate::report::TileError {
+                tile: e.tile_id.clone(),
+                error: e.error_message.clone(),
+            })
+            .collect(),
+    };
+
+    // Story 7.3 - Task 5: Write JSON report if requested
+    // M3 Fix: Use error!() for better visibility of JSON write failures
+    if let Some(report_path) = &args.report {
+        if let Err(e) = crate::report::write_json_report(&report, report_path) {
+            tracing::error!(
+                path = %report_path,
+                error = %e,
+                "ÉCHEC CRITIQUE: Impossible d'écrire le rapport JSON. Le pipeline continue mais le rapport est manquant."
+            );
+        } else {
+            info!(path = %report_path, "Rapport JSON écrit avec succès");
+        }
     }
 
-    // TODO: Story 7.3 - Generate execution report JSON
+    // Story 7.3 - Task 6: Improved console summary with structured output
+    print_console_summary(&report, &config.output.directory, args);
+
+    // Story 7.3 - Task 5: Exit with appropriate code for CI/CD
+    if !summary.is_success() {
+        warn!(
+            tiles_failed = summary.tiles_failed,
+            "Pipeline completed with errors, exiting with code 1"
+        );
+        std::process::exit(1);
+    }
 
     info!("Pipeline completed successfully");
     Ok(summary)
@@ -516,6 +557,7 @@ struct TileExportContext<'a> {
 /// Handles errors according to error_mode:
 /// - Continue: Logs error, updates failed counter, collects error details, returns Ok(())
 /// - FailFast: Returns Err() to propagate to caller for immediate termination
+///
 /// Story 7.2 enhancement: Added progress bar support.
 fn export_single_tile(
     tile_bounds: &TileBounds,
@@ -560,7 +602,6 @@ fn export_single_tile(
                 ctx.export_errors.lock().unwrap().push(TileExportError {
                     tile_id: tile_id.clone(),
                     error_message: error.to_string(),
-                    attempt_time: SystemTime::now(),
                 });
                 Ok(()) // Continue processing
             }
@@ -610,6 +651,53 @@ fn export_single_tile(
     Ok(())
 }
 
+/// Story 7.3 - Task 6: Print structured console summary with French i18n.
+/// AC1: Display status, counts, duration, and top errors.
+fn print_console_summary(
+    report: &crate::report::ExecutionReport,
+    output_directory: &str,
+    args: &BuildArgs,
+) {
+    use crate::report::ReportStatus;
+
+    // Status header
+    let (status_symbol, status_text) = match report.status {
+        ReportStatus::Success => ("✅", "SUCCÈS"),
+        ReportStatus::Failure => ("❌", "ÉCHEC"),
+    };
+
+    println!("\n{} Exécution terminée - Statut: {}", status_symbol, status_text);
+    println!("╔════════════════════════════════════════════════════════╗");
+    println!("║ RÉSUMÉ D'EXÉCUTION                                     ║");
+    println!("╠════════════════════════════════════════════════════════╣");
+    println!("║ Tuiles générées  : {:>10}                      ║", report.tiles_generated);
+    println!("║ Tuiles échouées  : {:>10}                      ║", report.tiles_failed);
+    println!("║ Tuiles skippées  : {:>10}                      ║", report.tiles_skipped);
+    println!("║ Features traitées: {:>10}                      ║", report.features_processed);
+    println!("║ Durée totale     : {:>7.1} sec                   ║", report.duration_seconds);
+    println!("╚════════════════════════════════════════════════════════╝");
+    println!("   Répertoire de sortie : {}", output_directory);
+
+    // Show top errors (not all, to avoid console pollution)
+    // M4 Fix: Use named constant instead of magic number
+    if !report.errors.is_empty() {
+        println!("\n⚠️  Top {} erreurs:", report.errors.len().min(MAX_CONSOLE_ERRORS));
+        for (i, error) in report.errors.iter().take(MAX_CONSOLE_ERRORS).enumerate() {
+            println!("  {}. Tuile {} : {}", i + 1, error.tile, error.error);
+        }
+        if report.errors.len() > MAX_CONSOLE_ERRORS {
+            println!("  ... et {} autres erreurs (voir rapport JSON)", report.errors.len() - MAX_CONSOLE_ERRORS);
+        }
+    }
+
+    // JSON report written message
+    if let Some(report_path) = &args.report {
+        println!("\n📄 Rapport JSON écrit: {}", report_path);
+    }
+
+    println!("\n💡 Astuce : Utilisez -vv pour des logs de débogage détaillés");
+}
+
 /// Handle tile export error based on ErrorMode.
 fn handle_export_error(
     tile_id: &str,
@@ -630,7 +718,6 @@ fn handle_export_error(
             error_list.push(TileExportError {
                 tile_id: tile_id.to_string(),
                 error_message: error.to_string(),
-                attempt_time: SystemTime::now(),
             });
             Ok(()) // Continue pipeline
         }

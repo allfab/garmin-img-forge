@@ -73,17 +73,13 @@ pub enum SourceType {
 /// Error handling mode for geometry clipping operations.
 /// Story 6.3: Controls behavior when encountering invalid geometries during clipping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ErrorMode {
     /// Continue processing, skip invalid features (production-friendly default)
+    #[default]
     Continue,
     /// Stop pipeline on first error (useful for debugging)
     FailFast,
-}
-
-impl Default for ErrorMode {
-    fn default() -> Self {
-        Self::Continue
-    }
 }
 
 impl std::str::FromStr for ErrorMode {
