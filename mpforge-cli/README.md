@@ -411,6 +411,44 @@ mpforge-cli build --config config.yaml --fail-fast
 
 **Note** : Tous les formats supportés par GDAL/OGR sont compatibles.
 
+## Types géométriques supportés
+
+mpforge-cli ne traite que les types géométriques simples compatibles avec le format Polish Map (.mp) :
+
+| Type OGR | Supporté | Notes |
+|----------|----------|-------|
+| **Point** (wkbPoint) | ✅ Oui | POI, sommets, repères |
+| **LineString** (wkbLineString) | ✅ Oui | Routes, rivières, sentiers |
+| **Polygon** (wkbPolygon) | ✅ Oui | Bâtiments, zones, limites |
+| MultiPoint | ❌ Non | Décomposer avant import |
+| MultiLineString | ❌ Non | Décomposer avant import |
+| MultiPolygon | ❌ Non | Décomposer avant import |
+| GeometryCollection | ❌ Non | Décomposer avant import |
+
+Les features de types non supportés sont **silencieusement filtrées** à la lecture. Un message INFO résumé est affiché en fin de lecture avec le décompte par type et les sources affectées. Le rapport JSON (`--report`) inclut une section `quality.unsupported_types` avec le détail.
+
+### Workarounds : Pré-traitement avec ogr2ogr
+
+Si vos données source contiennent des types Multi* ou GeometryCollection, vous pouvez les décomposer en géométries simples avant import :
+
+```bash
+# Décomposer MultiPolygon → Polygon (et autres Multi* → Simple)
+ogr2ogr -f "ESRI Shapefile" output.shp input.shp -explodecollections
+
+# Forcer conversion en type simple spécifique (alternative)
+ogr2ogr -f "ESRI Shapefile" output.shp input.shp -nlt POLYGON
+
+# Vérifier les types géométriques d'un fichier
+ogrinfo -al -so input.shp | grep "Geometry:"
+```
+
+**Exemple de pré-validation :**
+
+```bash
+# Vérifier combien de features Multi* existent
+ogrinfo -sql "SELECT COUNT(*) FROM my_layer WHERE OGR_GEOMETRY NOT LIKE 'POINT%' AND OGR_GEOMETRY NOT LIKE 'LINESTRING%' AND OGR_GEOMETRY NOT LIKE 'POLYGON%'" input.gpkg
+```
+
 ## Développement
 
 ### Structure du projet

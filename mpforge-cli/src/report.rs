@@ -3,6 +3,7 @@
 
 use anyhow::Context;
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 
@@ -17,6 +18,7 @@ pub enum ReportStatus {
 
 /// Execution report schema for JSON output.
 /// Story 7.3 - Matches Epic 7 specification for CI/CD integration.
+/// Story 6.6 - Added quality section for unsupported geometry types.
 #[derive(Debug, Serialize)]
 pub struct ExecutionReport {
     /// Overall execution status: "success" if no failures, "failure" otherwise
@@ -33,6 +35,28 @@ pub struct ExecutionReport {
     pub duration_seconds: f64,
     /// Detailed error information for failed tiles
     pub errors: Vec<TileError>,
+    /// Quality information including unsupported geometry types (Story 6.6)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<QualitySection>,
+}
+
+/// Quality section of the execution report.
+/// Story 6.6 - Reports unsupported geometry types filtered during reading.
+/// Code Review M3 Fix: Use BTreeMap for deterministic JSON key ordering.
+#[derive(Debug, Serialize, Clone)]
+pub struct QualitySection {
+    pub unsupported_types: BTreeMap<String, UnsupportedTypeReport>,
+}
+
+/// Report entry for a single unsupported geometry type.
+/// Code Review M1 Fix: Added total_sources to track all sources even when Vec is truncated.
+#[derive(Debug, Serialize, Clone)]
+pub struct UnsupportedTypeReport {
+    pub count: usize,
+    pub sources: Vec<String>,
+    /// Total number of distinct sources (may exceed sources.len() if truncated)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_sources: Option<usize>,
 }
 
 /// Error details for a single failed tile.
@@ -84,6 +108,7 @@ mod tests {
             features_processed: 1000,
             duration_seconds: 5.5,
             errors: vec![],
+            quality: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -114,6 +139,7 @@ mod tests {
                     error: "I/O error: Permission denied".to_string(),
                 },
             ],
+            quality: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -159,6 +185,7 @@ mod tests {
             features_processed: 500,
             duration_seconds: 3.0,
             errors: vec![],
+            quality: None,
         };
 
         let temp_file = NamedTempFile::new().unwrap();

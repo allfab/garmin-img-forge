@@ -92,10 +92,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Story 5.3 - Read all sources
     // Story 6.1 - Build R-tree spatial index
+    // Story 6.6 - Collect unsupported geometry type stats
     info!("Phase 1: Reading sources and building spatial index");
     let start_time = Instant::now();
 
-    let (features, rtree) = SourceReader::read_all_sources(config)?;
+    let (features, rtree, unsupported_type_stats) = SourceReader::read_all_sources(config)?;
 
     let elapsed = start_time.elapsed();
     info!(
@@ -288,6 +289,32 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Story 7.3 - Task 4: Calculate total pipeline duration
     let total_duration = start_time.elapsed().as_secs_f64();
 
+    // Story 6.6 - Build quality section from unsupported type stats
+    // Code Review M1 Fix: Include total_sources in report
+    let quality = if unsupported_type_stats.is_empty() {
+        None
+    } else {
+        let unsupported_types = unsupported_type_stats
+            .by_type
+            .iter()
+            .map(|(type_name, entry)| {
+                (
+                    type_name.clone(),
+                    crate::report::UnsupportedTypeReport {
+                        count: entry.count,
+                        sources: entry.sources.clone(),
+                        total_sources: if entry.total_sources > entry.sources.len() {
+                            Some(entry.total_sources)
+                        } else {
+                            None
+                        },
+                    },
+                )
+            })
+            .collect();
+        Some(crate::report::QualitySection { unsupported_types })
+    };
+
     // Story 7.3 - Task 5: Build ExecutionReport from TileExportSummary
     let report = crate::report::ExecutionReport {
         status: if summary.is_success() {
@@ -308,6 +335,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                 error: e.error_message.clone(),
             })
             .collect(),
+        quality,
     };
 
     // Story 7.3 - Task 5: Write JSON report if requested

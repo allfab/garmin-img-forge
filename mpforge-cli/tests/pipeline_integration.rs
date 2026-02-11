@@ -148,7 +148,7 @@ error_handling: continue
     let config: Config = serde_yml::from_str(config_content).expect("Failed to parse config");
 
     // Phase 1: Read sources and build R-tree
-    let (features, rtree) = match SourceReader::read_all_sources(&config) {
+    let (features, rtree, _unsupported) = match SourceReader::read_all_sources(&config) {
         Ok(result) => result,
         Err(e) => {
             // If fixture doesn't exist, skip test gracefully
