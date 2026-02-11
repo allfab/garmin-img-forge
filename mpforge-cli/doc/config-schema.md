@@ -439,6 +439,52 @@ The parallel implementation uses rayon for thread-safe data parallelism:
 
 **Story:** Epic 7 Story 7.1 - Parallélisation du Traitement des Tuiles (2026-02-11)
 
+### Verbosity Levels
+
+**Option:** `--verbose` or `-v` (can be repeated: `-v`, `-vv`, `-vvv`)
+
+**Description:** Control logging verbosity for pipeline execution and troubleshooting.
+
+**Default:** `0` (WARN level - shows only warnings and errors)
+
+**Levels:**
+- **No flag** (verbose=0): ERROR and WARN logs only, progress bar displayed
+- **`-v`** (verbose=1): INFO logs + progress bar (shows major pipeline steps)
+- **`-vv`** (verbose=2): DEBUG logs, progress bar disabled (detailed GDAL operations, per-tile stats)
+- **`-vvv`** (verbose=3): TRACE logs, progress bar disabled (very verbose, all internal operations)
+
+**Examples:**
+
+```bash
+# Production mode: progress bar only, minimal logging
+mpforge-cli build --config config.yaml --jobs 4
+
+# Monitoring mode: progress bar + major steps
+mpforge-cli build --config config.yaml --jobs 4 -v
+
+# Debug mode: detailed logs, no progress bar (troubleshooting)
+mpforge-cli build --config config.yaml --jobs 4 -vv
+
+# Trace mode: maximum verbosity (debugging internal issues)
+mpforge-cli build --config config.yaml --jobs 4 -vvv
+```
+
+**Use Cases:**
+
+- **Production pipelines:** No `-v` flag (progress bar + minimal logs)
+- **CI/CD integration:** `-v` (INFO logs for monitoring pipeline progress)
+- **Troubleshooting GDAL errors:** `-vv` (DEBUG logs show detailed GDAL operations)
+- **Developer debugging:** `-vvv` (TRACE logs for internal debugging)
+
+**Progress Bar Behavior:**
+
+- **verbose=0 or verbose=1:** Progress bar displayed with ETA
+- **verbose >= 2:** Progress bar disabled to avoid log pollution in debug mode
+
+**Tip:** If a pipeline fails or produces unexpected results, re-run with `-vv` to get detailed troubleshooting logs.
+
+**Story:** Epic 7 Story 7.2 - Progress Bar & Feedback Temps Réel (2026-02-11)
+
 ## Notes
 
 - **Version:** Currently only version `1` is supported

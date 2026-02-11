@@ -10,6 +10,7 @@ use crate::pipeline::reader::{Feature, SourceReader};
 use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
 use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{anyhow, Context, Result};
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -208,14 +209,31 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     );
     let export_start = Instant::now();
 
+    // Story 7.2 - Create progress bar (disabled if verbose >= 2 to avoid log pollution)
+    let progress = if args.verbose < 2 {
+        Some(create_progress_bar(tile_features.len()))
+    } else {
+        info!("Progress bar disabled in debug mode (verbose >= 2)");
+        None
+    };
+
     // Choose export strategy based on jobs parameter
     let summary = if jobs == 1 {
         // Sequential export (Epic 6 behavior, debug mode)
-        export_tiles_sequential(tile_features, config, error_mode)?
+        export_tiles_sequential(tile_features, config, error_mode, &progress)?
     } else {
         // Parallel export (Epic 7 Story 7.1)
-        export_tiles_parallel(tile_features, config, error_mode, jobs)?
+        export_tiles_parallel(tile_features, config, error_mode, jobs, &progress)?
     };
+
+    // Story 7.2 - Finalize progress bar
+    if let Some(pb) = progress {
+        pb.finish_with_message(format!(
+            "✓ Export terminé: {} tuiles réussies, {} échouées",
+            summary.tiles_succeeded,
+            summary.tiles_failed
+        ));
+    }
 
     let export_elapsed = export_start.elapsed();
 
@@ -230,18 +248,19 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     );
 
     // Console summary output (AC4)
-    println!("\n✅ Export completed successfully!");
-    println!("   Output directory: {}", config.output.directory);
-    println!("   Tiles generated:");
-    println!("     - Succeeded: {}", summary.tiles_succeeded);
-    println!("     - Failed:    {}", summary.tiles_failed);
-    println!("     - Skipped:   {} (empty tiles)", summary.tiles_skipped);
-    println!("   Features exported:");
-    println!("     - POI (points):     {}", summary.global_stats.point_count);
-    println!("     - POLYLINE (lines): {}", summary.global_stats.linestring_count);
-    println!("     - POLYGON (areas):  {}", summary.global_stats.polygon_count);
-    println!("   Total: {} features", summary.total_features());
-    println!("   Duration: {:.2}s", export_elapsed.as_secs_f64());
+    println!("\n✅ Export terminé avec succès !");
+    println!("   Répertoire de sortie : {}", config.output.directory);
+    println!("   Tuiles générées :");
+    println!("     - Réussies : {}", summary.tiles_succeeded);
+    println!("     - Échouées : {}", summary.tiles_failed);
+    println!("     - Ignorées : {} (tuiles vides)", summary.tiles_skipped);
+    println!("   Features exportées :");
+    println!("     - POI (points) :     {}", summary.global_stats.point_count);
+    println!("     - POLYLINE (lignes) : {}", summary.global_stats.linestring_count);
+    println!("     - POLYGON (zones) :  {}", summary.global_stats.polygon_count);
+    println!("   Total : {} features", summary.total_features());
+    println!("   Durée : {:.2}s", export_elapsed.as_secs_f64());
+    println!("\n💡 Astuce : Utilisez -vv pour des logs de débogage détaillés");
 
     // Fail if any tiles failed (exit code non-zero)
     if !summary.is_success() {
@@ -257,11 +276,26 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     Ok(summary)
 }
 
+/// Create a thread-safe progress bar for multi-tile export.
+/// Returns Arc<ProgressBar> for sharing across threads.
+fn create_progress_bar(total: usize) -> Arc<ProgressBar> {
+    let pb = ProgressBar::new(total as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40.cyan/blue}] {pos}/{len} tuiles ({percent}%) - ETA: {eta}")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏  "),
+    );
+    Arc::new(pb)
+}
+
 /// Export tiles sequentially (Epic 6 behavior, debug mode).
+/// Story 7.2 enhancement: Added progress bar support.
 fn export_tiles_sequential(
     tile_features: Vec<(TileBounds, Vec<Feature>)>,
     config: &Config,
     error_mode: ErrorMode,
+    progress: &Option<Arc<ProgressBar>>,
 ) -> Result<TileExportSummary> {
     // Ensure output directory exists
     std::fs::create_dir_all(&config.output.directory)
@@ -280,6 +314,10 @@ fn export_tiles_sequential(
         if features.is_empty() {
             debug!(tile_id = %tile_id, "Tile has no features, skipping export");
             skipped += 1;
+            // Story 7.2 - Increment progress even for skipped tiles
+            if let Some(pb) = progress {
+                pb.inc(1);
+            }
             continue;
         }
 
@@ -292,6 +330,10 @@ fn export_tiles_sequential(
             Ok(w) => w,
             Err(e) => {
                 handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+                // Story 7.2 - Increment progress even on error
+                if let Some(pb) = progress {
+                    pb.inc(1);
+                }
                 continue;
             }
         };
@@ -301,6 +343,10 @@ fn export_tiles_sequential(
             Ok(stats) => stats,
             Err(e) => {
                 handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+                // Story 7.2 - Increment progress even on error
+                if let Some(pb) = progress {
+                    pb.inc(1);
+                }
                 continue;
             }
         };
@@ -308,6 +354,10 @@ fn export_tiles_sequential(
         // Finalize tile dataset
         if let Err(e) = writer.finalize() {
             handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
+            // Story 7.2 - Increment progress even on error
+            if let Some(pb) = progress {
+                pb.inc(1);
+            }
             continue;
         }
 
@@ -324,6 +374,11 @@ fn export_tiles_sequential(
         global_stats.linestring_count += tile_stats.linestring_count;
         global_stats.polygon_count += tile_stats.polygon_count;
         succeeded += 1;
+
+        // Story 7.2 - Increment progress on success
+        if let Some(pb) = progress {
+            pb.inc(1);
+        }
     }
 
     // Report export errors if any (mode Continue)
@@ -338,12 +393,14 @@ fn export_tiles_sequential(
 }
 
 /// Export tiles in parallel using rayon thread pool (Epic 7 Story 7.1).
-#[tracing::instrument(skip(tile_features, config))]
+/// Story 7.2 enhancement: Added progress bar support.
+#[tracing::instrument(skip(tile_features, config, progress))]
 fn export_tiles_parallel(
     tile_features: Vec<(TileBounds, Vec<Feature>)>,
     config: &Config,
     error_mode: ErrorMode,
     jobs: usize,
+    progress: &Option<Arc<ProgressBar>>,
 ) -> Result<TileExportSummary> {
     // Thread-safe shared state with lock-free atomic counters for better performance
     let succeeded = Arc::new(AtomicUsize::new(0));
@@ -367,6 +424,19 @@ fn export_tiles_parallel(
 
     info!(jobs = jobs, tiles = tile_features.len(), "Starting parallel export");
 
+    // Create shared export context (reduces parameter count)
+    let ctx = TileExportContext {
+        succeeded: &succeeded,
+        failed: &failed,
+        skipped: &skipped,
+        point_count: &point_count,
+        linestring_count: &linestring_count,
+        polygon_count: &polygon_count,
+        export_errors: &export_errors,
+        progress,
+        error_mode,
+    };
+
     // Execute parallel export
     let result = pool.install(|| {
         match error_mode {
@@ -378,14 +448,7 @@ fn export_tiles_parallel(
                         tile_bounds,
                         features,
                         &config.output.directory,
-                        &succeeded,
-                        &failed,
-                        &skipped,
-                        &point_count,
-                        &linestring_count,
-                        &polygon_count,
-                        &export_errors,
-                        error_mode,
+                        &ctx,
                     );
                 });
                 Ok(())
@@ -397,14 +460,7 @@ fn export_tiles_parallel(
                         tile_bounds,
                         features,
                         &config.output.directory,
-                        &succeeded,
-                        &failed,
-                        &skipped,
-                        &point_count,
-                        &linestring_count,
-                        &polygon_count,
-                        &export_errors,
-                        error_mode,
+                        &ctx,
                     )
                 })
             }
@@ -442,29 +498,41 @@ fn export_tiles_parallel(
     Ok(TileExportSummary::new(succeeded_count, failed_count, skipped_count, final_stats, final_errors))
 }
 
+/// Shared context for tile export operations.
+/// Reduces function parameter count and improves readability.
+struct TileExportContext<'a> {
+    succeeded: &'a Arc<AtomicUsize>,
+    failed: &'a Arc<AtomicUsize>,
+    skipped: &'a Arc<AtomicUsize>,
+    point_count: &'a Arc<AtomicUsize>,
+    linestring_count: &'a Arc<AtomicUsize>,
+    polygon_count: &'a Arc<AtomicUsize>,
+    export_errors: &'a Arc<Mutex<Vec<TileExportError>>>,
+    progress: &'a Option<Arc<ProgressBar>>,
+    error_mode: ErrorMode,
+}
+
 /// Export a single tile (thread-safe, called from parallel loop).
 /// Handles errors according to error_mode:
 /// - Continue: Logs error, updates failed counter, collects error details, returns Ok(())
 /// - FailFast: Returns Err() to propagate to caller for immediate termination
+/// Story 7.2 enhancement: Added progress bar support.
 fn export_single_tile(
     tile_bounds: &TileBounds,
     features: &[Feature],
     output_directory: &str,
-    succeeded: &Arc<AtomicUsize>,
-    failed: &Arc<AtomicUsize>,
-    skipped: &Arc<AtomicUsize>,
-    point_count: &Arc<AtomicUsize>,
-    linestring_count: &Arc<AtomicUsize>,
-    polygon_count: &Arc<AtomicUsize>,
-    export_errors: &Arc<Mutex<Vec<TileExportError>>>,
-    error_mode: ErrorMode,
+    ctx: &TileExportContext,
 ) -> Result<()> {
     let tile_id = tile_bounds.tile_id();
 
     // Skip empty tiles
     if features.is_empty() {
         debug!(tile_id = %tile_id, "Skipping empty tile");
-        skipped.fetch_add(1, Ordering::SeqCst);
+        ctx.skipped.fetch_add(1, Ordering::SeqCst);
+        // Story 7.2 - Increment progress even for skipped tiles
+        if let Some(pb) = ctx.progress {
+            pb.inc(1);
+        }
         return Ok(());
     }
 
@@ -474,9 +542,14 @@ fn export_single_tile(
 
     // Helper to handle errors based on mode
     let handle_error = |error: anyhow::Error| -> Result<()> {
-        failed.fetch_add(1, Ordering::SeqCst);
+        ctx.failed.fetch_add(1, Ordering::SeqCst);
 
-        match error_mode {
+        // Story 7.2 - Increment progress even on error (before returning)
+        if let Some(pb) = ctx.progress {
+            pb.inc(1);
+        }
+
+        match ctx.error_mode {
             ErrorMode::Continue => {
                 // Log warning and collect error details
                 warn!(
@@ -484,7 +557,7 @@ fn export_single_tile(
                     error = %error,
                     "Tile export failed, continuing with next tile"
                 );
-                export_errors.lock().unwrap().push(TileExportError {
+                ctx.export_errors.lock().unwrap().push(TileExportError {
                     tile_id: tile_id.clone(),
                     error_message: error.to_string(),
                     attempt_time: SystemTime::now(),
@@ -501,16 +574,16 @@ fn export_single_tile(
     // Create writer, write features, finalize (with error handling)
     let mut writer = match MpWriter::new(tile_path) {
         Ok(w) => w,
-        Err(e) => return handle_error(e.into()),
+        Err(e) => return handle_error(e),
     };
 
     let tile_stats = match writer.write_features(features) {
         Ok(stats) => stats,
-        Err(e) => return handle_error(e.into()),
+        Err(e) => return handle_error(e),
     };
 
     if let Err(e) = writer.finalize() {
-        return handle_error(e.into());
+        return handle_error(e);
     }
 
     // Log success
@@ -523,11 +596,17 @@ fn export_single_tile(
     );
 
     // Update global stats (lock-free atomic operations for better performance)
-    point_count.fetch_add(tile_stats.point_count, Ordering::Relaxed);
-    linestring_count.fetch_add(tile_stats.linestring_count, Ordering::Relaxed);
-    polygon_count.fetch_add(tile_stats.polygon_count, Ordering::Relaxed);
+    ctx.point_count.fetch_add(tile_stats.point_count, Ordering::Relaxed);
+    ctx.linestring_count.fetch_add(tile_stats.linestring_count, Ordering::Relaxed);
+    ctx.polygon_count.fetch_add(tile_stats.polygon_count, Ordering::Relaxed);
 
-    succeeded.fetch_add(1, Ordering::SeqCst);
+    ctx.succeeded.fetch_add(1, Ordering::SeqCst);
+
+    // Story 7.2 - Increment progress on success
+    if let Some(pb) = ctx.progress {
+        pb.inc(1);
+    }
+
     Ok(())
 }
 
