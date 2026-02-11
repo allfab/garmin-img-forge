@@ -127,6 +127,7 @@ error_handling: fail-fast
 fn test_full_pipeline_with_clipping() {
     // AC1-5 + Subtask 9.1, 9.2, 9.3: Pipeline complet avec clipping
     use mpforge_cli::config::Config;
+    use mpforge_cli::pipeline::geometry_validator::ValidationStats;
     use mpforge_cli::pipeline::reader::SourceReader;
     use mpforge_cli::pipeline::tiler::{clip_feature_to_tile, TileProcessor};
     use mpforge_cli::config::ErrorMode;
@@ -179,6 +180,7 @@ error_handling: continue
         .unwrap_or_default();
     let mut total_clipped = 0;
     let mut total_invalid = 0;
+    let mut validation_stats = ValidationStats::default();
 
     for (tile_bounds, feature_ids) in tile_assignments {
         let tile_bbox_geom = tile_bounds.to_gdal_polygon().unwrap();
@@ -186,7 +188,7 @@ error_handling: continue
         for &feature_id in &feature_ids {
             let feature = &features[feature_id];
 
-            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode) {
+            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut validation_stats) {
                 Ok(Some(clipped)) => {
                     // Subtask 9.3: Verify clipped geometry is valid
                     let clipped_geom = match feature_to_test_geometry(&clipped) {
@@ -224,6 +226,7 @@ error_handling: continue
 fn test_clipping_with_boundary_features() {
     // Subtask 9.2: Verify features on boundaries are included in multiple tiles
     use mpforge_cli::config::ErrorMode;
+    use mpforge_cli::pipeline::geometry_validator::ValidationStats;
     use mpforge_cli::pipeline::reader::{Feature, GeometryType};
     use mpforge_cli::pipeline::tiler::{clip_feature_to_tile, TileBounds};
     use std::collections::HashMap;
@@ -258,13 +261,13 @@ fn test_clipping_with_boundary_features() {
 
     // Clip to left tile
     let tile_left_bbox = tile_left.to_gdal_polygon().unwrap();
-    let clipped_left = clip_feature_to_tile(&feature, &tile_left_bbox, error_mode)
+    let clipped_left = clip_feature_to_tile(&feature, &tile_left_bbox, error_mode, &mut ValidationStats::default())
         .unwrap()
         .expect("Should clip to left tile");
 
     // Clip to right tile
     let tile_right_bbox = tile_right.to_gdal_polygon().unwrap();
-    let clipped_right = clip_feature_to_tile(&feature, &tile_right_bbox, error_mode)
+    let clipped_right = clip_feature_to_tile(&feature, &tile_right_bbox, error_mode, &mut ValidationStats::default())
         .unwrap()
         .expect("Should clip to right tile");
 
@@ -288,6 +291,7 @@ fn test_clipping_with_boundary_features() {
 fn test_clipping_performance_1000_features() {
     // Subtask 9.4: Performance test - clip 1000 features < 5s
     use mpforge_cli::config::ErrorMode;
+    use mpforge_cli::pipeline::geometry_validator::ValidationStats;
     use mpforge_cli::pipeline::reader::{Feature, GeometryType};
     use mpforge_cli::pipeline::tiler::clip_feature_to_tile;
     use std::collections::HashMap;
@@ -347,7 +351,7 @@ fn test_clipping_performance_1000_features() {
     let mut clipped_count = 0;
 
     for feature in &features {
-        if let Ok(Some(_)) = clip_feature_to_tile(feature, &tile_bbox, ErrorMode::Continue) {
+        if let Ok(Some(_)) = clip_feature_to_tile(feature, &tile_bbox, ErrorMode::Continue, &mut ValidationStats::default()) {
             clipped_count += 1;
         }
     }

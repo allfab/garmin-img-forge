@@ -1,6 +1,7 @@
 //! Spatial tiling and grid management.
 
 use crate::config::{ErrorMode, FilterConfig, GridConfig};
+use crate::pipeline::geometry_validator::{validate_and_repair, ValidationResult, ValidationStats};
 use crate::pipeline::reader::{Feature, GeometryType, RTreeIndex};
 use gdal::spatial_ref::SpatialRef;
 use gdal::vector::Geometry;
@@ -337,14 +338,25 @@ pub struct TileData {
 ///     // Process clipped feature with preserved attributes
 /// }
 /// ```
-#[instrument(skip(feature, tile_bbox))]
+#[instrument(skip(feature, tile_bbox, validation_stats))]
 pub fn clip_feature_to_tile(
     feature: &Feature,
     tile_bbox: &Geometry,
     error_mode: ErrorMode,
+    validation_stats: &mut ValidationStats,
 ) -> anyhow::Result<Option<Feature>> {
-    // Convert internal Feature geometry to GDAL Geometry
-    let src_geom = feature_to_gdal_geometry(feature)?;
+    // Story 6.5: Validate and optionally repair geometry before clipping
+    let src_geom = match validate_and_repair(feature, validation_stats) {
+        ValidationResult::Valid(geom) => geom,
+        ValidationResult::Repaired(geom, strategy) => {
+            debug!(strategy = ?strategy, "Using repaired geometry for clipping");
+            geom
+        }
+        ValidationResult::Rejected(_) => {
+            // Logging already done by validate_and_repair() — no duplicate error log
+            return handle_invalid_geometry(error_mode);
+        }
+    };
 
     // Early exit: Check if geometry intersects tile (O(1) bbox check)
     if !src_geom.intersects(tile_bbox) {
@@ -357,12 +369,6 @@ pub fn clip_feature_to_tile(
         debug!("Point geometry, no clipping needed");
         // Return clone of original feature
         return Ok(Some(feature.clone()));
-    }
-
-    // Validate source geometry before intersection (catch invalid geometries early)
-    if !src_geom.is_valid() {
-        warn!("Source geometry is invalid, cannot clip");
-        return handle_invalid_geometry(error_mode);
     }
 
     // Perform GDAL Intersection
@@ -424,7 +430,8 @@ fn handle_invalid_geometry(error_mode: ErrorMode) -> anyhow::Result<Option<Featu
 }
 
 /// Convert internal Feature to GDAL Geometry.
-fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
+#[instrument(skip(feature))]
+pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
     let wkt = match feature.geometry_type {
         GeometryType::Point => {
             if feature.geometry.is_empty() {

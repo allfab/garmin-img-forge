@@ -1,11 +1,13 @@
 //! Pipeline orchestration module.
 
+pub mod geometry_validator;
 pub mod reader;
 pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode};
+use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{Feature, SourceReader};
 use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
 use crate::pipeline::writer::{ExportStats, MpWriter};
@@ -30,6 +32,8 @@ pub struct TileExportSummary {
     pub tiles_skipped: usize,
     pub global_stats: ExportStats,
     pub export_errors: Vec<TileExportError>,
+    /// Story 6.5: Geometry validation statistics for programmatic access.
+    pub validation_stats: Option<ValidationStats>,
 }
 
 /// Error details for a failed tile export.
@@ -55,6 +59,7 @@ impl TileExportSummary {
             tiles_skipped,
             global_stats,
             export_errors,
+            validation_stats: None,
         }
     }
 
@@ -136,6 +141,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let mut total_clipped = 0;
     let mut total_skipped = 0;
     let mut clipping_errors: Vec<(String, usize, String)> = Vec::new(); // (tile_id, feature_id, error)
+    let mut global_validation_stats = ValidationStats::default();
 
     for (tile_bounds, feature_ids) in tile_assignments {
         let tile_bbox_geom = tile_bounds.to_gdal_polygon()?;
@@ -143,8 +149,9 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
         for &feature_id in &feature_ids {
             let feature = &features[feature_id];
+            let _span = tracing::info_span!("validate_feature", fid = feature_id, tile = %tile_bounds.tile_id()).entered();
 
-            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode) {
+            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut global_validation_stats) {
                 Ok(Some(clipped_feature)) => {
                     clipped_features.push(clipped_feature);
                     total_clipped += 1;
@@ -196,6 +203,19 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         );
     }
 
+    // Story 6.5: Log validation summary
+    if global_validation_stats.rejected_count() > 0 || global_validation_stats.repaired_count() > 0 {
+        info!(
+            valid = global_validation_stats.valid_count,
+            repaired_make_valid = global_validation_stats.repaired_make_valid,
+            repaired_buffer_zero = global_validation_stats.repaired_buffer_zero,
+            rejected_coords = global_validation_stats.rejected_invalid_coords,
+            rejected_irrecoverable = global_validation_stats.rejected_irrecoverable,
+            recovery_rate = %format!("{:.1}%", global_validation_stats.recovery_rate() * 100.0),
+            "Geometry validation summary"
+        );
+    }
+
     info!(
         duration_ms = clipping_elapsed.as_millis(),
         tiles_processed = tile_features.len(),
@@ -240,6 +260,9 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Story 7.3 - H1 Fix: Merge clipping errors into export errors
     summary.export_errors.extend(clipping_export_errors);
+
+    // Story 6.5: Include validation stats for programmatic access (M4 fix)
+    summary.validation_stats = Some(global_validation_stats);
 
     // Story 7.2 - Finalize progress bar
     if let Some(pb) = progress {
