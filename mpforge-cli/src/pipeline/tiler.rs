@@ -352,8 +352,9 @@ pub fn clip_feature_to_tile(
             debug!(strategy = ?strategy, "Using repaired geometry for clipping");
             geom
         }
-        ValidationResult::Rejected(_) => {
+        ValidationResult::Rejected(reason) => {
             // Logging already done by validate_and_repair() — no duplicate error log
+            warn!("Feature rejected during validation: {}", reason);
             return handle_invalid_geometry(error_mode);
         }
     };
@@ -472,6 +473,16 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
         }
     };
 
+    // Story 6.6 Fix: Verify WKT doesn't contain NaN/Inf before parsing
+    // This can happen if source features have invalid coordinates that passed initial validation
+    let wkt_lower = wkt.to_lowercase();
+    if wkt_lower.contains("nan") || wkt_lower.contains("inf") || wkt_lower.contains("-1.#ind") {
+        anyhow::bail!(
+            "Cannot convert feature to GDAL geometry: WKT contains NaN/Inf ({})",
+            wkt
+        );
+    }
+
     Geometry::from_wkt(&wkt).map_err(|e| anyhow::anyhow!("WKT conversion failed: {}", e))
 }
 
@@ -489,6 +500,12 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
 fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
     let wkt = geom.wkt().map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
 
+    // Story 6.6 Fix: Pre-check WKT for NaN/Inf before parsing
+    let wkt_lower = wkt.to_lowercase();
+    if wkt_lower.contains("nan") || wkt_lower.contains("inf") || wkt_lower.contains("-1.#ind") {
+        anyhow::bail!("GDAL intersection produced invalid WKT with NaN/Inf: {}", wkt);
+    }
+
     // Parse WKT to extract coordinates
     // This is a simplified parser - handles Point, LineString, and Polygon
     let coords_str = wkt
@@ -497,16 +514,43 @@ fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
         .map(|(coords, _)| coords)
         .ok_or_else(|| anyhow::anyhow!("Invalid WKT format"))?;
 
-    // Remove extra parentheses for Polygon
+    // Remove extra parentheses for Polygon (multiple layers possible)
+    // POLYGON((x y, x y)) has 2 layers, LineString((x y)) has 1 layer
     let coords_str = coords_str.trim_start_matches('(').trim_end_matches(')');
 
     // Parse coordinate pairs
     let mut coords = Vec::new();
     for pair in coords_str.split(',') {
-        let parts: Vec<&str> = pair.split_whitespace().collect();
+        let parts: Vec<&str> = pair.trim().split_whitespace().collect();
         if parts.len() >= 2 {
-            let x: f64 = parts[0].parse()?;
-            let y: f64 = parts[1].parse()?;
+            // Story 6.6 Fix: Clean up each coordinate string from WKT artifacts (parentheses)
+            // POLYGON WKT can have nested parentheses: POLYGON((x y, x y))
+            let x_str = parts[0].trim().trim_matches(|c| c == '(' || c == ')');
+            let y_str = parts[1].trim().trim_matches(|c| c == '(' || c == ')');
+
+            // Check for nan/inf strings (case-insensitive)
+            let x_lower = x_str.to_lowercase();
+            let y_lower = y_str.to_lowercase();
+            if x_lower.contains("nan") || x_lower.contains("inf")
+                || y_lower.contains("nan") || y_lower.contains("inf")
+            {
+                anyhow::bail!(
+                    "Invalid WKT coordinates from GDAL intersection: x='{}', y='{}' (NaN/Inf detected)",
+                    x_str, y_str
+                );
+            }
+
+            // Parse with better error context (use cleaned strings)
+            let x: f64 = x_str.parse()
+                .map_err(|e| anyhow::anyhow!("Failed to parse X coordinate '{}': {}", x_str, e))?;
+            let y: f64 = y_str.parse()
+                .map_err(|e| anyhow::anyhow!("Failed to parse Y coordinate '{}': {}", y_str, e))?;
+
+            // Double-check after parsing (should be redundant but defensive)
+            if !x.is_finite() || !y.is_finite() {
+                anyhow::bail!("Invalid coordinates after parsing: x={}, y={}", x, y);
+            }
+
             coords.push((x, y));
         }
     }
