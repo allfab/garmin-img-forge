@@ -84,7 +84,7 @@ steps:
 
       # Créer les release notes
       - |
-        cat > release-notes.md << 'EOF'
+        cat > release-notes.md << EOF
         ## 📦 mpforge-cli ${CI_COMMIT_TAG}
 
         ### 📥 Téléchargement
