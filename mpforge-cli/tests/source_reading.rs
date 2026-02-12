@@ -34,7 +34,7 @@ fn test_read_shapefile_source() {
         result.err()
     );
 
-    let (features, _unsupported) = result.unwrap();
+    let (features, _unsupported, _multi_geom) = result.unwrap();
     assert!(
         !features.is_empty(),
         "Expected features from shapefile, got none"
@@ -73,7 +73,7 @@ fn test_read_geopackage_with_layer() {
     );
 
     // GeoPackage might be empty, but should not error
-    let (_features, _unsupported) = result.unwrap();
+    let (_features, _unsupported, _multi_geom) = result.unwrap();
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn test_coordinates_wgs84() {
         layer: None,
     };
 
-    let (features, _unsupported) = SourceReader::read_file_source(&input).unwrap();
+    let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
 
     for feature in &features {
         for (lon, lat) in &feature.geometry {
@@ -133,7 +133,7 @@ fn test_attribute_extraction() {
         layer: None,
     };
 
-    let (features, _unsupported) = SourceReader::read_file_source(&input).unwrap();
+    let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
     assert!(!features.is_empty(), "Expected features with attributes");
 
     // Check that attributes are extracted
@@ -169,7 +169,7 @@ fn test_attribute_extraction_garmin_fields() {
         layer: None,
     };
 
-    let (features, _unsupported) = SourceReader::read_file_source(&input).unwrap();
+    let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
 
     for feature in &features {
         // Type attribute should exist and be in hex format
@@ -226,7 +226,7 @@ fn test_read_multiple_sources() {
         error_handling: "continue".to_string(),
     };
 
-    let (features, _rtree, _unsupported) = SourceReader::read_all_sources(&config).unwrap();
+    let (features, _rtree, _unsupported, _multi_geom) = SourceReader::read_all_sources(&config).unwrap();
 
     // Count by geometry type
     let point_count = features
@@ -313,7 +313,7 @@ fn test_read_all_sources_continue_mode() {
     let result = SourceReader::read_all_sources(&config);
     assert!(result.is_ok(), "Should not fail in continue mode");
 
-    let (features, _rtree, _unsupported) = result.unwrap();
+    let (features, _rtree, _unsupported, _multi_geom) = result.unwrap();
     // Should have features from file1.shp (3) + file2.shp (2) = 5
     assert_eq!(
         features.len(),
@@ -389,7 +389,7 @@ fn test_geopackage_multi_layers_integration() {
         layer: None,
     };
 
-    let (features, _unsupported) = SourceReader::read_file_source(&input).unwrap();
+    let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
 
     // Verify total count (5 + 10 + 8 = 23)
     assert_eq!(
@@ -475,7 +475,7 @@ fn test_multi_source_with_multi_layer_geopackage() {
         error_handling: "continue".to_string(),
     };
 
-    let (features, _rtree, _unsupported) = SourceReader::read_all_sources(&config).unwrap();
+    let (features, _rtree, _unsupported, _multi_geom) = SourceReader::read_all_sources(&config).unwrap();
 
     // Total: 3 (file1.shp) + 23 (multi_layers.gpkg) + 2 (file2.shp) = 28 features
     assert_eq!(

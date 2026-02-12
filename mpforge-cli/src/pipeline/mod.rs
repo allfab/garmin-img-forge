@@ -93,10 +93,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Story 5.3 - Read all sources
     // Story 6.1 - Build R-tree spatial index
     // Story 6.6 - Collect unsupported geometry type stats
+    // Story 6.7 - Collect multi-geometry decomposition stats
     info!("Phase 1: Reading sources and building spatial index");
     let start_time = Instant::now();
 
-    let (features, rtree, unsupported_type_stats) = SourceReader::read_all_sources(config)?;
+    let (features, rtree, unsupported_type_stats, multi_geom_stats) = SourceReader::read_all_sources(config)?;
 
     let elapsed = start_time.elapsed();
     info!(
@@ -290,8 +291,9 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let total_duration = start_time.elapsed().as_secs_f64();
 
     // Story 6.6 - Build quality section from unsupported type stats
+    // Story 6.7 - Subtask 5.2: Add multi-geometry decomposition stats to quality section
     // Code Review M1 Fix: Include total_sources in report
-    let quality = if unsupported_type_stats.is_empty() {
+    let quality = if unsupported_type_stats.is_empty() && multi_geom_stats.is_empty() {
         None
     } else {
         let unsupported_types = unsupported_type_stats
@@ -312,7 +314,24 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                 )
             })
             .collect();
-        Some(crate::report::QualitySection { unsupported_types })
+
+        // Story 6.7 - Subtask 5.2: Populate multi_geometries_decomposed from MultiGeometryStats
+        let multi_geometries_decomposed = if multi_geom_stats.is_empty() {
+            None
+        } else {
+            Some(
+                multi_geom_stats
+                    .by_type
+                    .iter()
+                    .map(|(type_name, entry)| (type_name.clone(), entry.count))
+                    .collect(),
+            )
+        };
+
+        Some(crate::report::QualitySection {
+            unsupported_types,
+            multi_geometries_decomposed,
+        })
     };
 
     // Story 7.3 - Task 5: Build ExecutionReport from TileExportSummary

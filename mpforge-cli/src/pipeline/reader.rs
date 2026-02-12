@@ -95,6 +95,44 @@ impl UnsupportedTypeStats {
     }
 }
 
+/// Entry for tracking multi-geometry decomposition occurrences.
+/// Story 6.7 - Subtask 1.1: Track count of decomposed multi-geometries per type.
+#[derive(Debug, Default, Clone)]
+pub struct MultiGeometryDecomposedEntry {
+    pub count: usize,
+}
+
+/// Statistics for multi-geometries decomposed during reading.
+/// Story 6.7 - Subtask 1.2: Track decomposition by geometry type (MultiPoint, MultiLineString, MultiPolygon).
+/// Uses BTreeMap for deterministic iteration order (Story 6.6 Code Review M3 learning).
+#[derive(Debug, Default, Clone)]
+pub struct MultiGeometryStats {
+    pub by_type: BTreeMap<String, MultiGeometryDecomposedEntry>,
+}
+
+impl MultiGeometryStats {
+    /// Record a multi-geometry decomposition occurrence.
+    /// Story 6.7 - Subtask 1.3: Increment count for a given multi-geometry type.
+    /// Code Review M5 learning: Added tracing instrumentation.
+    #[instrument(skip(self))]
+    pub fn record(&mut self, type_name: String) {
+        let entry = self.by_type.entry(type_name).or_default();
+        entry.count += 1;
+    }
+
+    /// Get total count of all decomposed multi-geometries across all types.
+    /// Story 6.7 - Subtask 1.4: Sum all counts for reporting.
+    pub fn total(&self) -> usize {
+        self.by_type.values().map(|e| e.count).sum()
+    }
+
+    /// Check if any multi-geometries were decomposed.
+    /// Story 6.7 - Subtask 1.5: Used to conditionally log/report stats.
+    pub fn is_empty(&self) -> bool {
+        self.by_type.is_empty()
+    }
+}
+
 /// Feature envelope for R-tree indexing.
 ///
 /// Wraps a feature with its spatial bounding box for efficient spatial queries.
@@ -302,13 +340,14 @@ impl SourceReader {
     /// * `input` - InputSource configuration with path and optional layer/layers
     ///
     /// # Returns
-    /// * `Result<(Vec<Feature>, UnsupportedTypeStats)>` - Features and unsupported type statistics
+    /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Features, unsupported type stats, and multi-geometry stats
+    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     ///
     /// # Errors
     /// * File not found or not readable
     /// * GDAL driver not available
     /// * Invalid layer name
-    pub fn read_file_source(input: &InputSource) -> Result<(Vec<Feature>, UnsupportedTypeStats)> {
+    pub fn read_file_source(input: &InputSource) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         Self::read_file_source_with_error_handling(input, "fail-fast")
     }
 
@@ -319,7 +358,8 @@ impl SourceReader {
     /// * `error_handling` - Error handling mode: "continue" or "fail-fast"
     ///
     /// # Returns
-    /// * `Result<(Vec<Feature>, UnsupportedTypeStats)>` - Features and unsupported type statistics
+    /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Features, unsupported type stats, and multi-geometry stats
+    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     ///
     /// # Errors
     /// * File not found or not readable
@@ -328,7 +368,7 @@ impl SourceReader {
     fn read_file_source_with_error_handling(
         input: &InputSource,
         error_handling: &str,
-    ) -> Result<(Vec<Feature>, UnsupportedTypeStats)> {
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let path = input
             .path
             .as_ref()
@@ -343,21 +383,28 @@ impl SourceReader {
         let wgs84 = SpatialRef::from_epsg(4326)?;
         let mut all_features = Vec::new();
         let mut all_unsupported = UnsupportedTypeStats::default();
+        let mut all_multi_geom = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
 
         // Handle multi-layer or single-layer loading
         if let Some(layers) = &input.layers {
             if layers.is_empty() {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
-                let (features, unsupported) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+                let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
+                // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
+                for (type_name, entry) in multi_geom.by_type {
+                    for _ in 0..entry.count {
+                        all_multi_geom.record(type_name.clone());
+                    }
+                }
             } else {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
                     match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84) {
-                        Ok((features, unsupported)) => {
+                        Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
                                 layer = %layer_name,
@@ -366,6 +413,12 @@ impl SourceReader {
                             );
                             all_features.extend(features);
                             all_unsupported.merge(&unsupported);
+                            // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
+                            for (type_name, entry) in multi_geom.by_type {
+                                for _ in 0..entry.count {
+                                    all_multi_geom.record(type_name.clone());
+                                }
+                            }
                         }
                         Err(e) => {
                             warn!(
@@ -386,9 +439,15 @@ impl SourceReader {
             }
         } else {
             // None: default behavior (load layer 0 only, no warning)
-            let (features, unsupported) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+            let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
+            // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
+            for (type_name, entry) in multi_geom.by_type {
+                for _ in 0..entry.count {
+                    all_multi_geom.record(type_name.clone());
+                }
+            }
         }
 
         // Log total statistics
@@ -410,19 +469,20 @@ impl SourceReader {
             "Source loaded"
         );
 
-        Ok((all_features, all_unsupported))
+        Ok((all_features, all_unsupported, all_multi_geom))
     }
 
     /// Load features from a layer by index.
     ///
     /// Helper function to load features from a specific layer by index (e.g., layer 0).
     /// Used for default layer loading.
+    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     fn load_layer_by_index(
         dataset: &Dataset,
         layer_index: usize,
         path: &str,
         wgs84: &SpatialRef,
-    ) -> Result<(Vec<Feature>, UnsupportedTypeStats)> {
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset.layer(layer_index).with_context(|| {
             format!(
                 "Failed to access layer {} in dataset: {}",
@@ -437,12 +497,13 @@ impl SourceReader {
     ///
     /// Helper function to load features from a specific layer by name.
     /// Used for multi-layer GeoPackage loading.
+    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     fn load_layer_by_name(
         dataset: &Dataset,
         layer_name: &str,
         path: &str,
         wgs84: &SpatialRef,
-    ) -> Result<(Vec<Feature>, UnsupportedTypeStats)> {
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset
             .layer_by_name(layer_name)
             .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
@@ -454,12 +515,13 @@ impl SourceReader {
     ///
     /// Core feature loading logic extracted to avoid duplication.
     /// Handles SRS transformation to WGS84 if needed.
-    /// Returns features and statistics about unsupported geometry types filtered.
+    /// Returns features and statistics about unsupported geometry types filtered and multi-geometries decomposed.
+    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     fn load_features_from_layer(
         layer: &mut gdal::vector::Layer,
         path: &str,
         wgs84: &SpatialRef,
-    ) -> Result<(Vec<Feature>, UnsupportedTypeStats)> {
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         // Check spatial reference and transform to WGS84 if needed
         let needs_transform = if let Some(spatial_ref) = layer.spatial_ref() {
             if let Ok(auth_code) = spatial_ref.auth_code() {
@@ -485,6 +547,7 @@ impl SourceReader {
         // Read all features from the layer
         let mut features = Vec::new();
         let mut unsupported_stats = UnsupportedTypeStats::default();
+        let mut multi_geom_stats = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
 
         // Story 6.6 - Code Review H2 Fix: Extract source name properly for PostGIS, URLs, etc.
         let source_name = extract_source_name(path);
@@ -500,31 +563,66 @@ impl SourceReader {
                 }
             }
 
+            // Story 6.7 - Subtask 4.2: Detect multi-geometry BEFORE decomposition to record stats
+            let is_multi_geometry = if let Some(geom) = gdal_feature.geometry() {
+                let geom_type = geom.geometry_type();
+                matches!(
+                    geom_type,
+                    OGRwkbGeometryType::wkbMultiPoint
+                        | OGRwkbGeometryType::wkbMultiPoint25D
+                        | OGRwkbGeometryType::wkbMultiLineString
+                        | OGRwkbGeometryType::wkbMultiLineString25D
+                        | OGRwkbGeometryType::wkbMultiPolygon
+                        | OGRwkbGeometryType::wkbMultiPolygon25D
+                )
+            } else {
+                false
+            };
+
+            // Subtask 3.6: Handle Vec<Feature> return type (supports multi-geometry decomposition)
             match Feature::from_gdal_feature(&gdal_feature) {
-                Ok(Some(feature)) => {
-                    debug!(
-                        geometry_type = ?feature.geometry_type,
-                        coords_count = feature.geometry.len(),
-                        "Feature loaded"
-                    );
-                    features.push(feature);
-                }
-                Ok(None) => {
-                    // Unsupported geometry type filtered - record for stats
-                    // Story 6.6 - Code Review H1 Fix: Use explicit mapping instead of Debug format
-                    if let Some(geom) = gdal_feature.geometry() {
-                        let type_name = match geom.geometry_type() {
-                            OGRwkbGeometryType::wkbMultiPoint => "MultiPoint".to_string(),
-                            OGRwkbGeometryType::wkbMultiLineString => "MultiLineString".to_string(),
-                            OGRwkbGeometryType::wkbMultiPolygon => "MultiPolygon".to_string(),
-                            OGRwkbGeometryType::wkbGeometryCollection => "GeometryCollection".to_string(),
-                            // Fallback for any other types using Debug format
-                            other => {
-                                let debug_str = format!("{:?}", other);
-                                debug_str.strip_prefix("wkb").unwrap_or(&debug_str).to_string()
+                Ok(feature_vec) => {
+                    if feature_vec.is_empty() {
+                        // Unsupported geometry type filtered - record for stats
+                        // Story 6.7: Multi-geometries are now decomposed, so only truly unsupported types reach here
+                        if let Some(geom) = gdal_feature.geometry() {
+                            let type_name = match geom.geometry_type() {
+                                // Story 6.7: MultiPoint/MultiLineString/MultiPolygon are now SUPPORTED (decomposed)
+                                // Only GeometryCollection and truly unknown types are unsupported
+                                OGRwkbGeometryType::wkbGeometryCollection => "GeometryCollection".to_string(),
+                                // Fallback for any other types using Debug format
+                                other => {
+                                    let debug_str = format!("{:?}", other);
+                                    debug_str.strip_prefix("wkb").unwrap_or(&debug_str).to_string()
+                                }
+                            };
+                            unsupported_stats.record(type_name, source_name.clone());
+                        }
+                    } else {
+                        // Story 6.7 - Subtask 4.2: Record multi-geometry decomposition stats
+                        if is_multi_geometry {
+                            // This was a multi-geometry that was decomposed
+                            if let Some(geom) = gdal_feature.geometry() {
+                                let type_name = match geom.geometry_type() {
+                                    OGRwkbGeometryType::wkbMultiPoint
+                                    | OGRwkbGeometryType::wkbMultiPoint25D => "MultiPoint",
+                                    OGRwkbGeometryType::wkbMultiLineString
+                                    | OGRwkbGeometryType::wkbMultiLineString25D => "MultiLineString",
+                                    OGRwkbGeometryType::wkbMultiPolygon
+                                    | OGRwkbGeometryType::wkbMultiPolygon25D => "MultiPolygon",
+                                    _ => "Unknown", // Should not reach here
+                                };
+                                multi_geom_stats.record(type_name.to_string());
                             }
-                        };
-                        unsupported_stats.record(type_name, source_name.clone());
+                        }
+
+                        // One or more features (simple geometry returns vec![feature], multi-geometry returns vec![f1, f2, ...])
+                        debug!(
+                            feature_count = feature_vec.len(),
+                            is_multi = is_multi_geometry,
+                            "Features loaded from GDAL feature (1 = simple, N = decomposed multi-geometry)"
+                        );
+                        features.extend(feature_vec);
                     }
                 }
                 Err(e) => {
@@ -533,7 +631,7 @@ impl SourceReader {
             }
         }
 
-        Ok((features, unsupported_stats))
+        Ok((features, unsupported_stats, multi_geom_stats))
     }
 
     /// Read features from all sources and build R-tree spatial index.
@@ -542,16 +640,18 @@ impl SourceReader {
     /// * `config` - Configuration with list of input sources
     ///
     /// # Returns
-    /// * `Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats)>` - All features, R-tree index, and unsupported type stats
+    /// * `Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats, MultiGeometryStats)>` - All features, R-tree index, unsupported type stats, and multi-geometry stats
+    /// Story 6.7 - Subtask 4.3: Added MultiGeometryStats to return type (4-tuple).
     ///
     /// # Errors
     /// * File not found or not readable (depending on error_handling mode)
     /// * GDAL errors
     /// * R-tree construction errors (should never happen in practice)
-    pub fn read_all_sources(config: &Config) -> Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats)> {
+    pub fn read_all_sources(config: &Config) -> Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut all_features = Vec::new();
         let mut total_stats = ReaderStats::default();
         let mut all_unsupported = UnsupportedTypeStats::default();
+        let mut all_multi_geom = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.3
 
         info!(
             source_count = config.inputs.len(),
@@ -567,9 +667,15 @@ impl SourceReader {
             );
 
             match Self::read_file_source_with_error_handling(input, &config.error_handling) {
-                Ok((features, unsupported)) => {
+                Ok((features, unsupported, multi_geom)) => {
                     let count = features.len();
                     all_unsupported.merge(&unsupported);
+                    // Story 6.7 - Subtask 4.3: Accumulate multi-geometry stats
+                    for (type_name, entry) in multi_geom.by_type {
+                        for _ in 0..entry.count {
+                            all_multi_geom.record(type_name.clone());
+                        }
+                    }
 
                     // Update statistics
                     for feature in &features {
@@ -642,6 +748,20 @@ impl SourceReader {
             );
         }
 
+        // Story 6.7 - Subtask 4.4: Log INFO summary for multi-geometries decomposed
+        if all_multi_geom.total() > 0 {
+            let breakdown: Vec<String> = all_multi_geom
+                .by_type
+                .iter()
+                .map(|(type_name, entry)| format!("{}: {}", type_name, entry.count))
+                .collect();
+            info!(
+                total = all_multi_geom.total(),
+                breakdown = %breakdown.join(", "),
+                "Multi-geometry features decomposed into simple geometries"
+            );
+        }
+
         info!(
             total_features = all_features.len(),
             points = total_stats.point_count,
@@ -657,7 +777,7 @@ impl SourceReader {
         // Build R-tree spatial index (currently infallible, but Result kept for API consistency)
         let rtree = RTreeIndex::build(&all_features)?;
 
-        Ok((all_features, rtree, all_unsupported))
+        Ok((all_features, rtree, all_unsupported, all_multi_geom))
     }
 }
 
@@ -682,36 +802,242 @@ pub struct Feature {
 }
 
 impl Feature {
+    /// Decompose a GDAL multi-geometry into N simple geometry features.
+    ///
+    /// Story 6.7 - Task 2: Decompose MultiPoint, MultiLineString, MultiPolygon into simple geometries.
+    /// Each sub-geometry inherits all attributes from the parent feature.
+    ///
+    /// # Arguments
+    /// * `gdal_feature` - GDAL feature containing multi-geometry
+    /// * `target_srs` - Target SRS for coordinate transformation (WGS84)
+    ///
+    /// # Returns
+    /// * `Result<Vec<Feature>>` - N features (one per sub-geometry), or empty vec if error
+    ///
+    /// # Errors
+    /// * Feature has no geometry
+    /// * Invalid sub-geometry structure
+    fn decompose_multi_geometry(
+        gdal_feature: &gdal::vector::Feature,
+        target_srs: Option<&SpatialRef>,
+    ) -> Result<Vec<Feature>> {
+        let geometry = gdal_feature
+            .geometry()
+            .ok_or_else(|| anyhow!("Feature has no geometry for multi-geometry decomposition"))?;
+
+        // Get the multi-geometry type from the geometry itself
+        let multi_type = geometry.geometry_type();
+
+        // Subtask 2.2: Get count of sub-geometries
+        let count = geometry.geometry_count();
+        if count == 0 {
+            debug!(
+                multi_type = ?multi_type,
+                "Multi-geometry has 0 sub-geometries, returning empty vec"
+            );
+            return Ok(vec![]);
+        }
+
+        let mut sub_features = Vec::with_capacity(count);
+
+        // Determine simple geometry type from multi-type
+        // Handle both standard and 25D variants
+        let simple_geom_type = match multi_type {
+            OGRwkbGeometryType::wkbMultiPoint | OGRwkbGeometryType::wkbMultiPoint25D => {
+                GeometryType::Point
+            }
+            OGRwkbGeometryType::wkbMultiLineString
+            | OGRwkbGeometryType::wkbMultiLineString25D => GeometryType::LineString,
+            OGRwkbGeometryType::wkbMultiPolygon | OGRwkbGeometryType::wkbMultiPolygon25D => {
+                GeometryType::Polygon
+            }
+            _ => {
+                warn!(
+                    multi_type = ?multi_type,
+                    "Unsupported multi-geometry type in decompose_multi_geometry"
+                );
+                return Ok(vec![]);
+            }
+        };
+
+        // Subtask 2.3: Iterate over each sub-geometry
+        for i in 0..count {
+            let sub_geom = geometry.get_geometry(i);
+
+            // Subtask 2.6: Handle errors with logging and skip problematic sub-geometries
+            match Self::process_sub_geometry(&sub_geom, simple_geom_type, gdal_feature, target_srs)
+            {
+                Ok(feature) => sub_features.push(feature),
+                Err(e) => {
+                    warn!(
+                        sub_geometry_index = i,
+                        error = %e,
+                        "Skipping invalid sub-geometry in multi-geometry decomposition"
+                    );
+                    // Continue with next sub-geometry
+                }
+            }
+        }
+
+        debug!(
+            multi_type = ?multi_type,
+            input_count = count,
+            output_count = sub_features.len(),
+            "Multi-geometry decomposed"
+        );
+
+        Ok(sub_features)
+    }
+
+    /// Process a single sub-geometry from a multi-geometry.
+    ///
+    /// Helper function to extract coordinates and attributes for one sub-geometry.
+    ///
+    /// # Arguments
+    /// * `sub_geom` - GDAL geometry (sub-geometry from multi)
+    /// * `geom_type` - Simple geometry type (Point, LineString, or Polygon)
+    /// * `parent_feature` - Parent GDAL feature (for attribute cloning)
+    /// * `target_srs` - Target SRS for coordinate transformation
+    ///
+    /// # Returns
+    /// * `Result<Feature>` - Feature with geometry and cloned attributes
+    fn process_sub_geometry(
+        sub_geom: &gdal::vector::Geometry,
+        geom_type: GeometryType,
+        parent_feature: &gdal::vector::Feature,
+        target_srs: Option<&SpatialRef>,
+    ) -> Result<Feature> {
+        // Transform sub-geometry to target SRS if needed
+        if let Some(srs) = target_srs {
+            sub_geom
+                .transform_to(srs)
+                .context("Failed to transform sub-geometry to target SRS")?;
+        }
+
+        // Extract coordinates from sub-geometry
+        let coords = Self::extract_coordinates(sub_geom, geom_type)?;
+
+        // Subtask 2.4: Clone attributes from parent feature to each sub-geometry
+        let mut attributes = HashMap::new();
+        for (field_name, field_value) in parent_feature.fields() {
+            let value_str = match field_value {
+                Some(gdal::vector::FieldValue::StringValue(s)) => s.to_string(),
+                Some(gdal::vector::FieldValue::IntegerValue(i)) => i.to_string(),
+                Some(gdal::vector::FieldValue::Integer64Value(i)) => i.to_string(),
+                Some(gdal::vector::FieldValue::RealValue(r)) => r.to_string(),
+                Some(gdal::vector::FieldValue::DateValue(d)) => format!("{:?}", d),
+                Some(gdal::vector::FieldValue::DateTimeValue(dt)) => format!("{:?}", dt),
+                Some(gdal::vector::FieldValue::IntegerListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::Integer64ListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::RealListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::StringListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|s| format!("\"{}\"", s))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                None => String::new(),
+            };
+            attributes.insert(field_name.to_string(), value_str);
+        }
+
+        Ok(Feature {
+            geometry_type: geom_type,
+            geometry: coords,
+            attributes,
+        })
+    }
+
     /// Convert a GDAL feature to internal Feature representation.
+    ///
+    /// Story 6.7 - Task 3: Changed signature to return Vec<Feature> to support multi-geometry decomposition.
     ///
     /// # Arguments
     /// * `gdal_feature` - GDAL feature to convert
     ///
     /// # Returns
-    /// * `Result<Option<Feature>>` - Some(feature) for supported types, None for unsupported types
+    /// * `Result<Vec<Feature>>` - vec![feature] for simple types, vec![f1, f2, ...fN] for multi-geometries, vec![] for unsupported types
     ///
     /// # Errors
     /// * Invalid geometry structure
-    pub fn from_gdal_feature(gdal_feature: &gdal::vector::Feature) -> Result<Option<Self>> {
+    pub fn from_gdal_feature(gdal_feature: &gdal::vector::Feature) -> Result<Vec<Self>> {
         // 1. Extract and validate geometry type
         let geometry = gdal_feature
             .geometry()
             .ok_or_else(|| anyhow!("Feature has no geometry"))?;
 
-        let geometry_type = match geometry.geometry_type() {
+        let geom_type = geometry.geometry_type();
+
+        // Subtask 3.2, 3.3: Handle multi-geometries by decomposing them
+        match geom_type {
+            // Multi-geometries → decompose into N simple features
+            OGRwkbGeometryType::wkbMultiPoint
+            | OGRwkbGeometryType::wkbMultiPoint25D
+            | OGRwkbGeometryType::wkbMultiLineString
+            | OGRwkbGeometryType::wkbMultiLineString25D
+            | OGRwkbGeometryType::wkbMultiPolygon
+            | OGRwkbGeometryType::wkbMultiPolygon25D => {
+                debug!(geometry_type = ?geom_type, "Decomposing multi-geometry");
+                return Self::decompose_multi_geometry(gdal_feature, None);
+            }
+            // Subtask 3.5: GeometryCollection → filter with warning
+            OGRwkbGeometryType::wkbGeometryCollection => {
+                warn!(
+                    geometry_type = ?geom_type,
+                    "GeometryCollection is not supported, filtering feature"
+                );
+                return Ok(vec![]);
+            }
+            // Simple geometries → continue with normal processing
+            OGRwkbGeometryType::wkbPoint => {}
+            OGRwkbGeometryType::wkbLineString => {}
+            OGRwkbGeometryType::wkbPolygon => {}
+            // Other unsupported types
+            other => {
+                debug!(geometry_type = ?other, "Skipping unsupported geometry type");
+                return Ok(vec![]);
+            }
+        }
+
+        // 2. Get simple geometry type for processing
+        let geometry_type = match geom_type {
             OGRwkbGeometryType::wkbPoint => GeometryType::Point,
             OGRwkbGeometryType::wkbLineString => GeometryType::LineString,
             OGRwkbGeometryType::wkbPolygon => GeometryType::Polygon,
-            other => {
-                debug!(geometry_type = ?other, "Skipping unsupported geometry type");
-                return Ok(None);
-            }
+            _ => unreachable!("Should have been handled by match above"),
         };
 
-        // 2. Extract coordinates
+        // 3. Extract coordinates
         let geometry_coords = Self::extract_coordinates(geometry, geometry_type)?;
 
-        // 3. Extract all attributes from feature fields
+        // 4. Extract all attributes from feature fields
         let mut attributes = HashMap::new();
 
         for (field_name, field_value) in gdal_feature.fields() {
@@ -774,11 +1100,12 @@ impl Feature {
             "Feature extracted from GDAL"
         );
 
-        Ok(Some(Feature {
+        // Subtask 3.4: Wrap simple geometry in Vec for uniform return type
+        Ok(vec![Feature {
             geometry_type,
             geometry: geometry_coords,
             attributes,
-        }))
+        }])
     }
 
     /// Extract coordinates from a GDAL geometry based on its type.

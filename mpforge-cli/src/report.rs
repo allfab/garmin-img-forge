@@ -42,10 +42,16 @@ pub struct ExecutionReport {
 
 /// Quality section of the execution report.
 /// Story 6.6 - Reports unsupported geometry types filtered during reading.
+/// Story 6.7 - Reports multi-geometries decomposed into simple geometries.
 /// Code Review M3 Fix: Use BTreeMap for deterministic JSON key ordering.
 #[derive(Debug, Serialize, Clone)]
 pub struct QualitySection {
     pub unsupported_types: BTreeMap<String, UnsupportedTypeReport>,
+
+    /// Story 6.7 - Subtask 5.1: Multi-geometries decomposed into simple geometries (type -> count).
+    /// Subtask 5.3: Skip serialization if None (no multi-geometries decomposed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multi_geometries_decomposed: Option<BTreeMap<String, usize>>,
 }
 
 /// Report entry for a single unsupported geometry type.

@@ -39,7 +39,7 @@ fn test_geopackage_three_layers_configured() {
         result.err()
     );
 
-    let (features, _unsupported) = result.unwrap();
+    let (features, _unsupported, _multi_geom) = result.unwrap();
 
     // Total expected: 5 pois + 10 roads + 8 buildings = 23 features
     assert_eq!(
@@ -122,7 +122,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
         "Should succeed in continue mode despite invalid layer"
     );
 
-    let (features, _rtree, _unsupported) = result.unwrap();
+    let (features, _rtree, _unsupported, _multi_geom) = result.unwrap();
 
     // Should have features from valid layers only: pois (5) + roads (10) = 15
     assert_eq!(
@@ -215,7 +215,7 @@ fn test_geopackage_empty_layers_list() {
         "Should succeed with empty layers list (fallback to layer 0)"
     );
 
-    let (features, _unsupported) = result.unwrap();
+    let (features, _unsupported, _multi_geom) = result.unwrap();
 
     // Should load default layer (layer 0) which is "pois" (5 features)
     assert_eq!(
@@ -255,7 +255,7 @@ fn test_geopackage_layers_none_backward_compat() {
         "Should succeed with layers None (backward compat)"
     );
 
-    let (features, _unsupported) = result.unwrap();
+    let (features, _unsupported, _multi_geom) = result.unwrap();
 
     // Should load default layer (layer 0) which is "pois" (5 features)
     assert_eq!(
@@ -290,7 +290,7 @@ fn test_geopackage_mixed_geometry_types() {
         "Should succeed loading mixed geometry types"
     );
 
-    let (features, _unsupported) = result.unwrap();
+    let (features, _unsupported, _multi_geom) = result.unwrap();
 
     // Verify we have all three geometry types
     let has_points = features

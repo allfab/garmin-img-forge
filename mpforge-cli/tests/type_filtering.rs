@@ -146,7 +146,10 @@ fn test_json_report_with_quality_section() {
         features_processed: 10000,
         duration_seconds: 42.5,
         errors: vec![],
-        quality: Some(QualitySection { unsupported_types }),
+        quality: Some(QualitySection {
+            unsupported_types,
+            multi_geometries_decomposed: None,
+        }),
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -191,6 +194,7 @@ fn test_json_report_with_empty_quality_section() {
         errors: vec![],
         quality: Some(QualitySection {
             unsupported_types: BTreeMap::new(),
+            multi_geometries_decomposed: None,
         }),
     };
 
@@ -221,7 +225,10 @@ fn test_json_report_quality_breakdown_correct() {
         features_processed: 5000,
         duration_seconds: 10.0,
         errors: vec![],
-        quality: Some(QualitySection { unsupported_types }),
+        quality: Some(QualitySection {
+            unsupported_types,
+            multi_geometries_decomposed: None,
+        }),
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -262,7 +269,10 @@ fn test_json_report_write_with_quality() {
         features_processed: 100,
         duration_seconds: 1.0,
         errors: vec![],
-        quality: Some(QualitySection { unsupported_types }),
+        quality: Some(QualitySection {
+            unsupported_types,
+            multi_geometries_decomposed: None,
+        }),
     };
 
     let temp_file = NamedTempFile::new().unwrap();
@@ -297,7 +307,10 @@ fn test_json_report_with_total_sources_truncation() {
         features_processed: 1000,
         duration_seconds: 5.0,
         errors: vec![],
-        quality: Some(QualitySection { unsupported_types }),
+        quality: Some(QualitySection {
+            unsupported_types,
+            multi_geometries_decomposed: None,
+        }),
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -354,7 +367,10 @@ fn test_quality_section_serialization_format() {
         },
     );
 
-    let quality = QualitySection { unsupported_types };
+    let quality = QualitySection {
+        unsupported_types,
+        multi_geometries_decomposed: None,
+    };
     let json = serde_json::to_string_pretty(&quality).unwrap();
 
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
