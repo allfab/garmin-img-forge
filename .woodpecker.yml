@@ -29,37 +29,25 @@ steps:
 
   # ============================================================================
   # Étape 2 : Build Linux
-  # Binaire statique portable (musl + GDAL statique)
   # ============================================================================
   build-linux:
-    image: rust:alpine3.21
+    image: *rust_image
     commands:
-      # Installer dépendances (Alpine utilise musl nativement)
-      - apk add --no-cache musl-dev gdal gdal-dev pkgconf
-
-      # Ajouter la target musl
-      - rustup target add x86_64-unknown-linux-musl
-
-      # Variables pour forcer le linkage statique
-      - export GDAL_STATIC=1
-      - export GDAL_DYNAMIC=0
-      - export PKG_CONFIG_ALL_STATIC=1
-      - export RUSTFLAGS="-C target-feature=+crt-static"
+      # Installer GDAL
+      - apt-get update
+      - apt-get install -y libgdal-dev gdal-bin pkg-config
 
       # Build
       - cd mpforge-cli
-      - cargo build --release --target x86_64-unknown-linux-musl
+      - cargo build --release
 
-      # Vérifier que le binaire est statique
-      - ldd target/x86_64-unknown-linux-musl/release/mpforge-cli || echo "✓ Binaire statique confirmé"
+      # Vérifier que le binaire existe
+      - ls -lh target/release/mpforge-cli
 
-      # Copier dans artifacts
+      # Copier dans un dossier d'artifacts (workspace partagé)
       - mkdir -p ../artifacts
-      - cp target/x86_64-unknown-linux-musl/release/mpforge-cli ../artifacts/mpforge-cli
+      - cp target/release/mpforge-cli ../artifacts/mpforge-cli
       - strip ../artifacts/mpforge-cli
-
-      # Afficher info binaire
-      - ls -lh ../artifacts/mpforge-cli
     when:
       event: [push, pull_request]
 
@@ -105,6 +93,14 @@ steps:
         - Linux x64 : \`mpforge-cli-linux-x64.tar.gz\`
 
         ### 📋 Installation
+
+        **1. Installer GDAL (requis)** :
+        \`\`\`bash
+        sudo dnf install gdal        # Fedora/RHEL
+        sudo apt install gdal-bin    # Ubuntu/Debian
+        \`\`\`
+
+        **2. Installer mpforge-cli** :
         \`\`\`bash
         tar xzf mpforge-cli-linux-x64.tar.gz
         sudo mv mpforge-cli /usr/local/bin/

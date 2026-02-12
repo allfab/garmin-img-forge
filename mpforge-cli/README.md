@@ -20,14 +20,29 @@
 
 ### Option 1 : Binaire pré-compilé (recommandé)
 
-Téléchargez le binaire depuis la [page des releases](https://forgejo.allfabox.fr/allfab/mpforge/releases) :
+**Prérequis** : GDAL doit être installé sur votre système.
+
+**1. Installer GDAL** :
+
+```bash
+# Fedora/RHEL
+sudo dnf install gdal
+
+# Ubuntu/Debian
+sudo apt install gdal-bin libgdal32
+
+# Alpine
+sudo apk add gdal
+
+# Vérifier l'installation
+gdal-config --version
+```
+
+**2. Télécharger et installer mpforge-cli** :
 
 **Linux x64** :
 ```bash
-# Télécharger
 wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-x64.tar.gz
-
-# Extraire et installer
 tar xzf mpforge-cli-linux-x64.tar.gz
 sudo mv mpforge-cli /usr/local/bin/
 mpforge-cli --version
@@ -35,16 +50,11 @@ mpforge-cli --version
 
 **Linux ARM64** (Raspberry Pi, serveurs ARM) :
 ```bash
-# Télécharger
 wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-arm64.tar.gz
-
-# Extraire et installer
 tar xzf mpforge-cli-linux-arm64.tar.gz
 sudo mv mpforge-cli /usr/local/bin/
 mpforge-cli --version
 ```
-
-✅ **Les binaires sont entièrement autonomes et ne nécessitent aucune dépendance système.**
 
 ### Option 2 : Compilation depuis les sources
 
