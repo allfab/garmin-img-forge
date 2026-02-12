@@ -130,32 +130,51 @@ error_handling: "continue"  # "continue" ou "fail-fast"
 Voir le répertoire [`examples/`](examples/) :
 
 - **[simple.yaml](examples/simple.yaml)** : Configuration minimale pour débuter
+- **[simple-with-mapping.yaml](examples/simple-with-mapping.yaml)** : Configuration avec field mapping (sources avec champs personnalisés)
 - **[bdtopo.yaml](examples/bdtopo.yaml)** : Configuration production pour BDTOPO (35 GB, 50+ couches)
 
 ### Field Mapping Configuration
 
-**mpforge-cli** supporte le mappage personnalisé des champs sources vers les champs canoniques du format Polish Map via un fichier YAML.
+**mpforge-cli** supporte le mappage personnalisé des champs sources vers les champs canoniques du format Polish Map via un **fichier YAML externe**.
 
 #### Pourquoi utiliser le field mapping ?
 
 Lorsque vos données sources utilisent des noms de champs personnalisés (par exemple, `MP_TYPE`, `NAME` dans BDTOPO), le field mapping permet de les transposer automatiquement vers les champs standards Polish Map (`Type`, `Label`) sans modifier vos données sources.
 
-#### Configuration
+#### Architecture : Deux fichiers séparés
 
-Ajoutez `field_mapping_path` dans la section `output` de votre configuration :
+Le field mapping utilise **deux fichiers distincts** :
+
+| Fichier | Rôle | Contenu |
+|---------|------|---------|
+| **`config.yaml`** | Configuration du pipeline | Sources, grille, output, **référence** au fichier de mapping |
+| **`bdtopo-mapping.yaml`** | Définition des mappages | Correspondances champs sources → champs Polish Map |
+
+Cette séparation permet de **réutiliser** le même fichier de mapping pour plusieurs configurations.
+
+#### Configuration complète
+
+**1️⃣ Fichier `config.yaml`** (configuration principale)
 
 ```yaml
+version: 1
+
+grid:
+  cell_size: 0.15
+
+inputs:
+  - path: "data/communes.shp"
+  # ⚠️ PAS de field mapping ici ! Le mapping est au niveau output.
+
 output:
   directory: "tiles/"
   filename_pattern: "{x}_{y}.mp"
-  field_mapping_path: "examples/bdtopo-mapping.yaml"  # Chemin vers le fichier de mapping
-  # Note: Les chemins relatifs sont résolus depuis le répertoire de travail actuel (pwd).
+  field_mapping_path: "bdtopo-mapping.yaml"  # ← Chemin vers le fichier de mapping
+  # Note: Chemins relatifs résolus depuis le répertoire de travail (pwd).
   #       Utilisez un chemin absolu pour éviter toute ambiguïté.
 ```
 
-#### Format du fichier de mapping
-
-Le fichier YAML définit les correspondances source → destination :
+**2️⃣ Fichier `bdtopo-mapping.yaml`** (définition des mappages)
 
 ```yaml
 field_mapping:
@@ -175,6 +194,59 @@ field_mapping:
 
 Exemple complet : [`examples/bdtopo-mapping.yaml`](examples/bdtopo-mapping.yaml)
 
+#### Erreurs courantes à éviter
+
+❌ **Erreur 1 : Mettre le mapping dans `inputs`**
+
+```yaml
+inputs:
+  - path: "data.shp"
+    field_mapping: {...}  # ❌ CE CHAMP N'EXISTE PAS !
+```
+
+✅ **Correct : Le mapping va dans `output`**
+
+```yaml
+output:
+  directory: "tiles/"
+  field_mapping_path: "mapping.yaml"  # ✅ Référence au fichier externe
+```
+
+---
+
+❌ **Erreur 2 : Définir le mapping inline dans `config.yaml`**
+
+```yaml
+field_mapping:  # ❌ PAS au niveau racine de config.yaml !
+  MP_TYPE: Type
+```
+
+✅ **Correct : Fichier séparé `bdtopo-mapping.yaml`**
+
+```yaml
+# Dans bdtopo-mapping.yaml (fichier séparé)
+field_mapping:  # ✅ Au niveau racine du fichier de mapping
+  MP_TYPE: Type
+```
+
+---
+
+❌ **Erreur 3 : Syntaxe `source/target`**
+
+```yaml
+field_mapping:
+  - source: "NAME"    # ❌ Syntaxe incorrecte
+    target: "Label"
+```
+
+✅ **Correct : Format clé-valeur simple**
+
+```yaml
+field_mapping:
+  NAME: Label  # ✅ source: destination
+  MP_TYPE: Type
+```
+
 #### Équivalent ogr2ogr
 
 Cette fonctionnalité est équivalente à :
@@ -185,7 +257,7 @@ ogr2ogr -f "PolishMap" \
   output.mp input.shp
 ```
 
-**mpforge-cli** passe automatiquement cette option au driver `ogr-polishmap` lors de la création des fichiers `.mp`.
+**mpforge-cli** passe automatiquement cette option au driver `ogr-polishmap` lors de la création des fichiers `.mp` pour **chaque tuile générée**.
 
 #### Backward compatibility
 
@@ -324,6 +396,69 @@ output:
 ```bash
 mpforge-cli build --config postgis.yaml --jobs 4 -v
 ```
+
+### Exemple 4 : Field mapping (BDTOPO avec champs personnalisés)
+
+Lorsque vos données sources utilisent des noms de champs personnalisés (par exemple `MP_TYPE`, `NAME` au lieu de `Type`, `Label`), utilisez le field mapping :
+
+**Fichier `config.yaml`**
+
+```yaml
+version: 1
+
+grid:
+  cell_size: 0.15
+  overlap: 0.01
+
+inputs:
+  - path: "bdtopo/COMMUNE.shp"  # Contient MP_TYPE, NAME, Country, etc.
+  - path: "bdtopo/ROUTE.shp"
+
+output:
+  directory: "tiles_bdtopo/"
+  filename_pattern: "france_{x}_{y}.mp"
+  field_mapping_path: "bdtopo-mapping.yaml"  # ← Référence au fichier de mapping
+
+error_handling: "continue"
+```
+
+**Fichier `bdtopo-mapping.yaml`** (à créer dans le même répertoire)
+
+```yaml
+field_mapping:
+  # Champs principaux
+  MP_TYPE: Type          # Code type Garmin (ex: 0x4e00)
+  NAME: Label            # Nom de la feature
+
+  # Localisation
+  Country: CountryName   # Pays
+  CityName: CityName     # Ville/commune
+  Zip: Zip              # Code postal
+
+  # Affichage
+  MPBITLEVEL: Levels    # Niveaux de zoom
+  EndLevel: EndLevel    # Niveau max
+```
+
+**Commande**
+
+```bash
+mpforge-cli build --config config.yaml --jobs 4
+```
+
+**Résultat**
+
+Les fichiers `.mp` générés contiennent les champs corrects :
+
+```
+[POI]
+Type=0x4e00
+Label=Saint-Denis
+CountryName=France
+...
+```
+
+Au lieu des noms sources (`MP_TYPE`, `NAME`) qui seraient ignorés sans le mapping.
 
 ## Rapport JSON (CI/CD)
 

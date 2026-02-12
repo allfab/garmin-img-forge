@@ -5,9 +5,17 @@ use anyhow::{anyhow, Context, Result};
 use gdal::cpl::CslStringList;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
 use gdal::{Dataset, DriverManager};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{info, instrument, warn};
+
+/// Field mapping configuration structure for YAML deserialization.
+/// Story 7.4: Maps source field names to Polish Map canonical names.
+#[derive(Debug, Deserialize)]
+struct FieldMappingConfig {
+    field_mapping: HashMap<String, String>,
+}
 
 /// Statistics for export operations.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -22,6 +30,9 @@ pub struct MpWriter {
     output_path: PathBuf,
     dataset: Option<Dataset>,
     stats: ExportStats,
+    /// Optional field mapping (source_field -> polishmap_field).
+    /// Story 7.4: Used to transform attribute names before writing.
+    field_mapping: Option<HashMap<String, String>>,
 }
 
 impl MpWriter {
@@ -59,8 +70,8 @@ impl MpWriter {
 
         info!(path = %output_path.display(), "Creating MP dataset");
 
-        // Story 7.4: Branch based on field_mapping_path presence
-        let mut dataset = if let Some(mapping_path) = field_mapping_path {
+        // Story 7.4: Load field mapping if provided
+        let (field_mapping, mut dataset) = if let Some(mapping_path) = field_mapping_path {
             // Validate file exists before processing (H3 fix - validation moved here)
             if !mapping_path.exists() {
                 anyhow::bail!(
@@ -68,6 +79,13 @@ impl MpWriter {
                     mapping_path.display()
                 );
             }
+
+            // Load and parse YAML file
+            let mapping_content = std::fs::read_to_string(mapping_path)
+                .with_context(|| format!("Failed to read field mapping file: {}", mapping_path.display()))?;
+
+            let mapping_config: FieldMappingConfig = serde_yml::from_str(&mapping_content)
+                .with_context(|| format!("Failed to parse field mapping YAML: {}", mapping_path.display()))?;
 
             // Convert path to absolute path string for GDAL
             // Use canonicalize with fallback for symlinks/permissions edge cases (M2 fix)
@@ -87,6 +105,7 @@ impl MpWriter {
 
             info!(
                 field_mapping = %mapping_path_str,
+                mapping_count = mapping_config.field_mapping.len(),
                 "Creating dataset with field mapping configuration"
             );
 
@@ -94,7 +113,7 @@ impl MpWriter {
             let mut options = CslStringList::new();
             options.set_name_value("FIELD_MAPPING", mapping_path_str)?;
 
-            driver
+            let dataset = driver
                 .create_with_band_type_with_options::<u8, _>(
                     &output_path,
                     0, 0, 0,  // Vector-only dataset (0 dimensions, 0 bands)
@@ -103,13 +122,17 @@ impl MpWriter {
                 .with_context(|| format!(
                     "Failed to create dataset with field mapping: {}",
                     output_path.display()
-                ))?
+                ))?;
+
+            (Some(mapping_config.field_mapping), dataset)
         } else {
             // No field mapping - use hardcoded aliases (backward compatible)
             info!("Field mapping not configured, using driver hardcoded aliases (backward compatible)");
-            driver
+            let dataset = driver
                 .create_vector_only(&output_path)
-                .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?
+                .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?;
+
+            (None, dataset)
         };
 
         // Create POI layer
@@ -148,6 +171,7 @@ impl MpWriter {
             output_path,
             dataset: Some(dataset),
             stats: ExportStats::default(),
+            field_mapping,
         })
     }
 
@@ -175,6 +199,9 @@ impl MpWriter {
             return Ok(ExportStats::default());
         }
 
+        // Story 7.4: Extract field_mapping reference before borrowing dataset (borrow checker)
+        let field_mapping = self.field_mapping.as_ref();
+
         let dataset = self
             .dataset
             .as_mut()
@@ -197,17 +224,17 @@ impl MpWriter {
         for feature in features {
             match feature.geometry_type {
                 GeometryType::Point => {
-                    Self::write_point_feature(&mut poi_layer, feature)
+                    Self::write_point_feature(&mut poi_layer, feature, field_mapping)
                         .context("Failed to write POI feature")?;
                     stats.point_count += 1;
                 }
                 GeometryType::LineString => {
-                    Self::write_linestring_feature(&mut polyline_layer, feature)
+                    Self::write_linestring_feature(&mut polyline_layer, feature, field_mapping)
                         .context("Failed to write POLYLINE feature")?;
                     stats.linestring_count += 1;
                 }
                 GeometryType::Polygon => {
-                    Self::write_polygon_feature(&mut polygon_layer, feature)
+                    Self::write_polygon_feature(&mut polygon_layer, feature, field_mapping)
                         .context("Failed to write POLYGON feature")?;
                     stats.polygon_count += 1;
                 }
@@ -226,7 +253,11 @@ impl MpWriter {
     }
 
     /// Write a POI feature to the POI layer.
-    fn write_point_feature(layer: &mut gdal::vector::Layer, feature: &Feature) -> Result<()> {
+    fn write_point_feature(
+        layer: &mut gdal::vector::Layer,
+        feature: &Feature,
+        field_mapping: Option<&HashMap<String, String>>,
+    ) -> Result<()> {
         if feature.geometry.is_empty() {
             warn!("Skipping POI feature with empty geometry");
             return Ok(());
@@ -248,7 +279,7 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes)?;
+        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
 
         // Write to layer
         ogr_feature
@@ -259,7 +290,11 @@ impl MpWriter {
     }
 
     /// Write a POLYLINE feature to the POLYLINE layer.
-    fn write_linestring_feature(layer: &mut gdal::vector::Layer, feature: &Feature) -> Result<()> {
+    fn write_linestring_feature(
+        layer: &mut gdal::vector::Layer,
+        feature: &Feature,
+        field_mapping: Option<&HashMap<String, String>>,
+    ) -> Result<()> {
         if feature.geometry.len() < 2 {
             warn!("Skipping POLYLINE feature with less than 2 points");
             return Ok(());
@@ -288,7 +323,7 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes)?;
+        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
 
         // Write to layer
         ogr_feature
@@ -299,7 +334,11 @@ impl MpWriter {
     }
 
     /// Write a POLYGON feature to the POLYGON layer.
-    fn write_polygon_feature(layer: &mut gdal::vector::Layer, feature: &Feature) -> Result<()> {
+    fn write_polygon_feature(
+        layer: &mut gdal::vector::Layer,
+        feature: &Feature,
+        field_mapping: Option<&HashMap<String, String>>,
+    ) -> Result<()> {
         // Note: Minimum 4 points for closed polygon ring (start point == end point)
         // This assumes the polygon is not auto-closed by GDAL.
         // If GDAL auto-closes, 3 points would suffice for a triangle.
@@ -330,7 +369,7 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes)?;
+        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
 
         // Write to layer
         ogr_feature
@@ -341,27 +380,47 @@ impl MpWriter {
     }
 
     /// Set feature attributes from HashMap to OGR feature.
+    /// Story 7.4: Uses field_mapping to transform source field names to Polish Map canonical names.
     fn set_feature_attributes(
         layer_defn: &gdal::vector::Defn,
         ogr_feature: &mut gdal::vector::Feature,
         attributes: &HashMap<String, String>,
+        field_mapping: Option<&HashMap<String, String>>,
     ) -> Result<()> {
-        for (key, value) in attributes {
-            // Find field index by name
-            if let Ok(field_idx) = layer_defn.field_index(key) {
+        for (source_key, value) in attributes {
+            // Story 7.4: Transform field name using mapping if provided
+            let target_key = if let Some(mapping) = field_mapping {
+                // Use mapped name if it exists, otherwise use source name as-is
+                mapping.get(source_key).map(|s| s.as_str()).unwrap_or(source_key)
+            } else {
+                // No mapping - use source name (backward compatible)
+                source_key
+            };
+
+            // DEBUG: Log mapping transformation
+            if source_key != target_key {
+                info!(source_field = source_key, target_field = target_key, value = value, "Field mapping applied");
+            }
+
+            // Find field index by name (using target_key)
+            if let Ok(field_idx) = layer_defn.field_index(target_key) {
                 // Set field using index
                 if let Err(e) = ogr_feature.set_field_string(field_idx, value) {
                     // Field set failed - log warning and continue (graceful degradation)
                     warn!(
-                        field = key,
+                        source_field = source_key,
+                        target_field = target_key,
                         value = value,
                         error = %e,
                         "Failed to set field attribute, skipping"
                     );
                     continue;
                 }
+                info!(source_field = source_key, target_field = target_key, value = value, "Field set successfully");
+            } else {
+                // Field not in schema - log warning for debugging
+                warn!(source_field = source_key, target_field = target_key, "Field not found in layer schema");
             }
-            // Field not in schema - skip silently (expected for non-standard attributes)
         }
         Ok(())
     }

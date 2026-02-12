@@ -1,0 +1,27 @@
+# Simple configuration example with field mapping
+# This example shows how to use field mapping for sources with custom field names
+
+version: 1
+
+grid:
+  cell_size: 0.15      # ~16.5 km cell size
+  overlap: 0.01        # 1% overlap between tiles
+
+inputs:
+  # Your source data with custom field names (e.g., MP_TYPE, NAME)
+  - path: "data/communes.shp"
+  - path: "data/routes.shp"
+
+output:
+  directory: "tiles/"
+  filename_pattern: "{x}_{y}.mp"
+
+  # FIELD MAPPING: Reference to external YAML file (Story 7.4)
+  # This file defines how to map source field names to Polish Map canonical names
+  field_mapping_path: "simple-mapping.yaml"
+
+  # Note: The path is relative to the current working directory (pwd).
+  #       Use an absolute path to avoid ambiguity.
+  #       Example: field_mapping_path: "/absolute/path/to/simple-mapping.yaml"
+
+error_handling: "continue"  # Continue processing even if some tiles fail
