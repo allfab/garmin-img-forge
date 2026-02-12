@@ -100,7 +100,7 @@ field_mapping:
 # https://geoservices.ign.fr/bdtopo
 #
 # Documentation mpforge-cli :
-# https://github.com/fabien/mpforge/blob/main/mpforge-cli/README.md#field-mapping-configuration
+# https://forgejo.allfabox.fr/allfab/mpforge/src/branch/main/mpforge-cli/README.md#field-mapping-configuration
 #
 # Format Polish Map :
 # http://cgpsmapper.com/buy.htm

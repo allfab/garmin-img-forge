@@ -618,7 +618,7 @@ Les contributions sont les bienvenues ! Voir le workflow BMAD dans `/_bmad/` pou
 
 - **Documentation** : Voir [`doc/config-schema.md`](doc/config-schema.md)
 - **Exemples** : Voir [`examples/`](examples/)
-- **Issues** : https://github.com/anthropics/claude-code/issues
+- **Issues** : https://forgejo.allfabox.fr/allfab/mpforge/issues
 
 ## Auteurs
 
