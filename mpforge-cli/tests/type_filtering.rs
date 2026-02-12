@@ -199,9 +199,11 @@ fn test_json_report_with_empty_quality_section() {
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
-    // quality should be present but unsupported_types should be empty
+    // Code Review M3 Fix: quality is present but both fields are skipped when empty/None
     assert!(json.contains("\"quality\""));
-    assert!(json.contains("\"unsupported_types\": {}"));
+    // Empty BTreeMap is now skipped via skip_serializing_if
+    assert!(!json.contains("\"unsupported_types\""), "Empty unsupported_types should be skipped");
+    assert!(!json.contains("\"multi_geometries_decomposed\""), "None multi_geometries_decomposed should be skipped");
 }
 
 #[test]

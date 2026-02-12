@@ -46,6 +46,8 @@ pub struct ExecutionReport {
 /// Code Review M3 Fix: Use BTreeMap for deterministic JSON key ordering.
 #[derive(Debug, Serialize, Clone)]
 pub struct QualitySection {
+    /// Code Review M3 Fix: Skip empty unsupported_types to avoid spurious `"unsupported_types": {}` in JSON.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub unsupported_types: BTreeMap<String, UnsupportedTypeReport>,
 
     /// Story 6.7 - Subtask 5.1: Multi-geometries decomposed into simple geometries (type -> count).

@@ -131,6 +131,17 @@ impl MultiGeometryStats {
     pub fn is_empty(&self) -> bool {
         self.by_type.is_empty()
     }
+
+    /// Merge another MultiGeometryStats into this one.
+    /// Code Review M2 Fix: O(T) merge instead of O(N) loop-and-record pattern.
+    /// Mirrors UnsupportedTypeStats::merge() for API symmetry.
+    #[instrument(skip(self, other))]
+    pub fn merge(&mut self, other: &MultiGeometryStats) {
+        for (type_name, entry) in &other.by_type {
+            let target = self.by_type.entry(type_name.clone()).or_default();
+            target.count += entry.count;
+        }
+    }
 }
 
 /// Feature envelope for R-tree indexing.
@@ -393,12 +404,8 @@ impl SourceReader {
                 let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
-                // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
-                for (type_name, entry) in multi_geom.by_type {
-                    for _ in 0..entry.count {
-                        all_multi_geom.record(type_name.clone());
-                    }
-                }
+                // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
+                all_multi_geom.merge(&multi_geom);
             } else {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
@@ -413,12 +420,8 @@ impl SourceReader {
                             );
                             all_features.extend(features);
                             all_unsupported.merge(&unsupported);
-                            // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
-                            for (type_name, entry) in multi_geom.by_type {
-                                for _ in 0..entry.count {
-                                    all_multi_geom.record(type_name.clone());
-                                }
-                            }
+                            // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
+                            all_multi_geom.merge(&multi_geom);
                         }
                         Err(e) => {
                             warn!(
@@ -442,12 +445,8 @@ impl SourceReader {
             let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
-            // Story 6.7 - Subtask 4.1: Accumulate multi-geometry stats
-            for (type_name, entry) in multi_geom.by_type {
-                for _ in 0..entry.count {
-                    all_multi_geom.record(type_name.clone());
-                }
-            }
+            // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
+            all_multi_geom.merge(&multi_geom);
         }
 
         // Log total statistics
@@ -589,7 +588,8 @@ impl SourceReader {
                             let type_name = match geom.geometry_type() {
                                 // Story 6.7: MultiPoint/MultiLineString/MultiPolygon are now SUPPORTED (decomposed)
                                 // Only GeometryCollection and truly unknown types are unsupported
-                                OGRwkbGeometryType::wkbGeometryCollection => "GeometryCollection".to_string(),
+                                OGRwkbGeometryType::wkbGeometryCollection
+                                | OGRwkbGeometryType::wkbGeometryCollection25D => "GeometryCollection".to_string(),
                                 // Fallback for any other types using Debug format
                                 other => {
                                     let debug_str = format!("{:?}", other);
@@ -670,12 +670,8 @@ impl SourceReader {
                 Ok((features, unsupported, multi_geom)) => {
                     let count = features.len();
                     all_unsupported.merge(&unsupported);
-                    // Story 6.7 - Subtask 4.3: Accumulate multi-geometry stats
-                    for (type_name, entry) in multi_geom.by_type {
-                        for _ in 0..entry.count {
-                            all_multi_geom.record(type_name.clone());
-                        }
-                    }
+                    // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
+                    all_multi_geom.merge(&multi_geom);
 
                     // Update statistics
                     for feature in &features {
@@ -802,6 +798,61 @@ pub struct Feature {
 }
 
 impl Feature {
+    /// Extract all attributes from a GDAL feature as string key-value pairs.
+    /// Code Review H4 Fix: Shared helper to avoid duplication between from_gdal_feature and process_sub_geometry.
+    fn extract_attributes(gdal_feature: &gdal::vector::Feature) -> HashMap<String, String> {
+        let mut attributes = HashMap::new();
+        for (field_name, field_value) in gdal_feature.fields() {
+            let value_str = match field_value {
+                Some(gdal::vector::FieldValue::StringValue(s)) => s.to_string(),
+                Some(gdal::vector::FieldValue::IntegerValue(i)) => i.to_string(),
+                Some(gdal::vector::FieldValue::Integer64Value(i)) => i.to_string(),
+                Some(gdal::vector::FieldValue::RealValue(r)) => r.to_string(),
+                Some(gdal::vector::FieldValue::DateValue(d)) => format!("{:?}", d),
+                Some(gdal::vector::FieldValue::DateTimeValue(dt)) => format!("{:?}", dt),
+                Some(gdal::vector::FieldValue::IntegerListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::Integer64ListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::RealListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                Some(gdal::vector::FieldValue::StringListValue(list)) => {
+                    format!(
+                        "[{}]",
+                        list.iter()
+                            .map(|s| format!("\"{}\"", s))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }
+                None => String::new(),
+            };
+            attributes.insert(field_name.to_string(), value_str);
+        }
+        attributes
+    }
+
     /// Decompose a GDAL multi-geometry into N simple geometry features.
     ///
     /// Story 6.7 - Task 2: Decompose MultiPoint, MultiLineString, MultiPolygon into simple geometries.
@@ -809,7 +860,6 @@ impl Feature {
     ///
     /// # Arguments
     /// * `gdal_feature` - GDAL feature containing multi-geometry
-    /// * `target_srs` - Target SRS for coordinate transformation (WGS84)
     ///
     /// # Returns
     /// * `Result<Vec<Feature>>` - N features (one per sub-geometry), or empty vec if error
@@ -817,9 +867,10 @@ impl Feature {
     /// # Errors
     /// * Feature has no geometry
     /// * Invalid sub-geometry structure
+    /// Code Review M1 Fix: Added #[instrument] per Story 6.6 M5 learning.
+    #[instrument(skip(gdal_feature))]
     fn decompose_multi_geometry(
         gdal_feature: &gdal::vector::Feature,
-        target_srs: Option<&SpatialRef>,
     ) -> Result<Vec<Feature>> {
         let geometry = gdal_feature
             .geometry()
@@ -865,7 +916,7 @@ impl Feature {
             let sub_geom = geometry.get_geometry(i);
 
             // Subtask 2.6: Handle errors with logging and skip problematic sub-geometries
-            match Self::process_sub_geometry(&sub_geom, simple_geom_type, gdal_feature, target_srs)
+            match Self::process_sub_geometry(&sub_geom, simple_geom_type, gdal_feature)
             {
                 Ok(feature) => sub_features.push(feature),
                 Err(e) => {
@@ -892,81 +943,27 @@ impl Feature {
     /// Process a single sub-geometry from a multi-geometry.
     ///
     /// Helper function to extract coordinates and attributes for one sub-geometry.
+    /// Code Review M4 Fix: Removed target_srs parameter (always None, SRS transform done upstream).
+    /// Code Review M1 Fix: Added #[instrument] per Story 6.6 M5 learning.
     ///
     /// # Arguments
     /// * `sub_geom` - GDAL geometry (sub-geometry from multi)
     /// * `geom_type` - Simple geometry type (Point, LineString, or Polygon)
     /// * `parent_feature` - Parent GDAL feature (for attribute cloning)
-    /// * `target_srs` - Target SRS for coordinate transformation
     ///
     /// # Returns
     /// * `Result<Feature>` - Feature with geometry and cloned attributes
+    #[instrument(skip(sub_geom, parent_feature))]
     fn process_sub_geometry(
         sub_geom: &gdal::vector::Geometry,
         geom_type: GeometryType,
         parent_feature: &gdal::vector::Feature,
-        target_srs: Option<&SpatialRef>,
     ) -> Result<Feature> {
-        // Transform sub-geometry to target SRS if needed
-        if let Some(srs) = target_srs {
-            sub_geom
-                .transform_to(srs)
-                .context("Failed to transform sub-geometry to target SRS")?;
-        }
-
         // Extract coordinates from sub-geometry
         let coords = Self::extract_coordinates(sub_geom, geom_type)?;
 
-        // Subtask 2.4: Clone attributes from parent feature to each sub-geometry
-        let mut attributes = HashMap::new();
-        for (field_name, field_value) in parent_feature.fields() {
-            let value_str = match field_value {
-                Some(gdal::vector::FieldValue::StringValue(s)) => s.to_string(),
-                Some(gdal::vector::FieldValue::IntegerValue(i)) => i.to_string(),
-                Some(gdal::vector::FieldValue::Integer64Value(i)) => i.to_string(),
-                Some(gdal::vector::FieldValue::RealValue(r)) => r.to_string(),
-                Some(gdal::vector::FieldValue::DateValue(d)) => format!("{:?}", d),
-                Some(gdal::vector::FieldValue::DateTimeValue(dt)) => format!("{:?}", dt),
-                Some(gdal::vector::FieldValue::IntegerListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::Integer64ListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::RealListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::StringListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|s| format!("\"{}\"", s))
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                None => String::new(),
-            };
-            attributes.insert(field_name.to_string(), value_str);
-        }
+        // Subtask 2.4: Clone attributes from parent feature using shared helper
+        let attributes = Self::extract_attributes(parent_feature);
 
         Ok(Feature {
             geometry_type: geom_type,
@@ -1005,20 +1002,22 @@ impl Feature {
             | OGRwkbGeometryType::wkbMultiPolygon
             | OGRwkbGeometryType::wkbMultiPolygon25D => {
                 debug!(geometry_type = ?geom_type, "Decomposing multi-geometry");
-                return Self::decompose_multi_geometry(gdal_feature, None);
+                return Self::decompose_multi_geometry(gdal_feature);
             }
-            // Subtask 3.5: GeometryCollection → filter with warning
-            OGRwkbGeometryType::wkbGeometryCollection => {
+            // Subtask 3.5: GeometryCollection → filter with warning (including 25D variant)
+            // Code Review M5 Fix: Handle GeometryCollection25D explicitly
+            OGRwkbGeometryType::wkbGeometryCollection
+            | OGRwkbGeometryType::wkbGeometryCollection25D => {
                 warn!(
                     geometry_type = ?geom_type,
                     "GeometryCollection is not supported, filtering feature"
                 );
                 return Ok(vec![]);
             }
-            // Simple geometries → continue with normal processing
-            OGRwkbGeometryType::wkbPoint => {}
-            OGRwkbGeometryType::wkbLineString => {}
-            OGRwkbGeometryType::wkbPolygon => {}
+            // Simple geometries → continue with normal processing (including 25D variants)
+            OGRwkbGeometryType::wkbPoint | OGRwkbGeometryType::wkbPoint25D => {}
+            OGRwkbGeometryType::wkbLineString | OGRwkbGeometryType::wkbLineString25D => {}
+            OGRwkbGeometryType::wkbPolygon | OGRwkbGeometryType::wkbPolygon25D => {}
             // Other unsupported types
             other => {
                 debug!(geometry_type = ?other, "Skipping unsupported geometry type");
@@ -1026,71 +1025,23 @@ impl Feature {
             }
         }
 
-        // 2. Get simple geometry type for processing
+        // 2. Get simple geometry type for processing (including 25D variants)
         let geometry_type = match geom_type {
-            OGRwkbGeometryType::wkbPoint => GeometryType::Point,
-            OGRwkbGeometryType::wkbLineString => GeometryType::LineString,
-            OGRwkbGeometryType::wkbPolygon => GeometryType::Polygon,
+            OGRwkbGeometryType::wkbPoint | OGRwkbGeometryType::wkbPoint25D => GeometryType::Point,
+            OGRwkbGeometryType::wkbLineString | OGRwkbGeometryType::wkbLineString25D => {
+                GeometryType::LineString
+            }
+            OGRwkbGeometryType::wkbPolygon | OGRwkbGeometryType::wkbPolygon25D => {
+                GeometryType::Polygon
+            }
             _ => unreachable!("Should have been handled by match above"),
         };
 
         // 3. Extract coordinates
         let geometry_coords = Self::extract_coordinates(geometry, geometry_type)?;
 
-        // 4. Extract all attributes from feature fields
-        let mut attributes = HashMap::new();
-
-        for (field_name, field_value) in gdal_feature.fields() {
-            // Convert field value to string representation
-            let value_str = match field_value {
-                Some(gdal::vector::FieldValue::StringValue(s)) => s.to_string(),
-                Some(gdal::vector::FieldValue::IntegerValue(i)) => i.to_string(),
-                Some(gdal::vector::FieldValue::Integer64Value(i)) => i.to_string(),
-                Some(gdal::vector::FieldValue::RealValue(r)) => r.to_string(),
-                Some(gdal::vector::FieldValue::DateValue(d)) => format!("{:?}", d),
-                Some(gdal::vector::FieldValue::DateTimeValue(dt)) => format!("{:?}", dt),
-                // Handle list types by converting to JSON-like string
-                Some(gdal::vector::FieldValue::IntegerListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::Integer64ListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::RealListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                Some(gdal::vector::FieldValue::StringListValue(list)) => {
-                    format!(
-                        "[{}]",
-                        list.iter()
-                            .map(|s| format!("\"{}\"", s))
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    )
-                }
-                None => String::new(),
-            };
-
-            attributes.insert(field_name.to_string(), value_str);
-        }
+        // 4. Extract all attributes from feature fields (using shared helper)
+        let attributes = Self::extract_attributes(gdal_feature);
 
         // Log debug information about the feature
         debug!(
