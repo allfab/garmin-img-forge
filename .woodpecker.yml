@@ -46,8 +46,8 @@ steps:
 
       # Copier dans un dossier d'artifacts (workspace partagé)
       - mkdir -p ../artifacts
-      - cp target/release/mpforge-cli ../artifacts/mpforge-cli-linux-x64
-      - strip ../artifacts/mpforge-cli-linux-x64
+      - cp target/release/mpforge-cli ../artifacts/mpforge-cli
+      - strip ../artifacts/mpforge-cli
     when:
       event: [push, pull_request]
 
@@ -75,7 +75,7 @@ steps:
     commands:
       # Créer les archives
       - cd artifacts
-      - tar czf mpforge-cli-linux-x64.tar.gz mpforge-cli-linux-x64
+      - tar czf mpforge-cli-linux-x64.tar.gz mpforge-cli
       - ls -lh *.tar.gz
 
       # Calculer les checksums
@@ -87,10 +87,17 @@ steps:
         cat > release-notes.md << 'EOF'
         ## 📦 mpforge-cli ${CI_COMMIT_TAG}
 
-        ### Binaires
+        ### 📥 Téléchargement
         - Linux x64 : `mpforge-cli-linux-x64.tar.gz`
 
-        ### Checksums
+        ### 📋 Installation
+        ```bash
+        tar xzf mpforge-cli-linux-x64.tar.gz
+        sudo mv mpforge-cli /usr/local/bin/
+        mpforge-cli --version
+        ```
+
+        ### 🔐 Checksums
         Voir le fichier `checksums.txt` attaché.
 
         ---
