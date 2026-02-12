@@ -35,8 +35,7 @@ steps:
     image: rust:alpine3.21
     commands:
       # Installer dépendances (Alpine utilise musl nativement)
-      # Note: gdal-dev contient déjà les bibliothèques statiques .a sur Alpine
-      - apk add --no-cache musl-dev gdal-dev pkgconf
+      - apk add --no-cache musl-dev gdal gdal-dev pkgconf
 
       # Ajouter la target musl
       - rustup target add x86_64-unknown-linux-musl
