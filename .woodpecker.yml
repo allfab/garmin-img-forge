@@ -39,7 +39,7 @@ steps:
 
       # Build
       - cd mpforge-cli
-      - cargo build --release --target x86_64-unknown-linux-gnu
+      - cargo build --release
 
       # Vérifier que le binaire existe
       - ls -lh target/release/mpforge-cli
