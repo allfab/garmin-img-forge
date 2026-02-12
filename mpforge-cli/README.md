@@ -18,12 +18,54 @@
 
 ## Installation
 
-### Prérequis
+### Option 1 : Binaire pré-compilé (recommandé)
+
+Téléchargez le binaire depuis la [page des releases](https://forgejo.allfabox.fr/allfab/mpforge/releases) :
+
+**Linux x64** :
+```bash
+# Télécharger
+wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-x64.tar.gz
+
+# Extraire et installer
+tar xzf mpforge-cli-linux-x64.tar.gz
+sudo mv mpforge-cli /usr/local/bin/
+mpforge-cli --version
+```
+
+**Linux ARM64** (Raspberry Pi, serveurs ARM) :
+```bash
+# Télécharger
+wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-arm64.tar.gz
+
+# Extraire et installer
+tar xzf mpforge-cli-linux-arm64.tar.gz
+sudo mv mpforge-cli /usr/local/bin/
+mpforge-cli --version
+```
+
+✅ **Les binaires sont entièrement autonomes et ne nécessitent aucune dépendance système.**
+
+### Option 2 : Compilation depuis les sources
+
+#### Prérequis
 
 - **Rust** : 1.70+ ([rustup](https://rustup.rs/))
 - **GDAL** : 3.0+ (avec support OGR)
 
-### Compilation
+```bash
+# Installer GDAL (requis pour la compilation)
+# Fedora
+sudo dnf install gdal-devel
+
+# Ubuntu/Debian
+sudo apt install libgdal-dev gdal-bin
+
+# Alpine
+sudo apk add gdal-dev
+```
+
+#### Compilation
 
 ```bash
 cd mpforge-cli
@@ -32,7 +74,7 @@ cargo build --release
 
 L'exécutable sera disponible dans `target/release/mpforge-cli`.
 
-### Installation globale
+#### Installation globale
 
 ```bash
 cargo install --path .

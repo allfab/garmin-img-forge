@@ -29,25 +29,37 @@ steps:
 
   # ============================================================================
   # Étape 2 : Build Linux
+  # Binaire statique portable (musl + GDAL statique)
   # ============================================================================
   build-linux:
-    image: *rust_image
+    image: rust:alpine3.21
     commands:
-      # Installer GDAL
-      - apt-get update
-      - apt-get install -y libgdal-dev gdal-bin pkg-config
+      # Installer dépendances (Alpine utilise musl nativement)
+      - apk add --no-cache musl-dev gdal-dev gdal-static pkgconf
+
+      # Ajouter la target musl
+      - rustup target add x86_64-unknown-linux-musl
+
+      # Variables pour forcer le linkage statique
+      - export GDAL_STATIC=1
+      - export GDAL_DYNAMIC=0
+      - export PKG_CONFIG_ALL_STATIC=1
+      - export RUSTFLAGS="-C target-feature=+crt-static"
 
       # Build
       - cd mpforge-cli
-      - cargo build --release
+      - cargo build --release --target x86_64-unknown-linux-musl
 
-      # Vérifier que le binaire existe
-      - ls -lh target/release/mpforge-cli
+      # Vérifier que le binaire est statique
+      - ldd target/x86_64-unknown-linux-musl/release/mpforge-cli || echo "✓ Binaire statique confirmé"
 
-      # Copier dans un dossier d'artifacts (workspace partagé)
+      # Copier dans artifacts
       - mkdir -p ../artifacts
-      - cp target/release/mpforge-cli ../artifacts/mpforge-cli
+      - cp target/x86_64-unknown-linux-musl/release/mpforge-cli ../artifacts/mpforge-cli
       - strip ../artifacts/mpforge-cli
+
+      # Afficher info binaire
+      - ls -lh ../artifacts/mpforge-cli
     when:
       event: [push, pull_request]
 
