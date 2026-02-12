@@ -258,20 +258,10 @@ impl Config {
         // where file could be deleted between config validation and usage.
         // See writer.rs:65-69 for canonicalize() with proper error context.
 
-        // Header template validation (Story 8.1)
-        // Unlike field_mapping, template path is validated here because:
-        // - Template is global config (not per-tile), so race condition risk is minimal
-        // - Early validation provides clear error message before any tile processing starts
-        if let Some(header) = &self.header {
-            if let Some(template_path) = &header.template {
-                if !template_path.exists() {
-                    anyhow::bail!(
-                        "header.template file does not exist: {}. Please provide a valid .mp template file.",
-                        template_path.display()
-                    );
-                }
-            }
-        }
+        // Header template validation removed (Story 8.1 Code Review Fix H2)
+        // Validation moved to MpWriter::new() to avoid TOCTOU race condition in parallel mode.
+        // Same rationale as field_mapping: file could be deleted between config load and first tile export.
+        // See writer.rs for validation with proper error context at actual usage time.
 
         Ok(())
     }
@@ -888,7 +878,9 @@ header:
     }
 
     #[test]
-    fn test_config_header_template_validation_error() {
+    fn test_config_header_template_no_early_validation() {
+        // Story 8.1 Code Review Fix H2: Template validation moved to MpWriter::new()
+        // Config::validate() no longer checks template existence to avoid TOCTOU race
         let yaml = r#"
 version: 1
 grid:
@@ -902,9 +894,8 @@ header:
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
-        assert!(result.is_err());
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("template") || error_msg.contains("does not exist"));
+        // Should pass - validation happens at usage time in MpWriter::new()
+        assert!(result.is_ok(), "Config validation should not check template existence (TOCTOU fix)");
     }
 
     #[test]

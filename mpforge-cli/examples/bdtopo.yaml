@@ -144,6 +144,7 @@ filters:
 #     DrawPriority: "25"               # Custom draw priority
 #     MG: "N"                          # Custom MG flag
 #
-# NOTE: If both 'template' and individual fields are specified, 'template' takes precedence.
+# NOTE: If both 'template' and individual fields are specified, only the template is used.
+#       Individual fields are ignored when a template is present (mutually exclusive, not precedence).
 
 error_handling: "continue"  # OPTIONAL: "continue" or "fail-fast" (default: "continue")

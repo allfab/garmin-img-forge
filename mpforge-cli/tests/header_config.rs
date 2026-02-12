@@ -1,6 +1,6 @@
 //! Integration tests for header configuration (Story 8.1)
 
-use mpforge_cli::config::{Config, GridConfig, HeaderConfig, InputSource, OutputConfig};
+use mpforge_cli::config::HeaderConfig;
 use mpforge_cli::pipeline::writer::MpWriter;
 use std::collections::HashMap;
 use std::fs;
@@ -115,18 +115,28 @@ fn test_ac1_template_passthrough() {
     // Verify output file exists
     assert!(output_path.exists(), "MP file should exist");
 
-    // Verify header contains template values via ogrinfo
+    // Verify header contains template values (AC1 requires checking actual content)
+    let header_content = read_mp_header(&output_path);
+    assert!(
+        header_content.contains("Name=Template Map"),
+        "Header must use template name (AC1)"
+    );
+    assert!(
+        header_content.contains("ID=42"),
+        "Header must use template ID (AC1)"
+    );
+    assert!(
+        header_content.contains("Copyright=Test Corp"),
+        "Header must use template copyright (AC1)"
+    );
+
+    // Also verify via ogrinfo for completeness
     let ogrinfo_output = Command::new("ogrinfo")
         .arg("-al")
         .arg(&output_path)
         .output()
         .expect("Failed to run ogrinfo");
 
-    let ogrinfo_str = String::from_utf8_lossy(&ogrinfo_output.stdout);
-    println!("ogrinfo output:\n{}", ogrinfo_str);
-
-    // Metadata is accessible via ogrinfo domain queries (driver-specific)
-    // For now, we verify the file was created successfully with template
     assert!(
         ogrinfo_output.status.success(),
         "ogrinfo should succeed on generated MP"
@@ -249,15 +259,29 @@ fn test_ac3_template_precedence() {
 
     assert!(output_path.exists(), "MP file should exist");
 
-    // Verify template name is used, not individual name
+    // AC3: Verify template precedence (Code Review Fix M3: robust validation)
     let header_content = read_mp_header(&output_path);
+
+    // Positive check: template values MUST be present
     assert!(
         header_content.contains("Name=Template Name"),
-        "Header should use template name"
+        "Header must use template name (AC3)"
     );
     assert!(
+        header_content.contains("ID=99"),
+        "Header must use template ID (AC3)"
+    );
+
+    // Negative check: individual fields MUST NOT be present
+    assert!(
         !header_content.contains("Individual Name"),
-        "Header should NOT use individual name when template present"
+        "Header must NOT use individual name when template present (AC3)"
+    );
+
+    // Robustness check: Verify some header content exists (not empty/broken)
+    assert!(
+        header_content.contains("[IMG ID]"),
+        "Header section must exist and be valid"
     );
 }
 
@@ -309,12 +333,11 @@ fn test_ac4_invalid_template_error() {
         Ok(_) => panic!("MpWriter::new() should fail with nonexistent template"),
         Err(e) => {
             let error_msg = e.to_string();
-            // Error comes from GDAL driver creation failure
-            // GDAL will log "ERROR 4: HEADER_TEMPLATE file not found" to stderr
-            // Our wrapper returns generic "Failed to create dataset with options"
+            // AC4 requires "erreur claire avec chemin du fichier"
+            // Must show the actual template path so user knows what's wrong
             assert!(
-                error_msg.contains("Failed to create dataset") || error_msg.contains("template") || error_msg.contains("Failed to resolve"),
-                "Error message should indicate dataset creation failure: {}",
+                error_msg.contains("/nonexistent/template.mp") || error_msg.contains("nonexistent"),
+                "Error message must show template path (AC4): {}",
                 error_msg
             );
         }
@@ -341,7 +364,32 @@ fn test_ac5_header_optional() {
 
     assert!(output_path.exists(), "MP file should exist without header");
 
-    // Verify it's a valid MP file
+    // AC5: Verify "aucune régression" - behavior identical to legacy mode
+    // Code Review Fix L2: Check actual header content for driver defaults
+    let header_content = read_mp_header(&output_path);
+
+    // Verify basic header structure exists (driver defaults)
+    assert!(
+        header_content.contains("[IMG ID]"),
+        "Header section must exist with driver defaults (AC5)"
+    );
+
+    // Verify NO unexpected fields were added (regression check)
+    // Driver should produce minimal header without extra fields
+    let unexpected_fields = ["Name=", "Copyright=", "Levels="];
+    let has_unexpected = unexpected_fields
+        .iter()
+        .any(|field| header_content.contains(field));
+
+    // Note: Some drivers may add default Name/ID - this is OK as long as ogrinfo validates
+    if has_unexpected {
+        println!(
+            "INFO: Driver added default fields (acceptable): {}",
+            header_content
+        );
+    }
+
+    // Verify it's a valid MP file via ogrinfo (primary AC5 check)
     let ogrinfo_output = Command::new("ogrinfo")
         .arg("-al")
         .arg(&output_path)
@@ -350,7 +398,7 @@ fn test_ac5_header_optional() {
 
     assert!(
         ogrinfo_output.status.success(),
-        "ogrinfo should succeed on MP without header config"
+        "ogrinfo must succeed on MP without header config (AC5 - no regression)"
     );
 }
 

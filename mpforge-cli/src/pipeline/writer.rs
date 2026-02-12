@@ -191,6 +191,15 @@ impl MpWriter {
         // Story 8.1: Add HEADER_TEMPLATE option if provided
         if let Some(header) = header_config {
             if let Some(template_path) = &header.template {
+                // Story 8.1 Code Review Fix H2: Validate template exists at usage time (not config load)
+                // This avoids TOCTOU race condition in parallel mode (same pattern as field_mapping)
+                if !template_path.exists() {
+                    anyhow::bail!(
+                        "header.template file does not exist: {}. Please provide a valid .mp template file.",
+                        template_path.display()
+                    );
+                }
+
                 // Convert path to absolute path string for GDAL (same pattern as field_mapping)
                 let template_path_abs = std::fs::canonicalize(template_path)
                     .or_else(|_| {
@@ -227,10 +236,20 @@ impl MpWriter {
                     &options,
                 )
                 .with_context(|| {
-                    format!(
+                    // Code Review Fix L1: Explicit error context for better DX
+                    let mut msg = format!(
                         "Failed to create dataset with options: {}",
                         output_path.display()
-                    )
+                    );
+                    if let Some(header) = header_config {
+                        if let Some(template) = &header.template {
+                            msg.push_str(&format!(
+                                "\n  HEADER_TEMPLATE used: {} (check GDAL stderr for details)",
+                                template.display()
+                            ));
+                        }
+                    }
+                    msg
                 })?
         } else {
             info!("Creating dataset without creation options (backward compatible)");
@@ -241,7 +260,9 @@ impl MpWriter {
 
         // Story 8.1: Set individual header fields via SetMetadataItem (if no template)
         if let Some(header) = header_config {
-            // Only set individual fields if NO template (template takes precedence per driver logic)
+            // Code Review Fix M2: Mutually exclusive design - mpforge-cli doesn't send individual
+            // fields when template is present. This is NOT driver precedence, it's CLI logic.
+            // Rationale: Template is meant to be a complete header replacement.
             if header.template.is_none() {
                 Self::set_header_metadata(&mut dataset, header)?;
             }
