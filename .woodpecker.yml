@@ -44,10 +44,10 @@ steps:
       # Vérifier que le binaire existe
       - ls -lh target/release/mpforge-cli
 
-      # Copier dans un dossier d'artifacts
-      - mkdir -p /artifacts
-      - cp target/release/mpforge-cli /artifacts/mpforge-cli-linux-x64
-      - strip /artifacts/mpforge-cli-linux-x64
+      # Copier dans un dossier d'artifacts (workspace partagé)
+      - mkdir -p ../artifacts
+      - cp target/release/mpforge-cli ../artifacts/mpforge-cli-linux-x64
+      - strip ../artifacts/mpforge-cli-linux-x64
     when:
       event: [push, pull_request]
 
@@ -74,7 +74,7 @@ steps:
     image: alpine:latest
     commands:
       # Créer les archives
-      - cd /artifacts
+      - cd artifacts
       - tar czf mpforge-cli-linux-x64.tar.gz mpforge-cli-linux-x64
       - ls -lh *.tar.gz
 
@@ -95,8 +95,8 @@ steps:
         from_secret: forgejo_token
       base_url: https://forgejo.allfabox.fr
       files:
-        - /artifacts/*.tar.gz
-        - /artifacts/checksums.txt
+        - artifacts/*.tar.gz
+        - artifacts/checksums.txt
       title: "Release ${CI_COMMIT_TAG}"
       note: |
         ## 📦 mpforge-cli ${CI_COMMIT_TAG}
@@ -106,7 +106,7 @@ steps:
 
         ### Checksums
         ```
-        $(cat /artifacts/checksums.txt)
+        $(cat artifacts/checksums.txt)
         ```
 
         ---
