@@ -86,11 +86,13 @@ cargo install --path .
 
 ```bash
 mpforge-cli --version
-# Output: mpforge-cli 0.1.0
+# Output: mpforge-cli v0.2.0
 
 # Alternative : flag court
 mpforge-cli -V
 ```
+
+> 💡 **Note** : La version est automatiquement synchronisée avec le tag Git. Voir [VERSIONING.md](../docs/ci-cd/VERSIONING.md) pour plus de détails.
 
 ### Afficher l'aide complète
 

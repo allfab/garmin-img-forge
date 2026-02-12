@@ -13,7 +13,7 @@ use tracing;
 #[derive(Parser, Debug)]
 #[command(
     name = "mpforge-cli",
-    version,
+    version = env!("GIT_VERSION"),
     about = "Polish Map tiling and processing pipeline",
     long_about = "mpforge-cli: Production-ready CLI for processing vector data into tiled Polish Map (.mp) files for Garmin GPS devices.\n\n\
                   Features:\n\
