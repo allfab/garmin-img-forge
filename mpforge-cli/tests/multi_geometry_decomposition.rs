@@ -207,10 +207,7 @@ fn test_multilinestring_decomposition() {
 
     // Stats
     assert_eq!(multi_geom.total(), 1);
-    assert_eq!(
-        multi_geom.by_type.get("MultiLineString").unwrap().count,
-        1
-    );
+    assert_eq!(multi_geom.by_type.get("MultiLineString").unwrap().count, 1);
 }
 
 #[test]

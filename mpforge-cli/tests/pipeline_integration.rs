@@ -127,10 +127,10 @@ error_handling: fail-fast
 fn test_full_pipeline_with_clipping() {
     // AC1-5 + Subtask 9.1, 9.2, 9.3: Pipeline complet avec clipping
     use mpforge_cli::config::Config;
+    use mpforge_cli::config::ErrorMode;
     use mpforge_cli::pipeline::geometry_validator::ValidationStats;
     use mpforge_cli::pipeline::reader::SourceReader;
     use mpforge_cli::pipeline::tiler::{clip_feature_to_tile, TileProcessor};
-    use mpforge_cli::config::ErrorMode;
 
     let config_content = r#"
 version: 1
@@ -148,7 +148,8 @@ error_handling: continue
     let config: Config = serde_yml::from_str(config_content).expect("Failed to parse config");
 
     // Phase 1: Read sources and build R-tree
-    let (features, rtree, _unsupported, _multi_geom) = match SourceReader::read_all_sources(&config) {
+    let (features, rtree, _unsupported, _multi_geom) = match SourceReader::read_all_sources(&config)
+    {
         Ok(result) => result,
         Err(e) => {
             // If fixture doesn't exist, skip test gracefully
@@ -188,17 +189,15 @@ error_handling: continue
         for &feature_id in &feature_ids {
             let feature = &features[feature_id];
 
-            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut validation_stats) {
+            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut validation_stats)
+            {
                 Ok(Some(clipped)) => {
                     // Subtask 9.3: Verify clipped geometry is valid
                     let clipped_geom = match feature_to_test_geometry(&clipped) {
                         Ok(g) => g,
                         Err(_) => continue,
                     };
-                    assert!(
-                        clipped_geom.is_valid(),
-                        "Clipped geometry should be valid"
-                    );
+                    assert!(clipped_geom.is_valid(), "Clipped geometry should be valid");
 
                     total_clipped += 1;
                 }
@@ -261,15 +260,25 @@ fn test_clipping_with_boundary_features() {
 
     // Clip to left tile
     let tile_left_bbox = tile_left.to_gdal_polygon().unwrap();
-    let clipped_left = clip_feature_to_tile(&feature, &tile_left_bbox, error_mode, &mut ValidationStats::default())
-        .unwrap()
-        .expect("Should clip to left tile");
+    let clipped_left = clip_feature_to_tile(
+        &feature,
+        &tile_left_bbox,
+        error_mode,
+        &mut ValidationStats::default(),
+    )
+    .unwrap()
+    .expect("Should clip to left tile");
 
     // Clip to right tile
     let tile_right_bbox = tile_right.to_gdal_polygon().unwrap();
-    let clipped_right = clip_feature_to_tile(&feature, &tile_right_bbox, error_mode, &mut ValidationStats::default())
-        .unwrap()
-        .expect("Should clip to right tile");
+    let clipped_right = clip_feature_to_tile(
+        &feature,
+        &tile_right_bbox,
+        error_mode,
+        &mut ValidationStats::default(),
+    )
+    .unwrap()
+    .expect("Should clip to right tile");
 
     // Both tiles should have clipped fragments
     assert!(!clipped_left.geometry.is_empty());
@@ -351,7 +360,12 @@ fn test_clipping_performance_1000_features() {
     let mut clipped_count = 0;
 
     for feature in &features {
-        if let Ok(Some(_)) = clip_feature_to_tile(feature, &tile_bbox, ErrorMode::Continue, &mut ValidationStats::default()) {
+        if let Ok(Some(_)) = clip_feature_to_tile(
+            feature,
+            &tile_bbox,
+            ErrorMode::Continue,
+            &mut ValidationStats::default(),
+        ) {
             clipped_count += 1;
         }
     }

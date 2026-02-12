@@ -79,28 +79,50 @@ fn test_json_report_generated_when_flag_present() {
 
     // Run pipeline
     let result = pipeline::run(&config, &args);
-    assert!(result.is_ok(), "Pipeline should complete: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Pipeline should complete: {:?}",
+        result.err()
+    );
 
     // Verify JSON file created
     assert!(report_path.exists(), "JSON report file should exist");
 
     // Verify JSON content structure
     let content = fs::read_to_string(&report_path).expect("Failed to read report");
-    let report: serde_json::Value = serde_json::from_str(&content)
-        .expect("Failed to parse JSON report");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse JSON report");
 
     // Verify schema fields exist
     assert!(report.get("status").is_some(), "status field missing");
-    assert!(report.get("tiles_generated").is_some(), "tiles_generated field missing");
-    assert!(report.get("tiles_failed").is_some(), "tiles_failed field missing");
-    assert!(report.get("tiles_skipped").is_some(), "tiles_skipped field missing");
-    assert!(report.get("features_processed").is_some(), "features_processed field missing");
-    assert!(report.get("duration_seconds").is_some(), "duration_seconds field missing");
+    assert!(
+        report.get("tiles_generated").is_some(),
+        "tiles_generated field missing"
+    );
+    assert!(
+        report.get("tiles_failed").is_some(),
+        "tiles_failed field missing"
+    );
+    assert!(
+        report.get("tiles_skipped").is_some(),
+        "tiles_skipped field missing"
+    );
+    assert!(
+        report.get("features_processed").is_some(),
+        "features_processed field missing"
+    );
+    assert!(
+        report.get("duration_seconds").is_some(),
+        "duration_seconds field missing"
+    );
     assert!(report.get("errors").is_some(), "errors field missing");
 
     // Verify status is "success" for valid data
     assert_eq!(report["status"], "success", "Status should be success");
-    assert!(report["errors"].as_array().unwrap().is_empty(), "Errors should be empty");
+    assert!(
+        report["errors"].as_array().unwrap().is_empty(),
+        "Errors should be empty"
+    );
 }
 
 // ============================================================================
@@ -123,7 +145,11 @@ fn test_json_report_not_generated_when_flag_absent() {
 
     // Run pipeline
     let result = pipeline::run(&config, &args);
-    assert!(result.is_ok(), "Pipeline should complete: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Pipeline should complete: {:?}",
+        result.err()
+    );
 
     // Verify no JSON files in output directory
     let json_files: Vec<_> = fs::read_dir(temp_dir.path())
@@ -132,7 +158,11 @@ fn test_json_report_not_generated_when_flag_absent() {
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
         .collect();
 
-    assert_eq!(json_files.len(), 0, "No JSON files should be created without --report flag");
+    assert_eq!(
+        json_files.len(),
+        0,
+        "No JSON files should be created without --report flag"
+    );
 }
 
 // ============================================================================
@@ -159,8 +189,8 @@ fn test_json_schema_matches_epic_specification() {
 
     // Read and parse JSON
     let content = fs::read_to_string(&report_path).expect("Failed to read report");
-    let report: serde_json::Value = serde_json::from_str(&content)
-        .expect("Failed to parse JSON report");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse JSON report");
 
     // Verify exact schema fields from Epic spec
     assert_eq!(report["status"].as_str().unwrap(), "success");
@@ -172,10 +202,21 @@ fn test_json_schema_matches_epic_specification() {
     assert!(report["errors"].is_array());
 
     // Verify no extra fields (schema compliance)
-    let expected_keys = ["status", "tiles_generated", "tiles_failed", "tiles_skipped",
-        "features_processed", "duration_seconds", "errors"];
+    let expected_keys = [
+        "status",
+        "tiles_generated",
+        "tiles_failed",
+        "tiles_skipped",
+        "features_processed",
+        "duration_seconds",
+        "errors",
+    ];
     let actual_keys: Vec<String> = report.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(actual_keys.len(), expected_keys.len(), "Schema should have exactly 7 fields");
+    assert_eq!(
+        actual_keys.len(),
+        expected_keys.len(),
+        "Schema should have exactly 7 fields"
+    );
 }
 
 // ============================================================================
@@ -202,16 +243,22 @@ fn test_features_processed_count() {
 
     // Verify features_processed > 0
     let content = fs::read_to_string(&report_path).expect("Failed to read report");
-    let report: serde_json::Value = serde_json::from_str(&content)
-        .expect("Failed to parse JSON report");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse JSON report");
 
     let features_processed = report["features_processed"].as_u64().unwrap();
-    assert!(features_processed > 0, "features_processed should be > 0 for valid data");
+    assert!(
+        features_processed > 0,
+        "features_processed should be > 0 for valid data"
+    );
 
     // Verify consistency: tiles_generated > 0 implies features_processed > 0
     let tiles_generated = report["tiles_generated"].as_u64().unwrap();
     if tiles_generated > 0 {
-        assert!(features_processed > 0, "If tiles generated, features must be processed");
+        assert!(
+            features_processed > 0,
+            "If tiles generated, features must be processed"
+        );
     }
 }
 
@@ -239,8 +286,8 @@ fn test_duration_seconds_precision() {
 
     // Verify duration_seconds is float
     let content = fs::read_to_string(&report_path).expect("Failed to read report");
-    let report: serde_json::Value = serde_json::from_str(&content)
-        .expect("Failed to parse JSON report");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse JSON report");
 
     let duration = report["duration_seconds"].as_f64();
     assert!(duration.is_some(), "duration_seconds should be f64");
@@ -271,8 +318,8 @@ fn test_errors_array_structure() {
 
     // Read and validate JSON schema
     let content = fs::read_to_string(&report_path).expect("Failed to read report");
-    let report: serde_json::Value = serde_json::from_str(&content)
-        .expect("Failed to parse JSON report");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse JSON report");
 
     // Verify errors is an array
     assert!(report["errors"].is_array(), "errors field must be an array");
@@ -281,12 +328,24 @@ fn test_errors_array_structure() {
     if let Some(errors_array) = report["errors"].as_array() {
         for error_entry in errors_array {
             // Each error must have 'tile' and 'error' fields
-            assert!(error_entry.get("tile").is_some(), "Error entry missing 'tile' field");
-            assert!(error_entry.get("error").is_some(), "Error entry missing 'error' field");
+            assert!(
+                error_entry.get("tile").is_some(),
+                "Error entry missing 'tile' field"
+            );
+            assert!(
+                error_entry.get("error").is_some(),
+                "Error entry missing 'error' field"
+            );
 
             // Fields must be strings
-            assert!(error_entry["tile"].is_string(), "'tile' field must be string");
-            assert!(error_entry["error"].is_string(), "'error' field must be string");
+            assert!(
+                error_entry["tile"].is_string(),
+                "'tile' field must be string"
+            );
+            assert!(
+                error_entry["error"].is_string(),
+                "'error' field must be string"
+            );
 
             // Tile ID should not be empty
             let tile_id = error_entry["tile"].as_str().unwrap();

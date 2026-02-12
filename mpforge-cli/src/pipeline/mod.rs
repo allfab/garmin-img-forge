@@ -15,8 +15,8 @@ use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
@@ -97,7 +97,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     info!("Phase 1: Reading sources and building spatial index");
     let start_time = Instant::now();
 
-    let (features, rtree, unsupported_type_stats, multi_geom_stats) = SourceReader::read_all_sources(config)?;
+    let (features, rtree, unsupported_type_stats, multi_geom_stats) =
+        SourceReader::read_all_sources(config)?;
 
     let elapsed = start_time.elapsed();
     info!(
@@ -153,7 +154,12 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             let feature = &features[feature_id];
             let _span = tracing::info_span!("validate_feature", fid = feature_id, tile = %tile_bounds.tile_id()).entered();
 
-            match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut global_validation_stats) {
+            match clip_feature_to_tile(
+                feature,
+                &tile_bbox_geom,
+                error_mode,
+                &mut global_validation_stats,
+            ) {
                 Ok(Some(clipped_feature)) => {
                     clipped_features.push(clipped_feature);
                     total_clipped += 1;
@@ -206,7 +212,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     // Story 6.5: Log validation summary
-    if global_validation_stats.rejected_count() > 0 || global_validation_stats.repaired_count() > 0 {
+    if global_validation_stats.rejected_count() > 0 || global_validation_stats.repaired_count() > 0
+    {
         info!(
             valid = global_validation_stats.valid_count,
             repaired_make_valid = global_validation_stats.repaired_make_valid,
@@ -270,8 +277,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     if let Some(pb) = progress {
         pb.finish_with_message(format!(
             "✓ Export terminé: {} tuiles réussies, {} échouées",
-            summary.tiles_succeeded,
-            summary.tiles_failed
+            summary.tiles_succeeded, summary.tiles_failed
         ));
     }
 
@@ -501,7 +507,13 @@ fn export_tiles_sequential(
         );
     }
 
-    Ok(TileExportSummary::new(succeeded, failed, skipped, global_stats, export_errors))
+    Ok(TileExportSummary::new(
+        succeeded,
+        failed,
+        skipped,
+        global_stats,
+        export_errors,
+    ))
 }
 
 /// Export tiles in parallel using rayon thread pool (Epic 7 Story 7.1).
@@ -534,7 +546,11 @@ fn export_tiles_parallel(
         .build()
         .context("Failed to create rayon thread pool")?;
 
-    info!(jobs = jobs, tiles = tile_features.len(), "Starting parallel export");
+    info!(
+        jobs = jobs,
+        tiles = tile_features.len(),
+        "Starting parallel export"
+    );
 
     // Create shared export context (reduces parameter count)
     // Story 7.4: Added field_mapping_path to context
@@ -556,27 +572,26 @@ fn export_tiles_parallel(
         match error_mode {
             ErrorMode::Continue => {
                 // Use .for_each() - collect all errors
-                tile_features.par_iter().for_each(|(tile_bounds, features)| {
-                    // export_single_tile handles its own errors in Continue mode
-                    let _ = export_single_tile(
-                        tile_bounds,
-                        features,
-                        &config.output.directory,
-                        &ctx,
-                    );
-                });
+                tile_features
+                    .par_iter()
+                    .for_each(|(tile_bounds, features)| {
+                        // export_single_tile handles its own errors in Continue mode
+                        let _ = export_single_tile(
+                            tile_bounds,
+                            features,
+                            &config.output.directory,
+                            &ctx,
+                        );
+                    });
                 Ok(())
             }
             ErrorMode::FailFast => {
                 // Use .try_for_each() - early exit on first error
-                tile_features.par_iter().try_for_each(|(tile_bounds, features)| {
-                    export_single_tile(
-                        tile_bounds,
-                        features,
-                        &config.output.directory,
-                        &ctx,
-                    )
-                })
+                tile_features
+                    .par_iter()
+                    .try_for_each(|(tile_bounds, features)| {
+                        export_single_tile(tile_bounds, features, &config.output.directory, &ctx)
+                    })
             }
         }
     });
@@ -585,7 +600,10 @@ fn export_tiles_parallel(
     if let Err(e) = result {
         let error_msg = e.to_string();
         // Extract tile_id from error context if available
-        return Err(e).context(format!("Parallel export failed in fail-fast mode: {}", error_msg));
+        return Err(e).context(format!(
+            "Parallel export failed in fail-fast mode: {}",
+            error_msg
+        ));
     }
 
     // Extract final results from Arc wrappers
@@ -605,11 +623,18 @@ fn export_tiles_parallel(
         tiles_succeeded = succeeded_count,
         tiles_failed = failed_count,
         tiles_skipped = skipped_count,
-        total_features = final_stats.point_count + final_stats.linestring_count + final_stats.polygon_count,
+        total_features =
+            final_stats.point_count + final_stats.linestring_count + final_stats.polygon_count,
         "Parallel export completed"
     );
 
-    Ok(TileExportSummary::new(succeeded_count, failed_count, skipped_count, final_stats, final_errors))
+    Ok(TileExportSummary::new(
+        succeeded_count,
+        failed_count,
+        skipped_count,
+        final_stats,
+        final_errors,
+    ))
 }
 
 /// Shared context for tile export operations.
@@ -682,7 +707,10 @@ fn export_single_tile(
             }
             ErrorMode::FailFast => {
                 // Propagate error for immediate termination
-                Err(error).context(format!("Tile export failed (fail-fast mode): tile {}", tile_id))
+                Err(error).context(format!(
+                    "Tile export failed (fail-fast mode): tile {}",
+                    tile_id
+                ))
             }
         }
     };
@@ -713,9 +741,12 @@ fn export_single_tile(
     );
 
     // Update global stats (lock-free atomic operations for better performance)
-    ctx.point_count.fetch_add(tile_stats.point_count, Ordering::Relaxed);
-    ctx.linestring_count.fetch_add(tile_stats.linestring_count, Ordering::Relaxed);
-    ctx.polygon_count.fetch_add(tile_stats.polygon_count, Ordering::Relaxed);
+    ctx.point_count
+        .fetch_add(tile_stats.point_count, Ordering::Relaxed);
+    ctx.linestring_count
+        .fetch_add(tile_stats.linestring_count, Ordering::Relaxed);
+    ctx.polygon_count
+        .fetch_add(tile_stats.polygon_count, Ordering::Relaxed);
 
     ctx.succeeded.fetch_add(1, Ordering::SeqCst);
 
@@ -742,27 +773,51 @@ fn print_console_summary(
         ReportStatus::Failure => ("❌", "ÉCHEC"),
     };
 
-    println!("\n{} Exécution terminée - Statut: {}", status_symbol, status_text);
+    println!(
+        "\n{} Exécution terminée - Statut: {}",
+        status_symbol, status_text
+    );
     println!("╔════════════════════════════════════════════════════════╗");
     println!("║ RÉSUMÉ D'EXÉCUTION                                     ║");
     println!("╠════════════════════════════════════════════════════════╣");
-    println!("║ Tuiles générées  : {:>10}                      ║", report.tiles_generated);
-    println!("║ Tuiles échouées  : {:>10}                      ║", report.tiles_failed);
-    println!("║ Tuiles skippées  : {:>10}                      ║", report.tiles_skipped);
-    println!("║ Features traitées: {:>10}                      ║", report.features_processed);
-    println!("║ Durée totale     : {:>7.1} sec                   ║", report.duration_seconds);
+    println!(
+        "║ Tuiles générées  : {:>10}                      ║",
+        report.tiles_generated
+    );
+    println!(
+        "║ Tuiles échouées  : {:>10}                      ║",
+        report.tiles_failed
+    );
+    println!(
+        "║ Tuiles skippées  : {:>10}                      ║",
+        report.tiles_skipped
+    );
+    println!(
+        "║ Features traitées: {:>10}                      ║",
+        report.features_processed
+    );
+    println!(
+        "║ Durée totale     : {:>7.1} sec                   ║",
+        report.duration_seconds
+    );
     println!("╚════════════════════════════════════════════════════════╝");
     println!("   Répertoire de sortie : {}", output_directory);
 
     // Show top errors (not all, to avoid console pollution)
     // M4 Fix: Use named constant instead of magic number
     if !report.errors.is_empty() {
-        println!("\n⚠️  Top {} erreurs:", report.errors.len().min(MAX_CONSOLE_ERRORS));
+        println!(
+            "\n⚠️  Top {} erreurs:",
+            report.errors.len().min(MAX_CONSOLE_ERRORS)
+        );
         for (i, error) in report.errors.iter().take(MAX_CONSOLE_ERRORS).enumerate() {
             println!("  {}. Tuile {} : {}", i + 1, error.tile, error.error);
         }
         if report.errors.len() > MAX_CONSOLE_ERRORS {
-            println!("  ... et {} autres erreurs (voir rapport JSON)", report.errors.len() - MAX_CONSOLE_ERRORS);
+            println!(
+                "  ... et {} autres erreurs (voir rapport JSON)",
+                report.errors.len() - MAX_CONSOLE_ERRORS
+            );
         }
     }
 

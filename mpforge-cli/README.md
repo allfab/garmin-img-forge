@@ -38,6 +38,30 @@ L'exécutable sera disponible dans `target/release/mpforge-cli`.
 cargo install --path .
 ```
 
+## Quick Reference
+
+### Vérifier la version installée
+
+```bash
+mpforge-cli --version
+# Output: mpforge-cli 0.1.0
+
+# Alternative : flag court
+mpforge-cli -V
+```
+
+### Afficher l'aide complète
+
+```bash
+# Aide globale (liste des commandes)
+mpforge-cli --help
+
+# Aide spécifique à la commande build
+mpforge-cli build --help
+```
+
+**L'aide complète documente toutes les options disponibles** (configuration, parallélisation, rapports JSON, verbosité, etc.). Utilisez `--help` pour découvrir toutes les features disponibles sans consulter la documentation externe.
+
 ## Utilisation rapide
 
 ### 1. Créer un fichier de configuration

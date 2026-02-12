@@ -3,9 +3,7 @@
 //! Code Review fixes: Adapted to BTreeMap and total_sources field
 
 use mpforge_cli::pipeline::reader::UnsupportedTypeStats;
-use mpforge_cli::report::{
-    ExecutionReport, QualitySection, ReportStatus, UnsupportedTypeReport,
-};
+use mpforge_cli::report::{ExecutionReport, QualitySection, ReportStatus, UnsupportedTypeReport};
 use std::collections::BTreeMap;
 
 // ============================================================================
@@ -18,17 +16,11 @@ fn test_unsupported_type_stats_record() {
     let mut stats = UnsupportedTypeStats::default();
     stats.record("MultiPolygon".to_string(), "COMMUNE.shp".to_string());
     stats.record("MultiPolygon".to_string(), "COMMUNE.shp".to_string());
-    stats.record(
-        "GeometryCollection".to_string(),
-        "mixed.gpkg".to_string(),
-    );
+    stats.record("GeometryCollection".to_string(), "mixed.gpkg".to_string());
 
     assert_eq!(stats.total(), 3);
     assert_eq!(stats.by_type["MultiPolygon"].count, 2);
-    assert_eq!(
-        stats.by_type["MultiPolygon"].sources,
-        vec!["COMMUNE.shp"]
-    );
+    assert_eq!(stats.by_type["MultiPolygon"].sources, vec!["COMMUNE.shp"]);
     assert_eq!(stats.by_type["GeometryCollection"].count, 1);
     assert_eq!(
         stats.by_type["GeometryCollection"].sources,
@@ -85,10 +77,7 @@ fn test_stats_merge() {
 
     let mut stats2 = UnsupportedTypeStats::default();
     stats2.record("MultiPolygon".to_string(), "BATIMENT.shp".to_string());
-    stats2.record(
-        "GeometryCollection".to_string(),
-        "mixed.gpkg".to_string(),
-    );
+    stats2.record("GeometryCollection".to_string(), "mixed.gpkg".to_string());
 
     stats1.merge(&stats2);
 
@@ -202,8 +191,14 @@ fn test_json_report_with_empty_quality_section() {
     // Code Review M3 Fix: quality is present but both fields are skipped when empty/None
     assert!(json.contains("\"quality\""));
     // Empty BTreeMap is now skipped via skip_serializing_if
-    assert!(!json.contains("\"unsupported_types\""), "Empty unsupported_types should be skipped");
-    assert!(!json.contains("\"multi_geometries_decomposed\""), "None multi_geometries_decomposed should be skipped");
+    assert!(
+        !json.contains("\"unsupported_types\""),
+        "Empty unsupported_types should be skipped"
+    );
+    assert!(
+        !json.contains("\"multi_geometries_decomposed\""),
+        "None multi_geometries_decomposed should be skipped"
+    );
 }
 
 #[test]
@@ -296,7 +291,11 @@ fn test_json_report_with_total_sources_truncation() {
         "MultiPolygon".to_string(),
         UnsupportedTypeReport {
             count: 100,
-            sources: vec!["file1.shp".to_string(), "file2.shp".to_string(), "file3.shp".to_string()],
+            sources: vec![
+                "file1.shp".to_string(),
+                "file2.shp".to_string(),
+                "file3.shp".to_string(),
+            ],
             total_sources: Some(50), // More total sources than in Vec (truncated)
         },
     );
@@ -321,8 +320,14 @@ fn test_json_report_with_total_sources_truncation() {
 
     // Verify deserialization works
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed["quality"]["unsupported_types"]["MultiPolygon"]["total_sources"], 50);
-    assert_eq!(parsed["quality"]["unsupported_types"]["MultiPolygon"]["count"], 100);
+    assert_eq!(
+        parsed["quality"]["unsupported_types"]["MultiPolygon"]["total_sources"],
+        50
+    );
+    assert_eq!(
+        parsed["quality"]["unsupported_types"]["MultiPolygon"]["count"],
+        100
+    );
 }
 
 // ============================================================================

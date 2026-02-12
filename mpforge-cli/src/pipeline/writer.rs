@@ -81,11 +81,20 @@ impl MpWriter {
             }
 
             // Load and parse YAML file
-            let mapping_content = std::fs::read_to_string(mapping_path)
-                .with_context(|| format!("Failed to read field mapping file: {}", mapping_path.display()))?;
+            let mapping_content = std::fs::read_to_string(mapping_path).with_context(|| {
+                format!(
+                    "Failed to read field mapping file: {}",
+                    mapping_path.display()
+                )
+            })?;
 
             let mapping_config: FieldMappingConfig = serde_yml::from_str(&mapping_content)
-                .with_context(|| format!("Failed to parse field mapping YAML: {}", mapping_path.display()))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to parse field mapping YAML: {}",
+                        mapping_path.display()
+                    )
+                })?;
 
             // Convert path to absolute path string for GDAL
             // Use canonicalize with fallback for symlinks/permissions edge cases (M2 fix)
@@ -116,13 +125,17 @@ impl MpWriter {
             let dataset = driver
                 .create_with_band_type_with_options::<u8, _>(
                     &output_path,
-                    0, 0, 0,  // Vector-only dataset (0 dimensions, 0 bands)
+                    0,
+                    0,
+                    0, // Vector-only dataset (0 dimensions, 0 bands)
                     &options,
                 )
-                .with_context(|| format!(
-                    "Failed to create dataset with field mapping: {}",
-                    output_path.display()
-                ))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to create dataset with field mapping: {}",
+                        output_path.display()
+                    )
+                })?;
 
             (Some(mapping_config.field_mapping), dataset)
         } else {
@@ -279,7 +292,12 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
+        Self::set_feature_attributes(
+            layer_defn,
+            &mut ogr_feature,
+            &feature.attributes,
+            field_mapping,
+        )?;
 
         // Write to layer
         ogr_feature
@@ -323,7 +341,12 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
+        Self::set_feature_attributes(
+            layer_defn,
+            &mut ogr_feature,
+            &feature.attributes,
+            field_mapping,
+        )?;
 
         // Write to layer
         ogr_feature
@@ -369,7 +392,12 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Set attributes
-        Self::set_feature_attributes(layer_defn, &mut ogr_feature, &feature.attributes, field_mapping)?;
+        Self::set_feature_attributes(
+            layer_defn,
+            &mut ogr_feature,
+            &feature.attributes,
+            field_mapping,
+        )?;
 
         // Write to layer
         ogr_feature
@@ -391,7 +419,10 @@ impl MpWriter {
             // Story 7.4: Transform field name using mapping if provided
             let target_key = if let Some(mapping) = field_mapping {
                 // Use mapped name if it exists, otherwise use source name as-is
-                mapping.get(source_key).map(|s| s.as_str()).unwrap_or(source_key)
+                mapping
+                    .get(source_key)
+                    .map(|s| s.as_str())
+                    .unwrap_or(source_key)
             } else {
                 // No mapping - use source name (backward compatible)
                 source_key
@@ -399,7 +430,12 @@ impl MpWriter {
 
             // DEBUG: Log mapping transformation
             if source_key != target_key {
-                info!(source_field = source_key, target_field = target_key, value = value, "Field mapping applied");
+                info!(
+                    source_field = source_key,
+                    target_field = target_key,
+                    value = value,
+                    "Field mapping applied"
+                );
             }
 
             // Find field index by name (using target_key)
@@ -416,10 +452,19 @@ impl MpWriter {
                     );
                     continue;
                 }
-                info!(source_field = source_key, target_field = target_key, value = value, "Field set successfully");
+                info!(
+                    source_field = source_key,
+                    target_field = target_key,
+                    value = value,
+                    "Field set successfully"
+                );
             } else {
                 // Field not in schema - log warning for debugging
-                warn!(source_field = source_key, target_field = target_key, "Field not found in layer schema");
+                warn!(
+                    source_field = source_key,
+                    target_field = target_key,
+                    "Field not found in layer schema"
+                );
             }
         }
         Ok(())

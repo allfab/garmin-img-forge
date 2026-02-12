@@ -1,13 +1,33 @@
 //! CLI argument parsing using clap.
 
-use clap::{Parser, Subcommand};
 use anyhow;
+use clap::{Parser, Subcommand};
 use num_cpus;
 use tracing;
 
+/// Polish Map tiling and processing pipeline
+///
+/// mpforge-cli processes vector data sources into tiled Polish Map (.mp) files
+/// optimized for Garmin GPS devices. Supports multi-source fusion, configurable
+/// grid tiling, parallel processing, and comprehensive error handling.
 #[derive(Parser, Debug)]
-#[command(name = "mpforge-cli")]
-#[command(about = "CLI tool for tiling and exporting Polish Map (.mp) files")]
+#[command(
+    name = "mpforge-cli",
+    version,
+    about = "Polish Map tiling and processing pipeline",
+    long_about = "mpforge-cli: Production-ready CLI for processing vector data into tiled Polish Map (.mp) files for Garmin GPS devices.\n\n\
+                  Features:\n\
+                  - Multi-source fusion (Shapefile, GeoPackage, PostGIS)\n\
+                  - Configurable grid tiling with geometry clipping\n\
+                  - Parallel processing for large datasets\n\
+                  - Progress tracking and JSON reports\n\
+                  - Field mapping configuration (YAML-based source-to-target mapping)\n\
+                  - Robust error handling with configurable modes\n\n\
+                  Examples:\n  \
+                  mpforge-cli build --config config.yaml\n  \
+                  mpforge-cli build --config config.yaml --jobs 8\n  \
+                  mpforge-cli build --config config.yaml --jobs 4 --report report.json"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -15,7 +35,15 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Build Polish Map tiles from input sources
+    /// Execute the complete tiling pipeline
+    ///
+    /// Processes vector sources through fusion, tiling, clipping, and export phases.
+    /// Supports parallel processing, progress tracking, and comprehensive error reporting.
+    #[command(
+        long_about = "Build tiled .mp files from vector sources using configured grid and processing options.\n\n\
+                            Example:\n  \
+                            mpforge-cli build --config config.yaml --jobs 8"
+    )]
     Build(BuildArgs),
 }
 

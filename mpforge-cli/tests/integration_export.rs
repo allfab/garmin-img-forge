@@ -96,7 +96,10 @@ fn test_end_to_end_shapefile_to_mp() {
     // Verify first tile file is not empty
     let first_tile = &mp_files[0];
     let metadata = fs::metadata(first_tile.path()).expect("Failed to get file metadata");
-    assert!(metadata.len() > 0, "Output .mp tile file should not be empty");
+    assert!(
+        metadata.len() > 0,
+        "Output .mp tile file should not be empty"
+    );
 }
 
 #[test]
@@ -290,8 +293,8 @@ error_handling: "fail-fast"
     );
 
     // H1 FIX: Verify actual .mp content contains fields (AC3, AC7)
-    let mp_content = fs::read_to_string(first_tile.path())
-        .expect("Failed to read .mp file content");
+    let mp_content =
+        fs::read_to_string(first_tile.path()).expect("Failed to read .mp file content");
 
     // Check that field mapping was processed by verifying Type field exists
     // Note: Test data has 'Type' (already canonical) not 'MP_TYPE', so mapping
@@ -356,8 +359,8 @@ fn test_field_mapping_without_config_uses_hardcoded_aliases() {
     assert!(metadata.len() > 0, "Output .mp file should not be empty");
 
     // H1 FIX: Verify backward compat uses hardcoded aliases (AC4)
-    let mp_content = fs::read_to_string(first_tile.path())
-        .expect("Failed to read .mp file content");
+    let mp_content =
+        fs::read_to_string(first_tile.path()).expect("Failed to read .mp file content");
 
     // With hardcoded aliases, driver should still produce Type and Label fields
     // (driver maps MP_TYPE→Type and NAME→Label internally via polishmapfields.h)
@@ -386,7 +389,8 @@ fn test_field_mapping_invalid_path_error() {
         Err(e) => {
             let error_message = e.to_string();
             assert!(
-                error_message.contains("Field mapping file does not exist") || error_message.contains("nonexistent"),
+                error_message.contains("Field mapping file does not exist")
+                    || error_message.contains("nonexistent"),
                 "Error message should mention field mapping file doesn't exist, got: {}",
                 error_message
             );

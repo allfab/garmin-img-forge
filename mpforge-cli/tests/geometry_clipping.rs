@@ -36,7 +36,10 @@ fn test_tile_to_gdal_polygon_valid_geometry() {
     // Should be valid polygon
     assert!(polygon.is_valid());
     // geometry_type() returns OGRwkbGeometryType (u32), Polygon = 3
-    assert_eq!(polygon.geometry_type(), gdal::vector::OGRwkbGeometryType::wkbPolygon);
+    assert_eq!(
+        polygon.geometry_type(),
+        gdal::vector::OGRwkbGeometryType::wkbPolygon
+    );
 }
 
 #[test]
@@ -299,7 +302,9 @@ fn test_invalid_geometry_continue_mode() {
     // Story 6.5: Validation attempted on self-intersecting polygon.
     // Bow-tie may be repaired (simple output) or rejected (MultiPolygon filtered).
     assert!(
-        stats.repaired_make_valid > 0 || stats.repaired_buffer_zero > 0 || stats.rejected_irrecoverable > 0,
+        stats.repaired_make_valid > 0
+            || stats.repaired_buffer_zero > 0
+            || stats.rejected_irrecoverable > 0,
         "Validation should process the geometry, got stats: {:?}",
         stats
     );
@@ -334,7 +339,9 @@ fn test_invalid_geometry_failfast_mode() {
     // Story 6.5: Validation attempted on self-intersecting polygon.
     // Bow-tie may be repaired (simple output) or rejected (MultiPolygon filtered).
     assert!(
-        stats.repaired_make_valid > 0 || stats.repaired_buffer_zero > 0 || stats.rejected_irrecoverable > 0,
+        stats.repaired_make_valid > 0
+            || stats.repaired_buffer_zero > 0
+            || stats.rejected_irrecoverable > 0,
         "Validation should process the geometry, got stats: {:?}",
         stats
     );
@@ -359,7 +366,12 @@ fn test_degenerate_linestring_skipped() {
     };
 
     // Should fail during WKT conversion (LineString needs ≥2 points)
-    let result = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::Continue, &mut ValidationStats::default());
+    let result = clip_feature_to_tile(
+        &feature,
+        &tile_bbox,
+        ErrorMode::Continue,
+        &mut ValidationStats::default(),
+    );
 
     // In continue mode, should handle gracefully (either Ok(None) or Err handled)
     // Implementation returns Err from feature_to_gdal_geometry, which is fine
@@ -396,7 +408,12 @@ fn test_clip_preserves_all_attributes() {
         attributes: attributes.clone(),
     };
 
-    let result = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::FailFast, &mut ValidationStats::default());
+    let result = clip_feature_to_tile(
+        &feature,
+        &tile_bbox,
+        ErrorMode::FailFast,
+        &mut ValidationStats::default(),
+    );
 
     assert!(result.is_ok());
     let clipped = result.unwrap().expect("Should return clipped feature");
@@ -436,16 +453,8 @@ fn test_clip_preserves_all_attributes() {
 
     // Verify geometry is within tile bounds [0, 1]
     for (x, y) in &clipped.geometry {
-        assert!(
-            *x >= 0.0 && *x <= 1.0,
-            "X coord {} outside tile [0, 1]",
-            x
-        );
-        assert!(
-            *y >= 0.0 && *y <= 1.0,
-            "Y coord {} outside tile [0, 1]",
-            y
-        );
+        assert!(*x >= 0.0 && *x <= 1.0, "X coord {} outside tile [0, 1]", x);
+        assert!(*y >= 0.0 && *y <= 1.0, "Y coord {} outside tile [0, 1]", y);
     }
 }
 
@@ -471,7 +480,12 @@ fn test_point_feature_attributes_preserved() {
         attributes: attributes.clone(),
     };
 
-    let result = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::Continue, &mut ValidationStats::default());
+    let result = clip_feature_to_tile(
+        &feature,
+        &tile_bbox,
+        ErrorMode::Continue,
+        &mut ValidationStats::default(),
+    );
 
     assert!(result.is_ok());
     let clipped = result.unwrap().expect("Point should be returned");

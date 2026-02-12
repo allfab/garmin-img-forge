@@ -141,10 +141,7 @@ fn is_simple_geometry_type(geom: &Geometry) -> bool {
 /// * `ValidationResult::Repaired(geom, strategy)` - Repaired, ready for clipping
 /// * `ValidationResult::Rejected(reason)` - Skip this feature
 #[instrument(skip(feature, stats))]
-pub fn validate_and_repair(
-    feature: &Feature,
-    stats: &mut ValidationStats,
-) -> ValidationResult {
+pub fn validate_and_repair(feature: &Feature, stats: &mut ValidationStats) -> ValidationResult {
     // Step 1: Validate coordinates (Rust pure, before GDAL)
     if !validate_coordinates(feature) {
         stats.rejected_invalid_coords += 1;

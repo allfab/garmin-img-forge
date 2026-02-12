@@ -4,7 +4,7 @@
 //! repair chain (MakeValid + Buffer(0)), and pipeline integration.
 
 use mpforge_cli::pipeline::geometry_validator::{
-    validate_and_repair, validate_coordinates, try_repair, RepairStrategy, ValidationResult,
+    try_repair, validate_and_repair, validate_coordinates, RepairStrategy, ValidationResult,
     ValidationStats,
 };
 use mpforge_cli::pipeline::reader::{Feature, GeometryType};
@@ -93,7 +93,9 @@ fn test_empty_coordinates_pass() {
 #[test]
 fn test_many_valid_coordinates() {
     // Large valid geometry → all pass
-    let coords: Vec<(f64, f64)> = (0..1000).map(|i| (i as f64 * 0.001, i as f64 * 0.001)).collect();
+    let coords: Vec<(f64, f64)> = (0..1000)
+        .map(|i| (i as f64 * 0.001, i as f64 * 0.001))
+        .collect();
     let feature = Feature {
         geometry_type: GeometryType::Polygon,
         geometry: coords,
@@ -110,13 +112,7 @@ fn test_many_valid_coordinates() {
 fn create_valid_polygon_feature() -> Feature {
     Feature {
         geometry_type: GeometryType::Polygon,
-        geometry: vec![
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 0.0),
-        ],
+        geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
         attributes: HashMap::new(),
     }
 }
@@ -173,7 +169,10 @@ fn test_self_intersecting_polygon_repaired() {
     // With is_simple_geometry_type check, result is Repaired (if GEOS produces
     // simple Polygon) or Rejected (if MultiPolygon can't be simplified).
     assert!(
-        matches!(result, ValidationResult::Repaired(_, _) | ValidationResult::Rejected(_)),
+        matches!(
+            result,
+            ValidationResult::Repaired(_, _) | ValidationResult::Rejected(_)
+        ),
         "Self-intersecting polygon should be repaired or rejected, got: {:?}",
         match &result {
             ValidationResult::Valid(_) => "Valid",
@@ -182,7 +181,9 @@ fn test_self_intersecting_polygon_repaired() {
         }
     );
     assert!(
-        stats.repaired_make_valid > 0 || stats.repaired_buffer_zero > 0 || stats.rejected_irrecoverable > 0,
+        stats.repaired_make_valid > 0
+            || stats.repaired_buffer_zero > 0
+            || stats.rejected_irrecoverable > 0,
         "Stats should reflect repair attempt"
     );
 }
@@ -408,8 +409,22 @@ fn test_validation_stats_accumulate_across_tiles() {
     use mpforge_cli::pipeline::tiler::{clip_feature_to_tile, TileBounds};
 
     let tiles = vec![
-        TileBounds { col: 0, row: 0, min_lon: 0.0, min_lat: 0.0, max_lon: 1.0, max_lat: 1.0 },
-        TileBounds { col: 1, row: 0, min_lon: 1.0, min_lat: 0.0, max_lon: 2.0, max_lat: 1.0 },
+        TileBounds {
+            col: 0,
+            row: 0,
+            min_lon: 0.0,
+            min_lat: 0.0,
+            max_lon: 1.0,
+            max_lat: 1.0,
+        },
+        TileBounds {
+            col: 1,
+            row: 0,
+            min_lon: 1.0,
+            min_lat: 0.0,
+            max_lon: 2.0,
+            max_lat: 1.0,
+        },
     ];
 
     let valid_feature = Feature {

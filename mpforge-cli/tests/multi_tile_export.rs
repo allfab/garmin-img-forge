@@ -11,7 +11,11 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Helper to create a minimal test configuration for multi-tile export
-fn create_multi_tile_config(temp_dir: &TempDir, fixture_path: &str, error_handling: &str) -> Config {
+fn create_multi_tile_config(
+    temp_dir: &TempDir,
+    fixture_path: &str,
+    error_handling: &str,
+) -> Config {
     let config_yaml = format!(
         r#"
 version: 1

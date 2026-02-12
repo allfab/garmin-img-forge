@@ -232,8 +232,10 @@ fn test_sequential_and_parallel_produce_same_counts() {
     let summary_par = pipeline::run(&config_par, &args_par).unwrap();
 
     // Verify same total processed (progress bar doesn't affect logic)
-    let total_seq = summary_seq.tiles_succeeded + summary_seq.tiles_failed + summary_seq.tiles_skipped;
-    let total_par = summary_par.tiles_succeeded + summary_par.tiles_failed + summary_par.tiles_skipped;
+    let total_seq =
+        summary_seq.tiles_succeeded + summary_seq.tiles_failed + summary_seq.tiles_skipped;
+    let total_par =
+        summary_par.tiles_succeeded + summary_par.tiles_failed + summary_par.tiles_skipped;
 
     assert_eq!(
         total_seq, total_par,

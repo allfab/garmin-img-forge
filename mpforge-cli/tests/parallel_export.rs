@@ -1,9 +1,9 @@
 //! Tests for parallel tile export functionality (Story 7.1).
 
+use clap::Parser;
 use mpforge_cli::cli::BuildArgs;
 use mpforge_cli::config::Config;
 use mpforge_cli::pipeline;
-use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -82,9 +82,9 @@ fn test_jobs_valid_value() {
 #[test]
 fn test_atomic_counters_thread_safe() {
     // Verify atomic counters are thread-safe (stress test)
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     let counter = Arc::new(AtomicUsize::new(0));
     let counter_clone = Arc::clone(&counter);
@@ -101,7 +101,11 @@ fn test_atomic_counters_thread_safe() {
 // ============================================================================
 
 /// Helper to create a test configuration for parallel export
-fn create_parallel_test_config(temp_dir: &TempDir, fixture_path: &str, error_handling: &str) -> Config {
+fn create_parallel_test_config(
+    temp_dir: &TempDir,
+    fixture_path: &str,
+    error_handling: &str,
+) -> Config {
     let config_yaml = format!(
         r#"
 version: 1
@@ -154,7 +158,10 @@ fn test_jobs_1_sequential_behavior() {
     assert!(result.is_ok(), "Pipeline with --jobs 1 should succeed");
 
     let summary = result.unwrap();
-    assert!(summary.tiles_succeeded > 0, "At least one tile should be exported");
+    assert!(
+        summary.tiles_succeeded > 0,
+        "At least one tile should be exported"
+    );
     assert_eq!(summary.tiles_failed, 0, "No tiles should fail");
 }
 
@@ -211,7 +218,11 @@ fn test_parallel_export_produces_same_results() {
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
 
-    assert_eq!(seq_files.len(), par_files.len(), "Same number of tile files should exist");
+    assert_eq!(
+        seq_files.len(),
+        par_files.len(),
+        "Same number of tile files should exist"
+    );
     assert_eq!(seq_files, par_files, "Same tile filenames should exist");
 
     // Compare file sizes to verify content consistency
@@ -231,8 +242,16 @@ fn test_parallel_export_produces_same_results() {
         );
 
         // Basic content verification: files should not be empty
-        assert!(seq_metadata.len() > 0, "Sequential file {} should not be empty", filename);
-        assert!(par_metadata.len() > 0, "Parallel file {} should not be empty", filename);
+        assert!(
+            seq_metadata.len() > 0,
+            "Sequential file {} should not be empty",
+            filename
+        );
+        assert!(
+            par_metadata.len() > 0,
+            "Parallel file {} should not be empty",
+            filename
+        );
     }
 }
 
@@ -349,7 +368,10 @@ error_handling: "continue"
     } else {
         // If pipeline fails completely (e.g., config error), that's also valid
         // The key is that in Continue mode, partial tile failures shouldn't fail the pipeline
-        eprintln!("Pipeline failed completely (config/setup error): {:?}", result.unwrap_err());
+        eprintln!(
+            "Pipeline failed completely (config/setup error): {:?}",
+            result.unwrap_err()
+        );
     }
 }
 
@@ -399,8 +421,14 @@ error_handling: "fail-fast"
     match result {
         Ok(summary) => {
             // Success case: all tiles processed without errors
-            assert!(summary.is_success(), "Pipeline should succeed with valid data");
-            assert_eq!(summary.tiles_failed, 0, "No tiles should fail with valid data");
+            assert!(
+                summary.is_success(),
+                "Pipeline should succeed with valid data"
+            );
+            assert_eq!(
+                summary.tiles_failed, 0,
+                "No tiles should fail with valid data"
+            );
         }
         Err(e) => {
             // If an error occurs, verify it's handled in fail-fast mode
@@ -427,8 +455,8 @@ fn test_parallel_error_handling_no_zombie_threads() {
     // Subtask 4.3: Verify no zombie threads remain after fail-fast error
     // This test ensures clean thread pool shutdown on error
 
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
@@ -469,7 +497,9 @@ fn test_parallel_error_handling_no_zombie_threads() {
     }
 
     // Join thread to ensure clean completion
-    let result = handle.join().expect("Pipeline thread should complete without panic");
+    let result = handle
+        .join()
+        .expect("Pipeline thread should complete without panic");
 
     // Pipeline should complete (either success or controlled error)
     match result {

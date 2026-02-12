@@ -498,12 +498,17 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
 /// For MVP, this is acceptable as GDAL Intersection typically returns simple geometries
 /// for tile clipping. Future improvement: use GDAL API `get_point()` directly.
 fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
-    let wkt = geom.wkt().map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
+    let wkt = geom
+        .wkt()
+        .map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
 
     // Story 6.6 Fix: Pre-check WKT for NaN/Inf before parsing
     let wkt_lower = wkt.to_lowercase();
     if wkt_lower.contains("nan") || wkt_lower.contains("inf") || wkt_lower.contains("-1.#ind") {
-        anyhow::bail!("GDAL intersection produced invalid WKT with NaN/Inf: {}", wkt);
+        anyhow::bail!(
+            "GDAL intersection produced invalid WKT with NaN/Inf: {}",
+            wkt
+        );
     }
 
     // Parse WKT to extract coordinates
@@ -531,8 +536,10 @@ fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
             // Check for nan/inf strings (case-insensitive)
             let x_lower = x_str.to_lowercase();
             let y_lower = y_str.to_lowercase();
-            if x_lower.contains("nan") || x_lower.contains("inf")
-                || y_lower.contains("nan") || y_lower.contains("inf")
+            if x_lower.contains("nan")
+                || x_lower.contains("inf")
+                || y_lower.contains("nan")
+                || y_lower.contains("inf")
             {
                 anyhow::bail!(
                     "Invalid WKT coordinates from GDAL intersection: x='{}', y='{}' (NaN/Inf detected)",
@@ -541,9 +548,11 @@ fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
             }
 
             // Parse with better error context (use cleaned strings)
-            let x: f64 = x_str.parse()
+            let x: f64 = x_str
+                .parse()
                 .map_err(|e| anyhow::anyhow!("Failed to parse X coordinate '{}': {}", x_str, e))?;
-            let y: f64 = y_str.parse()
+            let y: f64 = y_str
+                .parse()
                 .map_err(|e| anyhow::anyhow!("Failed to parse Y coordinate '{}': {}", y_str, e))?;
 
             // Double-check after parsing (should be redundant but defensive)

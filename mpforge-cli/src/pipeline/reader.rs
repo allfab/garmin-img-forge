@@ -309,7 +309,6 @@ impl RTreeIndex {
     }
 }
 
-
 /// Extract a human-readable source name from a path/connection string.
 /// Story 6.6 - Code Review H2 Fix: Handle PostGIS, URLs, and file paths properly.
 fn extract_source_name(path: &str) -> String {
@@ -358,7 +357,9 @@ impl SourceReader {
     /// * File not found or not readable
     /// * GDAL driver not available
     /// * Invalid layer name
-    pub fn read_file_source(input: &InputSource) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
+    pub fn read_file_source(
+        input: &InputSource,
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         Self::read_file_source_with_error_handling(input, "fail-fast")
     }
 
@@ -401,7 +402,8 @@ impl SourceReader {
             if layers.is_empty() {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
-                let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+                let (features, unsupported, multi_geom) =
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -442,7 +444,8 @@ impl SourceReader {
             }
         } else {
             // None: default behavior (load layer 0 only, no warning)
-            let (features, unsupported, multi_geom) = Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+            let (features, unsupported, multi_geom) =
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -589,11 +592,16 @@ impl SourceReader {
                                 // Story 6.7: MultiPoint/MultiLineString/MultiPolygon are now SUPPORTED (decomposed)
                                 // Only GeometryCollection and truly unknown types are unsupported
                                 OGRwkbGeometryType::wkbGeometryCollection
-                                | OGRwkbGeometryType::wkbGeometryCollection25D => "GeometryCollection".to_string(),
+                                | OGRwkbGeometryType::wkbGeometryCollection25D => {
+                                    "GeometryCollection".to_string()
+                                }
                                 // Fallback for any other types using Debug format
                                 other => {
                                     let debug_str = format!("{:?}", other);
-                                    debug_str.strip_prefix("wkb").unwrap_or(&debug_str).to_string()
+                                    debug_str
+                                        .strip_prefix("wkb")
+                                        .unwrap_or(&debug_str)
+                                        .to_string()
                                 }
                             };
                             unsupported_stats.record(type_name, source_name.clone());
@@ -607,7 +615,9 @@ impl SourceReader {
                                     OGRwkbGeometryType::wkbMultiPoint
                                     | OGRwkbGeometryType::wkbMultiPoint25D => "MultiPoint",
                                     OGRwkbGeometryType::wkbMultiLineString
-                                    | OGRwkbGeometryType::wkbMultiLineString25D => "MultiLineString",
+                                    | OGRwkbGeometryType::wkbMultiLineString25D => {
+                                        "MultiLineString"
+                                    }
                                     OGRwkbGeometryType::wkbMultiPolygon
                                     | OGRwkbGeometryType::wkbMultiPolygon25D => "MultiPolygon",
                                     _ => "Unknown", // Should not reach here
@@ -647,7 +657,14 @@ impl SourceReader {
     /// * File not found or not readable (depending on error_handling mode)
     /// * GDAL errors
     /// * R-tree construction errors (should never happen in practice)
-    pub fn read_all_sources(config: &Config) -> Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats, MultiGeometryStats)> {
+    pub fn read_all_sources(
+        config: &Config,
+    ) -> Result<(
+        Vec<Feature>,
+        RTreeIndex,
+        UnsupportedTypeStats,
+        MultiGeometryStats,
+    )> {
         let mut all_features = Vec::new();
         let mut total_stats = ReaderStats::default();
         let mut all_unsupported = UnsupportedTypeStats::default();
@@ -869,9 +886,7 @@ impl Feature {
     /// * Invalid sub-geometry structure
     /// Code Review M1 Fix: Added #[instrument] per Story 6.6 M5 learning.
     #[instrument(skip(gdal_feature))]
-    fn decompose_multi_geometry(
-        gdal_feature: &gdal::vector::Feature,
-    ) -> Result<Vec<Feature>> {
+    fn decompose_multi_geometry(gdal_feature: &gdal::vector::Feature) -> Result<Vec<Feature>> {
         let geometry = gdal_feature
             .geometry()
             .ok_or_else(|| anyhow!("Feature has no geometry for multi-geometry decomposition"))?;
@@ -897,8 +912,9 @@ impl Feature {
             OGRwkbGeometryType::wkbMultiPoint | OGRwkbGeometryType::wkbMultiPoint25D => {
                 GeometryType::Point
             }
-            OGRwkbGeometryType::wkbMultiLineString
-            | OGRwkbGeometryType::wkbMultiLineString25D => GeometryType::LineString,
+            OGRwkbGeometryType::wkbMultiLineString | OGRwkbGeometryType::wkbMultiLineString25D => {
+                GeometryType::LineString
+            }
             OGRwkbGeometryType::wkbMultiPolygon | OGRwkbGeometryType::wkbMultiPolygon25D => {
                 GeometryType::Polygon
             }
@@ -916,8 +932,7 @@ impl Feature {
             let sub_geom = geometry.get_geometry(i);
 
             // Subtask 2.6: Handle errors with logging and skip problematic sub-geometries
-            match Self::process_sub_geometry(&sub_geom, simple_geom_type, gdal_feature)
-            {
+            match Self::process_sub_geometry(&sub_geom, simple_geom_type, gdal_feature) {
                 Ok(feature) => sub_features.push(feature),
                 Err(e) => {
                     warn!(

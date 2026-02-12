@@ -87,12 +87,12 @@ pub struct TileError {
 /// Returns error if file cannot be created or JSON serialization fails.
 pub fn write_json_report(report: &ExecutionReport, path: &str) -> anyhow::Result<()> {
     // Serialize with pretty print for human readability
-    let json = serde_json::to_string_pretty(report)
-        .context("Failed to serialize report to JSON")?;
+    let json =
+        serde_json::to_string_pretty(report).context("Failed to serialize report to JSON")?;
 
     // Create and write file
-    let mut file = File::create(path)
-        .with_context(|| format!("Failed to create report file: {}", path))?;
+    let mut file =
+        File::create(path).with_context(|| format!("Failed to create report file: {}", path))?;
 
     file.write_all(json.as_bytes())
         .with_context(|| format!("Failed to write report to file: {}", path))?;

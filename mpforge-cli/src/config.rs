@@ -77,8 +77,7 @@ pub enum SourceType {
 
 /// Error handling mode for geometry clipping operations.
 /// Story 6.3: Controls behavior when encountering invalid geometries during clipping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ErrorMode {
     /// Continue processing, skip invalid features (production-friendly default)
     #[default]
@@ -438,7 +437,10 @@ error_handling: "invalid"
         assert!(result.is_err());
         // Updated for L2 fix: validation now uses ErrorMode::from_str
         let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("Invalid error_handling") || error_msg.contains("expected 'continue' or 'fail-fast'"));
+        assert!(
+            error_msg.contains("Invalid error_handling")
+                || error_msg.contains("expected 'continue' or 'fail-fast'")
+        );
     }
 
     #[test]
