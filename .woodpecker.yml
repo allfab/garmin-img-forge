@@ -81,6 +81,22 @@ steps:
       # Calculer les checksums
       - sha256sum *.tar.gz > checksums.txt
       - cat checksums.txt
+
+      # Créer les release notes
+      - |
+        cat > release-notes.md << 'EOF'
+        ## 📦 mpforge-cli ${CI_COMMIT_TAG}
+
+        ### Binaires
+        - Linux x64 : `mpforge-cli-linux-x64.tar.gz`
+
+        ### Checksums
+        Voir le fichier `checksums.txt` attaché.
+
+        ---
+        🤖 Généré automatiquement par Woodpecker CI
+        EOF
+      - cat release-notes.md
     when:
       event: [push, pull_request]
       status: success
@@ -98,19 +114,7 @@ steps:
         - artifacts/*.tar.gz
         - artifacts/checksums.txt
       title: "Release ${CI_COMMIT_TAG}"
-      note: |
-        ## 📦 mpforge-cli ${CI_COMMIT_TAG}
-
-        ### Binaires
-        - Linux x64 : `mpforge-cli-linux-x64.tar.gz`
-
-        ### Checksums
-        ```
-        $(cat artifacts/checksums.txt)
-        ```
-
-        ---
-        🤖 Généré automatiquement par Woodpecker CI
+      note: artifacts/release-notes.md
     when:
       event: tag
       tag: v*
