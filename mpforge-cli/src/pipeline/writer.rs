@@ -1,10 +1,11 @@
 //! Polish Map (.mp) file writing using GDAL PolishMap driver.
 
+use crate::config::HeaderConfig;
 use crate::pipeline::reader::{Feature, GeometryType};
 use anyhow::{anyhow, Context, Result};
 use gdal::cpl::CslStringList;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
-use gdal::{Dataset, DriverManager};
+use gdal::{Dataset, DriverManager, Metadata};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -36,11 +37,60 @@ pub struct MpWriter {
 }
 
 impl MpWriter {
+    /// Set header metadata on dataset using SetMetadataItem.
+    /// Story 8.1: Converts YAML field names (snake_case) to Polish Map format (PascalCase).
+    fn set_header_metadata(dataset: &mut Dataset, header: &HeaderConfig) -> Result<()> {
+        // Helper macro to set metadata item if value is Some
+        macro_rules! set_if_some {
+            ($field:expr, $key:expr) => {
+                if let Some(ref value) = $field {
+                    info!(key = $key, value = value, "Setting header metadata");
+                    dataset.set_metadata_item($key, value, "")?;
+                }
+            };
+        }
+
+        // Standard header fields (YAML snake_case -> Polish Map PascalCase)
+        set_if_some!(header.name, "Name");
+        set_if_some!(header.id, "ID");
+        set_if_some!(header.copyright, "Copyright");
+        set_if_some!(header.levels, "Levels");
+        set_if_some!(header.level0, "Level0");
+        set_if_some!(header.level1, "Level1");
+        set_if_some!(header.level2, "Level2");
+        set_if_some!(header.level3, "Level3");
+        set_if_some!(header.level4, "Level4");
+        set_if_some!(header.level5, "Level5");
+        set_if_some!(header.level6, "Level6");
+        set_if_some!(header.level7, "Level7");
+        set_if_some!(header.level8, "Level8");
+        set_if_some!(header.level9, "Level9");
+        set_if_some!(header.tree_size, "TreeSize");
+        set_if_some!(header.rgn_limit, "RgnLimit");
+        set_if_some!(header.transparent, "Transparent");
+        set_if_some!(header.marine, "Marine");
+        set_if_some!(header.preprocess, "Preprocess");
+        set_if_some!(header.lbl_coding, "LBLcoding");
+        set_if_some!(header.simplify_level, "SimplifyLevel");
+        set_if_some!(header.left_side_traffic, "LeftSideTraffic");
+
+        // Custom header fields (arbitrary key-value pairs)
+        if let Some(ref custom) = header.custom {
+            for (key, value) in custom {
+                info!(key = key, value = value, "Setting custom header metadata");
+                dataset.set_metadata_item(key, value, "")?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Create a new MpWriter for a specific output file.
     ///
     /// # Arguments
     /// * `output_path` - Complete path to output .mp file (e.g., "tiles/45_12.mp")
     /// * `field_mapping_path` - Optional path to YAML field mapping config for ogr-polishmap driver (Story 7.4)
+    /// * `header_config` - Optional header configuration for Polish Map files (Story 8.1)
     ///
     /// # Returns
     /// * `Result<Self>` - Initialized writer ready to accept features
@@ -50,6 +100,7 @@ impl MpWriter {
     /// * Failed to create output directory
     /// * Failed to create dataset or layers
     /// * Field mapping path encoding is invalid (non-UTF8)
+    /// * Header template path encoding is invalid (non-UTF8)
     ///
     /// # Breaking Change (Story 6.4)
     /// Previous signature was `new(config: &OutputConfig)`.
@@ -57,8 +108,15 @@ impl MpWriter {
     ///
     /// # Story 7.4
     /// Added optional `field_mapping_path` parameter to support YAML-based field mapping.
-    #[instrument(skip_all, fields(output_path = %output_path.display(), field_mapping = ?field_mapping_path))]
-    pub fn new(output_path: PathBuf, field_mapping_path: Option<&Path>) -> Result<Self> {
+    ///
+    /// # Story 8.1
+    /// Added optional `header_config` parameter to support header template and individual fields.
+    #[instrument(skip_all, fields(output_path = %output_path.display(), field_mapping = ?field_mapping_path, header = ?header_config.is_some()))]
+    pub fn new(
+        output_path: PathBuf,
+        field_mapping_path: Option<&Path>,
+        header_config: Option<&HeaderConfig>,
+    ) -> Result<Self> {
         info!(path = %output_path.display(), "Initializing MpWriter");
 
         // Note: Output directory creation is handled by caller (pipeline/mod.rs)
@@ -70,8 +128,12 @@ impl MpWriter {
 
         info!(path = %output_path.display(), "Creating MP dataset");
 
-        // Story 7.4: Load field mapping if provided
-        let (field_mapping, mut dataset) = if let Some(mapping_path) = field_mapping_path {
+        // Story 7.4 + 8.1: Prepare dataset creation options (FIELD_MAPPING, HEADER_TEMPLATE)
+        let mut options = CslStringList::new();
+        let mut has_options = false;
+
+        // Story 7.4: Add FIELD_MAPPING option if provided
+        let field_mapping = if let Some(mapping_path) = field_mapping_path {
             // Validate file exists before processing (H3 fix - validation moved here)
             if !mapping_path.exists() {
                 anyhow::bail!(
@@ -115,14 +177,48 @@ impl MpWriter {
             info!(
                 field_mapping = %mapping_path_str,
                 mapping_count = mapping_config.field_mapping.len(),
-                "Creating dataset with field mapping configuration"
+                "Adding FIELD_MAPPING dataset creation option"
             );
 
-            // Create dataset with FIELD_MAPPING creation option
-            let mut options = CslStringList::new();
             options.set_name_value("FIELD_MAPPING", mapping_path_str)?;
+            has_options = true;
 
-            let dataset = driver
+            Some(mapping_config.field_mapping)
+        } else {
+            None
+        };
+
+        // Story 8.1: Add HEADER_TEMPLATE option if provided
+        if let Some(header) = header_config {
+            if let Some(template_path) = &header.template {
+                // Convert path to absolute path string for GDAL (same pattern as field_mapping)
+                let template_path_abs = std::fs::canonicalize(template_path)
+                    .or_else(|_| {
+                        std::env::current_dir().map(|cwd| cwd.join(template_path))
+                            .with_context(|| format!(
+                                "Failed to resolve header template path: {}. Ensure the file is readable.",
+                                template_path.display()
+                            ))
+                    })?;
+
+                let template_path_str = template_path_abs
+                    .to_str()
+                    .context("Invalid header template path encoding (non-UTF8)")?;
+
+                info!(
+                    header_template = %template_path_str,
+                    "Adding HEADER_TEMPLATE dataset creation option"
+                );
+
+                options.set_name_value("HEADER_TEMPLATE", template_path_str)?;
+                has_options = true;
+            }
+        }
+
+        // Create dataset with or without options
+        let mut dataset = if has_options {
+            info!("Creating dataset with creation options (FIELD_MAPPING and/or HEADER_TEMPLATE)");
+            driver
                 .create_with_band_type_with_options::<u8, _>(
                     &output_path,
                     0,
@@ -132,21 +228,24 @@ impl MpWriter {
                 )
                 .with_context(|| {
                     format!(
-                        "Failed to create dataset with field mapping: {}",
+                        "Failed to create dataset with options: {}",
                         output_path.display()
                     )
-                })?;
-
-            (Some(mapping_config.field_mapping), dataset)
+                })?
         } else {
-            // No field mapping - use hardcoded aliases (backward compatible)
-            info!("Field mapping not configured, using driver hardcoded aliases (backward compatible)");
-            let dataset = driver
+            info!("Creating dataset without creation options (backward compatible)");
+            driver
                 .create_vector_only(&output_path)
-                .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?;
-
-            (None, dataset)
+                .with_context(|| format!("Failed to create dataset: {}", output_path.display()))?
         };
+
+        // Story 8.1: Set individual header fields via SetMetadataItem (if no template)
+        if let Some(header) = header_config {
+            // Only set individual fields if NO template (template takes precedence per driver logic)
+            if header.template.is_none() {
+                Self::set_header_metadata(&mut dataset, header)?;
+            }
+        }
 
         // Create POI layer
         let _poi_layer = dataset

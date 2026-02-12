@@ -287,6 +287,137 @@ ogr2ogr -f "PolishMap" \
 
 Si `field_mapping_path` n'est pas spécifié, le driver utilise ses aliases hardcodés (comportement par défaut des versions précédentes). Vos configurations existantes continuent de fonctionner sans modification.
 
+### Header Configuration
+
+**mpforge-cli** permet de configurer les options du header Polish Map (`[IMG ID]`) pour toutes les tuiles exportées, soit via un **fichier template**, soit via des **champs individuels**.
+
+#### Pourquoi configurer le header ?
+
+Le header Polish Map contient des métadonnées importantes pour la compilation avec cGPSmapper et l'affichage sur GPS Garmin :
+- **Nom de la carte** et **copyright**
+- **Niveaux de détail** (zoom levels)
+- **Paramètres de performance** (TreeSize, RgnLimit)
+- **Options de rendu** (transparence, marine)
+
+Sans configuration, le driver utilise des valeurs par défaut minimales.
+
+#### Option 1 : Template file (recommandé pour production)
+
+Utilisez un fichier template pour standardiser le header sur toutes les tuiles :
+
+**Fichier `config.yaml`** :
+
+```yaml
+output:
+  directory: "tiles/"
+  filename_pattern: "{x}_{y}.mp"
+
+header:
+  template: "examples/header_template.mp"  # ← Fichier template
+```
+
+**Fichier `header_template.mp`** :
+
+```
+[IMG ID]
+Name=BDTOPO Production Map
+ID=0
+Copyright=IGN 2026
+Levels=4
+Level0=24
+Level1=21
+Level2=18
+Level3=15
+TreeSize=3000
+RgnLimit=1024
+Transparent=N
+Marine=N
+Preprocess=F
+LBLcoding=9
+SimplifyLevel=2
+LeftSideTraffic=N
+```
+
+**Avantages** :
+- Configuration centralisée (un seul fichier à modifier)
+- Réutilisable pour plusieurs projets
+- Format standard Polish Map (compatible cGPSmapper)
+
+#### Option 2 : Champs individuels (configuration inline)
+
+Spécifiez les champs directement dans le YAML :
+
+```yaml
+output:
+  directory: "tiles/"
+  filename_pattern: "{x}_{y}.mp"
+
+header:
+  # Informations de base
+  name: "BDTOPO Réunion"
+  id: "0"
+  copyright: "IGN 2026"
+
+  # Niveaux de détail
+  levels: "4"
+  level0: "24"
+  level1: "21"
+  level2: "18"
+  level3: "15"
+
+  # Performance
+  tree_size: "3000"
+  rgn_limit: "1024"
+
+  # Apparence
+  transparent: "N"
+  marine: "N"
+
+  # Traitement
+  preprocess: "F"
+  lbl_coding: "9"
+  simplify_level: "2"
+  left_side_traffic: "N"
+
+  # Champs personnalisés
+  custom:
+    DrawPriority: "25"
+    MG: "N"
+```
+
+#### Champs disponibles
+
+| Champ YAML | Polish Map | Description | Valeurs |
+|------------|-----------|-------------|---------|
+| `name` | `Name` | Nom de la carte | Texte libre |
+| `id` | `ID` | ID de la carte | `0` (auto) ou entier |
+| `copyright` | `Copyright` | Notice de copyright | Texte libre |
+| `levels` | `Levels` | Nombre de niveaux de détail | `1`-`10` |
+| `level0`-`level9` | `Level0`-`Level9` | Zoom par niveau | `24`, `21`, `18`... |
+| `tree_size` | `TreeSize` | Taille d'arbre | `100`-`15000` (défaut: 3000) |
+| `rgn_limit` | `RgnLimit` | Limite région | `50`-`1024` (défaut: 1024) |
+| `transparent` | `Transparent` | Fond transparent | `Y`/`N`/`S` |
+| `marine` | `Marine` | Mode marine | `Y`/`N` |
+| `preprocess` | `Preprocess` | Mode prétraitement | `G`/`F`/`P`/`N` |
+| `lbl_coding` | `LBLcoding` | Encodage labels | `6`/`9`/`10` |
+| `simplify_level` | `SimplifyLevel` | Niveau simplification | `0`-`4` |
+| `left_side_traffic` | `LeftSideTraffic` | Circulation à gauche | `Y`/`N` |
+| `custom` | _(clés arbitraires)_ | Champs personnalisés | Map clé-valeur |
+
+#### Précédence des options
+
+Si `template` ET champs individuels sont spécifiés, **le template prend le dessus** :
+
+```yaml
+header:
+  template: "header_template.mp"  # ← Utilisé
+  name: "Ignored"                 # ← Ignoré
+```
+
+#### Backward compatibility
+
+Si `header` n'est pas spécifié, le driver utilise ses valeurs par défaut (comportement des versions précédentes). Vos configurations existantes continuent de fonctionner sans modification.
+
 ## Options CLI
 
 ### Commande `build`

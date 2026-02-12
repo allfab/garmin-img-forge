@@ -6,7 +6,7 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::{Config, ErrorMode};
+use crate::config::{Config, ErrorMode, HeaderConfig};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{Feature, SourceReader};
 use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
@@ -442,9 +442,10 @@ fn export_tiles_sequential(
         let tile_filename = format!("{}.mp", tile_id);
         let tile_path = PathBuf::from(&config.output.directory).join(tile_filename);
 
-        // Create writer for this tile (Story 7.4: with optional field mapping)
+        // Create writer for this tile (Story 7.4: with optional field mapping, Story 8.1: with optional header config)
         let field_mapping = config.output.field_mapping_path.as_deref();
-        let mut writer = match MpWriter::new(tile_path, field_mapping) {
+        let header_config = config.header.as_ref();
+        let mut writer = match MpWriter::new(tile_path, field_mapping, header_config) {
             Ok(w) => w,
             Err(e) => {
                 handle_export_error(&tile_id, e, error_mode, &mut failed, &mut export_errors)?;
@@ -565,6 +566,7 @@ fn export_tiles_parallel(
         progress,
         error_mode,
         field_mapping_path: config.output.field_mapping_path.as_deref(),
+        header_config: config.header.as_ref(),
     };
 
     // Execute parallel export
@@ -651,6 +653,8 @@ struct TileExportContext<'a> {
     error_mode: ErrorMode,
     /// Optional YAML field mapping path for ogr-polishmap driver (Story 7.4)
     field_mapping_path: Option<&'a Path>,
+    /// Optional header configuration for Polish Map files (Story 8.1)
+    header_config: Option<&'a HeaderConfig>,
 }
 
 /// Export a single tile (thread-safe, called from parallel loop).
@@ -717,7 +721,8 @@ fn export_single_tile(
 
     // Create writer, write features, finalize (with error handling)
     // Story 7.4: Pass field mapping path from context
-    let mut writer = match MpWriter::new(tile_path, ctx.field_mapping_path) {
+    // Story 8.1: Pass header config from context
+    let mut writer = match MpWriter::new(tile_path, ctx.field_mapping_path, ctx.header_config) {
         Ok(w) => w,
         Err(e) => return handle_error(e),
     };

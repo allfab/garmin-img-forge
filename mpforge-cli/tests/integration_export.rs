@@ -382,7 +382,7 @@ fn test_field_mapping_invalid_path_error() {
     let nonexistent_mapping = PathBuf::from("/nonexistent/mapping.yaml");
 
     // Try to create MpWriter with nonexistent field mapping path
-    let result = MpWriter::new(output_path, Some(&nonexistent_mapping));
+    let result = MpWriter::new(output_path, Some(&nonexistent_mapping), None);
 
     match result {
         Ok(_) => panic!("MpWriter::new() should fail with nonexistent field_mapping_path"),

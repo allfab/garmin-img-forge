@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tracing::{debug, info, warn};
@@ -17,6 +18,9 @@ pub struct Config {
     pub filters: Option<FilterConfig>,
     #[serde(default = "default_error_handling")]
     pub error_handling: String,
+    /// Optional header configuration for Polish Map files (Story 8.1)
+    #[serde(default)]
+    pub header: Option<HeaderConfig>,
 }
 
 fn default_version() -> u32 {
@@ -59,6 +63,84 @@ pub struct OutputConfig {
 
 fn default_filename_pattern() -> String {
     "{x}_{y}.mp".to_string()
+}
+
+/// Header configuration for Polish Map files.
+/// Story 8.1: Allows configuring header options (template, name, levels, etc.) via YAML.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeaderConfig {
+    /// Optional path to header template file (.mp) for HEADER_TEMPLATE DSCO
+    #[serde(default)]
+    pub template: Option<PathBuf>,
+    /// Map name (Polish Map: Name)
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Map ID (Polish Map: ID)
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Copyright notice (Polish Map: Copyright)
+    #[serde(default)]
+    pub copyright: Option<String>,
+    /// Number of detail levels (Polish Map: Levels)
+    #[serde(default)]
+    pub levels: Option<String>,
+    /// Level 0 zoom (Polish Map: Level0)
+    #[serde(default)]
+    pub level0: Option<String>,
+    /// Level 1 zoom (Polish Map: Level1)
+    #[serde(default)]
+    pub level1: Option<String>,
+    /// Level 2 zoom (Polish Map: Level2)
+    #[serde(default)]
+    pub level2: Option<String>,
+    /// Level 3 zoom (Polish Map: Level3)
+    #[serde(default)]
+    pub level3: Option<String>,
+    /// Level 4 zoom (Polish Map: Level4)
+    #[serde(default)]
+    pub level4: Option<String>,
+    /// Level 5 zoom (Polish Map: Level5)
+    #[serde(default)]
+    pub level5: Option<String>,
+    /// Level 6 zoom (Polish Map: Level6)
+    #[serde(default)]
+    pub level6: Option<String>,
+    /// Level 7 zoom (Polish Map: Level7)
+    #[serde(default)]
+    pub level7: Option<String>,
+    /// Level 8 zoom (Polish Map: Level8)
+    #[serde(default)]
+    pub level8: Option<String>,
+    /// Level 9 zoom (Polish Map: Level9)
+    #[serde(default)]
+    pub level9: Option<String>,
+    /// Tree size parameter (Polish Map: TreeSize)
+    #[serde(default)]
+    pub tree_size: Option<String>,
+    /// Region limit parameter (Polish Map: RgnLimit)
+    #[serde(default)]
+    pub rgn_limit: Option<String>,
+    /// Transparency setting (Polish Map: Transparent)
+    #[serde(default)]
+    pub transparent: Option<String>,
+    /// Marine map setting (Polish Map: Marine)
+    #[serde(default)]
+    pub marine: Option<String>,
+    /// Preprocessing mode (Polish Map: Preprocess)
+    #[serde(default)]
+    pub preprocess: Option<String>,
+    /// Label encoding (Polish Map: LBLcoding)
+    #[serde(default)]
+    pub lbl_coding: Option<String>,
+    /// Simplification level (Polish Map: SimplifyLevel)
+    #[serde(default)]
+    pub simplify_level: Option<String>,
+    /// Left-side traffic setting (Polish Map: LeftSideTraffic)
+    #[serde(default)]
+    pub left_side_traffic: Option<String>,
+    /// Custom arbitrary header fields
+    #[serde(default)]
+    pub custom: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,6 +257,21 @@ impl Config {
         // Validation moved to MpWriter::new() to avoid race condition in parallel mode
         // where file could be deleted between config validation and usage.
         // See writer.rs:65-69 for canonicalize() with proper error context.
+
+        // Header template validation (Story 8.1)
+        // Unlike field_mapping, template path is validated here because:
+        // - Template is global config (not per-tile), so race condition risk is minimal
+        // - Early validation provides clear error message before any tile processing starts
+        if let Some(header) = &self.header {
+            if let Some(template_path) = &header.template {
+                if !template_path.exists() {
+                    anyhow::bail!(
+                        "header.template file does not exist: {}. Please provide a valid .mp template file.",
+                        template_path.display()
+                    );
+                }
+            }
+        }
 
         Ok(())
     }
@@ -511,6 +608,7 @@ output:
             },
             filters: None,
             error_handling: "continue".to_string(),
+            header: None,
         };
         let result = config.validate();
         assert!(result.is_err());
@@ -713,4 +811,124 @@ output:
     // field_mapping_path validation moved from config.validate() to MpWriter::new()
     // to avoid race condition in parallel mode. See test_field_mapping_invalid_path_error
     // in tests/integration_export.rs for validation coverage.
+
+    // Story 8.1: HeaderConfig tests
+    #[test]
+    fn test_config_with_header_section() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  name: "Ma Carte"
+  levels: "4"
+  transparent: "Y"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.header.is_some());
+        let header = config.header.clone().unwrap();
+        assert_eq!(header.name, Some("Ma Carte".to_string()));
+        assert_eq!(header.levels, Some("4".to_string()));
+        assert_eq!(header.transparent, Some("Y".to_string()));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_without_header_section() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.header.is_none());
+        // Validation should pass without header (backward compat)
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_with_header_template() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create temp template file
+        let temp_dir = TempDir::new().unwrap();
+        let template_path = temp_dir.path().join("template.mp");
+        fs::write(&template_path, "[IMG ID]\nName=Template").unwrap();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  template: "{}"
+"#,
+            template_path.display()
+        );
+        let config: Config = serde_yml::from_str(&yaml).unwrap();
+        assert!(config.header.is_some());
+        let header = config.header.clone().unwrap();
+        assert!(header.template.is_some());
+        assert_eq!(header.template.as_ref().unwrap(), &template_path);
+        // Validation should pass when template exists
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_header_template_validation_error() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  template: "/nonexistent/template.mp"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("template") || error_msg.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_config_header_custom_fields() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  custom:
+    DrawPriority: "25"
+    MG: "N"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.header.is_some());
+        let header = config.header.clone().unwrap();
+        assert!(header.custom.is_some());
+        let custom = header.custom.unwrap();
+        assert_eq!(custom.get("DrawPriority"), Some(&"25".to_string()));
+        assert_eq!(custom.get("MG"), Some(&"N".to_string()));
+        assert!(config.validate().is_ok());
+    }
 }
