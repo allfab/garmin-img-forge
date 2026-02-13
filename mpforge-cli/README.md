@@ -20,41 +20,37 @@
 
 ### Option 1 : Binaire pré-compilé (recommandé)
 
-**Prérequis** : GDAL doit être installé sur votre système.
-
-**1. Installer GDAL** :
-
-```bash
-# Fedora/RHEL
-sudo dnf install gdal
-
-# Ubuntu/Debian
-sudo apt install gdal-bin libgdal32
-
-# Alpine
-sudo apk add gdal
-
-# Vérifier l'installation
-gdal-config --version
-```
-
-**2. Télécharger et installer mpforge-cli** :
+✨ **Zéro configuration** : Les binaires incluent GDAL 3.10.1 et le driver PolishMap. Aucune dépendance système n'est requise !
 
 **Linux x64** :
 ```bash
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-x64.tar.gz
-tar xzf mpforge-cli-linux-x64.tar.gz
+# Télécharger la release
+wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-x64-static.tar.gz
+
+# Extraire
+tar xzf mpforge-cli-linux-x64-static.tar.gz
+
+# Installer
 sudo mv mpforge-cli /usr/local/bin/
+
+# Tester
 mpforge-cli --version
 ```
 
 **Linux ARM64** (Raspberry Pi, serveurs ARM) :
 ```bash
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-cli-linux-arm64.tar.gz
-tar xzf mpforge-cli-linux-arm64.tar.gz
-sudo mv mpforge-cli /usr/local/bin/
-mpforge-cli --version
+# À venir dans une prochaine release
+# Le build ARM64 statique sera disponible prochainement
 ```
+
+**Compatibilité** :
+- ✅ Ubuntu 18.04+ / Debian 10+
+- ✅ Fedora 28+ / RHEL 8+
+- ✅ Alpine Linux 3.12+ (glibc)
+- ✅ Arch Linux / Manjaro
+- ✅ WSL2
+
+> 💡 **Anciennes releases (< v0.2.0)** : Nécessitaient GDAL installé. À partir de v0.2.0, GDAL est intégré dans le binaire.
 
 ### Option 2 : Compilation depuis les sources
 
