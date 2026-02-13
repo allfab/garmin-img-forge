@@ -16,3 +16,6 @@ Thumbs.db
 # Test artifacts / Output directories
 tiles/
 *.mp
+
+# Embedded resources (copied during CI build)
+/resources/proj.db

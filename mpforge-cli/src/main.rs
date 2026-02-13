@@ -9,6 +9,9 @@ use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 fn main() -> anyhow::Result<()> {
+    // Initialize PROJ with embedded proj.db
+    mpforge_cli::proj_init::init_proj()?;
+
     // Parse command-line arguments
     let cli = Cli::parse();
 
