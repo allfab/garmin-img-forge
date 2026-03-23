@@ -2,7 +2,7 @@
 
 use crate::config::{Config, InputSource};
 use anyhow::{anyhow, Context, Result};
-use gdal::spatial_ref::SpatialRef;
+use gdal::spatial_ref::{CoordTransform, SpatialRef};
 use gdal::vector::{LayerAccess, OGRwkbGeometryType};
 use gdal::Dataset;
 use rstar::{RTree, RTreeObject, AABB};
@@ -336,6 +336,33 @@ fn extract_source_name(path: &str) -> String {
     }
 }
 
+/// Helper enum for layer selection (by index or by name).
+enum LayerSelector {
+    Index(usize),
+    Name(String),
+}
+
+/// Global bounding box computed from all source extents.
+///
+/// Lightweight structure returned by `SourceReader::scan_extents()`.
+/// Does not depend on R-tree or any feature loading.
+#[derive(Debug, Clone)]
+pub struct GlobalExtent {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub max_x: f64,
+    pub max_y: f64,
+    /// Number of layers successfully scanned (may differ from file count for multi-layer sources).
+    pub layer_count: usize,
+}
+
+impl GlobalExtent {
+    /// Convert to [min_x, min_y, max_x, max_y] array for grid generation.
+    pub fn to_bbox(&self) -> [f64; 4] {
+        [self.min_x, self.min_y, self.max_x, self.max_y]
+    }
+}
+
 /// Reads features from GDAL sources.
 ///
 /// This is a stateless utility struct - all methods are static/associated functions.
@@ -644,14 +671,330 @@ impl SourceReader {
         Ok((features, unsupported_stats, multi_geom_stats))
     }
 
+    /// Pre-scan all source extents without loading any features.
+    ///
+    /// Opens each GDAL dataset, reads the layer extent via `try_get_extent()`
+    /// (O(1) for shapefiles via .shx) with fallback to `get_extent()`,
+    /// and computes the union of all bounding boxes.
+    ///
+    /// # Arguments
+    /// * `config` - Configuration with list of input sources
+    ///
+    /// # Returns
+    /// * `Result<GlobalExtent>` - Union bounding box of all sources
+    ///
+    /// # Errors
+    /// * No valid sources found (all failed or empty inputs)
+    /// * GDAL errors (depending on error_handling mode)
+    pub fn scan_extents(config: &Config) -> Result<GlobalExtent> {
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut max_y = f64::MIN;
+        let mut layer_count: usize = 0;
+
+        info!(
+            source_count = config.inputs.len(),
+            "Scanning source extents (no feature loading)"
+        );
+
+        for (idx, input) in config.inputs.iter().enumerate() {
+            let path = match input.path.as_ref() {
+                Some(p) => p,
+                None => {
+                    warn!(source_index = idx + 1, "No path specified, skipping");
+                    continue;
+                }
+            };
+
+            let dataset = match Dataset::open(path) {
+                Ok(ds) => ds,
+                Err(e) => {
+                    if config.error_handling == "fail-fast" {
+                        return Err(e).with_context(|| {
+                            format!("Failed to open dataset for extent scan: {}", path)
+                        });
+                    }
+                    warn!(
+                        source_index = idx + 1,
+                        path = %path,
+                        error = %e,
+                        "Failed to open dataset for extent scan, skipping"
+                    );
+                    continue;
+                }
+            };
+
+            // Collect layers to scan (same logic as read_file_source_with_error_handling)
+            let layer_indices_or_names: Vec<LayerSelector> =
+                if let Some(layers) = &input.layers {
+                    if layers.is_empty() {
+                        vec![LayerSelector::Index(0)]
+                    } else {
+                        layers.iter().map(|n| LayerSelector::Name(n.clone())).collect()
+                    }
+                } else {
+                    vec![LayerSelector::Index(0)]
+                };
+
+            for selector in &layer_indices_or_names {
+                let layer = match selector {
+                    LayerSelector::Index(i) => match dataset.layer(*i) {
+                        Ok(l) => l,
+                        Err(e) => {
+                            if config.error_handling == "fail-fast" {
+                                return Err(e).with_context(|| {
+                                    format!("Failed to access layer {} in: {}", i, path)
+                                });
+                            }
+                            warn!(path = %path, layer = i, error = %e, "Failed to access layer, skipping");
+                            continue;
+                        }
+                    },
+                    LayerSelector::Name(name) => match dataset.layer_by_name(name) {
+                        Ok(l) => l,
+                        Err(e) => {
+                            if config.error_handling == "fail-fast" {
+                                return Err(e).with_context(|| {
+                                    format!("Layer '{}' not found in: {}", name, path)
+                                });
+                            }
+                            warn!(path = %path, layer = %name, error = %e, "Layer not found, skipping");
+                            continue;
+                        }
+                    },
+                };
+
+                // Try fast extent first, fallback to full scan
+                let envelope = match layer.try_get_extent() {
+                    Ok(Some(env)) => env,
+                    Ok(None) => {
+                        debug!(path = %path, "try_get_extent() returned None, using get_extent()");
+                        match layer.get_extent() {
+                            Ok(env) => env,
+                            Err(e) => {
+                                if config.error_handling == "fail-fast" {
+                                    return Err(e).with_context(|| {
+                                        format!("Failed to get extent for: {}", path)
+                                    });
+                                }
+                                warn!(path = %path, error = %e, "Failed to get extent, skipping");
+                                continue;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if config.error_handling == "fail-fast" {
+                            return Err(e).with_context(|| {
+                                format!("Failed to get extent for: {}", path)
+                            });
+                        }
+                        warn!(path = %path, error = %e, "try_get_extent() failed, skipping");
+                        continue;
+                    }
+                };
+
+                // Reproject envelope to WGS84 if layer has a different SRS
+                let bounds = [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY];
+
+                let bounds_wgs84 = if let Some(layer_srs) = layer.spatial_ref() {
+                    match layer_srs.auth_code() {
+                        Ok(4326) => bounds, // Already WGS84
+                        Ok(code) => {
+                            // Non-WGS84 SRS — reproject extent
+                            debug!(path = %path, srs = code, "Reprojecting extent to WGS84");
+                            let wgs84 = SpatialRef::from_epsg(4326)?;
+                            match CoordTransform::new(&layer_srs, &wgs84) {
+                                Ok(transform) => match transform.transform_bounds(&bounds, 21) {
+                                    Ok(reprojected) => reprojected,
+                                    Err(e) => {
+                                        if config.error_handling == "fail-fast" {
+                                            return Err(e).with_context(|| {
+                                                format!("Failed to reproject extent for: {}", path)
+                                            });
+                                        }
+                                        warn!(path = %path, error = %e, "Failed to reproject extent, skipping");
+                                        continue;
+                                    }
+                                },
+                                Err(e) => {
+                                    if config.error_handling == "fail-fast" {
+                                        return Err(e).with_context(|| {
+                                            format!("Failed to create coordinate transform for: {}", path)
+                                        });
+                                    }
+                                    warn!(path = %path, error = %e, "Failed to create coordinate transform, skipping");
+                                    continue;
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // Cannot determine SRS authority — assume WGS84
+                            warn!(path = %path, "Cannot determine layer SRS authority, assuming WGS84");
+                            bounds
+                        }
+                    }
+                } else {
+                    // No SRS defined — assume WGS84 (same as load_features_from_layer behavior)
+                    warn!(path = %path, "Layer has no SRS for extent, assuming WGS84");
+                    bounds
+                };
+
+                min_x = min_x.min(bounds_wgs84[0]);
+                min_y = min_y.min(bounds_wgs84[1]);
+                max_x = max_x.max(bounds_wgs84[2]);
+                max_y = max_y.max(bounds_wgs84[3]);
+                layer_count += 1;
+            }
+        }
+
+        if layer_count == 0 {
+            anyhow::bail!("No valid source extents found");
+        }
+
+        info!(
+            layer_count,
+            min_x, min_y, max_x, max_y,
+            "Extent scan completed"
+        );
+
+        Ok(GlobalExtent {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+            layer_count,
+        })
+    }
+
+    /// Load features intersecting a single tile from all sources.
+    ///
+    /// Uses `set_spatial_filter_rect()` to leverage GDAL's native spatial filtering.
+    /// Only features whose bounding box intersects the tile are loaded.
+    ///
+    /// Note: Each call opens and closes all datasets. For N tiles × M sources,
+    /// this is N×M dataset opens. This trades I/O overhead for memory safety
+    /// (no long-lived dataset handles). If profiling shows this is a bottleneck,
+    /// a future optimization can pre-open datasets and reuse them.
+    ///
+    /// # Arguments
+    /// * `config` - Configuration with list of input sources
+    /// * `tile_bounds` - Tile bounding box for spatial filtering
+    ///
+    /// # Returns
+    /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Filtered features and stats
+    pub fn read_features_for_tile(
+        config: &Config,
+        tile_bounds: &crate::pipeline::tiler::TileBounds,
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
+        let mut all_features = Vec::new();
+        let mut all_unsupported = UnsupportedTypeStats::default();
+        let mut all_multi_geom = MultiGeometryStats::default();
+
+        for (idx, input) in config.inputs.iter().enumerate() {
+            let path = match input.path.as_ref() {
+                Some(p) => p,
+                None => continue,
+            };
+
+            let dataset = match Dataset::open(path) {
+                Ok(ds) => ds,
+                Err(e) => {
+                    if config.error_handling == "fail-fast" {
+                        return Err(e)
+                            .with_context(|| format!("Failed to open dataset: {}", path));
+                    }
+                    warn!(
+                        source_index = idx + 1,
+                        path = %path,
+                        error = %e,
+                        "Failed to open dataset, skipping"
+                    );
+                    continue;
+                }
+            };
+
+            let wgs84 = SpatialRef::from_epsg(4326)?;
+
+            // Same layer selection logic
+            let layer_selectors: Vec<LayerSelector> =
+                if let Some(layers) = &input.layers {
+                    if layers.is_empty() {
+                        vec![LayerSelector::Index(0)]
+                    } else {
+                        layers.iter().map(|n| LayerSelector::Name(n.clone())).collect()
+                    }
+                } else {
+                    vec![LayerSelector::Index(0)]
+                };
+
+            for selector in &layer_selectors {
+                let mut layer = match selector {
+                    LayerSelector::Index(i) => match dataset.layer(*i) {
+                        Ok(l) => l,
+                        Err(e) => {
+                            if config.error_handling == "fail-fast" {
+                                return Err(e).with_context(|| {
+                                    format!("Failed to access layer {} in: {}", i, path)
+                                });
+                            }
+                            warn!(path = %path, error = %e, "Failed to access layer, skipping");
+                            continue;
+                        }
+                    },
+                    LayerSelector::Name(name) => match dataset.layer_by_name(name) {
+                        Ok(l) => l,
+                        Err(e) => {
+                            if config.error_handling == "fail-fast" {
+                                return Err(e).with_context(|| {
+                                    format!("Layer '{}' not found in: {}", name, path)
+                                });
+                            }
+                            warn!(path = %path, error = %e, "Layer not found, skipping");
+                            continue;
+                        }
+                    },
+                };
+
+                // Apply spatial filter for this tile
+                layer.set_spatial_filter_rect(
+                    tile_bounds.min_lon,
+                    tile_bounds.min_lat,
+                    tile_bounds.max_lon,
+                    tile_bounds.max_lat,
+                );
+
+                let (features, unsupported, multi_geom) =
+                    Self::load_features_from_layer(&mut layer, path, &wgs84)?;
+
+                layer.clear_spatial_filter();
+
+                all_features.extend(features);
+                all_unsupported.merge(&unsupported);
+                all_multi_geom.merge(&multi_geom);
+            }
+        }
+
+        debug!(
+            tile = %tile_bounds.tile_id(),
+            features = all_features.len(),
+            "Tile features loaded"
+        );
+
+        Ok((all_features, all_unsupported, all_multi_geom))
+    }
+
     /// Read features from all sources and build R-tree spatial index.
+    ///
+    /// # Deprecated
+    /// Use `scan_extents()` + `read_features_for_tile()` instead for memory-efficient
+    /// tile-centric processing.
     ///
     /// # Arguments
     /// * `config` - Configuration with list of input sources
     ///
     /// # Returns
     /// * `Result<(Vec<Feature>, RTreeIndex, UnsupportedTypeStats, MultiGeometryStats)>` - All features, R-tree index, unsupported type stats, and multi-geometry stats
-    /// Story 6.7 - Subtask 4.3: Added MultiGeometryStats to return type (4-tuple).
     ///
     /// # Errors
     /// * File not found or not readable (depending on error_handling mode)

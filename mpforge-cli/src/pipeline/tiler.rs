@@ -114,10 +114,99 @@ impl TileProcessor {
         tiles
     }
 
+    /// Generate tile boundaries from a direct bounding box.
+    ///
+    /// Same algorithm as `generate_tiles()` but accepts a `[min_x, min_y, max_x, max_y]`
+    /// array instead of requiring an `RTreeIndex`. Used by the tile-centric pipeline
+    /// where extents are obtained via `scan_extents()`.
+    ///
+    /// # Arguments
+    /// * `global_bbox` - Bounding box `[min_x, min_y, max_x, max_y]`
+    /// * `filters` - Optional spatial filter to exclude tiles outside bbox
+    ///
+    /// # Returns
+    /// * `Vec<TileBounds>` - All tiles covering the bbox (after filtering)
+    #[instrument(skip(self))]
+    pub fn generate_tiles_from_bbox(
+        &self,
+        global_bbox: &[f64; 4],
+        filters: &Option<FilterConfig>,
+    ) -> Vec<TileBounds> {
+        let [bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y] = *global_bbox;
+
+        // Validate bbox
+        if bbox_min_x >= bbox_max_x || bbox_min_y >= bbox_max_y {
+            info!("Empty or degenerate bbox, cannot generate grid");
+            return Vec::new();
+        }
+
+        // Determine grid origin
+        let origin = self
+            .grid
+            .origin
+            .unwrap_or([bbox_min_x, bbox_min_y]);
+
+        // Calculate grid dimensions
+        let width = bbox_max_x - origin[0];
+        let height = bbox_max_y - origin[1];
+        let num_cols = (width / self.grid.cell_size).ceil() as usize;
+        let num_rows = (height / self.grid.cell_size).ceil() as usize;
+
+        info!(
+            origin = ?origin,
+            cell_size = self.grid.cell_size,
+            overlap = self.grid.overlap,
+            num_cols,
+            num_rows,
+            theoretical_tiles = num_cols * num_rows,
+            "Generating spatial grid from bbox"
+        );
+
+        // Generate all tile boundaries
+        let mut tiles = Vec::with_capacity(num_cols * num_rows);
+
+        for row in 0..num_rows {
+            for col in 0..num_cols {
+                let min_lon =
+                    origin[0] + (col as f64 * self.grid.cell_size) - (self.grid.overlap / 2.0);
+                let min_lat =
+                    origin[1] + (row as f64 * self.grid.cell_size) - (self.grid.overlap / 2.0);
+                let max_lon = min_lon + self.grid.cell_size + self.grid.overlap;
+                let max_lat = min_lat + self.grid.cell_size + self.grid.overlap;
+
+                let tile = TileBounds {
+                    col,
+                    row,
+                    min_lon,
+                    min_lat,
+                    max_lon,
+                    max_lat,
+                };
+
+                // Apply spatial filter if exists
+                if let Some(filter) = filters {
+                    if !tile.intersects_bbox(&filter.bbox) {
+                        continue;
+                    }
+                }
+
+                tiles.push(tile);
+            }
+        }
+
+        info!(
+            tiles_generated = tiles.len(),
+            filtered_out = (num_cols * num_rows) - tiles.len(),
+            "Grid generation from bbox completed"
+        );
+
+        tiles
+    }
+
     /// Assign features to tiles using R-tree spatial queries.
     ///
-    /// For each tile, queries the R-tree to find candidate features whose bboxes
-    /// intersect the tile bbox (with overlap). Empty tiles are automatically skipped.
+    /// # Deprecated
+    /// Use tile-centric pipeline with `read_features_for_tile()` instead.
     ///
     /// # Arguments
     /// * `rtree` - Spatial index for efficient queries
@@ -125,11 +214,6 @@ impl TileProcessor {
     ///
     /// # Returns
     /// * `Vec<(TileBounds, Vec<usize>)>` - Non-empty tiles with feature IDs
-    ///
-    /// # Performance
-    /// * Query complexity: O(log n + k) per tile where k = candidates
-    ///   (vs O(n) naive iteration over all features, where n = total feature count)
-    /// * Empty tiles are filtered out to avoid processing overhead downstream
     #[instrument(skip(rtree, tiles))]
     pub fn assign_features_to_tiles(
         &self,
@@ -486,89 +570,129 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
     Geometry::from_wkt(&wkt).map_err(|e| anyhow::anyhow!("WKT conversion failed: {}", e))
 }
 
-/// Extract coordinates from GDAL Geometry to internal format.
+/// Extract coordinates from GDAL Geometry to internal format using GDAL native API.
 ///
-/// # Limitations
-/// This is a simplified WKT parser that handles Point, LineString, and simple Polygon.
-/// It may fail on:
-/// - MultiPolygon, MultiLineString, GeometryCollection
-/// - Polygons with interior rings (holes)
-/// - Nested complex geometries
-///
-/// For MVP, this is acceptable as GDAL Intersection typically returns simple geometries
-/// for tile clipping. Future improvement: use GDAL API `get_point()` directly.
+/// Handles simple geometries (Point, LineString, Polygon) and multi-geometries
+/// (MultiPolygon, MultiLineString) by extracting the largest sub-geometry.
+/// For Polygons, only the exterior ring is extracted.
 fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
-    let wkt = geom
-        .wkt()
-        .map_err(|e| anyhow::anyhow!("Failed to get WKT: {}", e))?;
+    use gdal::vector::OGRwkbGeometryType;
 
-    // Story 6.6 Fix: Pre-check WKT for NaN/Inf before parsing
-    let wkt_lower = wkt.to_lowercase();
-    if wkt_lower.contains("nan") || wkt_lower.contains("inf") || wkt_lower.contains("-1.#ind") {
-        anyhow::bail!(
-            "GDAL intersection produced invalid WKT with NaN/Inf: {}",
-            wkt
-        );
-    }
+    let geom_type = geom.geometry_type();
 
-    // Parse WKT to extract coordinates
-    // This is a simplified parser - handles Point, LineString, and Polygon
-    let coords_str = wkt
-        .split_once('(')
-        .and_then(|(_, rest)| rest.rsplit_once(')'))
-        .map(|(coords, _)| coords)
-        .ok_or_else(|| anyhow::anyhow!("Invalid WKT format"))?;
-
-    // Remove extra parentheses for Polygon (multiple layers possible)
-    // POLYGON((x y, x y)) has 2 layers, LineString((x y)) has 1 layer
-    let coords_str = coords_str.trim_start_matches('(').trim_end_matches(')');
-
-    // Parse coordinate pairs
-    let mut coords = Vec::new();
-    for pair in coords_str.split(',') {
-        let parts: Vec<&str> = pair.trim().split_whitespace().collect();
-        if parts.len() >= 2 {
-            // Story 6.6 Fix: Clean up each coordinate string from WKT artifacts (parentheses)
-            // POLYGON WKT can have nested parentheses: POLYGON((x y, x y))
-            let x_str = parts[0].trim().trim_matches(|c| c == '(' || c == ')');
-            let y_str = parts[1].trim().trim_matches(|c| c == '(' || c == ')');
-
-            // Check for nan/inf strings (case-insensitive)
-            let x_lower = x_str.to_lowercase();
-            let y_lower = y_str.to_lowercase();
-            if x_lower.contains("nan")
-                || x_lower.contains("inf")
-                || y_lower.contains("nan")
-                || y_lower.contains("inf")
-            {
-                anyhow::bail!(
-                    "Invalid WKT coordinates from GDAL intersection: x='{}', y='{}' (NaN/Inf detected)",
-                    x_str, y_str
-                );
+    match geom_type {
+        // Point
+        OGRwkbGeometryType::wkbPoint | OGRwkbGeometryType::wkbPoint25D => {
+            let (x, y, _) = geom.get_point(0);
+            validate_coords(x, y)?;
+            Ok(vec![(x, y)])
+        }
+        // LineString
+        OGRwkbGeometryType::wkbLineString | OGRwkbGeometryType::wkbLineString25D => {
+            extract_linestring_coords(geom)
+        }
+        // Polygon — extract exterior ring only
+        OGRwkbGeometryType::wkbPolygon | OGRwkbGeometryType::wkbPolygon25D => {
+            extract_polygon_exterior_coords(geom)
+        }
+        // MultiPolygon — extract largest sub-polygon's exterior ring
+        OGRwkbGeometryType::wkbMultiPolygon | OGRwkbGeometryType::wkbMultiPolygon25D => {
+            let count = geom.geometry_count();
+            if count == 0 {
+                anyhow::bail!("MultiPolygon has no sub-geometries");
             }
-
-            // Parse with better error context (use cleaned strings)
-            let x: f64 = x_str
-                .parse()
-                .map_err(|e| anyhow::anyhow!("Failed to parse X coordinate '{}': {}", x_str, e))?;
-            let y: f64 = y_str
-                .parse()
-                .map_err(|e| anyhow::anyhow!("Failed to parse Y coordinate '{}': {}", y_str, e))?;
-
-            // Double-check after parsing (should be redundant but defensive)
-            if !x.is_finite() || !y.is_finite() {
-                anyhow::bail!("Invalid coordinates after parsing: x={}, y={}", x, y);
+            // Find the sub-polygon with the most points (largest component)
+            let mut best_coords = Vec::new();
+            for i in 0..count {
+                let sub = geom.get_geometry(i);
+                if let Ok(coords) = extract_polygon_exterior_coords(&sub) {
+                    if coords.len() > best_coords.len() {
+                        best_coords = coords;
+                    }
+                }
             }
-
-            coords.push((x, y));
+            if best_coords.is_empty() {
+                anyhow::bail!("MultiPolygon: no valid sub-polygon found");
+            }
+            debug!(
+                sub_count = count,
+                coords = best_coords.len(),
+                "MultiPolygon: extracted largest sub-polygon"
+            );
+            Ok(best_coords)
+        }
+        // MultiLineString — extract longest sub-linestring
+        OGRwkbGeometryType::wkbMultiLineString | OGRwkbGeometryType::wkbMultiLineString25D => {
+            let count = geom.geometry_count();
+            if count == 0 {
+                anyhow::bail!("MultiLineString has no sub-geometries");
+            }
+            let mut best_coords = Vec::new();
+            for i in 0..count {
+                let sub = geom.get_geometry(i);
+                if let Ok(coords) = extract_linestring_coords(&sub) {
+                    if coords.len() > best_coords.len() {
+                        best_coords = coords;
+                    }
+                }
+            }
+            if best_coords.is_empty() {
+                anyhow::bail!("MultiLineString: no valid sub-linestring found");
+            }
+            debug!(
+                sub_count = count,
+                coords = best_coords.len(),
+                "MultiLineString: extracted longest sub-linestring"
+            );
+            Ok(best_coords)
+        }
+        other => {
+            anyhow::bail!("Unsupported geometry type from intersection: {:?}", other);
         }
     }
+}
 
-    if coords.is_empty() {
-        anyhow::bail!("No coordinates found in geometry");
+/// Extract coordinates from a LineString geometry.
+fn extract_linestring_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
+    let point_count = geom.point_count();
+    if point_count == 0 {
+        anyhow::bail!("LineString has no points");
     }
-
+    let mut coords = Vec::with_capacity(point_count);
+    for i in 0..point_count {
+        let (x, y, _) = geom.get_point(i as i32);
+        validate_coords(x, y)?;
+        coords.push((x, y));
+    }
     Ok(coords)
+}
+
+/// Extract exterior ring coordinates from a Polygon geometry.
+fn extract_polygon_exterior_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
+    let ring_count = geom.geometry_count();
+    if ring_count == 0 {
+        anyhow::bail!("Polygon has no rings");
+    }
+    let ring = geom.get_geometry(0); // exterior ring
+    let point_count = ring.point_count();
+    if point_count == 0 {
+        anyhow::bail!("Polygon exterior ring has no points");
+    }
+    let mut coords = Vec::with_capacity(point_count);
+    for i in 0..point_count {
+        let (x, y, _) = ring.get_point(i as i32);
+        validate_coords(x, y)?;
+        coords.push((x, y));
+    }
+    Ok(coords)
+}
+
+/// Validate that coordinates are finite (not NaN or Inf).
+fn validate_coords(x: f64, y: f64) -> anyhow::Result<()> {
+    if !x.is_finite() || !y.is_finite() {
+        anyhow::bail!("Invalid coordinates: x={}, y={} (NaN/Inf detected)", x, y);
+    }
+    Ok(())
 }
 
 // Removed copy_attributes() - no longer needed as we use reader::Feature
