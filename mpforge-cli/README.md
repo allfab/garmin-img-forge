@@ -98,7 +98,7 @@ mpforge-cli --version
 mpforge-cli -V
 ```
 
-> 💡 **Note** : La version est automatiquement synchronisée avec le tag Git. Voir [VERSIONING.md](../docs/ci-cd/VERSIONING.md) pour plus de détails.
+> 💡 **Note** : La version est automatiquement synchronisée avec le tag Git. Voir la section [Versioning automatique](../README.md#versioning-automatique) du README principal pour plus de détails.
 
 ### Afficher l'aide complète
 

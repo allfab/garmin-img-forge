@@ -47,11 +47,10 @@
 
 ## 📖 Documentation complète
 
-Voir **[docs/ci-cd/GIT-TAGS-RELEASES.md](../docs/ci-cd/GIT-TAGS-RELEASES.md)** pour :
-- Guide complet de gestion des tags
+Voir la section **[CI/CD : Woodpecker CI](../README.md#cicd--woodpecker-ci)** du README principal pour :
+- Guide complet de gestion des tags et releases
 - Bonnes pratiques
-- Exemples détaillés
-- Dépannage
+- Commandes de référence
 
 ---
 

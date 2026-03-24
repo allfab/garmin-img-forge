@@ -306,7 +306,7 @@ The following dataset creation options are available:
   CityName, RegionName, CountryName, Zip, DirIndicator, RouteParam
 
   See ``examples/bdtopo-mapping.yaml`` for a complete example and
-  ``docs/field-mapping-guide.md`` for detailed documentation.
+  the ``mpforge-cli/README.md`` for detailed field mapping documentation.
 
 **Example with creation options**::
 
@@ -380,7 +380,7 @@ Examples
     # Without field mapping (uses hardcoded aliases)
     ogr2ogr -f "PolishMap" output.mp input.shp
 
-See ``docs/field-mapping-guide.md`` for comprehensive documentation on creating
+See the ``mpforge-cli/README.md`` for comprehensive documentation on creating
 custom field mapping configurations.
 
 Real-World Dataset Examples
