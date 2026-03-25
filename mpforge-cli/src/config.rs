@@ -22,6 +22,9 @@ pub struct Config {
     /// Optional header configuration for Polish Map files (Story 8.1)
     #[serde(default)]
     pub header: Option<HeaderConfig>,
+    /// Optional path to YAML rules file for attribute transformation (Story 9.1)
+    #[serde(default)]
+    pub rules: Option<PathBuf>,
 }
 
 fn default_version() -> u32 {
@@ -610,6 +613,7 @@ output:
             filters: None,
             error_handling: "continue".to_string(),
             header: None,
+            rules: None,
         };
         let result = config.validate();
         assert!(result.is_err());

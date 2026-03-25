@@ -1,0 +1,10 @@
+version: 1
+
+rulesets:
+  - name: "Routes"
+    source_layer: ""
+    rules:
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"

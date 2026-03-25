@@ -1,0 +1,27 @@
+version: 1
+
+rulesets:
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "1"
+          Label: "${NUMERO}"
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "!Rond-point"
+        set:
+          Type: "0x02"
+          EndLevel: "2"
+
+  - name: "Hydro"
+    source_layer: "COURS_D_EAU"
+    rules:
+      - match:
+          REGIME: "Permanent"
+        set:
+          Type: "0x1f"
+          Label: "${TOPONYME}"

@@ -8,6 +8,7 @@ pub mod writer;
 
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode};
+use crate::rules::{self, RulesFile};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -98,6 +99,15 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             "Parallel tile processing not yet supported in tile-centric mode, using sequential"
         );
     }
+
+    // Load rules file if configured (Story 9.1: fail-fast before expensive processing)
+    // TODO(story-9.2): _rules will be used for attribute transformation in the per-feature loop
+    let _rules: Option<RulesFile> = if let Some(rules_path) = &config.rules {
+        Some(rules::load_rules(rules_path)
+            .with_context(|| format!("Failed to load rules file: {}", rules_path.display()))?)
+    } else {
+        None
+    };
 
     let start_time = Instant::now();
 

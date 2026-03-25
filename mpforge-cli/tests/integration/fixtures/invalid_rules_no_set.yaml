@@ -1,0 +1,9 @@
+version: 1
+
+rulesets:
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      - match:
+          CL_ADMIN: "Autoroute"
+        set: {}

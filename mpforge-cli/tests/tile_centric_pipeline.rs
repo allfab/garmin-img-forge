@@ -49,6 +49,7 @@ fn make_config(filenames: &[&str]) -> Config {
         filters: None,
         error_handling: "continue".to_string(),
         header: None,
+        rules: None,
     }
 }
 

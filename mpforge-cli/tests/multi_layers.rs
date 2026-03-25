@@ -116,6 +116,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
         filters: None,
         error_handling: "continue".to_string(),
         header: None,
+        rules: None,
     };
 
     let result = SourceReader::read_all_sources(&config);
@@ -183,6 +184,7 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
         filters: None,
         error_handling: "fail-fast".to_string(),
         header: None,
+        rules: None,
     };
 
     let result = SourceReader::read_all_sources(&config);

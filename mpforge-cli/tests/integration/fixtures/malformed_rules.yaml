@@ -1,0 +1,6 @@
+version: 1
+rulesets:
+  - name: "Bad syntax
+    source_layer: broken
+      rules:
+    - match: {{{invalid

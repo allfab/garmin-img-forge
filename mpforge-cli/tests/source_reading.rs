@@ -226,6 +226,7 @@ fn test_read_multiple_sources() {
         filters: None,
         error_handling: "continue".to_string(),
         header: None,
+        rules: None,
     };
 
     let (features, _rtree, _unsupported, _multi_geom) =
@@ -312,6 +313,7 @@ fn test_read_all_sources_continue_mode() {
         filters: None,
         error_handling: "continue".to_string(),
         header: None,
+        rules: None,
     };
 
     // Should succeed and return features from valid sources only
@@ -368,6 +370,7 @@ fn test_read_all_sources_fail_fast_mode() {
         filters: None,
         error_handling: "fail-fast".to_string(),
         header: None,
+        rules: None,
     };
 
     // Should fail immediately on first error
@@ -482,6 +485,7 @@ fn test_multi_source_with_multi_layer_geopackage() {
         filters: None,
         error_handling: "continue".to_string(),
         header: None,
+        rules: None,
     };
 
     let (features, _rtree, _unsupported, _multi_geom) =
