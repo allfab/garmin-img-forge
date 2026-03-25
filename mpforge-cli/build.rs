@@ -38,7 +38,7 @@ fn get_git_version() -> String {
 }
 
 fn try_ci_tag() -> Option<String> {
-    // Woodpecker CI
+    // Woodpecker CI / GitLab CI (même variable)
     if let Ok(tag) = env::var("CI_COMMIT_TAG") {
         if !tag.is_empty() {
             return Some(tag);
@@ -52,19 +52,12 @@ fn try_ci_tag() -> Option<String> {
         }
     }
 
-    // GitLab CI
-    if let Ok(tag) = env::var("CI_COMMIT_TAG") {
-        if !tag.is_empty() {
-            return Some(tag);
-        }
-    }
-
     None
 }
 
 fn try_git_describe() -> Option<String> {
     let output = Command::new("git")
-        .args(&["describe", "--tags", "--always", "--dirty"])
+        .args(["describe", "--tags", "--always", "--dirty"])
         .output()
         .ok()?;
 
@@ -79,7 +72,7 @@ fn try_git_describe() -> Option<String> {
 
 fn try_git_hash() -> Option<String> {
     let output = Command::new("git")
-        .args(&["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()?;
 

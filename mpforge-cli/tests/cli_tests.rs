@@ -19,7 +19,7 @@ fn test_version_flag_short() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")));
+        .stdout(predicate::str::starts_with("mpforge-cli "));
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn test_version_flag_long() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")));
+        .stdout(predicate::str::starts_with("mpforge-cli "));
 }
 
 #[test]
@@ -40,20 +40,22 @@ fn test_version_format() {
     let output = cmd.output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Format attendu: "mpforge-cli X.Y.Z"
+    // Format attendu: "mpforge-cli <version>" (git describe ou CARGO_PKG_VERSION)
     assert!(
         stdout.starts_with("mpforge-cli "),
         "Version output should start with 'mpforge-cli ', got: {}",
         stdout
     );
 
-    // Vérifier format SemVer (X.Y.Z)
+    // Vérifier que la version contient au moins un composant SemVer (X.Y.Z)
     let version_part = stdout.trim().split_whitespace().nth(1).unwrap();
-    let parts: Vec<&str> = version_part.split('.').collect();
+    let base_version = version_part.trim_start_matches('v');
+    let semver_part: &str = base_version.split('-').next().unwrap_or(base_version);
+    let parts: Vec<&str> = semver_part.split('.').collect();
     assert_eq!(
         parts.len(),
         3,
-        "Version should be in X.Y.Z format, got: {}",
+        "Version should contain X.Y.Z semver base, got: {}",
         version_part
     );
 }

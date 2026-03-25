@@ -378,7 +378,6 @@ impl SourceReader {
     ///
     /// # Returns
     /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Features, unsupported type stats, and multi-geometry stats
-    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     ///
     /// # Errors
     /// * File not found or not readable
@@ -398,7 +397,6 @@ impl SourceReader {
     ///
     /// # Returns
     /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Features, unsupported type stats, and multi-geometry stats
-    /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
     ///
     /// # Errors
     /// * File not found or not readable
