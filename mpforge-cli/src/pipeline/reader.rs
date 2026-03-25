@@ -428,7 +428,7 @@ impl SourceReader {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
                 let (features, unsupported, multi_geom) =
-                    Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref())?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -437,7 +437,7 @@ impl SourceReader {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
-                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84) {
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref()) {
                         Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
@@ -470,7 +470,7 @@ impl SourceReader {
         } else {
             // None: default behavior (load layer 0 only, no warning)
             let (features, unsupported, multi_geom) =
-                Self::load_layer_by_index(&dataset, 0, path, &wgs84)?;
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref())?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -504,11 +504,14 @@ impl SourceReader {
     /// Helper function to load features from a specific layer by index (e.g., layer 0).
     /// Used for default layer loading.
     /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
+    /// Code Review H2 Fix: Added source_srs/target_srs params to propagate explicit SRS.
     fn load_layer_by_index(
         dataset: &Dataset,
         layer_index: usize,
         path: &str,
         wgs84: &SpatialRef,
+        source_srs: Option<&str>,
+        target_srs: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset.layer(layer_index).with_context(|| {
             format!(
@@ -517,7 +520,7 @@ impl SourceReader {
             )
         })?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs)
     }
 
     /// Load features from a layer by name.
@@ -525,17 +528,20 @@ impl SourceReader {
     /// Helper function to load features from a specific layer by name.
     /// Used for multi-layer GeoPackage loading.
     /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
+    /// Code Review H2 Fix: Added source_srs/target_srs params to propagate explicit SRS.
     fn load_layer_by_name(
         dataset: &Dataset,
         layer_name: &str,
         path: &str,
         wgs84: &SpatialRef,
+        source_srs: Option<&str>,
+        target_srs: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset
             .layer_by_name(layer_name)
             .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs)
     }
 
     /// Load all features from a given layer with SRS transformation.
@@ -544,31 +550,86 @@ impl SourceReader {
     /// Handles SRS transformation to WGS84 if needed.
     /// Returns features and statistics about unsupported geometry types filtered and multi-geometries decomposed.
     /// Story 6.7 - Task 4: Added MultiGeometryStats to return type.
+    /// Story 9.4 - Task 2: Added explicit source_srs/target_srs parameters for reprojection override.
     fn load_features_from_layer(
         layer: &mut gdal::vector::Layer,
         path: &str,
         wgs84: &SpatialRef,
+        source_srs: Option<&str>,
+        target_srs: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
-        // Check spatial reference and transform to WGS84 if needed
-        let needs_transform = if let Some(spatial_ref) = layer.spatial_ref() {
-            if let Ok(auth_code) = spatial_ref.auth_code() {
-                if auth_code != 4326 {
-                    warn!(
-                        path = %path,
-                        srs = auth_code,
-                        "Layer SRS is not WGS84 (EPSG:4326), transforming coordinates to WGS84"
-                    );
-                    true
+        // Story 9.4: Build coordinate transform based on explicit SRS or auto-detect
+        // Priority: 1) source_srs + target_srs explicit  2) source_srs + default WGS84  3) auto-detect
+        let coord_transform: Option<CoordTransform> = if let Some(src_def) = source_srs {
+            // Explicit source SRS → build CoordTransform
+            let mut src = SpatialRef::from_definition(src_def)
+                .with_context(|| format!("Failed to create SpatialRef from source_srs: {}", src_def))?;
+            src.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+            let mut dst = if let Some(dst_def) = target_srs {
+                SpatialRef::from_definition(dst_def)
+                    .with_context(|| format!("Failed to create SpatialRef from target_srs: {}", dst_def))?
+            } else {
+                // AC2: Default target is WGS84
+                SpatialRef::from_epsg(4326)?
+            };
+            dst.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+            info!(
+                path = %path,
+                source_srs = src_def,
+                target_srs = target_srs.unwrap_or("EPSG:4326 (default)"),
+                "Using explicit SRS reprojection"
+            );
+            Some(CoordTransform::new(&src, &dst)?)
+        } else {
+            // AC3: No explicit SRS → auto-detect via legacy_transform (below).
+            // Code Review M1 Fix: Removed dead needs_transform variable — only keep warning logs.
+            if let Some(spatial_ref) = layer.spatial_ref() {
+                if let Ok(auth_code) = spatial_ref.auth_code() {
+                    if auth_code != 4326 {
+                        warn!(
+                            path = %path,
+                            srs = auth_code,
+                            "Layer SRS is not WGS84 (EPSG:4326), transforming coordinates to WGS84"
+                        );
+                    }
                 } else {
-                    false
+                    warn!(path = %path, "Layer has SRS but no authority code, assuming transformation needed");
                 }
             } else {
-                warn!(path = %path, "Layer has SRS but no authority code, assuming transformation needed");
-                true
+                warn!(path = %path, "Layer has no SRS, assuming WGS84");
+            }
+            None
+        };
+
+        // Determine if we need legacy transform (auto-detect path)
+        // Story 9.4: Pre-compute legacy CoordTransform before the feature iteration loop
+        // to avoid borrow conflicts with the layer's mutable iterator.
+        // Code Review M2: TraditionalGisOrder is intentionally NOT set here (unlike explicit SRS path).
+        // The legacy auto-detect uses GDAL's default axis mapping because layer.spatial_ref()
+        // returns a SpatialRef with GDAL's default axis order, and coordinates from
+        // geometry.get_point() match that same order. Setting TraditionalGisOrder on only
+        // one side would cause axis inversion (see Debug Log: axis-ordering GDAL 3.x issue).
+        let legacy_transform: Option<CoordTransform> = if source_srs.is_none() {
+            let needs_it = if let Some(spatial_ref) = layer.spatial_ref() {
+                if let Ok(auth_code) = spatial_ref.auth_code() {
+                    auth_code != 4326
+                } else {
+                    true
+                }
+            } else {
+                false
+            };
+            if needs_it {
+                if let Some(layer_srs) = layer.spatial_ref() {
+                    CoordTransform::new(&layer_srs, wgs84).ok()
+                } else {
+                    None
+                }
+            } else {
+                None
             }
         } else {
-            warn!(path = %path, "Layer has no SRS, assuming WGS84");
-            false
+            None
         };
 
         // Read all features from the layer
@@ -583,16 +644,6 @@ impl SourceReader {
         let source_name = extract_source_name(path);
 
         for gdal_feature in layer.features() {
-            // Transform geometry to WGS84 if needed
-            if needs_transform {
-                if let Some(geometry) = gdal_feature.geometry() {
-                    if let Err(e) = geometry.transform_to(wgs84) {
-                        warn!(error = %e, "Failed to transform feature geometry to WGS84, skipping");
-                        continue;
-                    }
-                }
-            }
-
             // Story 6.7 - Subtask 4.2: Detect multi-geometry BEFORE decomposition to record stats
             let is_multi_geometry = if let Some(geom) = gdal_feature.geometry() {
                 let geom_type = geom.geometry_type();
@@ -661,9 +712,26 @@ impl SourceReader {
                             "Features loaded from GDAL feature (1 = simple, N = decomposed multi-geometry)"
                         );
                         // Story 9.3 - Subtask 1.2: Set source_layer on each feature for rules engine matching
-                        features.extend(feature_vec.into_iter().map(|mut f| {
+                        // Story 9.4: Apply coordinate transformation after extraction
+                        let active_transform = coord_transform.as_ref().or(legacy_transform.as_ref());
+                        // Code Review H1 Fix: Handle transform_coords errors instead of silently ignoring
+                        features.extend(feature_vec.into_iter().filter_map(|mut f| {
                             f.source_layer = Some(layer_name.clone());
-                            f
+                            // Transform coordinates if needed
+                            if let Some(ct) = active_transform {
+                                let mut xs: Vec<f64> = f.geometry.iter().map(|(x, _)| *x).collect();
+                                let mut ys: Vec<f64> = f.geometry.iter().map(|(_, y)| *y).collect();
+                                if let Err(e) = ct.transform_coords(&mut xs, &mut ys, &mut []) {
+                                    warn!(
+                                        error = %e,
+                                        path = %path,
+                                        "Coordinate transform failed, skipping feature"
+                                    );
+                                    return None;
+                                }
+                                f.geometry = xs.into_iter().zip(ys).collect();
+                            }
+                            Some(f)
                         }));
                     }
                 }
@@ -799,10 +867,51 @@ impl SourceReader {
                     }
                 };
 
-                // Reproject envelope to WGS84 if layer has a different SRS
+                // Reproject envelope to target SRS if layer has a different SRS
                 let bounds = [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY];
 
-                let bounds_wgs84 = if let Some(layer_srs) = layer.spatial_ref() {
+                // Story 9.4: Use explicit SRS from InputSource if available
+                let bounds_wgs84 = if let Some(ref src_def) = input.source_srs {
+                    // Explicit source_srs → use it for reprojection
+                    let mut src = SpatialRef::from_definition(src_def)?;
+                    src.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                    let mut dst = if let Some(ref dst_def) = input.target_srs {
+                        SpatialRef::from_definition(dst_def)?
+                    } else {
+                        SpatialRef::from_epsg(4326)?
+                    };
+                    dst.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                    debug!(
+                        path = %path,
+                        source_srs = %src_def,
+                        target_srs = input.target_srs.as_deref().unwrap_or("EPSG:4326"),
+                        "Reprojecting extent with explicit SRS"
+                    );
+                    match CoordTransform::new(&src, &dst) {
+                        Ok(transform) => match transform.transform_bounds(&bounds, 21) {
+                            Ok(reprojected) => reprojected,
+                            Err(e) => {
+                                if config.error_handling == "fail-fast" {
+                                    return Err(e).with_context(|| {
+                                        format!("Failed to reproject extent for: {}", path)
+                                    });
+                                }
+                                warn!(path = %path, error = %e, "Failed to reproject extent, skipping");
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            if config.error_handling == "fail-fast" {
+                                return Err(e).with_context(|| {
+                                    format!("Failed to create coordinate transform for: {}", path)
+                                });
+                            }
+                            warn!(path = %path, error = %e, "Failed to create coordinate transform, skipping");
+                            continue;
+                        }
+                    }
+                } else if let Some(layer_srs) = layer.spatial_ref() {
+                    // Auto-detect path (original behavior)
                     match layer_srs.auth_code() {
                         Ok(4326) => bounds, // Already WGS84
                         Ok(code) => {
@@ -961,16 +1070,84 @@ impl SourceReader {
                     },
                 };
 
-                // Apply spatial filter for this tile
-                layer.set_spatial_filter_rect(
-                    tile_bounds.min_lon,
-                    tile_bounds.min_lat,
-                    tile_bounds.max_lon,
-                    tile_bounds.max_lat,
-                );
+                // Story 9.4: When explicit source_srs is set, reproject tile bounds
+                // from target SRS back to source SRS for the spatial filter.
+                // GDAL spatial filter operates in the layer's native CRS.
+                if let Some(ref src_def) = input.source_srs {
+                    let mut target = if let Some(ref dst_def) = input.target_srs {
+                        SpatialRef::from_definition(dst_def)?
+                    } else {
+                        SpatialRef::from_epsg(4326)?
+                    };
+                    target.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                    let mut source = SpatialRef::from_definition(src_def)?;
+                    source.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                    let reverse_transform = CoordTransform::new(&target, &source)?;
+                    let native_bounds = reverse_transform.transform_bounds(
+                        &[tile_bounds.min_lon, tile_bounds.min_lat, tile_bounds.max_lon, tile_bounds.max_lat],
+                        21,
+                    )?;
+                    layer.set_spatial_filter_rect(
+                        native_bounds[0],
+                        native_bounds[1],
+                        native_bounds[2],
+                        native_bounds[3],
+                    );
+                } else if let Some(layer_srs) = layer.spatial_ref() {
+                    // Auto-detect path: reproject tile bounds from WGS84 to layer's native CRS
+                    // for the spatial filter when layer is not in WGS84
+                    let is_wgs84 = layer_srs.auth_code().is_ok_and(|c| c == 4326);
+                    if is_wgs84 {
+                        layer.set_spatial_filter_rect(
+                            tile_bounds.min_lon,
+                            tile_bounds.min_lat,
+                            tile_bounds.max_lon,
+                            tile_bounds.max_lat,
+                        );
+                    } else {
+                        let wgs84_srs = SpatialRef::from_definition("EPSG:4326")?;
+                        let auth_code = layer_srs.auth_code().unwrap_or(4326);
+                        let native_srs = SpatialRef::from_definition(&format!("EPSG:{}", auth_code))?;
+                        let reverse = CoordTransform::new(&wgs84_srs, &native_srs)?;
+                        // Use transform_coords on the 4 corners instead of transform_bounds
+                        // to avoid axis order issues with OCTTransformBounds
+                        let mut xs = vec![tile_bounds.min_lon, tile_bounds.max_lon];
+                        let mut ys = vec![tile_bounds.min_lat, tile_bounds.max_lat];
+                        if reverse.transform_coords(&mut xs, &mut ys, &mut []).is_ok() {
+                            let min_x = xs[0].min(xs[1]);
+                            let max_x = xs[0].max(xs[1]);
+                            let min_y = ys[0].min(ys[1]);
+                            let max_y = ys[0].max(ys[1]);
+                            layer.set_spatial_filter_rect(min_x, min_y, max_x, max_y);
+                        } else {
+                            // Fallback: use tile bounds as-is (may miss features)
+                            layer.set_spatial_filter_rect(
+                                tile_bounds.min_lon,
+                                tile_bounds.min_lat,
+                                tile_bounds.max_lon,
+                                tile_bounds.max_lat,
+                            );
+                        }
+                    }
+                } else {
+                    // No SRS: assume WGS84, use tile bounds directly
+                    layer.set_spatial_filter_rect(
+                        tile_bounds.min_lon,
+                        tile_bounds.min_lat,
+                        tile_bounds.max_lon,
+                        tile_bounds.max_lat,
+                    );
+                }
 
+                // Story 9.4: Propagate explicit SRS from InputSource
                 let (features, unsupported, multi_geom) =
-                    Self::load_features_from_layer(&mut layer, path, &wgs84)?;
+                    Self::load_features_from_layer(
+                        &mut layer,
+                        path,
+                        &wgs84,
+                        input.source_srs.as_deref(),
+                        input.target_srs.as_deref(),
+                    )?;
 
                 layer.clear_spatial_filter();
 

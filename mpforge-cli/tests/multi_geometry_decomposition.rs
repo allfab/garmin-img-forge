@@ -123,6 +123,8 @@ fn test_multipoint_decomposition_with_attributes() {
         layers: Some(vec!["multi_points".to_string()]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -183,6 +185,8 @@ fn test_multilinestring_decomposition() {
         layers: Some(vec!["multi_lines".to_string()]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -220,6 +224,8 @@ fn test_multipolygon_decomposition() {
         layers: Some(vec!["multi_polygons".to_string()]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -270,6 +276,8 @@ fn test_geometry_collection_filtered() {
         layers: Some(vec!["geom_collection".to_string()]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -306,6 +314,8 @@ fn test_simple_geometries_unchanged() {
         layers: Some(vec!["simple_points".to_string()]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -338,6 +348,8 @@ fn test_mix_simple_and_multi_geometries() {
         ]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();

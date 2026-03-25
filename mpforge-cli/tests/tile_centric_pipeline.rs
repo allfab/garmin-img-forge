@@ -29,6 +29,8 @@ fn make_config(filenames: &[&str]) -> Config {
             layers: None,
             connection: None,
             layer: None,
+            source_srs: None,
+            target_srs: None,
         })
         .collect();
 
@@ -128,12 +130,16 @@ fn test_scan_extents_invalid_source_continue_mode() {
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file1.shp")),
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
         ],
         error_handling: "continue".to_string(),
@@ -153,6 +159,8 @@ fn test_scan_extents_invalid_source_fail_fast() {
             layers: None,
             connection: None,
             layer: None,
+            source_srs: None,
+            target_srs: None,
         }],
         error_handling: "fail-fast".to_string(),
         ..make_config(&[])

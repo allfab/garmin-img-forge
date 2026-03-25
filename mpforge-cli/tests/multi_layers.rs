@@ -30,6 +30,8 @@ fn test_geopackage_three_layers_configured() {
         ]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -101,6 +103,8 @@ fn test_geopackage_invalid_layer_continue_mode() {
             ]),
             connection: None,
             layer: None,
+            source_srs: None,
+            target_srs: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -169,6 +173,8 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
             ]),
             connection: None,
             layer: None,
+            source_srs: None,
+            target_srs: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -213,6 +219,8 @@ fn test_geopackage_empty_layers_list() {
         layers: Some(vec![]), // Empty list
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -253,6 +261,8 @@ fn test_geopackage_layers_none_backward_compat() {
         layers: None, // No layers specified
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -288,6 +298,8 @@ fn test_geopackage_mixed_geometry_types() {
         ]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);

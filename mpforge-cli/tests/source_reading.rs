@@ -25,6 +25,8 @@ fn test_read_shapefile_source() {
         layers: None,
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -63,6 +65,8 @@ fn test_read_geopackage_with_layer() {
         layers: Some(vec!["roads".to_string()]), // Assuming 'roads' layer exists
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -84,6 +88,8 @@ fn test_read_source_file_not_found() {
         layers: None,
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -100,6 +106,8 @@ fn test_coordinates_wgs84() {
         layers: None,
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -131,6 +139,8 @@ fn test_attribute_extraction() {
         layers: None,
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -167,6 +177,8 @@ fn test_attribute_extraction_garmin_fields() {
         layers: None,
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -198,18 +210,24 @@ fn test_read_multiple_sources() {
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // LineStrings
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("roads.gpkg")), // Polygons
                 layers: Some(vec!["roads".to_string()]),
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
         ],
         grid: GridConfig {
@@ -285,18 +303,24 @@ fn test_read_all_sources_continue_mode() {
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
         ],
         grid: GridConfig {
@@ -342,18 +366,24 @@ fn test_read_all_sources_fail_fast_mode() {
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid (won't be reached)
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
         ],
         grid: GridConfig {
@@ -397,6 +427,8 @@ fn test_geopackage_multi_layers_integration() {
         ]),
         connection: None,
         layer: None,
+        source_srs: None,
+        target_srs: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -453,6 +485,8 @@ fn test_multi_source_with_multi_layer_geopackage() {
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("multi_layers.gpkg")), // 23 features (3 layers)
@@ -463,12 +497,16 @@ fn test_multi_source_with_multi_layer_geopackage() {
                 ]),
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // 2 linestrings
                 layers: None,
                 connection: None,
                 layer: None,
+                source_srs: None,
+                target_srs: None,
             },
         ],
         grid: GridConfig {

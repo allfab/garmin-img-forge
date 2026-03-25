@@ -52,6 +52,12 @@ pub struct InputSource {
     pub connection: Option<String>,
     pub layer: Option<String>,
     pub layers: Option<Vec<String>>,
+    /// Override source SRS (e.g., "EPSG:2154"). Story 9.4: explicit reprojection.
+    #[serde(default)]
+    pub source_srs: Option<String>,
+    /// Target SRS for reprojection (e.g., "EPSG:4326"). Defaults to WGS84 if source_srs is set.
+    #[serde(default)]
+    pub target_srs: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,6 +264,34 @@ impl Config {
                     "bbox min_lat must be < max_lat, got: [{}, {}]",
                     bbox[1],
                     bbox[3]
+                );
+            }
+        }
+
+        // Story 9.4: Validate SRS definitions (fail-fast before processing)
+        for (i, input) in self.inputs.iter().enumerate() {
+            if let Some(ref srs) = input.source_srs {
+                gdal::spatial_ref::SpatialRef::from_definition(srs).with_context(|| {
+                    format!(
+                        "InputSource #{}: invalid source_srs '{}' — must be a valid SRS definition (e.g., EPSG:2154)",
+                        i, srs
+                    )
+                })?;
+            }
+            if let Some(ref srs) = input.target_srs {
+                gdal::spatial_ref::SpatialRef::from_definition(srs).with_context(|| {
+                    format!(
+                        "InputSource #{}: invalid target_srs '{}' — must be a valid SRS definition (e.g., EPSG:4326)",
+                        i, srs
+                    )
+                })?;
+            }
+            if input.target_srs.is_some() && input.source_srs.is_none() {
+                warn!(
+                    source_index = i,
+                    target_srs = ?input.target_srs,
+                    "InputSource #{}: target_srs without source_srs has no effect (ignored)",
+                    i
                 );
             }
         }
@@ -603,6 +637,8 @@ output:
                 connection: Some("PG:host=localhost".to_string()),
                 layer: None,
                 layers: None,
+                source_srs: None,
+                target_srs: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -699,6 +735,8 @@ filters:
             connection: None,
             layer: None,
             layers: None,
+            source_srs: None,
+            target_srs: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -708,6 +746,8 @@ filters:
             connection: Some("PG:host=localhost dbname=gis".to_string()),
             layer: Some("roads".to_string()),
             layers: None,
+            source_srs: None,
+            target_srs: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -717,6 +757,8 @@ filters:
             connection: Some("host=localhost dbname=gis user=admin".to_string()),
             layer: None,
             layers: None,
+            source_srs: None,
+            target_srs: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -726,6 +768,8 @@ filters:
             connection: Some("sqlite://db.sqlite".to_string()),
             layer: None,
             layers: None,
+            source_srs: None,
+            target_srs: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -1038,6 +1082,134 @@ output:
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
         assert_eq!(config.output.overwrite, Some(false));
+        assert!(config.validate().is_ok());
+    }
+
+    // Story 9.4: source_srs / target_srs tests
+    #[test]
+    fn test_input_source_with_source_srs_and_target_srs() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.inputs[0].source_srs,
+            Some("EPSG:2154".to_string())
+        );
+        assert_eq!(
+            config.inputs[0].target_srs,
+            Some("EPSG:4326".to_string())
+        );
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_input_source_with_source_srs_only() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    source_srs: "EPSG:2154"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.inputs[0].source_srs,
+            Some("EPSG:2154".to_string())
+        );
+        assert!(config.inputs[0].target_srs.is_none());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_input_source_without_srs_backward_compat() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.inputs[0].source_srs.is_none());
+        assert!(config.inputs[0].target_srs.is_none());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_input_source_invalid_source_srs_error() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    source_srs: "EPSG:99999"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("invalid source_srs"));
+        assert!(err.contains("EPSG:99999"));
+    }
+
+    #[test]
+    fn test_input_source_invalid_target_srs_error() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:99999"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("invalid target_srs"));
+        assert!(err.contains("EPSG:99999"));
+    }
+
+    #[test]
+    fn test_input_source_target_srs_without_source_srs_warning() {
+        // target_srs without source_srs should still parse and validate OK (just warns)
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    target_srs: "EPSG:4326"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.inputs[0].source_srs.is_none());
+        assert_eq!(
+            config.inputs[0].target_srs,
+            Some("EPSG:4326".to_string())
+        );
+        // Should validate OK (warning only, not error)
         assert!(config.validate().is_ok());
     }
 }
