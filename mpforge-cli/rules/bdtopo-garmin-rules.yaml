@@ -260,3 +260,214 @@ rulesets:
           Type: "0x10f0b"
           EndLevel: "2"
           Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # ADMINISTRATIF — Communes (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
+  # 1 regle wildcard avec attributs speciaux Country, CityName, Zip
+  # ==========================================================================
+  - name: "Communes"
+    source_layer: "COMMUNE"
+    rules:
+      # 1. Toute commune (mapping statique)
+      - match:
+          NOM: "*"
+        set:
+          Type: "0x54"
+          EndLevel: "7"
+          Label: "${NOM}"
+          Country: "France~[0x1d]FRA"
+          CityName: "${NOM}"
+          Zip: "${CODE_POST}"
+
+  # ==========================================================================
+  # ADMINISTRATIF — Zones d'habitation (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
+  # 1 regle NATURE="Lieu-dit habite" (seule NATURE traitee par FME)
+  # ==========================================================================
+  - name: "Zones d'habitation"
+    source_layer: "ZONE_D_HABITATION"
+    rules:
+      # 1. Lieu-dit habite
+      - match:
+          NATURE: "Lieu-dit habité"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Troncons hydrographiques (POLYLINE)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 2 regles — Intermittent en premier, puis catch-all (Permanent, Inconnue, vide)
+  # ==========================================================================
+  - name: "Troncons hydrographiques"
+    source_layer: "TRONCON_HYDROGRAPHIQUE"
+    rules:
+      # 1. Intermittent (seul type different du defaut)
+      - match:
+          PERSISTANC: "Intermittent"
+        set:
+          Type: "0x26"
+          EndLevel: "2"
+          Label: "${NOM_C_EAU}"
+
+      # 2. Catch-all (Permanent, Inconnue, vide)
+      - match:
+          PERSISTANC: "*"
+        set:
+          Type: "0x18"
+          EndLevel: "2"
+          Label: "${NOM_C_EAU}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Surfaces hydrographiques (POLYGON)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 4 regles — NATURE="Glacier, neve" en PREMIER (override PERSISTANC)
+  # ==========================================================================
+  - name: "Surfaces hydrographiques"
+    source_layer: "SURFACE_HYDROGRAPHIQUE"
+    rules:
+      # 1. Glacier, neve (override toute valeur de PERSISTANC)
+      - match:
+          NATURE: "Glacier, névé"
+        set:
+          Type: "0x4d"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 2. Intermittent (hors Glacier)
+      - match:
+          PERSISTANC: "Intermittent"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 3. Inconnue
+      - match:
+          PERSISTANC: "Inconnue"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 4. Catch-all (Permanent, vide)
+      - match:
+          PERSISTANC: "*"
+        set:
+          Type: "0x3f"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Details hydrographiques (POI)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 13 regles — 12 NATURE explicites + catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence)
+  # ==========================================================================
+  - name: "Details hydrographiques"
+    source_layer: "DETAIL_HYDROGRAPHIQUE"
+    rules:
+      # 1. Arroyo
+      - match:
+          NATURE: "Arroyo"
+        set:
+          Type: "0x06501"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 2. Baie
+      - match:
+          NATURE: "Baie"
+        set:
+          Type: "0x06503"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 3. Cascade
+      - match:
+          NATURE: "Cascade"
+        set:
+          Type: "0x06508"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 4. Crique
+      - match:
+          NATURE: "Crique"
+        set:
+          Type: "0x06507"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 5. Fontaine
+      - match:
+          NATURE: "Fontaine"
+        set:
+          Type: "0x06509"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 6. Glacier
+      - match:
+          NATURE: "Glacier"
+        set:
+          Type: "0x0650a"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 7. Lac
+      - match:
+          NATURE: "Lac"
+        set:
+          Type: "0x0650d"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 8. Marais
+      - match:
+          NATURE: "Marais"
+        set:
+          Type: "0x06513"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 9. Mer
+      - match:
+          NATURE: "Mer"
+        set:
+          Type: "0x06510"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 10. Reservoir
+      - match:
+          NATURE: "Réservoir"
+        set:
+          Type: "0x0650f"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 11. Source
+      - match:
+          NATURE: "Source"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 12. Source captee
+      - match:
+          NATURE: "Source captée"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 13. Catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence, etc.)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x06414"
+          EndLevel: "2"
+          Label: "${TOPONYME}"

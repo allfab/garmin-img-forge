@@ -4,74 +4,10 @@
 //! produce the correct Garmin attributes (Type, EndLevel, Label) matching
 //! the FME 07-VOIRIE.fmw source of truth.
 
+mod common;
+
+use common::{assert_transform, attrs, load_ruleset, rules_path};
 use mpforge_cli::rules;
-use std::collections::HashMap;
-use std::path::PathBuf;
-
-/// Path to the production rules file
-fn rules_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rules/bdtopo-garmin-rules.yaml")
-}
-
-/// Helper: load rules and find a specific ruleset by source_layer
-fn load_ruleset(source_layer: &str) -> rules::Ruleset {
-    let rules_file = rules::load_rules(&rules_path()).expect("Failed to load rules file");
-    rules_file
-        .rulesets
-        .into_iter()
-        .find(|rs| rs.source_layer == source_layer)
-        .unwrap_or_else(|| panic!("Ruleset not found for layer: {}", source_layer))
-}
-
-/// Helper: build feature attributes from key-value pairs
-fn attrs(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-    pairs
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
-}
-
-/// Helper: evaluate a feature and assert Type, EndLevel, and optionally Label
-fn assert_transform(
-    ruleset: &rules::Ruleset,
-    feature_attrs: &HashMap<String, String>,
-    expected_type: &str,
-    expected_end_level: &str,
-    expected_label: Option<&str>,
-) {
-    let result = rules::evaluate_feature(ruleset, feature_attrs)
-        .expect("Rule evaluation should not error")
-        .expect("Feature should match a rule");
-
-    assert_eq!(
-        result.get("Type").unwrap(),
-        expected_type,
-        "Type mismatch for attrs {:?}",
-        feature_attrs
-    );
-    assert_eq!(
-        result.get("EndLevel").unwrap(),
-        expected_end_level,
-        "EndLevel mismatch for attrs {:?}",
-        feature_attrs
-    );
-
-    if let Some(label) = expected_label {
-        assert_eq!(
-            result.get("Label").unwrap(),
-            label,
-            "Label mismatch for attrs {:?}",
-            feature_attrs
-        );
-    } else {
-        assert!(
-            !result.contains_key("Label"),
-            "Expected no Label for attrs {:?}, got {:?}",
-            feature_attrs,
-            result.get("Label")
-        );
-    }
-}
 
 // ============================================================================
 // Task 2.1: Validate production rules file loads correctly
@@ -81,19 +17,27 @@ fn assert_transform(
 fn test_load_production_rules_file() {
     let rules_file = rules::load_rules(&rules_path()).unwrap();
     assert_eq!(rules_file.version, 1);
-    // 4 transport rulesets
-    assert_eq!(rules_file.rulesets.len(), 4);
-    assert_eq!(rules_file.rulesets[0].source_layer, "TRONCON_DE_ROUTE");
-    assert_eq!(rules_file.rulesets[0].rules.len(), 17);
-    assert_eq!(
-        rules_file.rulesets[1].source_layer,
-        "TRONCON_DE_VOIE_FERREE"
-    );
-    assert_eq!(rules_file.rulesets[1].rules.len(), 7);
-    assert_eq!(rules_file.rulesets[2].source_layer, "PISTE_D_AERODROME");
-    assert_eq!(rules_file.rulesets[2].rules.len(), 2);
-    assert_eq!(rules_file.rulesets[3].source_layer, "TRANSPORT_PAR_CABLE");
-    assert_eq!(rules_file.rulesets[3].rules.len(), 1);
+    // Verify the 4 transport rulesets exist with correct rule counts
+    // (no assertion on total rulesets.len() — other stories add more rulesets)
+    let transport_layers = [
+        ("TRONCON_DE_ROUTE", 17),
+        ("TRONCON_DE_VOIE_FERREE", 7),
+        ("PISTE_D_AERODROME", 2),
+        ("TRANSPORT_PAR_CABLE", 1),
+    ];
+    for (layer, expected_count) in &transport_layers {
+        let rs = rules_file
+            .rulesets
+            .iter()
+            .find(|rs| rs.source_layer == *layer)
+            .unwrap_or_else(|| panic!("Transport ruleset {} not found", layer));
+        assert_eq!(
+            rs.rules.len(),
+            *expected_count,
+            "Rule count mismatch for {}",
+            layer
+        );
+    }
 }
 
 // ============================================================================
@@ -592,7 +536,19 @@ fn test_fme_coverage_transport_par_cable_1_branch() {
 #[test]
 fn test_total_transport_rules_count() {
     let rules_file = rules::load_rules(&rules_path()).unwrap();
-    let total: usize = rules_file.rulesets.iter().map(|rs| rs.rules.len()).sum();
+    // Count only the 4 transport rulesets (first 4 in file)
+    let transport_layers = [
+        "TRONCON_DE_ROUTE",
+        "TRONCON_DE_VOIE_FERREE",
+        "PISTE_D_AERODROME",
+        "TRANSPORT_PAR_CABLE",
+    ];
+    let total: usize = rules_file
+        .rulesets
+        .iter()
+        .filter(|rs| transport_layers.contains(&rs.source_layer.as_str()))
+        .map(|rs| rs.rules.len())
+        .sum();
     // 17 (routes) + 7 (VF) + 2 (aero) + 1 (cable) = 27 branches FME
     assert_eq!(total, 27, "Total transport rules should match 27 FME branches");
 }

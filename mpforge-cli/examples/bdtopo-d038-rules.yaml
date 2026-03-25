@@ -193,92 +193,226 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Cours d'eau (POLYLINE)
+  # ADMINISTRATIF — Communes (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
   # ==========================================================================
-  - name: "Cours d'eau"
-    source_layer: "COURS_D_EAU"
+  - name: "Communes"
+    source_layer: "COMMUNE"
     rules:
-      # Cours d'eau importants (importance 1-3)
       - match:
-          IMPORTANCE: "1"
+          NOM: "*"
         set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
+          Type: "0x54"
+          EndLevel: "7"
+          Label: "${NOM}"
+          Country: "France~[0x1d]FRA"
+          CityName: "${NOM}"
+          Zip: "${CODE_POST}"
+
+  # ==========================================================================
+  # ADMINISTRATIF — Zones d'habitation (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
+  # ==========================================================================
+  - name: "Zones d'habitation"
+    source_layer: "ZONE_D_HABITATION"
+    rules:
+      - match:
+          NATURE: "Lieu-dit habité"
+        set:
+          Type: "0x03"
           EndLevel: "4"
-
-      - match:
-          IMPORTANCE: "2"
-        set:
-          Type: "0x1f"
           Label: "${TOPONYME}"
-          EndLevel: "3"
-
-      - match:
-          IMPORTANCE: "3"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "2"
-
-      - match:
-          IMPORTANCE: "4"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "1"
-
-      # Tous les autres cours d'eau
-      - match:
-          IMPORTANCE: "*"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "0"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Plans d'eau (POLYGON)
+  # HYDROGRAPHIE — Troncons hydrographiques (POLYLINE)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw (PERSISTANC seulement, pas NATURE)
   # ==========================================================================
-  - name: "Plans d'eau"
-    source_layer: "PLAN_D_EAU"
+  - name: "Troncons hydrographiques"
+    source_layer: "TRONCON_HYDROGRAPHIQUE"
     rules:
-      # Lacs
       - match:
-          NATURE: "Lac"
+          PERSISTANC: "Intermittent"
         set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
-          EndLevel: "3"
-
-      # Retenues / barrages
-      - match:
-          NATURE: "Retenue"
-        set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
+          Type: "0x26"
           EndLevel: "2"
+          Label: "${NOM_C_EAU}"
 
       - match:
-          NATURE: "Retenue-barrage"
+          PERSISTANC: "*"
         set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
+          Type: "0x18"
           EndLevel: "2"
+          Label: "${NOM_C_EAU}"
 
-      # Glaciers
+  # ==========================================================================
+  # HYDROGRAPHIE — Surfaces hydrographiques (POLYGON)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw (NATURE Glacier en premier, puis PERSISTANC)
+  # ==========================================================================
+  - name: "Surfaces hydrographiques"
+    source_layer: "SURFACE_HYDROGRAPHIQUE"
+    rules:
       - match:
           NATURE: "Glacier, névé"
         set:
           Type: "0x4d"
-          Label: "${TOPONYME}"
-          EndLevel: "3"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
 
-      # Tous les autres plans d'eau
+      - match:
+          PERSISTANC: "Intermittent"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      - match:
+          PERSISTANC: "Inconnue"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      - match:
+          PERSISTANC: "*"
+        set:
+          Type: "0x3f"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Details hydrographiques (POI)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # ==========================================================================
+  - name: "Details hydrographiques"
+    source_layer: "DETAIL_HYDROGRAPHIQUE"
+    rules:
+      - match:
+          NATURE: "Arroyo"
+        set:
+          Type: "0x06501"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Baie"
+        set:
+          Type: "0x06503"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Cascade"
+        set:
+          Type: "0x06508"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Crique"
+        set:
+          Type: "0x06507"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Fontaine"
+        set:
+          Type: "0x06509"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Glacier"
+        set:
+          Type: "0x0650a"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Lac"
+        set:
+          Type: "0x0650d"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Marais"
+        set:
+          Type: "0x06513"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Mer"
+        set:
+          Type: "0x06510"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Réservoir"
+        set:
+          Type: "0x0650f"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Source"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Source captée"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
       - match:
           NATURE: "*"
         set:
-          Type: "0x3c"
+          Type: "0x06414"
+          EndLevel: "2"
           Label: "${TOPONYME}"
-          EndLevel: "1"
+
+  # ==========================================================================
+  # TRANSPORT — Pistes d'aerodrome (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
+  # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
+  # ==========================================================================
+  - name: "Pistes aerodrome"
+    source_layer: "PISTE_D_AERODROME"
+    rules:
+      - match:
+          NATURE: "Piste en dur"
+        set:
+          Type: "0x1090b"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      - match:
+          NATURE: "Piste en herbe"
+        set:
+          Type: "0x10f17"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # TRANSPORT — Transport par cable (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager TRANSPORT_PAR_CABLE
+  # 1 regle statique (wildcard)
+  # ==========================================================================
+  - name: "Transport par cable"
+    source_layer: "TRANSPORT_PAR_CABLE"
+    rules:
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10f0b"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
 
   # ==========================================================================
   # OCCUPATION DU SOL — Vegetation (POLYGON)
@@ -347,40 +481,3 @@ rulesets:
           EndLevel: "1"
 
       # Haies (ignorees - trop denses, peu utiles sur GPS)
-
-  # ==========================================================================
-  # TRANSPORT — Pistes d'aerodrome (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
-  # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
-  # ==========================================================================
-  - name: "Pistes aerodrome"
-    source_layer: "PISTE_D_AERODROME"
-    rules:
-      - match:
-          NATURE: "Piste en dur"
-        set:
-          Type: "0x1090b"
-          EndLevel: "4"
-          Label: "${TOPONYME}"
-
-      - match:
-          NATURE: "Piste en herbe"
-        set:
-          Type: "0x10f17"
-          EndLevel: "4"
-          Label: "${TOPONYME}"
-
-  # ==========================================================================
-  # TRANSPORT — Transport par cable (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRANSPORT_PAR_CABLE
-  # 1 regle statique (wildcard)
-  # ==========================================================================
-  - name: "Transport par cable"
-    source_layer: "TRANSPORT_PAR_CABLE"
-    rules:
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x10f0b"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
