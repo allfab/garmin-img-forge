@@ -1,0 +1,55 @@
+# Configuration mpforge-cli — Test BDTOPO Isere (D038)
+# Test du pipeline complet epic 9 : rules + SRS reprojection + rapport JSON
+#
+# Usage:
+#   cd mpforge-cli
+#   cargo run --release -- build \
+#     --config examples/bdtopo-d038-config.yaml \
+#     --report examples/output/report-d038.json \
+#     -vv
+
+version: 1
+
+grid:
+  cell_size: 0.15       # ~16.5 km par tuile
+  overlap: 0.005        # Leger chevauchement
+
+inputs:
+  # --- Routes (428k features — le gros morceau) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Voies ferrees ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Cours d'eau ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/HYDROGRAPHIE/COURS_D_EAU.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Plans d'eau ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/HYDROGRAPHIE/PLAN_D_EAU.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Vegetation (226k features — gros volume aussi) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+output:
+  directory: "examples/output/tiles-d038/"
+  filename_pattern: "D038_{col}_{row}.mp"
+  overwrite: true
+
+# Regles de transformation BDTOPO -> types Garmin
+rules: "examples/bdtopo-d038-rules.yaml"
+
+# Bbox Isere approximative (WGS84) pour limiter le traitement
+filters:
+  bbox: [5.0, 44.6, 6.4, 45.9]
+
+error_handling: "continue"
