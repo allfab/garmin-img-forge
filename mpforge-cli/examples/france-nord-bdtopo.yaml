@@ -137,7 +137,7 @@ inputs:
 
 output:
   directory: "tiles_france_nord/"
-  filename_pattern: "france_nord_{x}_{y}.mp"
+  filename_pattern: "france_nord_{col}_{row}.mp"
 
 # Filtre spatial optionnel pour France Nord métropolitaine
 # Décommenter et ajuster selon vos besoins

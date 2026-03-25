@@ -2,6 +2,7 @@
 
 pub mod geometry_validator;
 pub mod reader;
+pub mod tile_naming;
 pub mod tiler;
 pub mod writer;
 
@@ -9,6 +10,7 @@ use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
+use crate::pipeline::tile_naming::resolve_tile_pattern;
 use crate::pipeline::tiler::{clip_feature_to_tile, TileProcessor};
 use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{Context, Result};
@@ -190,6 +192,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let mut global_validation_stats = ValidationStats::default();
     let mut all_unsupported = UnsupportedTypeStats::default();
     let mut all_multi_geom = MultiGeometryStats::default();
+    let mut seq: usize = 0; // Story 8.2: sequential counter, incremented on successful export
 
     for tile_bounds in &tiles {
         // 2a. Load features filtered for this tile
@@ -286,8 +289,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         }
 
         let tile_id = tile_bounds.tile_id();
-        let tile_filename = format!("{}.mp", tile_id);
-        let tile_path = PathBuf::from(&config.output.directory).join(tile_filename);
+        seq += 1; // Story 8.2: 1-based, incremented only for non-empty tiles
+        let tile_filename = resolve_tile_pattern(
+            &config.output.filename_pattern,
+            tile_bounds.col,
+            tile_bounds.row,
+            seq,
+        )
+        .with_context(|| format!("Failed to resolve filename pattern for tile {}", tile_id))?;
+        let tile_path = PathBuf::from(&config.output.directory).join(&tile_filename);
+
+        // Story 8.2: Create subdirectories if pattern contains path separators
+        if let Some(parent) = tile_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory for tile {}", tile_id))?;
+        }
 
         let field_mapping = config.output.field_mapping_path.as_deref();
         let header_config = config.header.as_ref();

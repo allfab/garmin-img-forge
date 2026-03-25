@@ -131,7 +131,7 @@ inputs:
 
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"
+  filename_pattern: "{col}_{row}.mp"
 ```
 
 ### 2. Exécuter le tuilage
@@ -191,13 +191,31 @@ inputs:
 
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"  # Variables: {x}, {y}
+  filename_pattern: "{col}_{row}.mp"  # Voir Patterns de nommage ci-dessous
 
 filters:
   bbox: [-5.0, 41.0, 10.0, 51.5]  # [min_lon, min_lat, max_lon, max_lat]
 
 error_handling: "continue"  # "continue" ou "fail-fast"
 ```
+
+### Patterns de nommage des tuiles
+
+Le champ `filename_pattern` contrôle le nommage des fichiers tuiles exportés. Par défaut : `{col}_{row}.mp`.
+
+| Pattern | Résultat (col=15, row=42, seq=157) | Description |
+|---------|-----------------------------------|-------------|
+| `{col}_{row}.mp` | `15_42.mp` | Default — colonne et ligne |
+| `{col:03}_{row:03}.mp` | `015_042.mp` | Zero-padding à 3 chiffres |
+| `{seq}.mp` | `157.mp` | Compteur séquentiel (1-based) |
+| `{seq:04}.mp` | `0157.mp` | Séquentiel zero-padded |
+| `tile_{col}_{row}.mp` | `tile_15_42.mp` | Préfixe personnalisé |
+| `{col}/{row}.mp` | `15/42.mp` | Sous-dossiers automatiques |
+| `{x}_{y}.mp` | `15_42.mp` | Alias rétrocompat de col/row |
+
+**Variables :** `{col}` (index colonne), `{row}` (index ligne), `{seq}` (compteur 1-based).
+**Aliases :** `{x}` = `{col}`, `{y}` = `{row}`.
+**Zero-padding :** `{var:N}` pad à N chiffres avec des zéros à gauche.
 
 ### Exemples de configuration
 
@@ -242,7 +260,7 @@ inputs:
 
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"
+  filename_pattern: "{col}_{row}.mp"
   field_mapping_path: "bdtopo-mapping.yaml"  # ← Chemin vers le fichier de mapping
   # Note: Chemins relatifs résolus depuis le répertoire de travail (pwd).
   #       Utilisez un chemin absolu pour éviter toute ambiguïté.
@@ -360,7 +378,7 @@ Utilisez un fichier template pour standardiser le header sur toutes les tuiles :
 ```yaml
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"
+  filename_pattern: "{col}_{row}.mp"
 
 header:
   template: "examples/header_template.mp"  # ← Fichier template
@@ -400,7 +418,7 @@ Spécifiez les champs directement dans le YAML :
 ```yaml
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"
+  filename_pattern: "{col}_{row}.mp"
 
 header:
   # Informations de base
@@ -566,7 +584,7 @@ inputs:
 
 output:
   directory: "tiles_bdtopo/"
-  filename_pattern: "reunion_{x}_{y}.mp"
+  filename_pattern: "reunion_{col}_{row}.mp"
 
 filters:
   bbox: [55.2, -21.4, 55.8, -20.9]  # Île de La Réunion
@@ -621,7 +639,7 @@ inputs:
 
 output:
   directory: "tiles_bdtopo/"
-  filename_pattern: "france_{x}_{y}.mp"
+  filename_pattern: "france_{col}_{row}.mp"
   field_mapping_path: "bdtopo-mapping.yaml"  # ← Référence au fichier de mapping
 
 error_handling: "continue"
@@ -856,18 +874,30 @@ ogrinfo -sql "SELECT COUNT(*) FROM my_layer WHERE OGR_GEOMETRY NOT LIKE 'POINT%'
 mpforge-cli/
 ├── src/
 │   ├── main.rs              # Point d'entrée CLI
+│   ├── cli.rs               # Définition des arguments CLI (clap)
 │   ├── config.rs            # Parsing YAML et validation
-│   ├── grid.rs              # Génération de grille spatiale
-│   ├── tiler.rs             # Logique de tuilage
-│   ├── writer.rs            # Export Polish Map
-│   └── parallel.rs          # Traitement parallèle
+│   ├── error.rs             # Types d'erreurs
+│   ├── proj_init.rs         # Initialisation PROJ embarqué
+│   ├── report.rs            # Rapport JSON d'exécution
+│   └── pipeline/
+│       ├── mod.rs            # Orchestration du pipeline tile-centric
+│       ├── reader.rs         # Lecture sources GDAL/OGR
+│       ├── tiler.rs          # Grille spatiale et découpage
+│       ├── tile_naming.rs    # Patterns de nommage des tuiles
+│       ├── geometry_validator.rs  # Validation/réparation géométries
+│       └── writer.rs         # Export Polish Map (.mp)
 ├── tests/
-│   ├── config_tests.rs
-│   ├── grid_tests.rs
-│   └── integration_tests.rs
+│   ├── cli_tests.rs          # Tests CLI (help, version, flags)
+│   ├── config_parsing.rs     # Tests de parsing config YAML
+│   ├── tile_naming.rs        # Tests d'intégration patterns de nommage
+│   └── integration/
+│       └── fixtures/          # Fichiers de test (configs, shapefiles)
 ├── examples/
 │   ├── simple.yaml
-│   └── bdtopo.yaml
+│   ├── simple-with-mapping.yaml
+│   ├── bdtopo.yaml
+│   ├── france-nord-bdtopo.yaml
+│   └── france-nord-simple.yaml
 ├── doc/
 │   └── config-schema.md
 └── Cargo.toml

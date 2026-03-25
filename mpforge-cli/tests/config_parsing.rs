@@ -20,7 +20,7 @@ fn test_load_valid_config() {
     assert_eq!(config.grid.origin, Some([0.0, 0.0]));
     assert_eq!(config.inputs.len(), 2);
     assert_eq!(config.output.directory, "tiles/");
-    assert_eq!(config.output.filename_pattern, "{x}_{y}.mp");
+    assert_eq!(config.output.filename_pattern, "{x}_{y}.mp"); // explicit in fixture
     assert_eq!(config.error_handling, "continue");
 }
 
@@ -46,7 +46,7 @@ output:
     // Check defaults
     assert_eq!(config.version, 1); // default_version
     assert_eq!(config.grid.overlap, 0.0); // default overlap
-    assert_eq!(config.output.filename_pattern, "{x}_{y}.mp"); // default pattern
+    assert_eq!(config.output.filename_pattern, "{col}_{row}.mp"); // default pattern (Story 8.2)
     assert_eq!(config.error_handling, "continue"); // default error_handling
     assert!(config.filters.is_none()); // optional filters
 }

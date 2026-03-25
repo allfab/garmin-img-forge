@@ -14,7 +14,7 @@ inputs:
 
 output:
   directory: "tiles/"
-  filename_pattern: "{x}_{y}.mp"
+  filename_pattern: "{col}_{row}.mp"
 
   # FIELD MAPPING: Reference to external YAML file (Story 7.4)
   # This file defines how to map source field names to Polish Map canonical names

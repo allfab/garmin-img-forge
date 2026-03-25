@@ -32,6 +32,6 @@ inputs:
 
 output:
   directory: "tiles_france_nord/"
-  filename_pattern: "france_nord_{x}_{y}.mp"
+  filename_pattern: "france_nord_{col}_{row}.mp"
 
 error_handling: "continue"

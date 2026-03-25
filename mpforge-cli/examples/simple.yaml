@@ -15,7 +15,11 @@ inputs:
 
 output:
   directory: "tiles/"          # REQUIRED: Output directory for .mp files
-  filename_pattern: "{x}_{y}.mp"  # OPTIONAL: Tile naming pattern (default: "{x}_{y}.mp")
+  filename_pattern: "{col}_{row}.mp"  # OPTIONAL: Tile naming pattern (default: "{col}_{row}.mp")
+  # Supported variables: {col}, {row}, {seq} (aliases: {x}, {y})
+  # Zero-padding: {col:03} → "005", {seq:04} → "0001"
+  # Subdirectories: "{col}/{row}.mp" creates col/ folders automatically
+  # Examples: "{col:03}_{row:03}.mp", "{seq:04}.mp", "tile_{col}_{row}.mp"
 
 # OPTIONAL: Spatial filters
 # filters:

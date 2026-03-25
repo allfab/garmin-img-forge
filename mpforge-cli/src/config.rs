@@ -1,5 +1,6 @@
 //! Configuration file parsing and structures.
 
+use crate::pipeline::tile_naming;
 use anyhow::Context;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -62,7 +63,7 @@ pub struct OutputConfig {
 }
 
 fn default_filename_pattern() -> String {
-    "{x}_{y}.mp".to_string()
+    "{col}_{row}.mp".to_string()
 }
 
 /// Header configuration for Polish Map files.
@@ -253,6 +254,10 @@ impl Config {
             }
         }
 
+        // Filename pattern validation (Story 8.2)
+        tile_naming::validate_tile_pattern(&self.output.filename_pattern)
+            .with_context(|| format!("Invalid filename_pattern: '{}'", self.output.filename_pattern))?;
+
         // Output field_mapping_path validation removed (Story 7.4)
         // Validation moved to MpWriter::new() to avoid race condition in parallel mode
         // where file could be deleted between config validation and usage.
@@ -347,7 +352,7 @@ output:
         assert_eq!(config.version, 1);
         assert_eq!(config.grid.cell_size, 0.15);
         assert_eq!(config.grid.overlap, 0.0);
-        assert_eq!(config.output.filename_pattern, "{x}_{y}.mp");
+        assert_eq!(config.output.filename_pattern, "{col}_{row}.mp");
         assert_eq!(config.error_handling, "continue");
     }
 
@@ -593,7 +598,7 @@ output:
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
-                filename_pattern: "{x}_{y}.mp".to_string(),
+                filename_pattern: "{col}_{row}.mp".to_string(),
                 field_mapping_path: None,
             },
             filters: None,
@@ -920,6 +925,58 @@ header:
         let custom = header.custom.unwrap();
         assert_eq!(custom.get("DrawPriority"), Some(&"25".to_string()));
         assert_eq!(custom.get("MG"), Some(&"N".to_string()));
+        assert!(config.validate().is_ok());
+    }
+
+    // Story 8.2: Filename pattern validation tests
+    #[test]
+    fn test_config_validate_valid_filename_pattern() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  filename_pattern: "{col:03}_{row:03}.mp"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_validate_invalid_filename_pattern() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  filename_pattern: "{invalid_var}.mp"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid filename_pattern"));
+    }
+
+    #[test]
+    fn test_config_validate_default_pattern_valid() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        // Default {col}_{row}.mp should validate
         assert!(config.validate().is_ok());
     }
 }

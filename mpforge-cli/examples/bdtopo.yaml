@@ -86,7 +86,9 @@ inputs:
 
 output:
   directory: "tiles_bdtopo/"
-  filename_pattern: "france_{x}_{y}.mp"
+  filename_pattern: "france_{col}_{row}.mp"  # Variables: {col}, {row}, {seq} (aliases: {x}, {y})
+  # Zero-padding: "france_{col:03}_{row:03}.mp" → france_005_042.mp
+  # Sequential: "{seq:04}.mp" → 0001.mp, 0002.mp, ...
   # OPTIONAL: Field mapping configuration (Story 7.4)
   # Uncomment to enable YAML-based field mapping for Polish Map output.
   # Maps source field names (e.g., MP_TYPE, NAME) to canonical Polish Map fields (Type, Label).
