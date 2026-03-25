@@ -6,7 +6,7 @@
 use anyhow::Context;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::LazyLock;
 use tracing::{info, warn};
@@ -60,7 +60,7 @@ pub struct RuleStats {
     pub matched: usize,
     pub ignored: usize,
     pub errors: usize,
-    pub by_ruleset: HashMap<String, RulesetStats>,
+    pub by_ruleset: BTreeMap<String, RulesetStats>,
 }
 
 impl RuleStats {

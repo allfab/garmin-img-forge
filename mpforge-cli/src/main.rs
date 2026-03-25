@@ -39,14 +39,8 @@ fn main() -> anyhow::Result<()> {
             // Load configuration from YAML file
             let config = config::load_config(&args.config)?;
 
-            // Run the pipeline
-            let summary = pipeline::run(&config, args)?;
-
-            // TODO: Story 7.3 - Export execution report if requested
-            if let Some(_report_path) = &args.report {
-                // report::save_report(report_path, &summary)?;
-                let _ = summary; // Use summary to avoid unused variable warning
-            }
+            // Run the pipeline (report JSON written inside pipeline::run if --report specified)
+            pipeline::run(&config, args)?;
 
             Ok(())
         }
