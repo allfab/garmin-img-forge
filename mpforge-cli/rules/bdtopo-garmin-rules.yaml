@@ -1,9 +1,12 @@
-# Regles de transformation BDTOPO D038 -> Polish Map
-# Types Garmin : https://wiki.openstreetmap.org/wiki/OSM_Map_On_Garmin/Polish_Map_Types
-# Source de verite : FME 07-VOIRIE.fmw (PIPELINE-GARMIN-IGN-BDTOPO.md sections 5.3-5.5)
+# Regles de transformation BDTOPO -> Polish Map (production)
+# Source de verite : garmin-ign-bdtopo-map-v1/01-PROJECTS/03-FME/v2025.12/
+#   07-IGN-BDTOPO-ESRI-SHP-TO-ESRI-SHP-GARMIN-VOIRIE.fmw
+# Ref doc : PIPELINE-GARMIN-IGN-BDTOPO.md sections 5.3-5.5
 #
-# Ce fichier couvre la BDTOPO D038 (Isere) avec les rulesets transport alignes FME
-# et un sous-ensemble hydrographie/vegetation pour test du pipeline complet.
+# Types Garmin : https://wiki.openstreetmap.org/wiki/OSM_Map_On_Garmin/Polish_Map_Types
+# Shield codes Polish Map : ~[0x04]=autoroute, ~[0x05]=nationale, ~[0x06]=departementale
+#
+# IMPORTANT: L'ordre des regles est critique (first-match-wins).
 
 version: 1
 
@@ -11,12 +14,14 @@ rulesets:
   # ==========================================================================
   # TRANSPORT — Troncons de route (POLYLINE)
   # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_ROUTE
-  # Ordre critique : CL_ADMIN prioritaire, puis fallback NATURE
+  # 17 regles couvrant toutes les combinaisons CL_ADMIN x NATURE
   # ==========================================================================
   - name: "Routes"
     source_layer: "TRONCON_DE_ROUTE"
     rules:
-      # --- Priorite CL_ADMIN ---
+      # --- Priorite CL_ADMIN (evaluee en premier dans FME) ---
+
+      # 1. Autoroute (toute NATURE)
       - match:
           CL_ADMIN: "Autoroute"
         set:
@@ -24,6 +29,7 @@ rulesets:
           EndLevel: "7"
           Label: "~[0x04]${NUMERO}"
 
+      # 2. Nationale (hors Rond-point)
       - match:
           CL_ADMIN: "Nationale"
           NATURE: "!Rond-point"
@@ -32,6 +38,7 @@ rulesets:
           EndLevel: "7"
           Label: "~[0x05]${NUMERO}"
 
+      # 3. Nationale Rond-point (pas de label)
       - match:
           CL_ADMIN: "Nationale"
           NATURE: "Rond-point"
@@ -39,6 +46,7 @@ rulesets:
           Type: "0x04"
           EndLevel: "7"
 
+      # 4. Departementale (hors Rond-point)
       - match:
           CL_ADMIN: "Départementale"
           NATURE: "!Rond-point"
@@ -47,6 +55,7 @@ rulesets:
           EndLevel: "7"
           Label: "~[0x06]${NUMERO}"
 
+      # 5. Departementale Rond-point (Type override 0x04, pas de label)
       - match:
           CL_ADMIN: "Départementale"
           NATURE: "Rond-point"
@@ -54,6 +63,7 @@ rulesets:
           Type: "0x04"
           EndLevel: "7"
 
+      # 6. Route intercommunale (toute NATURE)
       - match:
           CL_ADMIN: "Route intercommunale"
         set:
@@ -61,37 +71,44 @@ rulesets:
           EndLevel: "7"
           Label: "${NUMERO}"
 
-      # --- Fallback NATURE ---
+      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
+
+      # 7. Route a 1 chaussee
       - match:
           NATURE: "Route à 1 chaussée"
         set:
           Type: "0x06"
           EndLevel: "2"
 
+      # 8. Route a 2 chaussees
       - match:
           NATURE: "Route à 2 chaussées"
         set:
           Type: "0x06"
           EndLevel: "2"
 
+      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
       - match:
           NATURE: "Rond-point"
         set:
           Type: "0x06"
           EndLevel: "2"
 
+      # 10. Route empierree
       - match:
           NATURE: "Route empierrée"
         set:
           Type: "0x07"
           EndLevel: "1"
 
+      # 11. Bretelle
       - match:
           NATURE: "Bretelle"
         set:
           Type: "0x09"
           EndLevel: "7"
 
+      # 12. Type autoroutier
       - match:
           NATURE: "Type autoroutier"
         set:
@@ -99,30 +116,35 @@ rulesets:
           EndLevel: "7"
           Label: "~[0x04]${NUMERO}"
 
+      # 13. Chemin
       - match:
           NATURE: "Chemin"
         set:
           Type: "0x0a"
           EndLevel: "1"
 
+      # 14. Escalier
       - match:
           NATURE: "Escalier"
         set:
           Type: "0x0f"
           EndLevel: "1"
 
+      # 15. Piste cyclable
       - match:
           NATURE: "Piste cyclable"
         set:
           Type: "0x0e"
           EndLevel: "1"
 
+      # 16. Sentier
       - match:
           NATURE: "Sentier"
         set:
           Type: "0x10"
           EndLevel: "1"
 
+      # 17. Bac ou liaison maritime
       - match:
           NATURE: "Bac ou liaison maritime"
         set:
@@ -132,11 +154,12 @@ rulesets:
   # ==========================================================================
   # TRANSPORT — Voies ferrees (POLYLINE)
   # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_VOIE_FERREE
-  # POS_SOL="-1" en PREMIER (souterrain override toute NATURE)
+  # 7 regles — POS_SOL="-1" en PREMIER (souterrain override toute NATURE)
   # ==========================================================================
   - name: "Voies ferrees"
     source_layer: "TRONCON_DE_VOIE_FERREE"
     rules:
+      # 1. Souterrain (POS_SOL=-1, quelle que soit NATURE) — DOIT ETRE EN PREMIER
       - match:
           POS_SOL: "-1"
         set:
@@ -144,6 +167,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 2. Voie ferree principale (hors souterrain)
       - match:
           NATURE: "Voie ferrée principale"
           POS_SOL: "!-1"
@@ -152,6 +176,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 3. LGV (hors souterrain)
       - match:
           NATURE: "LGV"
           POS_SOL: "!-1"
@@ -160,6 +185,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 4. Voie de service (hors souterrain)
       - match:
           NATURE: "Voie de service"
           POS_SOL: "!-1"
@@ -168,6 +194,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 5. Tramway (hors souterrain)
       - match:
           NATURE: "Tramway"
           POS_SOL: "!-1"
@@ -176,6 +203,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 6. Funiculaire ou cremaillere (hors souterrain)
       - match:
           NATURE: "Funiculaire ou crémaillère"
           POS_SOL: "!-1"
@@ -184,6 +212,7 @@ rulesets:
           EndLevel: "5"
           Label: "${TOPONYME}"
 
+      # 7. Sans objet (hors souterrain)
       - match:
           NATURE: "Sans objet"
           POS_SOL: "!-1"
@@ -193,162 +222,6 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Cours d'eau (POLYLINE)
-  # ==========================================================================
-  - name: "Cours d'eau"
-    source_layer: "COURS_D_EAU"
-    rules:
-      # Cours d'eau importants (importance 1-3)
-      - match:
-          IMPORTANCE: "1"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "4"
-
-      - match:
-          IMPORTANCE: "2"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "3"
-
-      - match:
-          IMPORTANCE: "3"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "2"
-
-      - match:
-          IMPORTANCE: "4"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "1"
-
-      # Tous les autres cours d'eau
-      - match:
-          IMPORTANCE: "*"
-        set:
-          Type: "0x1f"
-          Label: "${TOPONYME}"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # HYDROGRAPHIE — Plans d'eau (POLYGON)
-  # ==========================================================================
-  - name: "Plans d'eau"
-    source_layer: "PLAN_D_EAU"
-    rules:
-      # Lacs
-      - match:
-          NATURE: "Lac"
-        set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
-          EndLevel: "3"
-
-      # Retenues / barrages
-      - match:
-          NATURE: "Retenue"
-        set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
-          EndLevel: "2"
-
-      - match:
-          NATURE: "Retenue-barrage"
-        set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
-          EndLevel: "2"
-
-      # Glaciers
-      - match:
-          NATURE: "Glacier, névé"
-        set:
-          Type: "0x4d"
-          Label: "${TOPONYME}"
-          EndLevel: "3"
-
-      # Tous les autres plans d'eau
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x3c"
-          Label: "${TOPONYME}"
-          EndLevel: "1"
-
-  # ==========================================================================
-  # OCCUPATION DU SOL — Vegetation (POLYGON)
-  # ==========================================================================
-  - name: "Vegetation"
-    source_layer: "ZONE_DE_VEGETATION"
-    rules:
-      # Forets
-      - match:
-          NATURE: "Forêt fermée de feuillus"
-        set:
-          Type: "0x50"
-          EndLevel: "2"
-
-      - match:
-          NATURE: "Forêt fermée de conifères"
-        set:
-          Type: "0x50"
-          EndLevel: "2"
-
-      - match:
-          NATURE: "Forêt fermée mixte"
-        set:
-          Type: "0x50"
-          EndLevel: "2"
-
-      - match:
-          NATURE: "Forêt ouverte"
-        set:
-          Type: "0x50"
-          EndLevel: "1"
-
-      # Bois
-      - match:
-          NATURE: "Bois"
-        set:
-          Type: "0x50"
-          EndLevel: "1"
-
-      # Vignes
-      - match:
-          NATURE: "Vigne"
-        set:
-          Type: "0x4e"
-          EndLevel: "1"
-
-      # Vergers
-      - match:
-          NATURE: "Verger"
-        set:
-          Type: "0x4e"
-          EndLevel: "1"
-
-      # Lande ligneuse
-      - match:
-          NATURE: "Lande ligneuse"
-        set:
-          Type: "0x52"
-          EndLevel: "1"
-
-      # Peupleraies
-      - match:
-          NATURE: "Peupleraie"
-        set:
-          Type: "0x50"
-          EndLevel: "1"
-
-      # Haies (ignorees - trop denses, peu utiles sur GPS)
-
-  # ==========================================================================
   # TRANSPORT — Pistes d'aerodrome (POLYLINE)
   # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
   # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
@@ -356,6 +229,7 @@ rulesets:
   - name: "Pistes aerodrome"
     source_layer: "PISTE_D_AERODROME"
     rules:
+      # 1. Piste en dur
       - match:
           NATURE: "Piste en dur"
         set:
@@ -363,6 +237,7 @@ rulesets:
           EndLevel: "4"
           Label: "${TOPONYME}"
 
+      # 2. Piste en herbe
       - match:
           NATURE: "Piste en herbe"
         set:
@@ -378,6 +253,7 @@ rulesets:
   - name: "Transport par cable"
     source_layer: "TRANSPORT_PAR_CABLE"
     rules:
+      # 1. Toute feature (mapping statique)
       - match:
           NATURE: "*"
         set:
