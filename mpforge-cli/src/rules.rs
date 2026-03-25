@@ -4,10 +4,12 @@
 //! how source attributes are transformed for Polish Map export.
 
 use anyhow::Context;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
-use tracing::info;
+use std::sync::LazyLock;
+use tracing::{info, warn};
 
 /// Top-level rules file structure.
 /// Corresponds to the YAML file with `version` and `rulesets`.
@@ -35,6 +37,22 @@ pub struct Rule {
     /// Target attributes to set: attribute_name → value_or_template.
     pub set: HashMap<String, String>,
 }
+
+/// Domain errors for rule evaluation.
+#[derive(Debug, thiserror::Error)]
+pub enum RuleError {
+    /// Type field value doesn't match the required hex format.
+    #[error("Invalid Type value '{value}': must match 0x[0-9a-fA-F]+")]
+    InvalidTypeHex { value: String },
+}
+
+/// Pre-compiled regex for `${FIELD}` substitution patterns.
+static SUBST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").expect("valid regex"));
+
+/// Pre-compiled regex for Type hex validation (`0x[0-9a-fA-F]+`).
+static TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid regex"));
 
 /// Load and validate a rules file from disk.
 pub fn load_rules(path: &Path) -> anyhow::Result<RulesFile> {
@@ -106,6 +124,100 @@ fn validate_rules(rules_file: &RulesFile) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Evaluate match conditions against feature attributes.
+///
+/// All conditions must be satisfied (AND logic). A missing field
+/// in feature attributes is treated as an empty string.
+///
+/// Pattern operators (checked in order):
+/// - `"*"` → wildcard (always matches)
+/// - `"!!"` → field is present and non-empty
+/// - `""` → field is absent or empty
+/// - `"!<value>"` → not equal to `<value>`
+/// - anything else → strict equality
+pub fn evaluate_match(
+    match_conditions: &HashMap<String, String>,
+    feature_attrs: &HashMap<String, String>,
+) -> bool {
+    for (field, pattern) in match_conditions {
+        let attr_value = feature_attrs
+            .get(field)
+            .map(|s| s.as_str())
+            .unwrap_or("");
+
+        let matches = if pattern == "*" {
+            // Wildcard: always true
+            true
+        } else if pattern == "!!" {
+            // Non-empty: value must be present and non-empty
+            !attr_value.is_empty()
+        } else if pattern.is_empty() {
+            // Empty: value must be absent or empty
+            attr_value.is_empty()
+        } else if pattern.starts_with('!') && pattern.len() > 1 {
+            // Not equal: strip '!' prefix and compare
+            attr_value != &pattern[1..]
+        } else {
+            // Strict equality
+            attr_value == pattern
+        };
+
+        if !matches {
+            return false;
+        }
+    }
+    true
+}
+
+/// Apply set transformations to produce output attributes.
+///
+/// Substitutes `${FIELD}` patterns with values from feature attributes.
+/// Missing fields produce an empty string. Validates that `Type` values
+/// match `^0x[0-9a-fA-F]+$`.
+pub fn apply_set(
+    set: &HashMap<String, String>,
+    feature_attrs: &HashMap<String, String>,
+) -> Result<HashMap<String, String>, RuleError> {
+    let mut result = HashMap::new();
+    for (attr_name, template) in set {
+        let value = SUBST_RE
+            .replace_all(template, |caps: &regex::Captures| {
+                let field_name = &caps[1];
+                feature_attrs
+                    .get(field_name)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .to_string();
+
+        // Validate Type field
+        if attr_name == "Type" && !TYPE_RE.is_match(&value) {
+            warn!(value = %value, "Invalid Type hex value");
+            return Err(RuleError::InvalidTypeHex { value });
+        }
+
+        result.insert(attr_name.clone(), value);
+    }
+    Ok(result)
+}
+
+/// Evaluate a feature against all rules in a ruleset (first-match-wins).
+///
+/// Returns `Some(transformed_attrs)` for the first matching rule,
+/// or `None` if no rule matches.
+pub fn evaluate_feature(
+    ruleset: &Ruleset,
+    feature_attrs: &HashMap<String, String>,
+) -> Result<Option<HashMap<String, String>>, RuleError> {
+    for rule in &ruleset.rules {
+        if evaluate_match(&rule.match_conditions, feature_attrs) {
+            let transformed = apply_set(&rule.set, feature_attrs)?;
+            return Ok(Some(transformed));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -337,6 +449,309 @@ rulesets:
         let rules_file = result.unwrap();
         assert_eq!(rules_file.rulesets.len(), 1);
         assert_eq!(rules_file.rulesets[0].source_layer, "LAYER");
+    }
+
+    // ===================================================================
+    // Task 4 — Tests evaluate_match (AC: 1,2,3,4,5,6)
+    // ===================================================================
+
+    #[test]
+    fn test_match_strict_equality_matches() {
+        let conditions = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        let attrs = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_strict_equality_no_match() {
+        let conditions = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        let attrs = HashMap::from([("NATURE".into(), "Nationale".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_equal_matches() {
+        let conditions = HashMap::from([("NATURE".into(), "!Rond-point".into())]);
+        let attrs = HashMap::from([("NATURE".into(), "Sentier".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_equal_no_match() {
+        let conditions = HashMap::from([("NATURE".into(), "!Rond-point".into())]);
+        let attrs = HashMap::from([("NATURE".into(), "Rond-point".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_empty_matches_absent() {
+        let conditions = HashMap::from([("CL_ADMIN".into(), "".into())]);
+        let attrs = HashMap::new();
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_empty_matches_empty_string() {
+        let conditions = HashMap::from([("CL_ADMIN".into(), "".into())]);
+        let attrs = HashMap::from([("CL_ADMIN".into(), "".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_empty_no_match_non_empty() {
+        let conditions = HashMap::from([("CL_ADMIN".into(), "".into())]);
+        let attrs = HashMap::from([("CL_ADMIN".into(), "Nationale".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_non_empty_matches() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!!".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Mont Blanc".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_non_empty_no_match_empty() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!!".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_non_empty_no_match_absent() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!!".into())]);
+        let attrs = HashMap::new();
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_wildcard_matches_value() {
+        let conditions = HashMap::from([("POS_SOL".into(), "*".into())]);
+        let attrs = HashMap::from([("POS_SOL".into(), "2".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_wildcard_matches_empty() {
+        let conditions = HashMap::from([("POS_SOL".into(), "*".into())]);
+        let attrs = HashMap::from([("POS_SOL".into(), "".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_wildcard_matches_absent() {
+        let conditions = HashMap::from([("POS_SOL".into(), "*".into())]);
+        let attrs = HashMap::new();
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_multi_field_and_all_match() {
+        let conditions = HashMap::from([
+            ("CL_ADMIN".into(), "Nationale".into()),
+            ("NATURE".into(), "!Rond-point".into()),
+        ]);
+        let attrs = HashMap::from([
+            ("CL_ADMIN".into(), "Nationale".into()),
+            ("NATURE".into(), "Route a 1 chaussee".into()),
+        ]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_multi_field_and_one_fails() {
+        let conditions = HashMap::from([
+            ("CL_ADMIN".into(), "Nationale".into()),
+            ("NATURE".into(), "!Rond-point".into()),
+        ]);
+        let attrs = HashMap::from([
+            ("CL_ADMIN".into(), "Nationale".into()),
+            ("NATURE".into(), "Rond-point".into()),
+        ]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_missing_field_treated_as_empty() {
+        let conditions = HashMap::from([("MISSING".into(), "".into())]);
+        let attrs = HashMap::from([("OTHER".into(), "value".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_missing_field_strict_no_match() {
+        let conditions = HashMap::from([("MISSING".into(), "something".into())]);
+        let attrs = HashMap::new();
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_equal_matches_absent_field() {
+        // Absent field = "" → "" != "Rond-point" → should match
+        let conditions = HashMap::from([("NATURE".into(), "!Rond-point".into())]);
+        let attrs = HashMap::new();
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    // ===================================================================
+    // Task 5 — Tests apply_set (AC: 7,8,9,10)
+    // ===================================================================
+
+    #[test]
+    fn test_set_simple_substitution() {
+        let set = HashMap::from([("Label".into(), "${NUMERO}".into())]);
+        let attrs = HashMap::from([("NUMERO".into(), "D1075".into())]);
+        let result = apply_set(&set, &attrs).unwrap();
+        assert_eq!(result.get("Label").unwrap(), "D1075");
+    }
+
+    #[test]
+    fn test_set_concatenation() {
+        let set = HashMap::from([("Label".into(), "Ligne ${VOLTAGE}".into())]);
+        let attrs = HashMap::from([("VOLTAGE".into(), "400kV".into())]);
+        let result = apply_set(&set, &attrs).unwrap();
+        assert_eq!(result.get("Label").unwrap(), "Ligne 400kV");
+    }
+
+    #[test]
+    fn test_set_multi_substitution() {
+        let set = HashMap::from([("Label".into(), "${CL_ADMIN} - ${NUMERO}".into())]);
+        let attrs = HashMap::from([
+            ("CL_ADMIN".into(), "Nationale".into()),
+            ("NUMERO".into(), "D1075".into()),
+        ]);
+        let result = apply_set(&set, &attrs).unwrap();
+        assert_eq!(result.get("Label").unwrap(), "Nationale - D1075");
+    }
+
+    #[test]
+    fn test_set_missing_field_substitution() {
+        let set = HashMap::from([("Label".into(), "${MISSING}".into())]);
+        let attrs = HashMap::new();
+        let result = apply_set(&set, &attrs).unwrap();
+        assert_eq!(result.get("Label").unwrap(), "");
+    }
+
+    #[test]
+    fn test_set_static_value_no_substitution() {
+        let set = HashMap::from([("Type".into(), "0x01".into())]);
+        let attrs = HashMap::new();
+        let result = apply_set(&set, &attrs).unwrap();
+        assert_eq!(result.get("Type").unwrap(), "0x01");
+    }
+
+    #[test]
+    fn test_set_type_hex_valid_values() {
+        for val in &["0x01", "0x1f", "0xFF", "0xABCD"] {
+            let set = HashMap::from([("Type".into(), val.to_string())]);
+            let result = apply_set(&set, &HashMap::new());
+            assert!(result.is_ok(), "Expected valid for {}", val);
+        }
+    }
+
+    #[test]
+    fn test_set_type_hex_invalid_values() {
+        for val in &["invalid", "0xZZ", "01", "x01", ""] {
+            let set = HashMap::from([("Type".into(), val.to_string())]);
+            let result = apply_set(&set, &HashMap::new());
+            assert!(result.is_err(), "Expected error for '{}'", val);
+        }
+    }
+
+    // ===================================================================
+    // Task 6 — Tests evaluate_feature (AC: 1-10)
+    // ===================================================================
+
+    fn make_ruleset(rules: Vec<(HashMap<String, String>, HashMap<String, String>)>) -> Ruleset {
+        Ruleset {
+            name: Some("Test".into()),
+            source_layer: "LAYER".into(),
+            rules: rules
+                .into_iter()
+                .map(|(m, s)| Rule {
+                    match_conditions: m,
+                    set: s,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_evaluate_feature_first_rule_matches() {
+        let ruleset = make_ruleset(vec![
+            (
+                HashMap::from([("NATURE".into(), "Autoroute".into())]),
+                HashMap::from([("Type".into(), "0x01".into())]),
+            ),
+            (
+                HashMap::from([("NATURE".into(), "Nationale".into())]),
+                HashMap::from([("Type".into(), "0x02".into())]),
+            ),
+        ]);
+        let attrs = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().get("Type").unwrap(), "0x01");
+    }
+
+    #[test]
+    fn test_evaluate_feature_second_rule_matches() {
+        let ruleset = make_ruleset(vec![
+            (
+                HashMap::from([("NATURE".into(), "Autoroute".into())]),
+                HashMap::from([("Type".into(), "0x01".into())]),
+            ),
+            (
+                HashMap::from([("NATURE".into(), "Nationale".into())]),
+                HashMap::from([("Type".into(), "0x02".into())]),
+            ),
+        ]);
+        let attrs = HashMap::from([("NATURE".into(), "Nationale".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().get("Type").unwrap(), "0x02");
+    }
+
+    #[test]
+    fn test_evaluate_feature_first_match_wins_when_multiple_match() {
+        let ruleset = make_ruleset(vec![
+            (
+                HashMap::from([("NATURE".into(), "*".into())]),
+                HashMap::from([("Type".into(), "0x0a".into())]),
+            ),
+            (
+                HashMap::from([("NATURE".into(), "Autoroute".into())]),
+                HashMap::from([("Type".into(), "0x01".into())]),
+            ),
+        ]);
+        let attrs = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap();
+        assert!(result.is_some());
+        // First rule (wildcard) wins even though second rule also matches
+        assert_eq!(result.unwrap().get("Type").unwrap(), "0x0a");
+    }
+
+    #[test]
+    fn test_evaluate_feature_no_match_returns_none() {
+        let ruleset = make_ruleset(vec![(
+            HashMap::from([("NATURE".into(), "Autoroute".into())]),
+            HashMap::from([("Type".into(), "0x01".into())]),
+        )]);
+        let attrs = HashMap::from([("NATURE".into(), "Sentier".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_evaluate_feature_invalid_type_returns_error() {
+        let ruleset = make_ruleset(vec![(
+            HashMap::from([("NATURE".into(), "Autoroute".into())]),
+            HashMap::from([("Type".into(), "invalid".into())]),
+        )]);
+        let attrs = HashMap::from([("NATURE".into(), "Autoroute".into())]);
+        let result = evaluate_feature(&ruleset, &attrs);
+        assert!(result.is_err());
     }
 
     #[test]
