@@ -41,6 +41,8 @@ fn create_args_with_report(report_path: &str) -> BuildArgs {
         jobs: 1,
         fail_fast: false,
         report: Some(report_path.to_string()),
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     }
 }
@@ -54,6 +56,8 @@ fn create_args_without_report() -> BuildArgs {
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     }
 }

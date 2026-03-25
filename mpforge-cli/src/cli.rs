@@ -41,8 +41,13 @@ pub enum Commands {
     /// Supports parallel processing, progress tracking, and comprehensive error reporting.
     #[command(
         long_about = "Build tiled .mp files from vector sources using configured grid and processing options.\n\n\
+                            Options:\n  \
+                            --skip-existing  Resume interrupted export by skipping already exported tiles\n  \
+                            --dry-run        Preview mode: show what would be exported without writing files\n\n\
                             Example:\n  \
-                            mpforge-cli build --config config.yaml --jobs 8"
+                            mpforge-cli build --config config.yaml --jobs 8\n  \
+                            mpforge-cli build --config config.yaml --skip-existing\n  \
+                            mpforge-cli build --config config.yaml --dry-run"
     )]
     Build(BuildArgs),
 }
@@ -76,6 +81,14 @@ pub struct BuildArgs {
     /// Path to export JSON execution report
     #[arg(short, long)]
     pub report: Option<String>,
+
+    /// Skip tiles whose output file already exists (resume interrupted export)
+    #[arg(long)]
+    pub skip_existing: bool,
+
+    /// Simulate export without writing files (preview mode)
+    #[arg(long)]
+    pub dry_run: bool,
 
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -121,6 +134,8 @@ mod tests {
             jobs: 1,
             fail_fast: false,
             report: None,
+            skip_existing: false,
+            dry_run: false,
             verbose: 0,
         };
     }
@@ -135,6 +150,8 @@ mod tests {
         assert_eq!(build_args.config, "test.yaml");
         assert_eq!(build_args.jobs, 1);
         assert!(!build_args.fail_fast);
+        assert!(!build_args.skip_existing);
+        assert!(!build_args.dry_run);
         assert_eq!(build_args.verbose, 0);
     }
 
@@ -162,6 +179,8 @@ mod tests {
             "--fail-fast",
             "--report",
             "report.json",
+            "--skip-existing",
+            "--dry-run",
             "-vv",
         ]);
         assert!(args.is_ok());
@@ -173,6 +192,8 @@ mod tests {
         assert_eq!(build_args.jobs, 4);
         assert!(build_args.fail_fast);
         assert_eq!(build_args.report, Some("report.json".to_string()));
+        assert!(build_args.skip_existing);
+        assert!(build_args.dry_run);
         assert_eq!(build_args.verbose, 2);
     }
 }

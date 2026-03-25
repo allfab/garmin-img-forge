@@ -35,9 +35,18 @@ pub struct ExecutionReport {
     pub duration_seconds: f64,
     /// Detailed error information for failed tiles
     pub errors: Vec<TileError>,
+    /// Story 8.3: Whether this was a dry-run execution (no files written)
+    #[serde(skip_serializing_if = "is_false")]
+    pub dry_run: bool,
     /// Quality information including unsupported geometry types (Story 6.6)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<QualitySection>,
+}
+
+/// Helper for conditional serialization of bool fields.
+/// Story 8.3: Skip serialization when value is false (default).
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Quality section of the execution report.
@@ -116,6 +125,7 @@ mod tests {
             features_processed: 1000,
             duration_seconds: 5.5,
             errors: vec![],
+            dry_run: false,
             quality: None,
         };
 
@@ -147,6 +157,7 @@ mod tests {
                     error: "I/O error: Permission denied".to_string(),
                 },
             ],
+            dry_run: false,
             quality: None,
         };
 
@@ -193,6 +204,7 @@ mod tests {
             features_processed: 500,
             duration_seconds: 3.0,
             errors: vec![],
+            dry_run: false,
             quality: None,
         };
 

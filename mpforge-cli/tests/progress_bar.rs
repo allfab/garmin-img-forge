@@ -54,6 +54,8 @@ fn test_verbose_level_0_shows_warn_only() {
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0, // WARN level
     };
 
@@ -83,6 +85,8 @@ fn test_verbose_level_1_shows_info_logs() {
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 1, // INFO level
     };
 
@@ -112,6 +116,8 @@ fn test_verbose_level_2_disables_progress_bar_and_shows_debug() {
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 2, // DEBUG level
     };
 
@@ -141,6 +147,8 @@ fn test_progress_bar_increments_for_all_tiles_sequential() {
         jobs: 1, // Sequential
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -176,6 +184,8 @@ fn test_progress_bar_thread_safe_parallel_jobs_4() {
         jobs: 4, // Parallel with 4 threads
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -214,6 +224,8 @@ fn test_sequential_and_parallel_produce_same_counts() {
         jobs: 1, // Sequential
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -224,6 +236,8 @@ fn test_sequential_and_parallel_produce_same_counts() {
         jobs: 4, // Parallel
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 

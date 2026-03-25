@@ -60,6 +60,11 @@ pub struct OutputConfig {
     /// Story 7.4: Maps source field names (e.g., MP_TYPE, NAME) to Polish Map canonical names (Type, Label).
     #[serde(default)]
     pub field_mapping_path: Option<PathBuf>,
+    /// Optional: overwrite existing tile files (default: true).
+    /// Set to false for skip-existing behavior via config.
+    /// Story 8.3: None or Some(true) = overwrite, Some(false) = skip existing.
+    #[serde(default)]
+    pub overwrite: Option<bool>,
 }
 
 fn default_filename_pattern() -> String {
@@ -600,6 +605,7 @@ output:
                 directory: "tiles/".to_string(),
                 filename_pattern: "{col}_{row}.mp".to_string(),
                 field_mapping_path: None,
+                overwrite: None,
             },
             filters: None,
             error_handling: "continue".to_string(),
@@ -977,6 +983,57 @@ output:
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
         // Default {col}_{row}.mp should validate
+        assert!(config.validate().is_ok());
+    }
+
+    // Story 8.3: OutputConfig overwrite field tests
+    #[test]
+    fn test_config_output_overwrite_absent() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.output.overwrite.is_none());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_output_overwrite_true() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  overwrite: true
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(config.output.overwrite, Some(true));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_output_overwrite_false() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  overwrite: false
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(config.output.overwrite, Some(false));
         assert!(config.validate().is_ok());
     }
 }

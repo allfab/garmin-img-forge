@@ -20,6 +20,8 @@ output:
   # Zero-padding: {col:03} → "005", {seq:04} → "0001"
   # Subdirectories: "{col}/{row}.mp" creates col/ folders automatically
   # Examples: "{col:03}_{row:03}.mp", "{seq:04}.mp", "tile_{col}_{row}.mp"
+  # overwrite: true  # OPTIONAL: Set to false to skip existing tiles (default: true)
+  #                  # Equivalent to CLI --skip-existing flag
 
 # OPTIONAL: Spatial filters
 # filters:

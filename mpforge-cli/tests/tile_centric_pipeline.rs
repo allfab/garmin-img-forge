@@ -44,6 +44,7 @@ fn make_config(filenames: &[&str]) -> Config {
             directory: "/tmp/mpforge-test-output".to_string(),
             filename_pattern: "{x}_{y}.mp".to_string(),
             field_mapping_path: None,
+            overwrite: None,
         },
         filters: None,
         error_handling: "continue".to_string(),

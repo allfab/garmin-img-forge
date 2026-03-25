@@ -377,6 +377,7 @@ fn test_json_report_with_multi_geometries_decomposed() {
         features_processed: 10000,
         duration_seconds: 42.5,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: Some(decomposed),
@@ -420,6 +421,7 @@ fn test_json_report_without_multi_geometries() {
         features_processed: 5000,
         duration_seconds: 10.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: None,
@@ -457,6 +459,7 @@ fn test_json_report_with_both_quality_fields() {
         features_processed: 20000,
         duration_seconds: 60.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types,
             multi_geometries_decomposed: Some(decomposed),

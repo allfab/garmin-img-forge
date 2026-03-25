@@ -165,9 +165,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             ErrorMode::default()
         });
 
-    // Ensure output directory exists
-    std::fs::create_dir_all(&config.output.directory)
-        .context("Failed to create output directory")?;
+    // Ensure output directory exists (skip in dry-run: no side effects)
+    if !args.dry_run {
+        std::fs::create_dir_all(&config.output.directory)
+            .context("Failed to create output directory")?;
+    }
 
     // Progress bar (no Arc needed in sequential mode)
     let progress = if args.verbose < 2 {
@@ -193,6 +195,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let mut all_unsupported = UnsupportedTypeStats::default();
     let mut all_multi_geom = MultiGeometryStats::default();
     let mut seq: usize = 0; // Story 8.2: sequential counter, incremented on successful export
+    let mut tiles_skipped_existing: usize = 0; // Story 8.3: track existing tiles skipped separately
+
+    // Story 8.3: Pre-calculate skip-existing flag (CLI --skip-existing OR config overwrite: false)
+    let should_skip_existing =
+        args.skip_existing || config.output.overwrite == Some(false);
 
     for tile_bounds in &tiles {
         // 2a. Load features filtered for this tile
@@ -299,6 +306,39 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         .with_context(|| format!("Failed to resolve filename pattern for tile {}", tile_id))?;
         let tile_path = PathBuf::from(&config.output.directory).join(&tile_filename);
 
+        // Story 8.3: Skip existing tile files
+        if should_skip_existing && tile_path.exists() {
+            info!(tile_id = %tile_id, path = %tile_path.display(), "Existing tile skipped");
+            tiles_skipped += 1;
+            tiles_skipped_existing += 1;
+            if let Some(pb) = &progress {
+                pb.inc(1);
+            }
+            continue;
+        }
+
+        // Story 8.3: Dry-run mode — count features without writing
+        if args.dry_run {
+            for f in &clipped_features {
+                match f.geometry_type {
+                    crate::pipeline::reader::GeometryType::Point => {
+                        global_stats.point_count += 1;
+                    }
+                    crate::pipeline::reader::GeometryType::LineString => {
+                        global_stats.linestring_count += 1;
+                    }
+                    crate::pipeline::reader::GeometryType::Polygon => {
+                        global_stats.polygon_count += 1;
+                    }
+                }
+            }
+            tiles_succeeded += 1;
+            if let Some(pb) = &progress {
+                pb.inc(1);
+            }
+            continue;
+        }
+
         // Story 8.2: Create subdirectories if pattern contains path separators
         if let Some(parent) = tile_path.parent() {
             std::fs::create_dir_all(parent)
@@ -368,10 +408,20 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Finalize progress bar
     if let Some(pb) = progress {
-        pb.finish_with_message(format!(
+        let mut msg = format!(
             "✓ Export terminé: {} tuiles réussies, {} échouées",
             summary.tiles_succeeded, summary.tiles_failed
-        ));
+        );
+        if summary.tiles_skipped > 0 {
+            msg.push_str(&format!(", {} skippées", summary.tiles_skipped));
+            if tiles_skipped_existing > 0 {
+                msg.push_str(&format!(" ({} existing)", tiles_skipped_existing));
+            }
+        }
+        if args.dry_run {
+            msg.push_str(" (DRY-RUN)");
+        }
+        pb.finish_with_message(msg);
     }
 
     // Log validation summary
@@ -415,6 +465,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         tiles_skipped: summary.tiles_skipped,
         features_processed: summary.total_features(),
         duration_seconds: total_duration,
+        dry_run: args.dry_run,
         errors: summary
             .export_errors
             .iter()
@@ -440,7 +491,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     // Console summary
-    print_console_summary(&report, &config.output.directory, args);
+    print_console_summary(&report, &config.output.directory, args, tiles_skipped_existing);
 
     // Exit with appropriate code for CI/CD
     if !summary.is_success() {
@@ -507,6 +558,7 @@ fn print_console_summary(
     report: &crate::report::ExecutionReport,
     output_directory: &str,
     args: &BuildArgs,
+    tiles_skipped_existing: usize,
 ) {
     use crate::report::ReportStatus;
 
@@ -515,6 +567,11 @@ fn print_console_summary(
         ReportStatus::Success => ("✅", "SUCCÈS"),
         ReportStatus::Failure => ("❌", "ÉCHEC"),
     };
+
+    // Story 8.3: Dry-run banner
+    if report.dry_run {
+        println!("\n⚠️  MODE DRY-RUN : Aucun fichier écrit");
+    }
 
     println!(
         "\n{} Exécution terminée - Statut: {}",
@@ -545,6 +602,12 @@ fn print_console_summary(
     );
     println!("╚════════════════════════════════════════════════════════╝");
     println!("   Répertoire de sortie : {}", output_directory);
+    if tiles_skipped_existing > 0 {
+        println!(
+            "   Dont {} tuile(s) skippée(s) (existing)",
+            tiles_skipped_existing
+        );
+    }
 
     // Show top errors (not all, to avoid console pollution)
     // M4 Fix: Use named constant instead of magic number

@@ -135,6 +135,7 @@ fn test_json_report_with_quality_section() {
         features_processed: 10000,
         duration_seconds: 42.5,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types,
             multi_geometries_decomposed: None,
@@ -162,6 +163,7 @@ fn test_json_report_without_quality_section() {
         features_processed: 10000,
         duration_seconds: 42.5,
         errors: vec![],
+        dry_run: false,
         quality: None,
     };
 
@@ -181,6 +183,7 @@ fn test_json_report_with_empty_quality_section() {
         features_processed: 5000,
         duration_seconds: 10.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: None,
@@ -222,6 +225,7 @@ fn test_json_report_quality_breakdown_correct() {
         features_processed: 5000,
         duration_seconds: 10.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types,
             multi_geometries_decomposed: None,
@@ -266,6 +270,7 @@ fn test_json_report_write_with_quality() {
         features_processed: 100,
         duration_seconds: 1.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types,
             multi_geometries_decomposed: None,
@@ -308,6 +313,7 @@ fn test_json_report_with_total_sources_truncation() {
         features_processed: 1000,
         duration_seconds: 5.0,
         errors: vec![],
+        dry_run: false,
         quality: Some(QualitySection {
             unsupported_types,
             multi_geometries_decomposed: None,

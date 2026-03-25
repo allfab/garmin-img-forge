@@ -21,6 +21,8 @@ fn test_args() -> BuildArgs {
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 2, // suppress progress bar
     }
 }

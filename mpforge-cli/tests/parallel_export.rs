@@ -31,6 +31,8 @@ fn test_jobs_validation_zero_rejected() {
         jobs: 0,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -52,6 +54,8 @@ fn test_jobs_exceeds_num_cpus_warning() {
         jobs: num_cpus + 4,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -71,6 +75,8 @@ fn test_jobs_valid_value() {
         jobs: 4,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -136,6 +142,8 @@ fn create_test_args_with_jobs(jobs: usize) -> BuildArgs {
         jobs,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     }
 }

@@ -486,6 +486,48 @@ header:
 
 Si `header` n'est pas spécifié, le driver utilise ses valeurs par défaut (comportement des versions précédentes). Vos configurations existantes continuent de fonctionner sans modification.
 
+### Options d'export
+
+**mpforge-cli** propose des options pour contrôler le comportement d'export, utiles pour les pipelines de production :
+
+#### Reprendre un export interrompu (`--skip-existing`)
+
+Si un export est interrompu (crash, timeout), vous pouvez reprendre sans ré-exporter les tuiles déjà générées :
+
+```bash
+# Premier export (interrompu à la tuile 1500/2000)
+mpforge-cli build --config config.yaml --jobs 8
+
+# Reprendre : seules les tuiles manquantes sont exportées
+mpforge-cli build --config config.yaml --jobs 8 --skip-existing
+```
+
+**Équivalent YAML** : `output.overwrite: false` dans le fichier de configuration.
+
+```yaml
+output:
+  directory: "tiles/"
+  overwrite: false  # Équivalent à --skip-existing
+```
+
+#### Prévisualiser un export (`--dry-run`)
+
+Vérifiez votre configuration avant un long export :
+
+```bash
+mpforge-cli build --config config.yaml --dry-run
+```
+
+Le pipeline s'exécute normalement (lecture sources, R-tree, clipping) mais **aucun fichier n'est créé**. Le résumé affiche le nombre de tuiles et features qui seraient exportées.
+
+#### Combinaison `--dry-run --skip-existing`
+
+Utile pour estimer combien de tuiles restent à exporter :
+
+```bash
+mpforge-cli build --config config.yaml --dry-run --skip-existing
+```
+
 ## Options CLI
 
 ### Commande `build`
@@ -501,6 +543,8 @@ mpforge-cli build [OPTIONS] --config <CONFIG>
 | `-r, --report <FILE>` | Générer un rapport JSON | - |
 | `-v, --verbose...` | Verbosité (`-v`, `-vv`, `-vvv`) | WARN |
 | `--fail-fast` | Arrêter à la première erreur | - |
+| `--skip-existing` | Ignorer les tuiles déjà exportées (reprise d'export) | - |
+| `--dry-run` | Mode simulation : prévisualiser sans écrire de fichiers | - |
 | `-i, --input <PATH>` | Remplacer le chemin d'entrée | - |
 | `-o, --output <PATH>` | Remplacer le répertoire de sortie | - |
 | `-h, --help` | Afficher l'aide | - |

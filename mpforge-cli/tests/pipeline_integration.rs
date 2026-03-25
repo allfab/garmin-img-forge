@@ -30,6 +30,8 @@ error_handling: continue
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -67,6 +69,8 @@ error_handling: continue
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
@@ -107,6 +111,8 @@ error_handling: fail-fast
         jobs: 1,
         fail_fast: false,
         report: None,
+        skip_existing: false,
+        dry_run: false,
         verbose: 0,
     };
 
