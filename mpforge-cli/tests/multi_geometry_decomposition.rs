@@ -382,6 +382,7 @@ fn test_json_report_with_multi_geometries_decomposed() {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: Some(decomposed),
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -426,6 +427,7 @@ fn test_json_report_without_multi_geometries() {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -464,6 +466,7 @@ fn test_json_report_with_both_quality_fields() {
             unsupported_types,
             multi_geometries_decomposed: Some(decomposed),
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();

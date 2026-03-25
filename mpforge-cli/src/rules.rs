@@ -46,6 +46,43 @@ pub enum RuleError {
     InvalidTypeHex { value: String },
 }
 
+/// Per-ruleset statistics for rule evaluation.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct RulesetStats {
+    pub matched: usize,
+    pub ignored: usize,
+    pub errors: usize,
+}
+
+/// Aggregated statistics for all rule evaluations across the pipeline.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct RuleStats {
+    pub matched: usize,
+    pub ignored: usize,
+    pub errors: usize,
+    pub by_ruleset: HashMap<String, RulesetStats>,
+}
+
+impl RuleStats {
+    pub fn record_match(&mut self, layer_name: &str) {
+        self.matched += 1;
+        let entry = self.by_ruleset.entry(layer_name.to_string()).or_default();
+        entry.matched += 1;
+    }
+
+    pub fn record_ignored(&mut self, layer_name: &str) {
+        self.ignored += 1;
+        let entry = self.by_ruleset.entry(layer_name.to_string()).or_default();
+        entry.ignored += 1;
+    }
+
+    pub fn record_error(&mut self, layer_name: &str) {
+        self.errors += 1;
+        let entry = self.by_ruleset.entry(layer_name.to_string()).or_default();
+        entry.errors += 1;
+    }
+}
+
 /// Pre-compiled regex for `${FIELD}` substitution patterns.
 static SUBST_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").expect("valid regex"));
@@ -124,6 +161,17 @@ fn validate_rules(rules_file: &RulesFile) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Find the ruleset matching a given source layer name.
+///
+/// Story 9.3 - Task 2: Case-sensitive lookup by `source_layer` field.
+/// Returns the first matching ruleset (consistent with GDAL layer names).
+pub fn find_ruleset<'a>(rules: &'a RulesFile, layer_name: &str) -> Option<&'a Ruleset> {
+    rules
+        .rulesets
+        .iter()
+        .find(|rs| rs.source_layer == layer_name)
 }
 
 /// Evaluate match conditions against feature attributes.
@@ -774,5 +822,62 @@ rulesets:
             .unwrap_err()
             .to_string()
             .contains("Unsupported rules file version: 2"));
+    }
+
+    // ========================================================================
+    // Story 9.3 - Task 2: find_ruleset tests
+    // ========================================================================
+
+    fn make_rules_file(layers: &[&str]) -> RulesFile {
+        RulesFile {
+            version: 1,
+            rulesets: layers
+                .iter()
+                .map(|name| Ruleset {
+                    name: Some(name.to_string()),
+                    source_layer: name.to_string(),
+                    rules: vec![],
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_find_ruleset_found() {
+        let rules = make_rules_file(&["TRONCON_DE_ROUTE", "BATIMENT"]);
+        let result = find_ruleset(&rules, "TRONCON_DE_ROUTE");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().source_layer, "TRONCON_DE_ROUTE");
+    }
+
+    #[test]
+    fn test_find_ruleset_not_found() {
+        let rules = make_rules_file(&["TRONCON_DE_ROUTE", "BATIMENT"]);
+        let result = find_ruleset(&rules, "UNKNOWN_LAYER");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_ruleset_case_sensitive() {
+        let rules = make_rules_file(&["TRONCON_DE_ROUTE"]);
+        assert!(find_ruleset(&rules, "troncon_de_route").is_none());
+        assert!(find_ruleset(&rules, "Troncon_De_Route").is_none());
+        assert!(find_ruleset(&rules, "TRONCON_DE_ROUTE").is_some());
+    }
+
+    #[test]
+    fn test_find_ruleset_multiple_returns_first() {
+        let mut rules = make_rules_file(&["LAYER_A", "LAYER_A"]);
+        rules.rulesets[0].name = Some("First".to_string());
+        rules.rulesets[1].name = Some("Second".to_string());
+        let result = find_ruleset(&rules, "LAYER_A");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().name, Some("First".to_string()));
+    }
+
+    #[test]
+    fn test_find_ruleset_empty_rulesets() {
+        let rules = make_rules_file(&[]);
+        assert!(find_ruleset(&rules, "ANYTHING").is_none());
     }
 }

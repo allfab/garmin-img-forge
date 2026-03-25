@@ -24,6 +24,7 @@ fn create_poi_feature(label: &str, type_code: &str) -> Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.3522, 48.8566)], // Paris coordinates
         attributes,
+        source_layer: None,
     }
 }
 
@@ -37,6 +38,7 @@ fn create_polyline_feature(label: &str, type_code: &str) -> Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(2.3522, 48.8566), (2.3532, 48.8576)],
         attributes,
+        source_layer: None,
     }
 }
 
@@ -56,6 +58,7 @@ fn create_polygon_feature(label: &str, type_code: &str) -> Feature {
             (2.3522, 48.8566), // Closed ring
         ],
         attributes,
+        source_layer: None,
     }
 }
 
@@ -178,6 +181,7 @@ fn test_write_features_preserves_attributes() {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.3522, 48.8566)],
         attributes,
+        source_layer: None,
     }];
 
     let result = writer.write_features(&features);

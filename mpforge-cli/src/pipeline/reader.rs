@@ -576,6 +576,9 @@ impl SourceReader {
         let mut unsupported_stats = UnsupportedTypeStats::default();
         let mut multi_geom_stats = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
 
+        // Story 9.3 - Subtask 1.2/1.3: Capture layer name for rules engine matching
+        let layer_name = layer.name();
+
         // Story 6.6 - Code Review H2 Fix: Extract source name properly for PostGIS, URLs, etc.
         let source_name = extract_source_name(path);
 
@@ -657,7 +660,11 @@ impl SourceReader {
                             is_multi = is_multi_geometry,
                             "Features loaded from GDAL feature (1 = simple, N = decomposed multi-geometry)"
                         );
-                        features.extend(feature_vec);
+                        // Story 9.3 - Subtask 1.2: Set source_layer on each feature for rules engine matching
+                        features.extend(feature_vec.into_iter().map(|mut f| {
+                            f.source_layer = Some(layer_name.clone());
+                            f
+                        }));
                     }
                 }
                 Err(e) => {
@@ -1153,6 +1160,8 @@ pub struct Feature {
     pub geometry: Vec<(f64, f64)>,
     /// Feature attributes (key-value pairs)
     pub attributes: HashMap<String, String>,
+    /// Source layer name (for rules engine matching by source_layer)
+    pub source_layer: Option<String>,
 }
 
 impl Feature {
@@ -1325,6 +1334,7 @@ impl Feature {
             geometry_type: geom_type,
             geometry: coords,
             attributes,
+            source_layer: None,
         })
     }
 
@@ -1412,6 +1422,7 @@ impl Feature {
             geometry_type,
             geometry: geometry_coords,
             attributes,
+            source_layer: None,
         }])
     }
 
@@ -1489,6 +1500,7 @@ mod tests {
             geometry_type: GeometryType::Point,
             geometry: vec![(2.3488, 48.8534)], // Paris coordinates
             attributes,
+            source_layer: None,
         };
 
         assert_eq!(feature.geometry_type, GeometryType::Point);
@@ -1511,6 +1523,7 @@ mod tests {
             geometry_type: GeometryType::LineString,
             geometry: coords.clone(),
             attributes: HashMap::new(),
+            source_layer: None,
         };
 
         assert_eq!(feature.geometry_type, GeometryType::LineString);
@@ -1525,6 +1538,7 @@ mod tests {
             geometry_type: GeometryType::Polygon,
             geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
             attributes: HashMap::new(),
+            source_layer: None,
         };
 
         assert_eq!(feature.geometry_type, GeometryType::Polygon);

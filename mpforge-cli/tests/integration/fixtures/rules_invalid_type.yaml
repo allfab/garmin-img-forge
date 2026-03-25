@@ -1,0 +1,10 @@
+version: 1
+
+rulesets:
+  - name: "Error test"
+    source_layer: "ERROR_LAYER"
+    rules:
+      - match:
+          FIELD: "value"
+        set:
+          Type: "invalid_not_hex"

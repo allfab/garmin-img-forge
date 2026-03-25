@@ -13,6 +13,7 @@ fn create_point_feature(lon: f64, lat: f64) -> Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(lon, lat)],
         attributes: HashMap::new(),
+        source_layer: None,
     }
 }
 

@@ -20,6 +20,7 @@ fn create_point_feature(x: f64, y: f64) -> Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(x, y)],
         attributes: HashMap::new(),
+        source_layer: None,
     }
 }
 
@@ -29,6 +30,7 @@ fn create_line_feature(x1: f64, y1: f64, x2: f64, y2: f64) -> Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(x1, y1), (x2, y2)],
         attributes: HashMap::new(),
+        source_layer: None,
     }
 }
 
@@ -44,6 +46,7 @@ fn create_polygon_feature(x_min: f64, y_min: f64, x_max: f64, y_max: f64) -> Fea
             (x_min, y_min), // Closing point
         ],
         attributes: HashMap::new(),
+        source_layer: None,
     }
 }
 

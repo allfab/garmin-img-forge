@@ -489,6 +489,7 @@ pub fn clip_feature_to_tile(
         geometry_type: feature.geometry_type,
         geometry: clipped_coords,
         attributes: feature.attributes.clone(), // Preserve all attributes (Type, Label, etc.)
+        source_layer: feature.source_layer.clone(),
     };
 
     debug!(

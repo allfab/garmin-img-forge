@@ -140,6 +140,7 @@ fn test_json_report_with_quality_section() {
             unsupported_types,
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -165,6 +166,7 @@ fn test_json_report_without_quality_section() {
         errors: vec![],
         dry_run: false,
         quality: None,
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -188,6 +190,7 @@ fn test_json_report_with_empty_quality_section() {
             unsupported_types: BTreeMap::new(),
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -230,6 +233,7 @@ fn test_json_report_quality_breakdown_correct() {
             unsupported_types,
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -275,6 +279,7 @@ fn test_json_report_write_with_quality() {
             unsupported_types,
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let temp_file = NamedTempFile::new().unwrap();
@@ -318,6 +323,7 @@ fn test_json_report_with_total_sources_truncation() {
             unsupported_types,
             multi_geometries_decomposed: None,
         }),
+        rules_stats: None,
     };
 
     let json = serde_json::to_string_pretty(&report).unwrap();

@@ -260,6 +260,7 @@ fn test_clipping_with_boundary_features() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.5, 0.5), (1.5, 0.5)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
 
     let error_mode = ErrorMode::Continue;
@@ -333,6 +334,7 @@ fn test_clipping_performance_1000_features() {
                     geometry_type: GeometryType::Point,
                     geometry: vec![(0.5, 0.5)],
                     attributes: HashMap::new(),
+                    source_layer: None,
                 }
             }
             1 => {
@@ -341,6 +343,7 @@ fn test_clipping_performance_1000_features() {
                     geometry_type: GeometryType::LineString,
                     geometry: vec![(-0.5, 0.5), (1.5, 0.5)],
                     attributes: HashMap::new(),
+                    source_layer: None,
                 }
             }
             _ => {
@@ -355,6 +358,7 @@ fn test_clipping_performance_1000_features() {
                         (-0.5, -0.5),
                     ],
                     attributes: HashMap::new(),
+                    source_layer: None,
                 }
             }
         };

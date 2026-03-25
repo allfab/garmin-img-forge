@@ -8,7 +8,7 @@ pub mod writer;
 
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode};
-use crate::rules::{self, RulesFile};
+use crate::rules::{self, RuleStats, RulesFile};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -101,8 +101,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     // Load rules file if configured (Story 9.1: fail-fast before expensive processing)
-    // TODO(story-9.2): _rules will be used for attribute transformation in the per-feature loop
-    let _rules: Option<RulesFile> = if let Some(rules_path) = &config.rules {
+    // Story 9.3: rules used for attribute transformation in the per-feature loop
+    let rules: Option<RulesFile> = if let Some(rules_path) = &config.rules {
         Some(rules::load_rules(rules_path)
             .with_context(|| format!("Failed to load rules file: {}", rules_path.display()))?)
     } else {
@@ -206,6 +206,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let mut all_multi_geom = MultiGeometryStats::default();
     let mut seq: usize = 0; // Story 8.2: sequential counter, incremented on successful export
     let mut tiles_skipped_existing: usize = 0; // Story 8.3: track existing tiles skipped separately
+    let mut rules_stats = RuleStats::default(); // Story 9.3: rules engine statistics
 
     // Story 8.3: Pre-calculate skip-existing flag (CLI --skip-existing OR config overwrite: false)
     let should_skip_existing =
@@ -236,6 +237,60 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         };
         all_unsupported.merge(&unsupported);
         all_multi_geom.merge(&multi_geom);
+
+        if features.is_empty() {
+            tiles_skipped += 1;
+            if let Some(pb) = &progress {
+                pb.inc(1);
+            }
+            continue;
+        }
+
+        // Story 9.3: Apply rules engine BEFORE clipping (rules → field_mapping → export)
+        let features = if let Some(ref rules_file) = rules {
+            let mut transformed = Vec::with_capacity(features.len());
+            for (fid, mut feature) in features.into_iter().enumerate() {
+                let layer_name = feature.source_layer.clone().unwrap_or_default();
+                match rules::find_ruleset(rules_file, &layer_name) {
+                    None => {
+                        // AC3: No ruleset for this layer → passthrough
+                        transformed.push(feature);
+                    }
+                    Some(ruleset) => {
+                        match rules::evaluate_feature(ruleset, &feature.attributes) {
+                            Ok(Some(new_attrs)) => {
+                                // AC1/AC2: Rule matched → replace attributes
+                                feature.attributes = new_attrs;
+                                transformed.push(feature);
+                                rules_stats.record_match(&layer_name);
+                            }
+                            Ok(None) => {
+                                // AC4: No rule matched → feature ignored (log FID + layer)
+                                tracing::debug!(
+                                    fid = fid,
+                                    source_layer = %layer_name,
+                                    "Feature ignored (no matching rule)"
+                                );
+                                rules_stats.record_ignored(&layer_name);
+                            }
+                            Err(e) => {
+                                // Type error → feature ignored + warning
+                                tracing::warn!(
+                                    fid = fid,
+                                    source_layer = %layer_name,
+                                    error = %e,
+                                    "Feature ignored (rule error)"
+                                );
+                                rules_stats.record_error(&layer_name);
+                            }
+                        }
+                    }
+                }
+            }
+            transformed
+        } else {
+            features
+        };
 
         if features.is_empty() {
             tiles_skipped += 1;
@@ -485,6 +540,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             })
             .collect(),
         quality,
+        rules_stats: if rules_stats.matched > 0 || rules_stats.ignored > 0 || rules_stats.errors > 0 {
+            Some(rules_stats.clone())
+        } else {
+            None
+        },
     };
 
     // Write JSON report if requested
@@ -501,7 +561,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     // Console summary
-    print_console_summary(&report, &config.output.directory, args, tiles_skipped_existing);
+    print_console_summary(&report, &config.output.directory, args, tiles_skipped_existing, &rules_stats);
 
     // Exit with appropriate code for CI/CD
     if !summary.is_success() {
@@ -569,6 +629,7 @@ fn print_console_summary(
     output_directory: &str,
     args: &BuildArgs,
     tiles_skipped_existing: usize,
+    rules_stats: &RuleStats,
 ) {
     use crate::report::ReportStatus;
 
@@ -617,6 +678,39 @@ fn print_console_summary(
             "   Dont {} tuile(s) skippée(s) (existing)",
             tiles_skipped_existing
         );
+    }
+
+    // Story 9.3 AC6: Display rules statistics
+    if rules_stats.matched > 0 || rules_stats.ignored > 0 || rules_stats.errors > 0 {
+        println!("╔════════════════════════════════════════════════════════╗");
+        println!("║ Règles appliquées                                      ║");
+        println!("╠════════════════════════════════════════════════════════╣");
+        let mut sorted_layers: Vec<_> = rules_stats.by_ruleset.keys().collect();
+        sorted_layers.sort();
+        for layer in &sorted_layers {
+            let stats = &rules_stats.by_ruleset[*layer];
+            // Truncate layer name to 22 chars to preserve box alignment
+            let display_name = if layer.len() > 22 {
+                format!("{}…", &layer[..21])
+            } else {
+                layer.to_string()
+            };
+            println!(
+                "║   {:<22}: {:>5} matchées / {:>5} ignorées  ║",
+                display_name, stats.matched, stats.ignored
+            );
+        }
+        println!(
+            "║   {:<22}: {:>5} matchées / {:>5} ignorées  ║",
+            "Total", rules_stats.matched, rules_stats.ignored
+        );
+        if rules_stats.errors > 0 {
+            println!(
+                "║   Erreurs             : {:>5}                        ║",
+                rules_stats.errors
+            );
+        }
+        println!("╚════════════════════════════════════════════════════════╝");
     }
 
     // Show top errors (not all, to avoid console pollution)

@@ -21,6 +21,7 @@ fn test_nan_coordinates_detected() {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 45.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
 }
@@ -32,6 +33,7 @@ fn test_infinity_coordinates_detected() {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::INFINITY, 45.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
 }
@@ -43,6 +45,7 @@ fn test_valid_coordinates_pass() {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, 48.85)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(validate_coordinates(&feature));
 }
@@ -54,6 +57,7 @@ fn test_neg_infinity_detected() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(1.0, 2.0), (f64::NEG_INFINITY, 3.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
 }
@@ -64,6 +68,7 @@ fn test_nan_in_y_coordinate_detected() {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, f64::NAN)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
 }
@@ -75,6 +80,7 @@ fn test_mixed_valid_invalid_coordinates() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(1.0, 2.0), (3.0, 4.0), (f64::NAN, 5.0), (6.0, 7.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
 }
@@ -86,6 +92,7 @@ fn test_empty_coordinates_pass() {
         geometry_type: GeometryType::Point,
         geometry: vec![],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(validate_coordinates(&feature));
 }
@@ -100,6 +107,7 @@ fn test_many_valid_coordinates() {
         geometry_type: GeometryType::Polygon,
         geometry: coords,
         attributes: HashMap::new(),
+        source_layer: None,
     };
     assert!(validate_coordinates(&feature));
 }
@@ -114,6 +122,7 @@ fn create_valid_polygon_feature() -> Feature {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     }
 }
 
@@ -134,6 +143,7 @@ fn test_valid_point_passes() {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, 48.85)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -147,6 +157,7 @@ fn test_valid_linestring_passes() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -162,6 +173,7 @@ fn test_self_intersecting_polygon_repaired() {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -195,6 +207,7 @@ fn test_nan_feature_rejected() {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 45.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -208,6 +221,7 @@ fn test_infinity_feature_rejected() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -229,6 +243,7 @@ fn test_stats_accumulate_correctly() {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     validate_and_repair(&invalid, &mut stats);
 
@@ -324,6 +339,7 @@ fn test_degenerate_linestring_rejected() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.5, 0.5)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
     let mut stats = ValidationStats::default();
     let result = validate_and_repair(&feature, &mut stats);
@@ -357,24 +373,28 @@ fn test_pipeline_with_invalid_features_mixed() {
             geometry_type: GeometryType::Point,
             geometry: vec![(0.5, 0.5)],
             attributes: HashMap::new(),
+            source_layer: None,
         },
         // NaN coordinates → rejected
         Feature {
             geometry_type: GeometryType::Point,
             geometry: vec![(f64::NAN, 0.5)],
             attributes: HashMap::new(),
+            source_layer: None,
         },
         // Valid linestring
         Feature {
             geometry_type: GeometryType::LineString,
             geometry: vec![(0.1, 0.1), (0.9, 0.9)],
             attributes: HashMap::new(),
+            source_layer: None,
         },
         // Infinity coordinates → rejected
         Feature {
             geometry_type: GeometryType::LineString,
             geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
             attributes: HashMap::new(),
+            source_layer: None,
         },
     ];
 
@@ -431,6 +451,7 @@ fn test_validation_stats_accumulate_across_tiles() {
         geometry_type: GeometryType::Point,
         geometry: vec![(0.5, 0.5)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
 
     let mut stats = ValidationStats::default();

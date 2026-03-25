@@ -41,6 +41,9 @@ pub struct ExecutionReport {
     /// Quality information including unsupported geometry types (Story 6.6)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<QualitySection>,
+    /// Story 9.3 AC6: Rules engine statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rules_stats: Option<crate::rules::RuleStats>,
 }
 
 /// Helper for conditional serialization of bool fields.
@@ -127,6 +130,7 @@ mod tests {
             errors: vec![],
             dry_run: false,
             quality: None,
+            rules_stats: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -159,6 +163,7 @@ mod tests {
             ],
             dry_run: false,
             quality: None,
+            rules_stats: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -206,6 +211,7 @@ mod tests {
             errors: vec![],
             dry_run: false,
             quality: None,
+            rules_stats: None,
         };
 
         let temp_file = NamedTempFile::new().unwrap();

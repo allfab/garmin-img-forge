@@ -294,6 +294,7 @@ fn test_invalid_geometry_continue_mode() {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
 
     let mut stats = ValidationStats::default();
@@ -331,6 +332,7 @@ fn test_invalid_geometry_failfast_mode() {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
 
     let mut stats = ValidationStats::default();
@@ -363,6 +365,7 @@ fn test_degenerate_linestring_skipped() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.5, 0.5)],
         attributes: HashMap::new(),
+        source_layer: None,
     };
 
     // Should fail during WKT conversion (LineString needs ≥2 points)
@@ -406,6 +409,7 @@ fn test_clip_preserves_all_attributes() {
         geometry_type: GeometryType::LineString,
         geometry: vec![(-0.5, 0.5), (1.5, 0.5)],
         attributes: attributes.clone(),
+        source_layer: None,
     };
 
     let result = clip_feature_to_tile(
@@ -478,6 +482,7 @@ fn test_point_feature_attributes_preserved() {
         geometry_type: GeometryType::Point,
         geometry: vec![(0.5, 0.5)],
         attributes: attributes.clone(),
+        source_layer: None,
     };
 
     let result = clip_feature_to_tile(
