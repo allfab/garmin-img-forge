@@ -471,3 +471,541 @@ rulesets:
           Type: "0x06414"
           EndLevel: "2"
           Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Batiments (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager BATIMENT
+  # 12 regles NATURE + catch-all 0x1101c (Indifferenciee)
+  # Label : Pas de Label (FME supprime TOPONYME via AttributeKeeper)
+  # ==========================================================================
+  - name: "Batiments"
+    source_layer: "BATIMENT"
+    rules:
+      # 1. Arene ou theatre antique
+      - match:
+          NATURE: "Arène ou théâtre antique"
+        set:
+          Type: "0x10f08"
+          EndLevel: "2"
+
+      # 2. Chapelle
+      - match:
+          NATURE: "Chapelle"
+        set:
+          Type: "0x10f09"
+          EndLevel: "2"
+
+      # 3. Chateau
+      - match:
+          NATURE: "Château"
+        set:
+          Type: "0x10f0a"
+          EndLevel: "2"
+
+      # 4. Eglise
+      - match:
+          NATURE: "Eglise"
+        set:
+          Type: "0x10f0b"
+          EndLevel: "2"
+
+      # 5. Fort, blockhaus, casemate
+      - match:
+          NATURE: "Fort, blockhaus, casemate"
+        set:
+          Type: "0x10f0c"
+          EndLevel: "2"
+
+      # 6. Indifferenciee
+      - match:
+          NATURE: "Indifférenciée"
+        set:
+          Type: "0x1101c"
+          EndLevel: "2"
+
+      # 7. Industriel, agricole ou commercial
+      - match:
+          NATURE: "Industriel, agricole ou commercial"
+        set:
+          Type: "0x10f04"
+          EndLevel: "2"
+
+      # 8. Monument
+      - match:
+          NATURE: "Monument"
+        set:
+          Type: "0x10f0d"
+          EndLevel: "2"
+
+      # 9. Serre
+      - match:
+          NATURE: "Serre"
+        set:
+          Type: "0x10f05"
+          EndLevel: "2"
+
+      # 10. Silo
+      - match:
+          NATURE: "Silo"
+        set:
+          Type: "0x10f06"
+          EndLevel: "2"
+
+      # 11. Tour, donjon
+      - match:
+          NATURE: "Tour, donjon"
+        set:
+          Type: "0x10f11"
+          EndLevel: "2"
+
+      # 12. Tribune
+      - match:
+          NATURE: "Tribune"
+        set:
+          Type: "0x10f12"
+          EndLevel: "2"
+
+      # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x1101c"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Cimetieres (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager CIMETIERE
+  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : Pas de Label (FME : AttributeKeeper ne garde que NATURE)
+  # ==========================================================================
+  - name: "Cimetieres"
+    source_layer: "CIMETIERE"
+    rules:
+      # 1. Civil
+      - match:
+          NATURE: "Civil"
+        set:
+          Type: "0x1a"
+          EndLevel: "4"
+
+      # 2. Militaire
+      - match:
+          NATURE: "Militaire"
+        set:
+          Type: "0x10f13"
+          EndLevel: "4"
+
+      # 3. Militaire etranger
+      - match:
+          NATURE: "Militaire étranger"
+        set:
+          Type: "0x10f13"
+          EndLevel: "4"
+
+  # ==========================================================================
+  # BATI — Constructions lineaires (POLYLINE)
+  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_LINEAIRE
+  # 11 regles NATURE + catch-all 0x10c04
+  # Label : ${TOPONYME} (FME renomme TOPONYME→NAME)
+  # ==========================================================================
+  - name: "Constructions lineaires"
+    source_layer: "CONSTRUCTION_LINEAIRE"
+    rules:
+      # 1. Autre ligne descriptive
+      - match:
+          NATURE: "Autre ligne descriptive"
+        set:
+          Type: "0x10c04"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 2. Barrage
+      - match:
+          NATURE: "Barrage"
+        set:
+          Type: "0x10f08"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 3. Cloture
+      - match:
+          NATURE: "Clôture"
+        set:
+          Type: "0x13309"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 4. Mur
+      - match:
+          NATURE: "Mur"
+        set:
+          Type: "0x13308"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 5. Mur anti-bruit
+      - match:
+          NATURE: "Mur anti-bruit"
+        set:
+          Type: "0x10e13"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 6. Mur de soutenement
+      - match:
+          NATURE: "Mur de soutènement"
+        set:
+          Type: "0x10e18"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 7. Pont
+      - match:
+          NATURE: "Pont"
+        set:
+          Type: "0x10e14"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 8. Quai
+      - match:
+          NATURE: "Quai"
+        set:
+          Type: "0x10e16"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 9. Ruines
+      - match:
+          NATURE: "Ruines"
+        set:
+          Type: "0x10e15"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 10. Sport de montagne
+      - match:
+          NATURE: "Sport de montagne"
+        set:
+          Type: "0x10f0c"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 11. Tunnel
+      - match:
+          NATURE: "Tunnel"
+        set:
+          Type: "0x10e08"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 12. Catch-all (NATURE non reconnue)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10c04"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Constructions ponctuelles (POI)
+  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_PONCTUELLE
+  # 12 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : ${TOPONYME} (FME : fallback NAT_DETAIL/NATURE non reproductible)
+  # ==========================================================================
+  - name: "Constructions ponctuelles"
+    source_layer: "CONSTRUCTION_PONCTUELLE"
+    rules:
+      # 1. Antenne
+      - match:
+          NATURE: "Antenne"
+        set:
+          Type: "0x11503"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 2. Autre construction elevee
+      - match:
+          NATURE: "Autre construction élevée"
+        set:
+          Type: "0x06402"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 3. Calvaire
+      - match:
+          NATURE: "Calvaire"
+        set:
+          Type: "0x11507"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 4. Cheminee
+      - match:
+          NATURE: "Cheminée"
+        set:
+          Type: "0x11504"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 5. Clocher
+      - match:
+          NATURE: "Clocher"
+        set:
+          Type: "0x10d0e"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 6. Croix
+      - match:
+          NATURE: "Croix"
+        set:
+          Type: "0x11507"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 7. Eolienne
+      - match:
+          NATURE: "Eolienne"
+        set:
+          Type: "0x11505"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 8. Minaret
+      - match:
+          NATURE: "Minaret"
+        set:
+          Type: "0x10d0d"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 9. Phare
+      - match:
+          NATURE: "Phare"
+        set:
+          Type: "0x10101"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 10. Puits d'hydrocarbures
+      - match:
+          NATURE: "Puits d'hydrocarbures"
+        set:
+          Type: "0x0640d"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 11. Torchère
+      - match:
+          NATURE: "Torchère"
+        set:
+          Type: "0x11108"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 12. Transformateur
+      - match:
+          NATURE: "Transformateur"
+        set:
+          Type: "0x11506"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Pylones (POI)
+  # Source FME : 06-BATI.fmw / AttributeCreator PYLONE (statique)
+  # 1 regle wildcard — Type 0x11503 (ECART avec doc : doc dit 0x11500)
+  # Label : Pas de Label (pas de champ NAME dans FME)
+  # ==========================================================================
+  - name: "Pylones"
+    source_layer: "PYLONE"
+    rules:
+      # 1. Toute feature (mapping statique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11503"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Terrains de sport (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager TERRAIN_DE_SPORT
+  # 5 regles NATURE + catch-all 0x1090d, EndLevel variable (2 ou 4)
+  # Label : ${NAT_DETAIL} (FME renomme NAT_DETAIL→NAME)
+  # ==========================================================================
+  - name: "Terrains de sport"
+    source_layer: "TERRAIN_DE_SPORT"
+    rules:
+      # 1. Bassin de natation
+      - match:
+          NATURE: "Bassin de natation"
+        set:
+          Type: "0x10f1d"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 2. Grand terrain de sport (EndLevel=4, pas 2 !)
+      - match:
+          NATURE: "Grand terrain de sport"
+        set:
+          Type: "0x1090d"
+          EndLevel: "4"
+          Label: "${NAT_DETAIL}"
+
+      # 3. Petit terrain multi-sports
+      - match:
+          NATURE: "Petit terrain multi-sports"
+        set:
+          Type: "0x1100a"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 4. Piste de sport
+      - match:
+          NATURE: "Piste de sport"
+        set:
+          Type: "0x10f1b"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 5. Terrain de tennis
+      - match:
+          NATURE: "Terrain de tennis"
+        set:
+          Type: "0x10f1c"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 6. Catch-all (NATURE non reconnue → Grand terrain par defaut, EndLevel=2)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x1090d"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+  # ==========================================================================
+  # OROGRAPHIE — Lignes orographiques (POLYLINE)
+  # Source FME : 06-BATI.fmw / AttributeManager LIGNE_OROGRAPHIQUE
+  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : ${NATURE} (FME renomme NATURE→NAME)
+  # ==========================================================================
+  - name: "Lignes orographiques"
+    source_layer: "LIGNE_OROGRAPHIQUE"
+    rules:
+      # 1. Carriere
+      - match:
+          NATURE: "Carrière"
+        set:
+          Type: "0x10e1a"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+      # 2. Levee
+      - match:
+          NATURE: "Levée"
+        set:
+          Type: "0x10e17"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+      # 3. Talus
+      - match:
+          NATURE: "Talus"
+        set:
+          Type: "0x10e19"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+  # ==========================================================================
+  # VEGETATION — Zones de vegetation (POLYGON)
+  # Source FME : 05-VEGETATION.fmw / AttributeManager ZONE_DE_VEGETATION
+  # 10 regles NATURE + catch-all 0x11005, EndLevel variable (4 ou 6)
+  # Labels : raccourcis FME (pas le NATURE brut), certains sans Label
+  # ==========================================================================
+  - name: "Zones de vegetation"
+    source_layer: "ZONE_DE_VEGETATION"
+    rules:
+      # 1. Bois (EndLevel=6, Label statique)
+      - match:
+          NATURE: "Bois"
+        set:
+          Type: "0x11005"
+          EndLevel: "6"
+          Label: "Bois"
+
+      # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
+      - match:
+          NATURE: "Forêt fermée de conifères"
+        set:
+          Type: "0x10f1f"
+          EndLevel: "6"
+          Label: "Forêt de conifères"
+
+      # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
+      - match:
+          NATURE: "Forêt fermée de feuillus"
+        set:
+          Type: "0x10f1e"
+          EndLevel: "6"
+          Label: "Forêt de feuillus"
+
+      # 4. Foret fermee mixte (EndLevel=6, pas de Label)
+      - match:
+          NATURE: "Forêt fermée mixte"
+        set:
+          Type: "0x4e"
+          EndLevel: "6"
+
+      # 5. Foret ouverte (EndLevel=6, pas de Label)
+      - match:
+          NATURE: "Forêt ouverte"
+        set:
+          Type: "0x11000"
+          EndLevel: "6"
+
+      # 6. Haie (EndLevel=4, pas de Label)
+      - match:
+          NATURE: "Haie"
+        set:
+          Type: "0x11002"
+          EndLevel: "4"
+
+      # 7. Lande ligneuse (EndLevel=4, pas de Label)
+      - match:
+          NATURE: "Lande ligneuse"
+        set:
+          Type: "0x11003"
+          EndLevel: "4"
+
+      # 8. Peupleraie (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Peupleraie"
+        set:
+          Type: "0x11001"
+          EndLevel: "4"
+          Label: "Peupleraie"
+
+      # 9. Verger (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Verger"
+        set:
+          Type: "0x11004"
+          EndLevel: "4"
+          Label: "Verger"
+
+      # 10. Vigne (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Vigne"
+        set:
+          Type: "0x11004"
+          EndLevel: "4"
+          Label: "Vigne"
+
+      # 11. Catch-all (NATURE non reconnue → Bois par defaut, EndLevel=4)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11005"
+          EndLevel: "4"

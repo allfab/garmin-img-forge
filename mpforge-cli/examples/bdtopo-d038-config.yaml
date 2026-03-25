@@ -45,8 +45,8 @@ output:
   filename_pattern: "D038_{col}_{row}.mp"
   overwrite: true
 
-# Regles de transformation BDTOPO -> types Garmin
-rules: "examples/bdtopo-d038-rules.yaml"
+# Regles de transformation BDTOPO -> types Garmin (fichier production unique)
+rules: "rules/bdtopo-garmin-rules.yaml"
 
 # Bbox Isere approximative (WGS84) pour limiter le traitement
 filters:
