@@ -161,7 +161,7 @@ Chaque fichier `.mp` contient les données géospatiales de sa tuile et peut êt
 
 ## Configuration détaillée
 
-Voir la [documentation complète du schéma](doc/config-schema.md) pour tous les détails.
+Voir la section [Configuration détaillée](#configuration-détaillée) ci-dessous pour tous les détails.
 
 ### Structure du fichier YAML
 
@@ -562,11 +562,13 @@ mpforge-cli build [OPTIONS] --config <CONFIG>
 
 ### Parallélisation
 
+La parallélisation utilise **rayon** pour distribuer le traitement des tuiles sur N workers indépendants. Chaque worker ouvre ses propres datasets GDAL — aucun state partagé entre threads.
+
 ```bash
 # Vérifier le nombre de CPUs
 nproc
 
-# Petit dataset (<50 tuiles) : mode séquentiel
+# Petit dataset (<50 tuiles) : mode séquentiel (défaut)
 mpforge-cli build --config config.yaml
 
 # Dataset moyen (50-500 tuiles) : 4 threads
@@ -575,6 +577,12 @@ mpforge-cli build --config config.yaml --jobs 4
 # Large dataset (>500 tuiles) : 8 threads
 mpforge-cli build --config config.yaml --jobs 8
 ```
+
+**Comportement** :
+- `--jobs 1` (défaut) : boucle séquentielle, pas de thread pool rayon
+- `--jobs N` (N > 1) : thread pool rayon de N workers, traitement parallèle des tuiles
+- En mode `fail-fast` + parallèle : la première erreur interrompt tous les workers
+- En mode `continue` + parallèle : toutes les erreurs sont collectées thread-safe
 
 **Performances attendues** :
 - 2-4 threads : ~2× speedup
@@ -998,7 +1006,7 @@ Ce projet utilise la méthodologie **Build-Measure-Adapt-Deliver (BMAD)** :
 
 - **Epics & Stories** : Voir `/_bmad/bmm/epics-and-stories/`
 - **Sprint Status** : `/_bmad/bmm/sprint-status.yaml`
-- **Documentation** : `/doc/config-schema.md`
+- **Documentation** : Voir ce README
 
 ### Historique des versions
 
@@ -1030,7 +1038,7 @@ Les contributions sont les bienvenues ! Voir le workflow BMAD dans `/_bmad/` pou
 
 ## Support
 
-- **Documentation** : Voir [`doc/config-schema.md`](doc/config-schema.md)
+- **Documentation** : Voir la section [Configuration détaillée](#configuration-détaillée) ci-dessus
 - **Exemples** : Voir [`examples/`](examples/)
 - **Issues** : https://forgejo.allfabox.fr/allfab/mpforge/issues
 

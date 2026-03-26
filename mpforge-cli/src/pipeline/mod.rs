@@ -1,4 +1,6 @@
 //! Pipeline orchestration module.
+//!
+//! Story 11.1: Parallelized tile processing via rayon thread pool.
 
 pub mod geometry_validator;
 pub mod reader;
@@ -7,16 +9,19 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::{Config, ErrorMode};
+use crate::config::{Config, ErrorMode, HeaderConfig};
 use crate::rules::{self, RuleStats, RulesFile};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
-use crate::pipeline::tiler::{clip_feature_to_tile, TileProcessor};
+use crate::pipeline::tiler::{clip_feature_to_tile, TileProcessor, TileBounds};
 use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::path::PathBuf;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tracing::{info, warn};
 
@@ -76,10 +81,338 @@ impl TileExportSummary {
     }
 }
 
+/// Result of processing a single tile.
+/// Story 11.1 — Task 1: Returned by `process_single_tile()`.
+#[derive(Debug)]
+enum TileOutcome {
+    /// Tile exported successfully with stats.
+    Success(TileResult),
+    /// Tile skipped (empty features, already exists, etc.).
+    Skipped { existing: bool },
+    /// Tile processing failed.
+    Failed(TileExportError),
+}
+
+/// Successful tile result with export statistics.
+/// Story 11.1 — Task 1: Aggregated by `aggregate_outcome()`.
+#[derive(Debug)]
+struct TileResult {
+    stats: ExportStats,
+    validation_stats: ValidationStats,
+    unsupported: UnsupportedTypeStats,
+    multi_geom: MultiGeometryStats,
+    rules_stats: RuleStats,
+}
+
+/// Immutable context shared across all tile workers.
+/// Story 11.1 — Task 1: Each worker reads from this, no mutation needed.
+struct TileContext<'a> {
+    config: &'a Config,
+    rules: Option<Arc<RulesFile>>,
+    error_mode: ErrorMode,
+    should_skip_existing: bool,
+    dry_run: bool,
+    output_directory: &'a str,
+    filename_pattern: &'a str,
+    field_mapping_path: Option<&'a Path>,
+    header_config: Option<&'a HeaderConfig>,
+}
+
+/// Process a single tile autonomously (thread-safe).
+///
+/// Story 11.1 — Task 1: Pure function that opens its own GDAL datasets,
+/// reads features, clips, and exports. No shared mutable state.
+///
+/// The `seq` parameter is the 1-based sequential counter for filename patterns.
+fn process_single_tile(
+    tile_bounds: &TileBounds,
+    ctx: &TileContext<'_>,
+    seq: usize,
+) -> Result<TileOutcome, TileExportError> {
+    let tile_id = tile_bounds.tile_id();
+
+    // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
+    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds) {
+        Ok(result) => result,
+        Err(e) => {
+            if ctx.error_mode == ErrorMode::FailFast {
+                return Err(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!("Failed to read features for tile {}: {}", tile_id, e),
+                });
+            }
+            warn!(
+                tile_id = %tile_id,
+                error = %e,
+                "Failed to read features for tile, skipping"
+            );
+            return Ok(TileOutcome::Skipped { existing: false });
+        }
+    };
+
+    if features.is_empty() {
+        return Ok(TileOutcome::Skipped { existing: false });
+    }
+
+    // 2. Apply rules engine (Arc<RulesFile> is read-only, thread-safe)
+    let mut tile_rules_stats = RuleStats::default();
+    let features = if let Some(ref rules_file) = ctx.rules {
+        let mut transformed = Vec::with_capacity(features.len());
+        for (fid, mut feature) in features.into_iter().enumerate() {
+            let layer_name = feature.source_layer.clone().unwrap_or_default();
+            match rules::find_ruleset(rules_file, &layer_name) {
+                None => {
+                    transformed.push(feature);
+                }
+                Some(ruleset) => {
+                    match rules::evaluate_feature(ruleset, &feature.attributes) {
+                        Ok(Some(new_attrs)) => {
+                            feature.attributes = new_attrs;
+                            transformed.push(feature);
+                            tile_rules_stats.record_match(&layer_name);
+                        }
+                        Ok(None) => {
+                            tracing::debug!(
+                                fid = fid,
+                                source_layer = %layer_name,
+                                "Feature ignored (no matching rule)"
+                            );
+                            tile_rules_stats.record_ignored(&layer_name);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                fid = fid,
+                                source_layer = %layer_name,
+                                error = %e,
+                                "Feature ignored (rule error)"
+                            );
+                            tile_rules_stats.record_error(&layer_name);
+                        }
+                    }
+                }
+            }
+        }
+        transformed
+    } else {
+        features
+    };
+
+    if features.is_empty() {
+        return Ok(TileOutcome::Skipped { existing: false });
+    }
+
+    // 3. Clip features to tile boundary
+    let tile_bbox_geom = match tile_bounds.to_gdal_polygon() {
+        Ok(geom) => geom,
+        Err(e) => {
+            if ctx.error_mode == ErrorMode::FailFast {
+                return Err(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!("Failed to create tile polygon for tile {}: {}", tile_id, e),
+                });
+            }
+            warn!(
+                tile_id = %tile_id,
+                error = %e,
+                "Failed to create tile polygon, skipping tile"
+            );
+            return Ok(TileOutcome::Skipped { existing: false });
+        }
+    };
+
+    let mut clipped_features = Vec::new();
+    let mut tile_validation_stats = ValidationStats::default();
+    let mut clip_errors = Vec::new();
+
+    for feature in &features {
+        match clip_feature_to_tile(
+            feature,
+            &tile_bbox_geom,
+            ctx.error_mode,
+            &mut tile_validation_stats,
+        ) {
+            Ok(Some(clipped)) => clipped_features.push(clipped),
+            Ok(None) => { /* outside tile or empty intersection */ }
+            Err(e) => {
+                clip_errors.push(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!("Clipping failed: {}", e),
+                });
+                if ctx.error_mode == ErrorMode::FailFast {
+                    return Err(TileExportError {
+                        tile_id: tile_id.clone(),
+                        error_message: format!("Clipping failed (fail-fast): {}", e),
+                    });
+                }
+            }
+        }
+    }
+    drop(features);
+
+    if clipped_features.is_empty() {
+        return Ok(TileOutcome::Skipped { existing: false });
+    }
+
+    // 4. Resolve filename and check skip-existing
+    let tile_filename = resolve_tile_pattern(
+        ctx.filename_pattern,
+        tile_bounds.col,
+        tile_bounds.row,
+        seq,
+    )
+    .map_err(|e| TileExportError {
+        tile_id: tile_id.clone(),
+        error_message: format!("Failed to resolve filename pattern: {}", e),
+    })?;
+    let tile_path = PathBuf::from(ctx.output_directory).join(&tile_filename);
+
+    if ctx.should_skip_existing && tile_path.exists() {
+        info!(tile_id = %tile_id, path = %tile_path.display(), "Existing tile skipped");
+        return Ok(TileOutcome::Skipped { existing: true });
+    }
+
+    // 5. Dry-run: count features without writing
+    if ctx.dry_run {
+        let mut stats = ExportStats::default();
+        for f in &clipped_features {
+            match f.geometry_type {
+                crate::pipeline::reader::GeometryType::Point => stats.point_count += 1,
+                crate::pipeline::reader::GeometryType::LineString => stats.linestring_count += 1,
+                crate::pipeline::reader::GeometryType::Polygon => stats.polygon_count += 1,
+            }
+        }
+        return Ok(TileOutcome::Success(TileResult {
+            stats,
+            validation_stats: tile_validation_stats,
+            unsupported,
+            multi_geom,
+            rules_stats: tile_rules_stats,
+        }));
+    }
+
+    // 6. Create subdirectories if needed
+    if let Some(parent) = tile_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| TileExportError {
+            tile_id: tile_id.clone(),
+            error_message: format!("Failed to create directory: {}", e),
+        })?;
+    }
+
+    // 7. Export tile (each call creates its own MpWriter → own GDAL dataset)
+    match (|| -> Result<ExportStats> {
+        let mut writer = MpWriter::new(tile_path, ctx.field_mapping_path, ctx.header_config)?;
+        let tile_stats = writer.write_features(&clipped_features)?;
+        writer.finalize()?;
+        Ok(tile_stats)
+    })() {
+        Ok(tile_stats) => {
+            info!(
+                tile_id = %tile_id,
+                points = tile_stats.point_count,
+                linestrings = tile_stats.linestring_count,
+                polygons = tile_stats.polygon_count,
+                "Tile export succeeded"
+            );
+            Ok(TileOutcome::Success(TileResult {
+                stats: tile_stats,
+                validation_stats: tile_validation_stats,
+                unsupported,
+                multi_geom,
+                rules_stats: tile_rules_stats,
+            }))
+        }
+        Err(e) => {
+            warn!(
+                tile_id = %tile_id,
+                error = %e,
+                "Tile export failed"
+            );
+            if ctx.error_mode == ErrorMode::FailFast {
+                Err(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!("Tile export failed (fail-fast mode): tile {}: {}", tile_id, e),
+                })
+            } else {
+                Ok(TileOutcome::Failed(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: e.to_string(),
+                }))
+            }
+        }
+    }
+}
+
+/// Aggregate a `TileOutcome` into the thread-safe accumulators.
+#[allow(clippy::too_many_arguments)]
+fn aggregate_outcome(
+    outcome: TileOutcome,
+    tiles_succeeded: &AtomicUsize,
+    tiles_failed: &AtomicUsize,
+    tiles_skipped: &AtomicUsize,
+    tiles_skipped_existing: &AtomicUsize,
+    global_stats: &Mutex<ExportStats>,
+    export_errors: &Mutex<Vec<TileExportError>>,
+    global_validation_stats: &Mutex<ValidationStats>,
+    all_unsupported: &Mutex<UnsupportedTypeStats>,
+    all_multi_geom: &Mutex<MultiGeometryStats>,
+    rules_stats: &Mutex<RuleStats>,
+) {
+    match outcome {
+        TileOutcome::Success(result) => {
+            tiles_succeeded.fetch_add(1, Ordering::Relaxed);
+            {
+                let mut stats = global_stats.lock().unwrap_or_else(|e| e.into_inner());
+                stats.point_count += result.stats.point_count;
+                stats.linestring_count += result.stats.linestring_count;
+                stats.polygon_count += result.stats.polygon_count;
+            }
+            {
+                let mut vs = global_validation_stats.lock().unwrap_or_else(|e| e.into_inner());
+                vs.valid_count += result.validation_stats.valid_count;
+                vs.repaired_make_valid += result.validation_stats.repaired_make_valid;
+                vs.repaired_buffer_zero += result.validation_stats.repaired_buffer_zero;
+                vs.rejected_invalid_coords += result.validation_stats.rejected_invalid_coords;
+                vs.rejected_irrecoverable += result.validation_stats.rejected_irrecoverable;
+            }
+            {
+                let mut us = all_unsupported.lock().unwrap_or_else(|e| e.into_inner());
+                us.merge(&result.unsupported);
+            }
+            {
+                let mut mg = all_multi_geom.lock().unwrap_or_else(|e| e.into_inner());
+                mg.merge(&result.multi_geom);
+            }
+            {
+                let mut rs = rules_stats.lock().unwrap_or_else(|e| e.into_inner());
+                rs.matched += result.rules_stats.matched;
+                rs.ignored += result.rules_stats.ignored;
+                rs.errors += result.rules_stats.errors;
+                for (layer, layer_stats) in &result.rules_stats.by_ruleset {
+                    let entry = rs.by_ruleset.entry(layer.clone()).or_default();
+                    entry.matched += layer_stats.matched;
+                    entry.ignored += layer_stats.ignored;
+                    entry.errors += layer_stats.errors;
+                }
+            }
+        }
+        TileOutcome::Skipped { existing } => {
+            tiles_skipped.fetch_add(1, Ordering::Relaxed);
+            if existing {
+                tiles_skipped_existing.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        TileOutcome::Failed(err) => {
+            tiles_failed.fetch_add(1, Ordering::Relaxed);
+            export_errors.lock().unwrap_or_else(|e| e.into_inner()).push(err);
+        }
+    }
+}
+
 /// Run the complete tiling pipeline (tile-centric mode).
 ///
 /// Architecture: scan extents → generate grid → for each tile: load filtered → clip → export.
 /// Memory usage is proportional to a single tile's features instead of the full dataset.
+/// Story 11.1: Supports parallel processing via `--jobs N` with rayon thread pool.
 ///
 /// Returns `TileExportSummary` with export statistics and errors.
 #[tracing::instrument(skip(config, args))]
@@ -92,12 +425,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     info!("Output directory: {}", config.output.directory);
     info!("Error handling mode: {}", config.error_handling);
 
-    // Warn if parallel jobs requested (not supported in tile-centric mode)
+    // Story 11.1: Log parallelism mode
     if args.jobs > 1 {
-        warn!(
-            jobs = args.jobs,
-            "Parallel tile processing not yet supported in tile-centric mode, using sequential"
-        );
+        info!(jobs = args.jobs, "Pipeline parallèle : {} workers rayon", args.jobs);
+    } else {
+        info!("Pipeline séquentiel : 1 thread");
     }
 
     // Load rules file if configured (Story 9.1: fail-fast before expensive processing)
@@ -181,282 +513,205 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             .context("Failed to create output directory")?;
     }
 
-    // Progress bar (no Arc needed in sequential mode)
-    let progress = if args.verbose < 2 {
+    // Story 11.1 — Task 5: Progress bar wrapped in Arc for thread-safe sharing
+    let progress: Option<Arc<ProgressBar>> = if args.verbose < 2 {
         let pb = ProgressBar::new(tiles.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("[{bar:40.cyan/blue}] {pos}/{len} tuiles ({percent}%) - ETA: {eta}")
-                .unwrap()
+                .expect("valid progress bar template")
                 .progress_chars("█▉▊▋▌▍▎▏  "),
         );
-        Some(pb)
+        Some(Arc::new(pb))
     } else {
         info!("Progress bar disabled in debug mode (verbose >= 2)");
         None
     };
 
-    let mut tiles_succeeded: usize = 0;
-    let mut tiles_failed: usize = 0;
-    let mut tiles_skipped: usize = 0;
-    let mut global_stats = ExportStats::default();
-    let mut export_errors: Vec<TileExportError> = Vec::new();
-    let mut global_validation_stats = ValidationStats::default();
-    let mut all_unsupported = UnsupportedTypeStats::default();
-    let mut all_multi_geom = MultiGeometryStats::default();
-    let mut seq: usize = 0; // Story 8.2: sequential counter, incremented on successful export
-    let mut tiles_skipped_existing: usize = 0; // Story 8.3: track existing tiles skipped separately
-    let mut rules_stats = RuleStats::default(); // Story 9.3: rules engine statistics
+    // Story 11.1 — Task 2: Thread-safe counters and accumulators
+    let tiles_succeeded = Arc::new(AtomicUsize::new(0));
+    let tiles_failed = Arc::new(AtomicUsize::new(0));
+    let tiles_skipped = Arc::new(AtomicUsize::new(0));
+    let tiles_skipped_existing = Arc::new(AtomicUsize::new(0));
+    let global_stats = Arc::new(Mutex::new(ExportStats::default()));
+    let export_errors: Arc<Mutex<Vec<TileExportError>>> = Arc::new(Mutex::new(Vec::new()));
+    let global_validation_stats = Arc::new(Mutex::new(ValidationStats::default()));
+    let all_unsupported = Arc::new(Mutex::new(UnsupportedTypeStats::default()));
+    let all_multi_geom = Arc::new(Mutex::new(MultiGeometryStats::default()));
+    let rules_stats = Arc::new(Mutex::new(RuleStats::default()));
 
-    // Story 8.3: Pre-calculate skip-existing flag (CLI --skip-existing OR config overwrite: false)
+    // Story 8.3: Pre-calculate skip-existing flag
     let should_skip_existing =
         args.skip_existing || config.output.overwrite == Some(false);
 
-    for tile_bounds in &tiles {
-        // 2a. Load features filtered for this tile
-        let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(config, tile_bounds) {
-            Ok(result) => result,
+    // Story 11.1 — Task 1: Build immutable context shared across workers
+    let ctx = TileContext {
+        config,
+        rules: rules.map(Arc::new),
+        error_mode,
+        should_skip_existing,
+        dry_run: args.dry_run,
+        output_directory: &config.output.directory,
+        filename_pattern: &config.output.filename_pattern,
+        field_mapping_path: config.output.field_mapping_path.as_deref(),
+        header_config: config.header.as_ref(),
+    };
+
+    // Story 11.1 — Task 3: Sequential counter for filename patterns (atomic for thread-safety).
+    let seq_counter = Arc::new(AtomicUsize::new(0));
+
+    // Story 11.1 — Code review M1: Warn about non-deterministic {seq} in parallel mode
+    if args.jobs > 1 && config.output.filename_pattern.contains("{seq}") {
+        warn!(
+            jobs = args.jobs,
+            "Le pattern {{seq}} produit des noms non-déterministes en mode parallèle. \
+             Utilisez {{col}}_{{row}} pour des résultats reproductibles."
+        );
+    }
+
+    // Story 11.1 — Task 3 & 4: Conditional sequential/parallel execution
+    let fail_fast = error_mode == ErrorMode::FailFast || args.fail_fast;
+
+    // Inner function to process one tile and aggregate results
+    #[allow(clippy::too_many_arguments)]
+    fn process_and_aggregate(
+        tile_bounds: &TileBounds,
+        ctx: &TileContext<'_>,
+        seq_counter: &AtomicUsize,
+        progress: &Option<Arc<ProgressBar>>,
+        tiles_succeeded: &AtomicUsize,
+        tiles_failed: &AtomicUsize,
+        tiles_skipped: &AtomicUsize,
+        tiles_skipped_existing: &AtomicUsize,
+        global_stats: &Mutex<ExportStats>,
+        export_errors: &Mutex<Vec<TileExportError>>,
+        global_validation_stats: &Mutex<ValidationStats>,
+        all_unsupported: &Mutex<UnsupportedTypeStats>,
+        all_multi_geom: &Mutex<MultiGeometryStats>,
+        rules_stats: &Mutex<RuleStats>,
+    ) -> Result<(), TileExportError> {
+        let seq = seq_counter.fetch_add(1, Ordering::Relaxed) + 1; // 1-based
+
+        let outcome = match process_single_tile(tile_bounds, ctx, seq) {
+            Ok(outcome) => outcome,
             Err(e) => {
-                if error_mode == ErrorMode::FailFast {
-                    return Err(e).context(format!(
-                        "Failed to read features for tile {}",
-                        tile_bounds.tile_id()
-                    ));
-                }
-                warn!(
-                    tile_id = %tile_bounds.tile_id(),
-                    error = %e,
-                    "Failed to read features for tile, skipping"
-                );
-                tiles_skipped += 1;
-                if let Some(pb) = &progress {
+                if let Some(ref pb) = progress {
                     pb.inc(1);
                 }
-                continue;
+                return Err(e);
             }
         };
-        all_unsupported.merge(&unsupported);
-        all_multi_geom.merge(&multi_geom);
 
-        if features.is_empty() {
-            tiles_skipped += 1;
-            if let Some(pb) = &progress {
-                pb.inc(1);
-            }
-            continue;
-        }
+        aggregate_outcome(
+            outcome,
+            tiles_succeeded,
+            tiles_failed,
+            tiles_skipped,
+            tiles_skipped_existing,
+            global_stats,
+            export_errors,
+            global_validation_stats,
+            all_unsupported,
+            all_multi_geom,
+            rules_stats,
+        );
 
-        // Story 9.3: Apply rules engine BEFORE clipping (rules → field_mapping → export)
-        let features = if let Some(ref rules_file) = rules {
-            let mut transformed = Vec::with_capacity(features.len());
-            for (fid, mut feature) in features.into_iter().enumerate() {
-                let layer_name = feature.source_layer.clone().unwrap_or_default();
-                match rules::find_ruleset(rules_file, &layer_name) {
-                    None => {
-                        // AC3: No ruleset for this layer → passthrough
-                        transformed.push(feature);
-                    }
-                    Some(ruleset) => {
-                        match rules::evaluate_feature(ruleset, &feature.attributes) {
-                            Ok(Some(new_attrs)) => {
-                                // AC1/AC2: Rule matched → replace attributes
-                                feature.attributes = new_attrs;
-                                transformed.push(feature);
-                                rules_stats.record_match(&layer_name);
-                            }
-                            Ok(None) => {
-                                // AC4: No rule matched → feature ignored (log FID + layer)
-                                tracing::debug!(
-                                    fid = fid,
-                                    source_layer = %layer_name,
-                                    "Feature ignored (no matching rule)"
-                                );
-                                rules_stats.record_ignored(&layer_name);
-                            }
-                            Err(e) => {
-                                // Type error → feature ignored + warning
-                                tracing::warn!(
-                                    fid = fid,
-                                    source_layer = %layer_name,
-                                    error = %e,
-                                    "Feature ignored (rule error)"
-                                );
-                                rules_stats.record_error(&layer_name);
-                            }
-                        }
-                    }
-                }
-            }
-            transformed
-        } else {
-            features
-        };
-
-        if features.is_empty() {
-            tiles_skipped += 1;
-            if let Some(pb) = &progress {
-                pb.inc(1);
-            }
-            continue;
-        }
-
-        // 2b. Clip features to tile
-        let tile_bbox_geom = match tile_bounds.to_gdal_polygon() {
-            Ok(geom) => geom,
-            Err(e) => {
-                warn!(
-                    tile_id = %tile_bounds.tile_id(),
-                    error = %e,
-                    "Failed to create tile polygon, skipping tile"
-                );
-                if error_mode == ErrorMode::FailFast {
-                    return Err(e).context(format!(
-                        "Failed to create tile polygon for tile {}",
-                        tile_bounds.tile_id()
-                    ));
-                }
-                tiles_skipped += 1;
-                if let Some(pb) = &progress {
-                    pb.inc(1);
-                }
-                continue;
-            }
-        };
-        let mut clipped_features = Vec::new();
-
-        for feature in &features {
-            match clip_feature_to_tile(
-                feature,
-                &tile_bbox_geom,
-                error_mode,
-                &mut global_validation_stats,
-            ) {
-                Ok(Some(clipped)) => clipped_features.push(clipped),
-                Ok(None) => { /* outside tile or empty intersection */ }
-                Err(e) => {
-                    warn!(
-                        tile_id = %tile_bounds.tile_id(),
-                        error = %e,
-                        "Failed to clip feature"
-                    );
-                    export_errors.push(TileExportError {
-                        tile_id: tile_bounds.tile_id(),
-                        error_message: format!("Clipping failed: {}", e),
-                    });
-                    if error_mode == ErrorMode::FailFast {
-                        return Err(e);
-                    }
-                }
-            }
-        }
-        drop(features); // Explicitly free source features before export
-
-        // 2c. Export tile
-        if clipped_features.is_empty() {
-            tiles_skipped += 1;
-            if let Some(pb) = &progress {
-                pb.inc(1);
-            }
-            continue;
-        }
-
-        let tile_id = tile_bounds.tile_id();
-        seq += 1; // Story 8.2: 1-based, incremented only for non-empty tiles
-        let tile_filename = resolve_tile_pattern(
-            &config.output.filename_pattern,
-            tile_bounds.col,
-            tile_bounds.row,
-            seq,
-        )
-        .with_context(|| format!("Failed to resolve filename pattern for tile {}", tile_id))?;
-        let tile_path = PathBuf::from(&config.output.directory).join(&tile_filename);
-
-        // Story 8.3: Skip existing tile files
-        if should_skip_existing && tile_path.exists() {
-            info!(tile_id = %tile_id, path = %tile_path.display(), "Existing tile skipped");
-            tiles_skipped += 1;
-            tiles_skipped_existing += 1;
-            if let Some(pb) = &progress {
-                pb.inc(1);
-            }
-            continue;
-        }
-
-        // Story 8.3: Dry-run mode — count features without writing
-        if args.dry_run {
-            for f in &clipped_features {
-                match f.geometry_type {
-                    crate::pipeline::reader::GeometryType::Point => {
-                        global_stats.point_count += 1;
-                    }
-                    crate::pipeline::reader::GeometryType::LineString => {
-                        global_stats.linestring_count += 1;
-                    }
-                    crate::pipeline::reader::GeometryType::Polygon => {
-                        global_stats.polygon_count += 1;
-                    }
-                }
-            }
-            tiles_succeeded += 1;
-            if let Some(pb) = &progress {
-                pb.inc(1);
-            }
-            continue;
-        }
-
-        // Story 8.2: Create subdirectories if pattern contains path separators
-        if let Some(parent) = tile_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory for tile {}", tile_id))?;
-        }
-
-        let field_mapping = config.output.field_mapping_path.as_deref();
-        let header_config = config.header.as_ref();
-
-        match (|| -> Result<ExportStats> {
-            let mut writer = MpWriter::new(tile_path, field_mapping, header_config)?;
-            let tile_stats = writer.write_features(&clipped_features)?;
-            writer.finalize()?;
-            Ok(tile_stats)
-        })() {
-            Ok(tile_stats) => {
-                info!(
-                    tile_id = %tile_id,
-                    points = tile_stats.point_count,
-                    linestrings = tile_stats.linestring_count,
-                    polygons = tile_stats.polygon_count,
-                    "Tile export succeeded"
-                );
-                global_stats.point_count += tile_stats.point_count;
-                global_stats.linestring_count += tile_stats.linestring_count;
-                global_stats.polygon_count += tile_stats.polygon_count;
-                tiles_succeeded += 1;
-            }
-            Err(e) => {
-                warn!(
-                    tile_id = %tile_id,
-                    error = %e,
-                    "Tile export failed"
-                );
-                tiles_failed += 1;
-                export_errors.push(TileExportError {
-                    tile_id: tile_id.clone(),
-                    error_message: e.to_string(),
-                });
-                if error_mode == ErrorMode::FailFast {
-                    return Err(e).context(format!(
-                        "Tile export failed (fail-fast mode): tile {}",
-                        tile_id
-                    ));
-                }
-            }
-        }
-        // `clipped_features` dropped here — memory freed
-
-        if let Some(pb) = &progress {
+        if let Some(ref pb) = progress {
             pb.inc(1);
         }
+
+        Ok(())
     }
+
+    if args.jobs == 1 {
+        // Sequential mode: no rayon overhead (AC2)
+        if fail_fast {
+            for tile_bounds in &tiles {
+                process_and_aggregate(
+                    tile_bounds, &ctx, &seq_counter, &progress,
+                    &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
+                    &global_stats, &export_errors, &global_validation_stats,
+                    &all_unsupported, &all_multi_geom, &rules_stats,
+                ).map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
+            }
+        } else {
+            for tile_bounds in &tiles {
+                let _ = process_and_aggregate(
+                    tile_bounds, &ctx, &seq_counter, &progress,
+                    &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
+                    &global_stats, &export_errors, &global_validation_stats,
+                    &all_unsupported, &all_multi_geom, &rules_stats,
+                );
+            }
+        }
+    } else {
+        // Parallel mode: rayon thread pool (AC1)
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(args.jobs)
+            .build()
+            .context("Failed to create rayon thread pool")?;
+
+        let parallel_result = pool.install(|| {
+            if fail_fast {
+                // Story 11.1 — Task 4: try_for_each stops on first error (AC6)
+                tiles.par_iter().try_for_each(|tile_bounds| {
+                    process_and_aggregate(
+                        tile_bounds, &ctx, &seq_counter, &progress,
+                        &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
+                        &global_stats, &export_errors, &global_validation_stats,
+                        &all_unsupported, &all_multi_geom, &rules_stats,
+                    )
+                })
+            } else {
+                // Continue mode: process all tiles, collect errors (AC5)
+                tiles.par_iter().for_each(|tile_bounds| {
+                    let _ = process_and_aggregate(
+                        tile_bounds, &ctx, &seq_counter, &progress,
+                        &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
+                        &global_stats, &export_errors, &global_validation_stats,
+                        &all_unsupported, &all_multi_geom, &rules_stats,
+                    );
+                });
+                Ok(())
+            }
+        });
+
+        if let Err(e) = parallel_result {
+            return Err(anyhow::anyhow!(
+                "Parallel export failed (fail-fast): {}", e.error_message
+            ));
+        }
+    }
+
+    // Extract final values from thread-safe accumulators
+    let tiles_succeeded = tiles_succeeded.load(Ordering::Relaxed);
+    let tiles_failed = tiles_failed.load(Ordering::Relaxed);
+    let tiles_skipped = tiles_skipped.load(Ordering::Relaxed);
+    let tiles_skipped_existing = tiles_skipped_existing.load(Ordering::Relaxed);
+    let global_stats = Arc::try_unwrap(global_stats)
+        .map_err(|_| anyhow::anyhow!("global_stats Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
+    let export_errors = Arc::try_unwrap(export_errors)
+        .map_err(|_| anyhow::anyhow!("export_errors Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
+    let global_validation_stats = Arc::try_unwrap(global_validation_stats)
+        .map_err(|_| anyhow::anyhow!("validation_stats Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
+    let all_unsupported = Arc::try_unwrap(all_unsupported)
+        .map_err(|_| anyhow::anyhow!("all_unsupported Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
+    let all_multi_geom = Arc::try_unwrap(all_multi_geom)
+        .map_err(|_| anyhow::anyhow!("all_multi_geom Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
+    let rules_stats = Arc::try_unwrap(rules_stats)
+        .map_err(|_| anyhow::anyhow!("rules_stats Arc still has active references"))?
+        .into_inner()
+        .unwrap_or_else(|e| e.into_inner());
 
     // ========================================================================
     // Phase 3: Reporting
