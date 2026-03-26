@@ -670,3 +670,242 @@ fn test_img_lbl_deduplication() {
         .count();
     assert_eq!(count, 1, "deduplicated 'Église' must appear exactly once in LBL data section");
 }
+
+// ----------------------------------------------------------------
+// E2E Story 13.6 — validation tuile BDTOPO (bdtopo_tile.mp → .img)
+// ----------------------------------------------------------------
+
+#[test]
+fn test_e2e_compile_bdtopo_tile_succeeds() {
+    // AC1 : compilation sans erreur de la fixture BDTOPO réaliste.
+    use assert_cmd::Command;
+    use tempfile::NamedTempFile;
+
+    let output = NamedTempFile::new().unwrap();
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args([
+        "compile",
+        fixture("bdtopo_tile.mp").to_str().unwrap(),
+        "-o",
+        output.path().to_str().unwrap(),
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_e2e_img_all_subfiles_present_and_nonzero() {
+    // AC1 : TRE/RGN/LBL présents dans le directory avec size_used > 0.
+    // Dirent index 0=TRE, 1=RGN, 2=LBL — chacun 32 bytes à partir du bloc 1 (offset 512).
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Minimum meaningful sizes: TRE header alone = 148 bytes, RGN header = 29 bytes, LBL header = 28 bytes.
+    let dir_start = 512usize;
+    let min_sizes = [("TRE", 148u32), ("RGN", 29u32), ("LBL", 28u32)];
+    for (i, (name, min_size)) in min_sizes.iter().enumerate() {
+        // size_used is at offset 0x12 within each 32-byte Dirent.
+        let dirent = dir_start + i * 32;
+        let size_used = u32::from_le_bytes([
+            bytes[dirent + 0x12],
+            bytes[dirent + 0x13],
+            bytes[dirent + 0x14],
+            bytes[dirent + 0x15],
+        ]);
+        assert!(
+            size_used > *min_size,
+            "{} size_used must be > {} bytes (header-only minimum), got {}",
+            name,
+            min_size,
+            size_used
+        );
+    }
+}
+
+#[test]
+fn test_e2e_img_map_id_in_header() {
+    // AC2 : le map ID "63240038" doit figurer dans le bloc directory (offset 512-1023).
+    // Chaque Dirent commence par les 8 octets du nom de la carte (= map ID).
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    let map_id = b"63240038";
+    // Scan only the 3 Dirent entries (3 × 32 = 96 bytes) starting at offset 512.
+    // Each Dirent begins with the 8-byte map name (= map ID), so this is the precise location.
+    let dirents = &bytes[512..512 + 3 * 32];
+    let found = dirents.windows(map_id.len()).any(|w| w == map_id);
+    assert!(found, "Map ID '63240038' must be present in the Dirent name field of the directory block");
+}
+
+#[test]
+fn test_e2e_img_tre_bounds_france() {
+    // AC1 : bounding box TRE dans la plage Isère (lat ≈ 45.15–45.25°, lon ≈ 5.71–5.88°).
+    // TRE header layout (from tre.rs):
+    //   0x04: max_lat (LE24s), 0x07: max_lon (LE24s),
+    //   0x0A: min_lat (LE24s), 0x0D: min_lon (LE24s)
+    // Garmin units : val = round(deg × 2^24 / 360) → France : max_lat ≈ 2_105_344 (positif)
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Locate TRE subfile via Dirent index 0 (block_start at offset 0x0C within the Dirent).
+    let dir_start = 512usize;
+    let block_start =
+        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_offset = block_start * 512;
+
+    // Read max_lat (LE24 signed) at TRE offset 0x04
+    let raw_max = (bytes[tre_offset + 4] as i32)
+        | ((bytes[tre_offset + 5] as i32) << 8)
+        | ((bytes[tre_offset + 6] as i32) << 16);
+    let max_lat_g = if raw_max & 0x80_0000 != 0 { raw_max | !0xFF_FFFF } else { raw_max };
+
+    // Read min_lat (LE24 signed) at TRE offset 0x0A
+    let raw_min = (bytes[tre_offset + 10] as i32)
+        | ((bytes[tre_offset + 11] as i32) << 8)
+        | ((bytes[tre_offset + 12] as i32) << 16);
+    let min_lat_g = if raw_min & 0x80_0000 != 0 { raw_min | !0xFF_FFFF } else { raw_min };
+
+    // Read max_lon (LE24 signed) at TRE offset 0x07
+    let raw_max_lon = (bytes[tre_offset + 7] as i32)
+        | ((bytes[tre_offset + 8] as i32) << 8)
+        | ((bytes[tre_offset + 9] as i32) << 16);
+    let max_lon_g = if raw_max_lon & 0x80_0000 != 0 { raw_max_lon | !0xFF_FFFF } else { raw_max_lon };
+
+    // Read min_lon (LE24 signed) at TRE offset 0x0D
+    let raw_min_lon = (bytes[tre_offset + 13] as i32)
+        | ((bytes[tre_offset + 14] as i32) << 8)
+        | ((bytes[tre_offset + 15] as i32) << 16);
+    let min_lon_g = if raw_min_lon & 0x80_0000 != 0 { raw_min_lon | !0xFF_FFFF } else { raw_min_lon };
+
+    assert!(
+        max_lat_g > 0,
+        "Isère tile max_lat_garmin must be positive (France zone), got {}",
+        max_lat_g
+    );
+    assert!(
+        min_lat_g > 0,
+        "Isère tile min_lat_garmin must be positive (France zone), got {}",
+        min_lat_g
+    );
+    assert!(
+        max_lat_g > min_lat_g,
+        "max_lat_garmin must be > min_lat_garmin, got {} vs {}",
+        max_lat_g,
+        min_lat_g
+    );
+    assert!(
+        max_lon_g > 0,
+        "Isère tile max_lon_garmin must be positive (Eastern France, lon > 0°), got {}",
+        max_lon_g
+    );
+    assert!(
+        max_lon_g > min_lon_g,
+        "max_lon_garmin must be > min_lon_garmin, got {} vs {}",
+        max_lon_g,
+        min_lon_g
+    );
+}
+
+#[test]
+fn test_e2e_img_lbl_contains_bdtopo_labels() {
+    // AC2 : LBL data section contient "D1075" (route) et "Mairie de Saint-" (POI accentué).
+    // LBL header_length = 28, data section starts at lbl_offset + 0x1C.
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, lbl_size) = read_lbl_block(&bytes);
+    // LBL data section starts after the 28-byte header (0x1C = 28).
+    let data_start = lbl_offset + 0x1C;
+    let data_end = lbl_offset + lbl_size as usize;
+    assert!(
+        data_start < bytes.len() && data_start < data_end,
+        "LBL data section out of bounds: offset={}, size_used={}",
+        lbl_offset,
+        lbl_size
+    );
+    let lbl_data = &bytes[data_start..data_end];
+
+    // "D1075" encoded in CP1252 (pure ASCII)
+    let d1075 = b"D1075";
+    let found_d1075 = lbl_data.windows(d1075.len()).any(|w| w == d1075);
+    assert!(found_d1075, "LBL data section must contain bytes for 'D1075'");
+
+    // "Mairie de Saint-" is the ASCII prefix of "Mairie de Saint-Égrève" (CP1252)
+    let mairie_prefix = b"Mairie de Saint-";
+    let found_mairie = lbl_data.windows(mairie_prefix.len()).any(|w| w == mairie_prefix);
+    assert!(
+        found_mairie,
+        "LBL data section must contain bytes for 'Mairie de Saint-' (CP1252 prefix of 'Mairie de Saint-Égrève')"
+    );
+
+    // "É" in CP1252 = 0xC9 — validates that the accented char in "Saint-Égrève" is encoded correctly.
+    let saint_e_cp1252 = b"Saint-\xC9";
+    let found_accent = lbl_data.windows(saint_e_cp1252.len()).any(|w| w == saint_e_cp1252);
+    assert!(
+        found_accent,
+        "LBL data section must contain CP1252 'Saint-\\xC9' (É=0xC9) — validates accented char encoding"
+    );
+
+    // "â" in CP1252 = 0xE2 — validates "Châtaigneraie" encoding.
+    let chatai_cp1252 = b"Ch\xE2taigneraie";
+    let found_chatai = lbl_data.windows(chatai_cp1252.len()).any(|w| w == chatai_cp1252);
+    assert!(
+        found_chatai,
+        "LBL data section must contain CP1252 'Ch\\xE2taigneraie' (â=0xE2) — validates Châtaigneraie encoding"
+    );
+}
+
+#[test]
+fn test_e2e_img_rgn_all_feature_types() {
+    // AC1 : RGN size_used > 29 bytes (header-only = 29 bytes), confirming features were encoded.
+    // Avec 6 polylines + 4 POI + 4 polygones, size_used est substantiellement plus grand que 29,
+    // mais ce test valide uniquement le seuil minimal (pas le décompte exact par type de feature).
+    // RGN is Dirent index 1 (block 1, block_size=512).
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // size_used is at offset 0x12 within Dirent index 1 (RGN).
+    let dir_start = 512usize;
+    let rgn_dirent = dir_start + 1 * 32;
+    let size_used = u32::from_le_bytes([
+        bytes[rgn_dirent + 0x12],
+        bytes[rgn_dirent + 0x13],
+        bytes[rgn_dirent + 0x14],
+        bytes[rgn_dirent + 0x15],
+    ]);
+    assert!(
+        size_used > 29,
+        "RGN size_used must be > 29 (header-only = 29 bytes), got {}",
+        size_used
+    );
+}
+
+#[test]
+fn test_e2e_img_dos_header_valid() {
+    // AC2 : header DOS 512 bytes valide — magic GARMIN, signature 0x55/0xAA, XOR de tous les bytes = 0.
+    let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Magic "GARMIN" at offset 0x002
+    assert_eq!(
+        &bytes[0x002..0x008],
+        b"GARMIN",
+        "IMG header must contain GARMIN magic at offset 0x002"
+    );
+    // DOS partition signature at 0x1FE/0x1FF
+    assert_eq!(bytes[0x1FE], 0x55, "DOS signature byte 0x1FE must be 0x55, got 0x{:02X}", bytes[0x1FE]);
+    assert_eq!(bytes[0x1FF], 0xAA, "DOS signature byte 0x1FF must be 0xAA, got 0x{:02X}", bytes[0x1FF]);
+    // XOR of all 512 header bytes must be 0x00 (XOR byte at 0x000 is computed to ensure this)
+    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
+    assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00, got 0x{:02X}", xor);
+}
