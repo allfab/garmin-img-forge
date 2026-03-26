@@ -57,6 +57,25 @@ impl ImgWriter {
         let mut fs = ImgFilesystem::new(self.block_size_exponent);
         fs.description = mp_file.header.name.clone();
 
+        // Story 14.2: Build road network graph (before subfile generation).
+        // TODO(14.3/14.4): pass road_network to NET/NOD writers.
+        let road_network = crate::routing::graph_builder::build_road_network(&mp_file.polylines);
+        let routable_count = mp_file.polylines.iter().filter(|p| p.routing.is_some()).count();
+        tracing::info!(
+            nodes = road_network.nodes.len(),
+            arcs = road_network.arcs.len(),
+            road_defs = road_network.road_defs.len(),
+            routable_polylines = routable_count,
+            ratio = if !road_network.nodes.is_empty() {
+                road_network.arcs.len() as f64 / road_network.nodes.len() as f64
+            } else {
+                0.0
+            },
+            "Road network graph built"
+        );
+        // Keep road_network alive for future NET/NOD writers (Stories 14.3, 14.4).
+        let _road_network = road_network;
+
         use crate::img::lbl::LblWriter;
         use crate::img::rgn::RgnWriter;
         use crate::img::tre::{levels_from_mp, TreWriter};

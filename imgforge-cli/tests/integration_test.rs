@@ -909,3 +909,92 @@ fn test_e2e_img_dos_header_valid() {
     let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
     assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00, got 0x{:02X}", xor);
 }
+
+// ----------------------------------------------------------------
+// Story 14.2: Road network graph builder integration tests
+// ----------------------------------------------------------------
+
+#[test]
+fn test_routing_graph_fixture_builds_without_crash() {
+    // Task 5.5: Compile routing.mp → verify graph is built (no crash)
+    let mp = MpParser::parse_file(&fixture("routing.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert!(bytes.len() > 512, "IMG output must be non-empty");
+}
+
+#[test]
+fn test_routing_graph_fixture_network_stats() {
+    // Task 6.2: Verify node/arc/road_def counts for routing_graph.mp fixture
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // 10 routable polylines (road 1-10), 1 non-routable (river)
+    assert_eq!(network.road_defs.len(), 10, "10 routable polylines → 10 road defs");
+
+    // Node count: unique (position, level) endpoints
+    // Level 0 nodes: A, B, C, D, E, F, G + roundabout end = at least 8
+    // Level 1 nodes: H, I = 2
+    assert!(network.nodes.len() >= 9, "expected at least 9 nodes, got {}", network.nodes.len());
+
+    // Arc count: 7 bidirectional (×2) + 2 one-way (×1) + 1 one-way roundabout (×1) = 17
+    assert!(network.arcs.len() >= 17, "expected at least 17 arcs, got {}", network.arcs.len());
+}
+
+#[test]
+fn test_routing_graph_fixture_arcs_nodes_ratio() {
+    // Task 6.3: arcs/nodes ratio should be 2-3 for a road network
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    let ratio = network.arcs.len() as f64 / network.nodes.len() as f64;
+    assert!(
+        (1.5..=4.0).contains(&ratio),
+        "arcs/nodes ratio should be ~2-3 for a road network, got {:.2} ({} arcs / {} nodes)",
+        ratio,
+        network.arcs.len(),
+        network.nodes.len(),
+    );
+}
+
+#[test]
+fn test_routing_graph_fixture_roundabout_marked() {
+    // Task 6.4: Roundabout road_def has roundabout=true
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    let roundabout_defs: Vec<_> = network.road_defs.iter().filter(|d| d.roundabout).collect();
+    assert_eq!(roundabout_defs.len(), 1, "exactly 1 roundabout road_def expected");
+    assert_eq!(roundabout_defs[0].road_id, 9);
+}
+
+#[test]
+fn test_routing_graph_fixture_bridge_isolation() {
+    // Task 6: Bridge (Level=1) does not share nodes with ground (Level=0)
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    let level0_nodes: Vec<_> = network.nodes.iter().filter(|n| n.level == 0).collect();
+    let level1_nodes: Vec<_> = network.nodes.iter().filter(|n| n.level == 1).collect();
+    assert_eq!(level1_nodes.len(), 2, "bridge has 2 endpoints at level=1");
+    assert!(level0_nodes.len() >= 8, "ground network has at least 8 nodes");
+}
+
+#[test]
+fn test_routing_graph_compile_no_crash() {
+    // Task 5.5: Full compile pipeline with routing_graph.mp
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+}

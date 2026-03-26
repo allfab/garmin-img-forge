@@ -237,10 +237,19 @@ pub fn compute_route_attrs(
         }
     }
 
+    // Story 14.2: POS_SOL → Level (for graph builder level isolation)
+    // POS_SOL: 0=ground, 1=bridge, -1=tunnel, etc.
+    let pos_sol: i32 = source_attrs
+        .get("POS_SOL")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    result.insert("Level".to_string(), pos_sol.to_string());
+
     debug!(
         route_param = %result.get("RouteParam").unwrap(),
         road_id = road_id,
         dir_indicator = dir_indicator,
+        level = pos_sol,
         "Computed routing attributes"
     );
 
@@ -709,6 +718,45 @@ mod tests {
         assert_eq!(rule_output.get("RouteParam").unwrap(), "7,4,0,0,0,0,0,0,0,0,0,0");
         assert!(rule_output.contains_key("RoadID"));
         assert!(rule_output.contains_key("DirIndicator"));
+    }
+
+    // =========================================================================
+    // Task 0.4 (Story 14.2): POS_SOL → Level
+    // =========================================================================
+
+    #[test]
+    fn test_compute_pos_sol_bridge() {
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "50".into()),
+            ("NATURE".into(), "Route à 1 chaussée".into()),
+            ("POS_SOL".into(), "1".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &mut counter);
+        assert_eq!(result.get("Level").unwrap(), "1");
+    }
+
+    #[test]
+    fn test_compute_pos_sol_tunnel() {
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "50".into()),
+            ("NATURE".into(), "Route à 1 chaussée".into()),
+            ("POS_SOL".into(), "-1".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &mut counter);
+        assert_eq!(result.get("Level").unwrap(), "-1");
+    }
+
+    #[test]
+    fn test_compute_pos_sol_default_ground() {
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "50".into()),
+            ("NATURE".into(), "Route à 1 chaussée".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &mut counter);
+        assert_eq!(result.get("Level").unwrap(), "0");
     }
 
     /// Test MaxWidth and MaxLength

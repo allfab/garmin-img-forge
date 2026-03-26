@@ -4,6 +4,7 @@ pub mod cli;
 pub mod error;
 pub mod img;
 pub mod parser;
+pub mod routing;
 
 pub use error::ImgError;
 pub use img::writer::ImgWriter;
