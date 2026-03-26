@@ -89,6 +89,14 @@ static const PolishMapFieldDef g_aoPolishMapFields[] = {
     { "DirIndicator", OFTInteger, LAYER_POLYLINE },
     { "RoadID",       OFTString,  LAYER_POLYLINE },
     { "SpeedType",    OFTInteger, LAYER_POLYLINE },
+
+    // Story 14.1: Routing attributes for POLYLINE
+    { "RouteParam",   OFTString,  LAYER_POLYLINE },
+    { "Roundabout",   OFTInteger, LAYER_POLYLINE },
+    { "MaxHeight",    OFTInteger, LAYER_POLYLINE },
+    { "MaxWeight",    OFTInteger, LAYER_POLYLINE },
+    { "MaxWidth",     OFTInteger, LAYER_POLYLINE },
+    { "MaxLength",    OFTInteger, LAYER_POLYLINE },
 };
 
 static constexpr int g_nPolishMapFieldCount =
@@ -197,6 +205,16 @@ inline const std::unordered_map<std::string, std::string>& GetFieldAliasMap() {
         // SpeedType aliases
         {"SPEED",        "SpeedType"},
         {"SPEED_TYPE",   "SpeedType"},
+        // Story 14.1: Routing attribute aliases
+        {"ROUTE_PARAM",  "RouteParam"},
+        {"ROUTEPARAM",   "RouteParam"},
+        {"ROUTEPARAMS",  "RouteParam"},
+        {"ROUNDABOUT",   "Roundabout"},
+        {"ROND_POINT",   "Roundabout"},
+        {"MAX_HEIGHT",   "MaxHeight"},
+        {"MAX_WEIGHT",   "MaxWeight"},
+        {"MAX_WIDTH",    "MaxWidth"},
+        {"MAX_LENGTH",   "MaxLength"},
     };
     return s_oAliasMap;
 }

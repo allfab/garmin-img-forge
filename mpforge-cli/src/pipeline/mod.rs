@@ -4,6 +4,7 @@
 
 pub mod geometry_validator;
 pub mod reader;
+pub mod route_params;
 pub mod tile_naming;
 pub mod tiler;
 pub mod writer;
@@ -233,18 +234,38 @@ fn process_single_tile(
     }
 
     // 2. Apply rules engine (Arc<RulesFile> is read-only, thread-safe)
+    //    Story 14.1: Routing post-processor computes RouteParam, DirIndicator, RoadID, etc.
+    //    from source BDTOPO attributes BEFORE rules replace them.
     let mut tile_rules_stats = RuleStats::default();
+    let mut road_id_counter = route_params::RoadIdCounter::new();
     let features = if let Some(ref rules_file) = ctx.rules {
         let mut transformed = Vec::with_capacity(features.len());
         for (fid, mut feature) in features.into_iter().enumerate() {
             let layer_name = feature.source_layer.clone().unwrap_or_default();
+
+            // Story 14.1: Compute routing attributes from source BDTOPO attributes
+            // BEFORE rules replace them (first-match-wins replaces all attributes).
+            let routing_attrs = if route_params::is_routable_layer(&layer_name) {
+                Some(route_params::compute_route_attrs(&feature.attributes, &mut road_id_counter))
+            } else {
+                None
+            };
+
             match rules::find_ruleset(rules_file, &layer_name) {
                 None => {
+                    // No ruleset for this layer — merge routing attrs if applicable
+                    if let Some(routing) = routing_attrs {
+                        feature.attributes.extend(routing);
+                    }
                     transformed.push(feature);
                 }
                 Some(ruleset) => {
                     match rules::evaluate_feature(ruleset, &feature.attributes) {
-                        Ok(Some(new_attrs)) => {
+                        Ok(Some(mut new_attrs)) => {
+                            // Story 14.1: Merge routing attributes into rule output
+                            if let Some(routing) = routing_attrs {
+                                new_attrs.extend(routing);
+                            }
                             feature.attributes = new_attrs;
                             transformed.push(feature);
                             tile_rules_stats.record_match(&layer_name);

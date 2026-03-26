@@ -109,4 +109,14 @@ pub struct MpRoutingAttrs {
     pub speed_type: Option<i32>,
     /// Direction indicator: 0=both, 1=forward, -1=reverse (DirIndicator= or Direction=)
     pub dir_indicator: Option<i32>,
+    /// Story 14.1: Roundabout flag (Roundabout=1 when true)
+    pub roundabout: Option<bool>,
+    /// Story 14.1: Maximum height in centimeters (MaxHeight=, custom extension)
+    pub max_height: Option<u32>,
+    /// Story 14.1: Maximum weight in centithons (MaxWeight=, custom extension)
+    pub max_weight: Option<u32>,
+    /// Story 14.1: Maximum width in centimeters (MaxWidth=, custom extension)
+    pub max_width: Option<u32>,
+    /// Story 14.1: Maximum length in centimeters (MaxLength=, custom extension)
+    pub max_length: Option<u32>,
 }

@@ -47,6 +47,11 @@ struct PolylineBuilder {
     route_param: Option<String>,
     speed_type: Option<i32>,
     dir_indicator: Option<i32>,
+    roundabout: Option<bool>,
+    max_height: Option<u32>,
+    max_weight: Option<u32>,
+    max_width: Option<u32>,
+    max_length: Option<u32>,
     other_fields: HashMap<String, String>,
 }
 
@@ -76,6 +81,11 @@ const ROUTING_FIELDS: &[&str] = &[
     "Speed",
     "DirIndicator",
     "Direction",
+    "Roundabout",
+    "MaxHeight",
+    "MaxWeight",
+    "MaxWidth",
+    "MaxLength",
 ];
 
 impl MpParser {
@@ -229,12 +239,22 @@ impl MpParser {
                                     || b.route_param.is_some()
                                     || b.speed_type.is_some()
                                     || b.dir_indicator.is_some()
+                                    || b.roundabout.is_some()
+                                    || b.max_height.is_some()
+                                    || b.max_weight.is_some()
+                                    || b.max_width.is_some()
+                                    || b.max_length.is_some()
                                 {
                                     Some(MpRoutingAttrs {
                                         road_id: b.road_id,
                                         route_param: b.route_param,
                                         speed_type: b.speed_type,
                                         dir_indicator: b.dir_indicator,
+                                        roundabout: b.roundabout,
+                                        max_height: b.max_height,
+                                        max_weight: b.max_weight,
+                                        max_width: b.max_width,
+                                        max_length: b.max_length,
                                     })
                                 } else {
                                     None
@@ -458,6 +478,32 @@ fn parse_polyline_field(
         "DirIndicator" | "Direction" => {
             if let Ok(n) = value.parse::<i32>() {
                 builder.dir_indicator = Some(n);
+            }
+        }
+        "Roundabout" => {
+            // Roundabout=1 → true, Roundabout=0 → false, invalid → ignored
+            if let Ok(n) = value.parse::<i32>() {
+                builder.roundabout = Some(n != 0);
+            }
+        }
+        "MaxHeight" => {
+            if let Ok(n) = value.parse::<u32>() {
+                builder.max_height = Some(n);
+            }
+        }
+        "MaxWeight" => {
+            if let Ok(n) = value.parse::<u32>() {
+                builder.max_weight = Some(n);
+            }
+        }
+        "MaxWidth" => {
+            if let Ok(n) = value.parse::<u32>() {
+                builder.max_width = Some(n);
+            }
+        }
+        "MaxLength" => {
+            if let Ok(n) = value.parse::<u32>() {
+                builder.max_length = Some(n);
             }
         }
         k if !FEATURE_KNOWN_FIELDS.contains(&k) && !ROUTING_FIELDS.contains(&k) => {
@@ -728,6 +774,66 @@ DirIndicator=0
         assert_eq!(routing.road_id.as_deref(), Some("A480_001"));
         assert_eq!(routing.route_param.as_deref(), Some("7,4,0,1,0,0,0,0,0"));
         assert_eq!(routing.dir_indicator, Some(0));
+        // Story 14.1: New fields default to None when absent
+        assert_eq!(routing.roundabout, None);
+        assert_eq!(routing.max_height, None);
+        assert_eq!(routing.max_weight, None);
+    }
+
+    /// Story 14.1: Parse all routing attributes including new fields
+    #[test]
+    fn test_parse_routing_attrs_full() {
+        let input = r#"
+[IMG ID]
+Name=Test
+ID=00000001
+[END-IMG ID]
+
+[POLYLINE]
+Type=0x01
+Label=Nationale N7
+Data0=(45.2000,5.7000),(45.2100,5.7100),(45.2200,5.7200)
+RoadID=42
+RouteParam=6,3,1,1,0,0,0,0,0,0,0,0
+DirIndicator=1
+Roundabout=0
+MaxHeight=350
+MaxWeight=19000
+MaxWidth=250
+MaxLength=1200
+[END]
+
+[POLYLINE]
+Type=0x0C
+Label=Rond-point
+Data0=(45.3000,5.8000),(45.3010,5.8010),(45.3020,5.8020)
+RoadID=43
+RouteParam=3,1,1,0,0,0,0,0,0,0,0,0
+DirIndicator=-1
+Roundabout=1
+[END]
+"#;
+        let mp = parse_str(input).unwrap();
+        assert_eq!(mp.polylines.len(), 2);
+
+        // First polyline: full routing with restrictions
+        let r1 = mp.polylines[0].routing.as_ref().unwrap();
+        assert_eq!(r1.road_id.as_deref(), Some("42"));
+        assert_eq!(r1.route_param.as_deref(), Some("6,3,1,1,0,0,0,0,0,0,0,0"));
+        assert_eq!(r1.dir_indicator, Some(1));
+        assert_eq!(r1.roundabout, Some(false));
+        assert_eq!(r1.max_height, Some(350));
+        assert_eq!(r1.max_weight, Some(19000));
+        assert_eq!(r1.max_width, Some(250));
+        assert_eq!(r1.max_length, Some(1200));
+
+        // Second polyline: roundabout, no restrictions
+        let r2 = mp.polylines[1].routing.as_ref().unwrap();
+        assert_eq!(r2.road_id.as_deref(), Some("43"));
+        assert_eq!(r2.dir_indicator, Some(-1));
+        assert_eq!(r2.roundabout, Some(true));
+        assert_eq!(r2.max_height, None);
+        assert_eq!(r2.max_weight, None);
     }
 
     // ----------------------------------------------------------------

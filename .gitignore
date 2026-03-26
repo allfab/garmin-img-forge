@@ -2,3 +2,4 @@
 R04/
 export/
 rapport-*.json
+__pycache__/
