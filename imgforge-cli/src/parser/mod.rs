@@ -85,8 +85,36 @@ impl MpParser {
     /// Returns `ParseError::MissingImgId` if no `[IMG ID]` section is found.
     /// Returns `ParseError::InvalidFormat` with line number for format errors.
     pub fn parse_file(path: &Path) -> Result<MpFile, ParseError> {
+        // Decode each line as UTF-8; fall back to Latin-1 (ISO-8859-1) for lines that
+        // contain invalid UTF-8. This handles both:
+        //   - UTF-8 encoded .mp files (test fixtures, modern generators)
+        //   - CP1252 encoded .mp files (French BDTOPO, legacy tools)
+        // Latin-1 round-trips correctly through the LBL encoder: U+00E9 (é) → CP1252 0xE9.
+        use std::io::BufRead;
         let file = std::fs::File::open(path)?;
-        let reader = BufReader::new(file);
+        let mut raw_reader = BufReader::new(file);
+        let mut content = String::new();
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            let n = raw_reader.read_until(b'\n', &mut buf)?;
+            if n == 0 {
+                break;
+            }
+            // Strip trailing \r\n or \n before decoding, re-add \n after.
+            if buf.ends_with(b"\n") {
+                buf.pop();
+            }
+            if buf.ends_with(b"\r") {
+                buf.pop();
+            }
+            match std::str::from_utf8(&buf) {
+                Ok(s) => content.push_str(s),
+                Err(_) => buf.iter().for_each(|&b| content.push(b as char)),
+            }
+            content.push('\n');
+        }
+        let reader = BufReader::new(std::io::Cursor::new(content));
         Self::parse_reader(reader)
     }
 
@@ -155,6 +183,18 @@ impl MpParser {
                     }
                     "[END]" => {
                         match state {
+                            // Some generators (e.g. mpforge-cli) close [IMG ID] with [END]
+                            // instead of [END-IMG ID]. Both forms are accepted.
+                            ParseState::InHeader => {
+                                if header.id.is_empty() {
+                                    return Err(ParseError::InvalidFormat {
+                                        line: line_num,
+                                        message: "missing required field ID in [IMG ID] section"
+                                            .to_string(),
+                                    });
+                                }
+                                header_seen = true;
+                            }
                             ParseState::InPoi => {
                                 let b = std::mem::take(&mut poi_builder);
                                 let lat = b.lat.ok_or_else(|| ParseError::InvalidFormat {
