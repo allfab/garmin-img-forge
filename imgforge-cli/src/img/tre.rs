@@ -278,11 +278,15 @@ impl Subdivision {
     /// Build a subdivision covering the given bounding box.
     ///
     /// `bounds_g = (min_lat_g, max_lat_g, min_lon_g, max_lon_g)` in Garmin 24-bit units.
+    /// `has_points/has_polylines/has_polygons` = whether those feature types exist **at this level**
+    /// (callers must filter by EndLevel before computing these flags).
     /// `last` = true if this is the last subdivision at its zoom level.
     /// `next_idx` = 0-based index of the first subdivision at the next more-detailed level.
     pub fn compute_subdivision(
         bounds_g: (i32, i32, i32, i32),
-        mp: &MpFile,
+        has_points: bool,
+        has_polylines: bool,
+        has_polygons: bool,
         last: bool,
         next_idx: u16,
     ) -> Self {
@@ -297,9 +301,9 @@ impl Subdivision {
 
         Self {
             rgn_offset: 0,
-            has_points: !mp.points.is_empty(),
-            has_polylines: !mp.polylines.is_empty(),
-            has_polygons: !mp.polygons.is_empty(),
+            has_points,
+            has_polylines,
+            has_polygons,
             lon_center,
             lat_center,
             half_width,
@@ -369,8 +373,23 @@ impl TreWriter {
 
     /// Build the complete TRE subfile binary from a parsed Polish Map.
     ///
+    /// All subdivision `rgn_offset` fields are set to 0 (stub).
+    /// Use [`TreWriter::build_with_rgn_offsets`] to inject real RGN offsets.
+    ///
     /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
     pub fn build(mp: &MpFile) -> Vec<u8> {
+        Self::build_with_rgn_offsets(mp, &[])
+    }
+
+    /// Build the TRE subfile binary with pre-computed RGN subdivision offsets.
+    ///
+    /// `rgn_offsets[i]` is the byte offset of level `i`'s data within the RGN
+    /// feature data section (i.e. relative to the start of the data section, not
+    /// the start of the RGN file). If `rgn_offsets` is shorter than `n_levels`,
+    /// remaining subdivisions keep `rgn_offset = 0`.
+    ///
+    /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
+    pub fn build_with_rgn_offsets(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
         // Step 1: bounding box in degrees
         let (min_lat, max_lat, min_lon, max_lon) = Self::compute_bounds(mp);
 
@@ -392,14 +411,40 @@ impl TreWriter {
         let copyright_offset = subdivisions_offset + subdivisions_size;
         let copyright_size = 0u32;
 
-        // Step 5: create one subdivision per level, all covering the full bounding box
+        // Step 5: create one subdivision per level, all covering the full bounding box.
+        // Feature-presence flags are computed per-level (filtered by EndLevel) so that the
+        // GPS firmware does not attempt to read feature data that is absent at a given zoom.
         let bounds_g = (min_lat_g, max_lat_g, min_lon_g, max_lon_g);
         let subdivisions: Vec<Subdivision> = (0..n)
             .map(|i| {
                 // Level 0 is the most detailed — no finer child level (next_idx = 0).
                 // Level i > 0 points to the subdivision of the more-detailed level i-1.
                 let next_idx = if i == 0 { 0u16 } else { (i - 1) as u16 };
-                Subdivision::compute_subdivision(bounds_g, mp, true, next_idx)
+                // Level-aware flags: a feature is present at level i iff end_level >= i.
+                let has_points = mp
+                    .points
+                    .iter()
+                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                let has_polylines = mp
+                    .polylines
+                    .iter()
+                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                let has_polygons = mp
+                    .polygons
+                    .iter()
+                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                let mut s = Subdivision::compute_subdivision(
+                    bounds_g,
+                    has_points,
+                    has_polylines,
+                    has_polygons,
+                    true,
+                    next_idx,
+                );
+                if i < rgn_offsets.len() {
+                    s.rgn_offset = rgn_offsets[i];
+                }
+                s
             })
             .collect();
 
@@ -440,7 +485,7 @@ impl TreWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::mp_types::{MpFile, MpHeader, MpPoint, MpPolygon};
+    use crate::parser::mp_types::{MpFile, MpHeader};
     use std::collections::HashMap;
 
     fn empty_mp() -> MpFile {
@@ -627,40 +672,15 @@ mod tests {
 
     #[test]
     fn test_subdivision_size() {
-        let mp = empty_mp();
-        let s = Subdivision::compute_subdivision((0, 0, 0, 0), &mp, false, 0);
+        let s = Subdivision::compute_subdivision((0, 0, 0, 0), false, false, false, false, 0);
         assert_eq!(s.to_bytes().len(), 16);
     }
 
     #[test]
     fn test_subdivision_data_flags() {
-        let mut mp = empty_mp();
-        // has_points = true, has_polylines = false, has_polygons = true
-        mp.points.push(MpPoint {
-            type_code: "0x2C00".to_string(),
-            label: None,
-            end_level: None,
-            lat: 45.0,
-            lon: 5.0,
-            other_fields: HashMap::new(),
-        });
-        mp.polygons.push(MpPolygon {
-            type_code: "0x50".to_string(),
-            label: None,
-            end_level: None,
-            coords: vec![
-                (45.0, 5.0),
-                (45.1, 5.0),
-                (45.1, 5.1),
-                (45.0, 5.1),
-                (45.0, 5.0),
-            ],
-            holes: vec![],
-            other_fields: HashMap::new(),
-        });
-        let s = Subdivision::compute_subdivision((0, 1, 0, 1), &mp, false, 0);
+        // has_points = true, has_polylines = false, has_polygons = true → flags = 0x09
+        let s = Subdivision::compute_subdivision((0, 1, 0, 1), true, false, true, false, 0);
         let bytes = s.to_bytes();
-        // has_points=true → bit 0 (0x01); has_polygons=true → bit 3 (0x08) → 0x09
         assert_eq!(
             bytes[0x03], 0x09,
             "data_flags: points=1, polylines=0, polygons=1 → 0x09 (bit0 | bit3)"
@@ -669,8 +689,7 @@ mod tests {
 
     #[test]
     fn test_subdivision_last_flag() {
-        let mp = empty_mp();
-        let s = Subdivision::compute_subdivision((0, 100, 0, 100), &mp, true, 0);
+        let s = Subdivision::compute_subdivision((0, 100, 0, 100), false, false, false, true, 0);
         let bytes = s.to_bytes();
         let hw = u16::from_le_bytes([bytes[8], bytes[9]]);
         assert!(
@@ -681,8 +700,7 @@ mod tests {
 
     #[test]
     fn test_subdivision_rgn_zero() {
-        let mp = empty_mp();
-        let s = Subdivision::compute_subdivision((0, 100, 0, 100), &mp, false, 0);
+        let s = Subdivision::compute_subdivision((0, 100, 0, 100), false, false, false, false, 0);
         let bytes = s.to_bytes();
         assert_eq!(&bytes[0..3], &[0, 0, 0], "stub rgn_offset must be zero");
     }
@@ -691,10 +709,9 @@ mod tests {
     fn test_subdivision_center_encoded() {
         // lat range 44°–46° → lat_center ≈ 45° (2_097_152 garmin units)
         // stored as (2097152 >> 8) as i16 = 8192
-        let mp = empty_mp();
         let lat_lo = to_garmin_units(44.0); // 2_050_048
         let lat_hi = to_garmin_units(46.0); // 2_144_256
-        let s = Subdivision::compute_subdivision((lat_lo, lat_hi, 0, 256), &mp, false, 0);
+        let s = Subdivision::compute_subdivision((lat_lo, lat_hi, 0, 256), false, false, false, false, 0);
         let bytes = s.to_bytes();
         let lat_center_g = (lat_hi + lat_lo) / 2;
         let expected = (lat_center_g >> 8) as i16;
@@ -790,6 +807,42 @@ mod tests {
             "bits_per_coord > 24 must be clamped to 24"
         );
         assert_eq!(levels[1].bits_per_coord, 24);
+    }
+
+    // ── Task 6 (Story 13.4): build_with_rgn_offsets ───────────────────────────
+
+    #[test]
+    fn test_build_with_rgn_offsets_patches_subdivision_rgn_offset() {
+        // minimal_for_img.mp: 2 levels → 2 subdivisions
+        let mp = fixture_mp();
+        let rgn_offsets = vec![0u32, 42u32];
+        let tre_data = TreWriter::build_with_rgn_offsets(&mp, &rgn_offsets);
+
+        // TRE layout for 2 levels: 148 (header) + 2×4 (levels) + 2×16 (subdivisions)
+        // Subdivisions start at offset 156.
+        let subdivs_offset = 148 + 2 * 4; // = 156
+
+        // Subdivision 0 (level 0): rgn_offset = 0 at bytes [156..159]
+        let off0 = (tre_data[subdivs_offset] as u32)
+            | ((tre_data[subdivs_offset + 1] as u32) << 8)
+            | ((tre_data[subdivs_offset + 2] as u32) << 16);
+        assert_eq!(off0, 0, "level 0 subdivision rgn_offset must be 0");
+
+        // Subdivision 1 (level 1): rgn_offset = 42 at bytes [172..175]
+        let subdiv1_start = subdivs_offset + 16;
+        let off1 = (tre_data[subdiv1_start] as u32)
+            | ((tre_data[subdiv1_start + 1] as u32) << 8)
+            | ((tre_data[subdiv1_start + 2] as u32) << 16);
+        assert_eq!(off1, 42, "level 1 subdivision rgn_offset must be 42");
+    }
+
+    #[test]
+    fn test_build_delegates_to_build_with_rgn_offsets() {
+        // build() must produce identical output to build_with_rgn_offsets(mp, &[])
+        let mp = fixture_mp();
+        let a = TreWriter::build(&mp);
+        let b = TreWriter::build_with_rgn_offsets(&mp, &[]);
+        assert_eq!(a, b, "build() must equal build_with_rgn_offsets(mp, &[])");
     }
 
     // ── Task 5 (L1): compute_bounds with polylines only ───────────────────────

@@ -302,6 +302,149 @@ fn test_img_header_xor() {
 }
 
 // ----------------------------------------------------------------
+// RGN subfile integration tests (Story 13.4)
+// ----------------------------------------------------------------
+
+#[test]
+fn test_img_rgn_subfile_not_empty() {
+    // After Story 13.4, the RGN subfile contains real binary content.
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Directory at block 1 (block_size=512). RGN is Dirent index 1 (32 bytes each).
+    let dir_start = 512usize;
+    let rgn_dirent = dir_start + 1 * 32;
+    let size_used = u32::from_le_bytes([
+        bytes[rgn_dirent + 0x12],
+        bytes[rgn_dirent + 0x13],
+        bytes[rgn_dirent + 0x14],
+        bytes[rgn_dirent + 0x15],
+    ]);
+    assert!(size_used > 0, "RGN subfile size_used must be > 0 (real RGN content)");
+}
+
+#[test]
+fn test_img_rgn_header_magic() {
+    // RGN subfile must start with [0x1D, 0x00, 0x01, 0x00] (header_length=29, version=1).
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Read RGN block_start from Dirent index 1.
+    let dir_start = 512usize;
+    let rgn_dirent = dir_start + 1 * 32;
+    let block_start =
+        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    let rgn_offset = block_start * 512;
+
+    assert_eq!(
+        &bytes[rgn_offset..rgn_offset + 4],
+        &[0x1D, 0x00, 0x01, 0x00],
+        "RGN header must start with [0x1D, 0x00, 0x01, 0x00] (header_length=29, version=1)"
+    );
+}
+
+#[test]
+fn test_img_tre_subdivisions_rgn_offset_nonzero() {
+    // When features are present, level 1's subdivision must have rgn_offset > 0
+    // (level 0 starts at the beginning of the data section = offset 0).
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Locate TRE block.
+    let dir_start = 512usize;
+    let tre_block_start =
+        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_offset = tre_block_start * 512;
+
+    // Read subdivisions_offset from TRE header at byte 0x1C (robust across level counts).
+    let subdivs_offset = u32::from_le_bytes([
+        bytes[tre_offset + 0x1C],
+        bytes[tre_offset + 0x1D],
+        bytes[tre_offset + 0x1E],
+        bytes[tre_offset + 0x1F],
+    ]) as usize;
+    let subdivs_start = tre_offset + subdivs_offset;
+
+    // Subdivision 0 (level 0): rgn_offset must be 0 (data starts here).
+    let rgn_off0 = (bytes[subdivs_start] as u32)
+        | ((bytes[subdivs_start + 1] as u32) << 8)
+        | ((bytes[subdivs_start + 2] as u32) << 16);
+    assert_eq!(rgn_off0, 0, "level 0 subdivision rgn_offset must be 0 (start of data section)");
+
+    // Subdivision 1 (level 1): rgn_offset must be > 0 since level 0 has features.
+    let subdiv1_start = subdivs_start + 16; // each subdivision is 16 bytes
+    let rgn_off1 = (bytes[subdiv1_start] as u32)
+        | ((bytes[subdiv1_start + 1] as u32) << 8)
+        | ((bytes[subdiv1_start + 2] as u32) << 16);
+    assert!(
+        rgn_off1 > 0,
+        "level 1 subdivision rgn_offset must be > 0 when level 0 has features"
+    );
+}
+
+#[test]
+fn test_img_level_filtering_subdivision_size() {
+    // multi_type.mp has a POLYLINE with EndLevel=0 → included only in level 0.
+    // Level 0 must have more feature data than level 1.
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Locate TRE subdivisions — read subdivisions_offset from TRE header (robust across level counts).
+    let dir_start = 512usize;
+    let tre_block_start =
+        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_offset = tre_block_start * 512;
+    let subdivs_offset = u32::from_le_bytes([
+        bytes[tre_offset + 0x1C],
+        bytes[tre_offset + 0x1D],
+        bytes[tre_offset + 0x1E],
+        bytes[tre_offset + 0x1F],
+    ]) as usize;
+    let subdivs_start = tre_offset + subdivs_offset;
+
+    let rgn_off0 = (bytes[subdivs_start] as u32)
+        | ((bytes[subdivs_start + 1] as u32) << 8)
+        | ((bytes[subdivs_start + 2] as u32) << 16);
+    let subdiv1_start = subdivs_start + 16;
+    let rgn_off1 = (bytes[subdiv1_start] as u32)
+        | ((bytes[subdiv1_start + 1] as u32) << 8)
+        | ((bytes[subdiv1_start + 2] as u32) << 16);
+
+    // Locate RGN data section (after the 29-byte header).
+    let rgn_dirent = dir_start + 1 * 32;
+    let rgn_block_start =
+        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    let rgn_file_start = rgn_block_start * 512;
+    // data_size is at offset 0x08 in the RGN header
+    let data_size = u32::from_le_bytes([
+        bytes[rgn_file_start + 8],
+        bytes[rgn_file_start + 9],
+        bytes[rgn_file_start + 10],
+        bytes[rgn_file_start + 11],
+    ]);
+
+    // Level 0 size = rgn_off1 - rgn_off0 = rgn_off1 (since rgn_off0=0)
+    let level0_size = rgn_off1 - rgn_off0;
+    // Level 1 size = total data - rgn_off1
+    let level1_size = data_size - rgn_off1;
+
+    assert!(
+        level0_size > level1_size,
+        "level 0 (detailed) must have more data than level 1 (coarse): {} vs {}",
+        level0_size,
+        level1_size
+    );
+}
+
+// ----------------------------------------------------------------
 // TRE subfile integration tests (Story 13.3)
 // ----------------------------------------------------------------
 

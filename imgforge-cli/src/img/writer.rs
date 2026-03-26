@@ -25,8 +25,9 @@ impl ImgWriter {
     /// The resulting `.img` contains:
     /// - A valid 512-byte header (magic, date, XOR, DOS signature)
     /// - A FAT-like directory with entries for TRE, RGN and LBL
-    /// - Real TRE binary content (geographic index) for the TRE entry
-    /// - Empty placeholder blocks for RGN and LBL (populated in Stories 13.4–13.5)
+    /// - Real TRE binary content (geographic index) — levels, subdivisions, RGN offsets
+    /// - Real RGN binary content — POI, polyline and polygon records with delta-encoded coordinates
+    /// - Empty LBL stub (label strings populated in Story 13.5)
     ///
     /// Uses `block_size_exponent = 9` (512-byte blocks) which is appropriate for
     /// stub/test output. For production maps with real TRE/RGN/LBL content
@@ -56,11 +57,16 @@ impl ImgWriter {
         let mut fs = ImgFilesystem::new(self.block_size_exponent);
         fs.description = mp_file.header.name.clone();
 
-        // Add subfiles: real TRE geographic index content + stub placeholders for RGN and LBL.
-        use crate::img::tre::TreWriter;
-        let tre_data = TreWriter::build(mp_file);
+        // Add subfiles: real TRE + real RGN geographic content; LBL still a stub (Story 13.5).
+        use crate::img::tre::{TreWriter, levels_from_mp};
+        use crate::img::rgn::RgnWriter;
+        let levels = levels_from_mp(&mp_file.header);
+        // Pass 1: build RGN to get per-subdivision offsets.
+        let rgn = RgnWriter::build(mp_file, &levels);
+        // Pass 2: build TRE with real RGN offsets patched into subdivisions.
+        let tre_data = TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets);
         fs.add_subfile(map_id, "TRE", tre_data)?;
-        fs.add_subfile(map_id, "RGN", vec![])?;
+        fs.add_subfile(map_id, "RGN", rgn.data)?;
         fs.add_subfile(map_id, "LBL", vec![])?;
 
         // Capture per-subfile stats before consuming fs into bytes.
