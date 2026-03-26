@@ -5,6 +5,8 @@
 //!
 //! Format: `[RGN Header — 29 B] [Feature Records per level…]`
 
+use std::collections::HashMap;
+
 use crate::img::tre::{to_garmin_units, MapLevel, TreWriter};
 use crate::parser::mp_types::{MpFile, MpPoint, MpPolygon, MpPolyline};
 
@@ -143,7 +145,7 @@ impl RgnHeader {
 /// byte 1-2  : delta_lon (LE16s) from subdivision centre
 /// byte 3-4  : delta_lat (LE16s) from subdivision centre
 /// byte 5    : flags — bit 7 = last_in_group, bit 3 = has_label, bits 2-0 = sub_type & 0x07
-/// [if has_label]: bytes 6-8 = label_offset (LE24) stub 0x000000 (LBL = Story 13.5)
+/// [if has_label]: bytes 6-8 = label_offset (LE24) from LBL data section start
 /// ```
 fn encode_point_record(
     poi: &MpPoint,
@@ -151,6 +153,7 @@ fn encode_point_record(
     center_lon_g: i32,
     bits_per_coord: u8,
     last_in_group: bool,
+    label_offset: u32,
 ) -> Vec<u8> {
     let tc = parse_type_code(&poi.type_code);
     let lat_g = to_garmin_units(poi.lat);
@@ -173,10 +176,10 @@ fn encode_point_record(
     buf.extend_from_slice(&d_lat.to_le_bytes());
     buf.push(flags);
     if has_label {
-        // label_offset stub 0x000000 — LBL writer is Story 13.5
-        buf.push(0x00);
-        buf.push(0x00);
-        buf.push(0x00);
+        let le = label_offset.to_le_bytes();
+        buf.push(le[0]);
+        buf.push(le[1]);
+        buf.push(le[2]);
     }
     buf
 }
@@ -192,10 +195,11 @@ fn encode_point_record(
 /// for each subsequent point (two_byte_delta=1):
 ///   2 bytes delta_lon from previous point + 2 bytes delta_lat (LE16s)
 /// terminator: 0x80 0x00  (mkgmap PolyRecord.java: 0x80 then 0x00 for two_byte_delta)
-/// [if has_label]: 3 bytes label_offset stub 0x000000
+/// [if has_label]: 3 bytes label_offset (LE24) from LBL data section start
 /// ```
 ///
 /// Note: 1-byte delta encoding is an optional optimisation deferred to Epic 14+.
+#[allow(clippy::too_many_arguments)]
 fn encode_poly_record_inner(
     type_code: &str,
     label: &Option<String>,
@@ -204,6 +208,7 @@ fn encode_poly_record_inner(
     center_lon_g: i32,
     bits_per_coord: u8,
     last_in_group: bool,
+    label_offset: u32,
 ) -> Vec<u8> {
     let tc = parse_type_code(type_code);
     let has_label = label.is_some();
@@ -225,9 +230,10 @@ fn encode_poly_record_inner(
         buf.push(0x80);
         buf.push(0x00);
         if has_label {
-            buf.push(0x00);
-            buf.push(0x00);
-            buf.push(0x00);
+            let le = label_offset.to_le_bytes();
+            buf.push(le[0]);
+            buf.push(le[1]);
+            buf.push(le[2]);
         }
         return buf;
     }
@@ -256,9 +262,10 @@ fn encode_poly_record_inner(
     buf.push(0x00);
 
     if has_label {
-        buf.push(0x00);
-        buf.push(0x00);
-        buf.push(0x00);
+        let le = label_offset.to_le_bytes();
+        buf.push(le[0]);
+        buf.push(le[1]);
+        buf.push(le[2]);
     }
     buf
 }
@@ -270,6 +277,7 @@ fn encode_polyline_record(
     center_lon_g: i32,
     bits_per_coord: u8,
     last_in_group: bool,
+    label_offset: u32,
 ) -> Vec<u8> {
     encode_poly_record_inner(
         &line.type_code,
@@ -279,6 +287,7 @@ fn encode_polyline_record(
         center_lon_g,
         bits_per_coord,
         last_in_group,
+        label_offset,
     )
 }
 
@@ -289,6 +298,7 @@ fn encode_polygon_record(
     center_lon_g: i32,
     bits_per_coord: u8,
     last_in_group: bool,
+    label_offset: u32,
 ) -> Vec<u8> {
     encode_poly_record_inner(
         &poly.type_code,
@@ -298,6 +308,7 @@ fn encode_polygon_record(
         center_lon_g,
         bits_per_coord,
         last_in_group,
+        label_offset,
     )
 }
 
@@ -318,14 +329,36 @@ pub struct RgnBuildResult {
 pub struct RgnWriter;
 
 impl RgnWriter {
-    /// Build the complete RGN subfile binary and compute per-level subdivision offsets.
+    /// Build the complete RGN subfile binary using stub label offsets (0x000000).
+    ///
+    /// Convenience wrapper around [`build_with_lbl_offsets`] with an empty map,
+    /// preserving backward compatibility with callers that don't need LBL integration.
+    ///
+    /// **Warning**: features with labels produce records with `has_label = true` but
+    /// `label_offset = 0x000000`. LBL offset 0 is the null sentinel ("no label"), so a GPS
+    /// device reading these records would find empty labels. This method is intended for
+    /// unit tests only. For production output use [`build_with_lbl_offsets`] with a
+    /// populated map from [`LblWriter::build`].
+    pub fn build(mp: &MpFile, levels: &[MapLevel]) -> RgnBuildResult {
+        Self::build_with_lbl_offsets(mp, levels, &HashMap::new())
+    }
+
+    /// Build the complete RGN subfile binary with real LBL label offsets.
     ///
     /// For each level `i`, features are filtered by `end_level >= i` (i.e. a feature
     /// with `end_level = 0` appears only in level 0; `None` means all levels).
     ///
     /// The returned `subdivision_offsets[i]` is the byte offset from the start of the
     /// feature data section (not from the start of the RGN file) for level `i`.
-    pub fn build(mp: &MpFile, levels: &[MapLevel]) -> RgnBuildResult {
+    ///
+    /// `label_offsets`: map from label string → offset from the start of the LBL data
+    /// section (as returned by [`LblWriter::build`]). An empty map produces stub
+    /// 0x000000 offsets.
+    pub fn build_with_lbl_offsets(
+        mp: &MpFile,
+        levels: &[MapLevel],
+        label_offsets: &HashMap<String, u32>,
+    ) -> RgnBuildResult {
         let n = levels.len();
 
         // Compute bounding box → subdivision centre (same formula as TreWriter).
@@ -367,8 +400,13 @@ impl RgnWriter {
             let poi_count = points.len();
             for (j, poi) in points.iter().enumerate() {
                 let last = j + 1 == poi_count;
+                let lbl_offset = poi
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
                 let record =
-                    encode_point_record(poi, center_lat_g, center_lon_g, bits, last);
+                    encode_point_record(poi, center_lat_g, center_lon_g, bits, last, lbl_offset);
                 feature_data.extend_from_slice(&record);
             }
 
@@ -376,8 +414,13 @@ impl RgnWriter {
             let line_count = polylines.len();
             for (j, line) in polylines.iter().enumerate() {
                 let last = j + 1 == line_count;
+                let lbl_offset = line
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
                 let record =
-                    encode_polyline_record(line, center_lat_g, center_lon_g, bits, last);
+                    encode_polyline_record(line, center_lat_g, center_lon_g, bits, last, lbl_offset);
                 feature_data.extend_from_slice(&record);
             }
 
@@ -385,8 +428,13 @@ impl RgnWriter {
             let poly_count = polygons.len();
             for (j, poly) in polygons.iter().enumerate() {
                 let last = j + 1 == poly_count;
+                let lbl_offset = poly
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
                 let record =
-                    encode_polygon_record(poly, center_lat_g, center_lon_g, bits, last);
+                    encode_polygon_record(poly, center_lat_g, center_lon_g, bits, last, lbl_offset);
                 feature_data.extend_from_slice(&record);
             }
         }
@@ -539,11 +587,11 @@ mod tests {
         let center = to_garmin_units(45.0);
         // Without label: 6 bytes
         let poi_no_label = make_poi(None);
-        let rec = encode_point_record(&poi_no_label, center, center, 24, false);
+        let rec = encode_point_record(&poi_no_label, center, center, 24, false, 0);
         assert_eq!(rec.len(), 6, "POI record without label must be 6 bytes");
         // With label: 9 bytes
         let poi_with_label = make_poi(Some("Mairie"));
-        let rec = encode_point_record(&poi_with_label, center, center, 24, false);
+        let rec = encode_point_record(&poi_with_label, center, center, 24, false, 0);
         assert_eq!(rec.len(), 9, "POI record with label must be 9 bytes");
     }
 
@@ -552,20 +600,20 @@ mod tests {
         let center = to_garmin_units(45.0);
         // Without label: terminator is the last 2 bytes.
         let line = make_polyline(3, None);
-        let rec = encode_polyline_record(&line, center, center, 24, false);
+        let rec = encode_polyline_record(&line, center, center, 24, false, 0);
         let len = rec.len();
         assert!(len >= 2, "polyline record must have at least 2 bytes");
         assert_eq!(rec[len - 2], 0x80, "terminator first byte must be 0x80");
         assert_eq!(rec[len - 1], 0x00, "terminator second byte must be 0x00 (two_byte_delta, mkgmap)");
 
-        // With label: terminator is 3 bytes before end (3-byte label stub follows).
+        // With label offset=0 (stub): terminator then 3 zero bytes.
         let line_l = make_polyline(3, Some("Route"));
-        let rec_l = encode_polyline_record(&line_l, center, center, 24, false);
+        let rec_l = encode_polyline_record(&line_l, center, center, 24, false, 0);
         let len_l = rec_l.len();
-        // Layout: …[0x80][0x00][0x00][0x00][0x00]  (terminator then label stub)
+        // Layout: …[0x80][0x00][0x00][0x00][0x00]  (terminator then label offset)
         assert_eq!(rec_l[len_l - 5], 0x80, "terminator first byte must be 0x80 (before label)");
         assert_eq!(rec_l[len_l - 4], 0x00, "terminator second byte must be 0x00 (before label)");
-        assert_eq!(&rec_l[len_l - 3..], &[0x00, 0x00, 0x00], "label stub must be 0x000000");
+        assert_eq!(&rec_l[len_l - 3..], &[0x00, 0x00, 0x00], "label offset 0 must produce 0x000000");
     }
 
     #[test]
@@ -580,7 +628,7 @@ mod tests {
             holes: vec![],
             other_fields: HashMap::new(),
         };
-        let rec = encode_polygon_record(&poly, center, center, 24, true);
+        let rec = encode_polygon_record(&poly, center, center, 24, true, 0);
         // byte 0 = base_type = 0x50
         assert_eq!(rec[0], 0x50, "polygon base_type must be 0x50");
         // byte 1 = flags: two_byte_delta (0x04) | last_in_group (0x80) = 0x84
@@ -589,6 +637,100 @@ mod tests {
         let len = rec.len();
         assert_eq!(rec[len - 2], 0x80);
         assert_eq!(rec[len - 1], 0x00);
+    }
+
+    // ── Task 4 (Story 13.5): LBL offset tests ─────────────────────────────────
+
+    #[test]
+    fn test_encode_point_record_real_lbl_offset() {
+        // POI "Mairie" with offset=1 → bytes 6-8 must be [0x01, 0x00, 0x00]
+        let center = to_garmin_units(45.0);
+        let poi = make_poi(Some("Mairie"));
+        let rec = encode_point_record(&poi, center, center, 24, false, 1);
+        assert_eq!(rec.len(), 9);
+        assert_eq!(&rec[6..9], &[0x01, 0x00, 0x00], "label_offset=1 must appear as LE24 [0x01,0x00,0x00]");
+    }
+
+    #[test]
+    fn test_encode_polyline_record_real_lbl_offset() {
+        // Polyline "D1075" with offset=8 → last 3 bytes before terminator (actually after) = [0x08, 0x00, 0x00]
+        let center = to_garmin_units(45.0);
+        let line = make_polyline(2, Some("D1075"));
+        let rec = encode_polyline_record(&line, center, center, 24, false, 8);
+        let len = rec.len();
+        // Layout ends with: … [0x80][0x00] [0x08][0x00][0x00]
+        assert_eq!(&rec[len - 3..], &[0x08, 0x00, 0x00], "label_offset=8 must appear as LE24 [0x08,0x00,0x00]");
+    }
+
+    #[test]
+    fn test_build_stub_offsets_are_zero() {
+        // Regression: RgnWriter::build() (without HashMap) → offsets remain 0x000000 (Story 13.4 behaviour).
+        // NOTE: this also means `has_label=true` with `label_offset=0x000000` — offset 0 is the LBL null
+        // sentinel. A GPS reading these records would find empty labels. build() is test-only; production
+        // code must use build_with_lbl_offsets() with a populated LblBuildResult.
+        let mp = make_mp_single_poi();
+        let levels = levels_from_mp(&mp.header);
+        let result = RgnWriter::build(&mp, &levels);
+        // POI record: bytes 29+6 = indices 35, 36, 37 are the label offset
+        assert_eq!(
+            &result.data[35..38],
+            &[0x00, 0x00, 0x00],
+            "build() without LBL offsets must produce stub 0x000000 in record"
+        );
+    }
+
+    #[test]
+    fn test_build_with_lbl_offsets_dedup_rgn_consistency() {
+        // AC1 + AC4: two POIs sharing the same label must reference the SAME LBL offset in RGN.
+        // This validates the RGN side of deduplication — LblWriter deduplicates and RgnWriter
+        // must propagate the identical offset to every record sharing that label.
+        use crate::img::lbl::LblWriter;
+
+        let mp = MpFile {
+            header: MpHeader {
+                id: "63240001".to_string(),
+                level_defs: vec![24],
+                ..Default::default()
+            },
+            points: vec![
+                MpPoint {
+                    type_code: "0x2C00".to_string(),
+                    label: Some("Église".to_string()),
+                    lat: 45.0,
+                    lon: 5.0,
+                    end_level: None,
+                    other_fields: HashMap::new(),
+                },
+                MpPoint {
+                    type_code: "0x2C00".to_string(),
+                    label: Some("Église".to_string()),
+                    lat: 45.1,
+                    lon: 5.1,
+                    end_level: None,
+                    other_fields: HashMap::new(),
+                },
+            ],
+            polylines: vec![],
+            polygons: vec![],
+        };
+
+        let lbl = LblWriter::build(&mp);
+        let levels = levels_from_mp(&mp.header);
+        let rgn = RgnWriter::build_with_lbl_offsets(&mp, &levels, &lbl.label_offsets);
+
+        // Feature data starts after the 29-byte RGN header.
+        // Both POIs have labels → each record is 9 bytes:
+        //   byte 0: base_type, bytes 1-4: delta coords (LE16s × 2), byte 5: flags,
+        //   bytes 6-8: label_offset (LE24)
+        let data = &rgn.data[29..]; // feature data section
+        let offset0 = u32::from_le_bytes([data[6], data[7], data[8], 0]);
+        let offset1 = u32::from_le_bytes([data[15], data[16], data[17], 0]);
+
+        assert_ne!(offset0, 0, "first 'Église' POI label_offset must be non-zero (real LBL offset)");
+        assert_eq!(
+            offset0, offset1,
+            "duplicate 'Église' POIs must reference the same LBL offset in RGN (AC1 + AC4)"
+        );
     }
 
     // ── Task 5: RgnWriter::build ──────────────────────────────────────────────

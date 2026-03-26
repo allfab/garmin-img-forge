@@ -27,7 +27,7 @@ impl ImgWriter {
     /// - A FAT-like directory with entries for TRE, RGN and LBL
     /// - Real TRE binary content (geographic index) — levels, subdivisions, RGN offsets
     /// - Real RGN binary content — POI, polyline and polygon records with delta-encoded coordinates
-    /// - Empty LBL stub (label strings populated in Story 13.5)
+    /// - Real LBL binary content — CP1252-encoded label strings with deduplication
     ///
     /// Uses `block_size_exponent = 9` (512-byte blocks) which is appropriate for
     /// stub/test output. For production maps with real TRE/RGN/LBL content
@@ -57,21 +57,28 @@ impl ImgWriter {
         let mut fs = ImgFilesystem::new(self.block_size_exponent);
         fs.description = mp_file.header.name.clone();
 
-        // Add subfiles: real TRE + real RGN geographic content; LBL still a stub (Story 13.5).
-        use crate::img::tre::{TreWriter, levels_from_mp};
+        use crate::img::lbl::LblWriter;
         use crate::img::rgn::RgnWriter;
+        use crate::img::tre::{levels_from_mp, TreWriter};
         let levels = levels_from_mp(&mp_file.header);
-        // Pass 1: build RGN to get per-subdivision offsets.
-        let rgn = RgnWriter::build(mp_file, &levels);
-        // Pass 2: build TRE with real RGN offsets patched into subdivisions.
+
+        // Pass 0: build LBL → label_offsets used by RGN pass.
+        let lbl = LblWriter::build(mp_file);
+
+        // Pass 1: build RGN with real LBL label offsets.
+        let rgn = RgnWriter::build_with_lbl_offsets(mp_file, &levels, &lbl.label_offsets);
+
+        // Pass 2: build TRE with real RGN subdivision offsets (unchanged).
         let tre_data = TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets);
+
         fs.add_subfile(map_id, "TRE", tre_data)?;
         fs.add_subfile(map_id, "RGN", rgn.data)?;
-        fs.add_subfile(map_id, "LBL", vec![])?;
+        fs.add_subfile(map_id, "LBL", lbl.data)?;
 
         // Capture per-subfile stats before consuming fs into bytes.
         // Order must match add_subfile calls above: TRE=0, RGN=1, LBL=2.
-        debug_assert!(
+        // Guard the index-based access below: entries must be in TRE=0, RGN=1, LBL=2 order.
+        assert!(
             fs.entries.len() == 3,
             "expected exactly 3 subfile entries (TRE, RGN, LBL), got {}",
             fs.entries.len()
@@ -162,6 +169,32 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let err = ImgWriter::write(&mp, tmp.path()).unwrap_err();
         assert!(matches!(err, ImgError::InvalidMapId { .. }));
+    }
+
+    #[test]
+    fn test_writer_lbl_non_empty() {
+        // After Story 13.5, LBL subfile must contain real content when features have labels.
+        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        ImgWriter::write(&mp, tmp.path()).unwrap();
+        let bytes = std::fs::read(tmp.path()).unwrap();
+        // Directory at block 1 (offset 512 for block_size=512). LBL is Dirent index 2.
+        let dir_start = 512usize;
+        let lbl_dirent = dir_start + 2 * 32;
+        let size_used = u32::from_le_bytes([
+            bytes[lbl_dirent + 0x12],
+            bytes[lbl_dirent + 0x13],
+            bytes[lbl_dirent + 0x14],
+            bytes[lbl_dirent + 0x15],
+        ]);
+        // A minimal LBL with no labels is 29 bytes (28-byte header + 1-byte null sentinel).
+        // Any fixture with at least one labeled feature must produce size_used > 29.
+        assert!(
+            size_used > 29,
+            "LBL subfile size_used must be > 29 (header=28 + sentinel=1 is minimum; \
+             real labels add more). Got {}",
+            size_used
+        );
     }
 
     #[test]

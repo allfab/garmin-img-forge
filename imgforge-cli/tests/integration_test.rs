@@ -521,3 +521,152 @@ fn test_img_tre_bounds_nonzero() {
         max_lat_g
     );
 }
+
+// ----------------------------------------------------------------
+// LBL subfile integration tests (Story 13.5)
+// ----------------------------------------------------------------
+
+fn read_lbl_block(bytes: &[u8]) -> (usize, u32) {
+    // LBL is Dirent index 2 in the directory (block 1 for block_size=512).
+    let dir_start = 512usize;
+    let lbl_dirent = dir_start + 2 * 32;
+    let block_start =
+        u16::from_le_bytes([bytes[lbl_dirent + 0x0C], bytes[lbl_dirent + 0x0D]]) as usize;
+    let size_used = u32::from_le_bytes([
+        bytes[lbl_dirent + 0x12],
+        bytes[lbl_dirent + 0x13],
+        bytes[lbl_dirent + 0x14],
+        bytes[lbl_dirent + 0x15],
+    ]);
+    (block_start * 512, size_used)
+}
+
+#[test]
+fn test_img_lbl_subfile_not_empty() {
+    // After Story 13.5, LBL subfile must contain real content when features have labels.
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (_lbl_offset, size_used) = read_lbl_block(&bytes);
+    assert!(size_used > 0, "LBL subfile size_used must be > 0 after Story 13.5");
+}
+
+#[test]
+fn test_img_lbl_header_magic() {
+    // LBL subfile must start with [0x1C, 0x00, 0x01, 0x00] (header_length=28, version=1).
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, _) = read_lbl_block(&bytes);
+    assert_eq!(
+        &bytes[lbl_offset..lbl_offset + 4],
+        &[0x1C, 0x00, 0x01, 0x00],
+        "LBL header must start with [0x1C, 0x00, 0x01, 0x00] (header_length=28, version=1)"
+    );
+}
+
+#[test]
+fn test_img_lbl_contains_label_bytes() {
+    // "Mairie" (bytes CP1252) must be found in the LBL data section (after offset 0x1C).
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, _) = read_lbl_block(&bytes);
+    // LBL data section starts at lbl_offset + 0x1C (header size = 28)
+    let data_start = lbl_offset + 0x1C;
+    // "Mairie" encoded as CP1252 = ASCII (no accents)
+    let mairie = b"Mairie";
+    let lbl_data = &bytes[data_start..];
+    let found = lbl_data.windows(mairie.len()).any(|w| w == mairie);
+    assert!(found, "LBL data section must contain the bytes for 'Mairie'");
+}
+
+#[test]
+fn test_img_rgn_poi_label_offset_nonzero() {
+    // Parse the POI record from RGN and verify label_offset ≠ [0x00, 0x00, 0x00].
+    //
+    // Fixture assumption: multi_type.mp first feature is a POI ("Mairie") WITH a label.
+    // POI record layout (with label): base_type(1) + delta_lon(2) + delta_lat(2) + flags(1)
+    //   + label_offset(3) = 9 bytes. label_offset at bytes 6-8 within the first record.
+    // If multi_type.mp is modified (e.g. first feature reordered or label removed), update
+    // the byte offsets accordingly.
+    let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Locate RGN block.
+    let dir_start = 512usize;
+    let rgn_dirent = dir_start + 1 * 32;
+    let rgn_block_start =
+        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    let rgn_file_start = rgn_block_start * 512;
+    // RGN data section starts after the 29-byte header.
+    let rgn_data_start = rgn_file_start + 29;
+
+    // POI record format: [base_type(1)][delta_lon(2)][delta_lat(2)][flags(1)][label_offset(3)]
+    // = 9 bytes total. label_offset at bytes 6-8 of the record.
+    let label_offset_bytes = &bytes[rgn_data_start + 6..rgn_data_start + 9];
+    assert_ne!(
+        label_offset_bytes,
+        &[0x00, 0x00, 0x00],
+        "POI label_offset in RGN must be non-zero when LBL is populated"
+    );
+}
+
+#[test]
+fn test_img_lbl_accented_chars() {
+    // Verify that accented labels are encoded in CP1252 in the LBL subfile.
+    // "Église": É = 0xC9
+    let mp = MpParser::parse_file(&fixture("labels_accented.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, _) = read_lbl_block(&bytes);
+    let data_start = lbl_offset + 0x1C;
+    // "Église" in CP1252: [0xC9, 0x67, 0x6C, 0x69, 0x73, 0x65]
+    let eglise_cp1252 = &[0xC9u8, 0x67, 0x6C, 0x69, 0x73, 0x65];
+    let lbl_data = &bytes[data_start..];
+    let found = lbl_data.windows(eglise_cp1252.len()).any(|w| w == eglise_cp1252);
+    assert!(found, "LBL data section must contain 'Église' encoded in CP1252");
+}
+
+#[test]
+fn test_img_lbl_shield_code() {
+    // Verify that shield codes are encoded correctly: "~[0x04]D1075" → [0x04, 0x44, ...]
+    let mp = MpParser::parse_file(&fixture("labels_accented.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, _) = read_lbl_block(&bytes);
+    let data_start = lbl_offset + 0x1C;
+    // "~[0x04]D1075" → [0x04, 0x44, 0x31, 0x30, 0x37, 0x35]
+    let shield_bytes = &[0x04u8, 0x44, 0x31, 0x30, 0x37, 0x35];
+    let lbl_data = &bytes[data_start..];
+    let found = lbl_data.windows(shield_bytes.len()).any(|w| w == shield_bytes);
+    assert!(found, "LBL data section must contain shield-encoded '~[0x04]D1075'");
+}
+
+#[test]
+fn test_img_lbl_deduplication() {
+    // "Église" appears twice in labels_accented.mp — LBL must store it only once.
+    // Verify by checking that the POI record for the duplicate "Église" references the same offset
+    // as the first "Église" (by checking the LBL data size stays consistent).
+    let mp = MpParser::parse_file(&fixture("labels_accented.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let (lbl_offset, size_used) = read_lbl_block(&bytes);
+    let data_start = lbl_offset + 0x1C;
+    // Count occurrences of 0xC9 (É byte) in label data section
+    let lbl_data = &bytes[data_start..data_start + size_used as usize - 28];
+    let eglise_cp1252 = &[0xC9u8, 0x67, 0x6C, 0x69, 0x73, 0x65, 0x00];
+    let count = lbl_data
+        .windows(eglise_cp1252.len())
+        .filter(|&w| w == eglise_cp1252)
+        .count();
+    assert_eq!(count, 1, "deduplicated 'Église' must appear exactly once in LBL data section");
+}
