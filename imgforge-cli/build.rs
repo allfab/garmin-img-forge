@@ -2,17 +2,10 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-    // Essayer de récupérer la version depuis Git
     let git_version = get_git_version();
-
-    // Injecter comme variable d'environnement de compilation
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
-
-    // Rerun si .git/HEAD ou refs/tags changent
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/refs/tags");
-
-    // Rerun si les variables CI changent
     println!("cargo:rerun-if-env-changed=CI_COMMIT_TAG");
     println!("cargo:rerun-if-env-changed=CI_COMMIT_SHA");
 }
@@ -41,8 +34,8 @@ fn try_ci_tag() -> Option<String> {
     // Woodpecker CI / GitLab CI (même variable)
     if let Ok(tag) = env::var("CI_COMMIT_TAG") {
         if !tag.is_empty() {
-            // "mpforge-v1.0.0" → "v1.0.0" ; "v1.0.0" → "v1.0.0"
-            let clean = tag.strip_prefix("mpforge-").unwrap_or(&tag).to_string();
+            // "imgforge-v1.0.0" → "v1.0.0" ; "v1.0.0" → "v1.0.0"
+            let clean = tag.strip_prefix("imgforge-").unwrap_or(&tag).to_string();
             return Some(clean);
         }
     }
@@ -51,7 +44,7 @@ fn try_ci_tag() -> Option<String> {
     if let Ok(ref_name) = env::var("GITHUB_REF") {
         if ref_name.starts_with("refs/tags/") {
             let tag = ref_name.trim_start_matches("refs/tags/");
-            let clean = tag.strip_prefix("mpforge-").unwrap_or(tag).to_string();
+            let clean = tag.strip_prefix("imgforge-").unwrap_or(tag).to_string();
             return Some(clean);
         }
     }
@@ -73,8 +66,8 @@ fn try_git_describe() -> Option<String> {
         .ok()
         .map(|s| {
             let trimmed = s.trim();
-            // "mpforge-v1.0.0-3-gabcdef" → "v1.0.0-3-gabcdef"
-            trimmed.strip_prefix("mpforge-").unwrap_or(trimmed).to_string()
+            // "imgforge-v1.0.0-3-gabcdef" → "v1.0.0-3-gabcdef"
+            trimmed.strip_prefix("imgforge-").unwrap_or(trimmed).to_string()
         })
 }
 

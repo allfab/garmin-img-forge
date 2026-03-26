@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "imgforge-cli",
-    version,
+    version = env!("GIT_VERSION"),
     about = "Polish Map (.mp) to Garmin IMG compiler",
     long_about = "imgforge-cli: Compiles Polish Map (.mp) files into Garmin binary IMG format.\n\n\
                   Features:\n\
