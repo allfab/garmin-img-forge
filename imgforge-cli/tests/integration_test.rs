@@ -1,0 +1,302 @@
+//! Integration tests for imgforge-cli using fixture files.
+
+use imgforge_cli::error::ParseError;
+use imgforge_cli::parser::MpParser;
+use imgforge_cli::ImgWriter;
+use std::path::Path;
+
+fn fixture(name: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
+}
+
+// ----------------------------------------------------------------
+// Minimal fixture
+// ----------------------------------------------------------------
+
+#[test]
+fn test_parse_minimal_fixture_header() {
+    let mp = MpParser::parse_file(&fixture("minimal.mp")).unwrap();
+    assert_eq!(mp.header.name, "Test Map");
+    assert_eq!(mp.header.id, "63240001");
+    assert_eq!(mp.header.code_page, "1252");
+    assert_eq!(mp.header.levels, Some(2));
+    assert_eq!(mp.header.tree_size, Some(3000));
+    assert_eq!(mp.header.rgn_limit, Some(1024));
+}
+
+#[test]
+fn test_parse_minimal_fixture_features() {
+    let mp = MpParser::parse_file(&fixture("minimal.mp")).unwrap();
+    assert_eq!(mp.points.len(), 1);
+    assert_eq!(mp.polylines.len(), 1);
+    assert_eq!(mp.polygons.len(), 1);
+}
+
+#[test]
+fn test_parse_minimal_fixture_poi() {
+    let mp = MpParser::parse_file(&fixture("minimal.mp")).unwrap();
+    let poi = &mp.points[0];
+    assert_eq!(poi.type_code, "0x2C00");
+    assert_eq!(poi.label.as_deref(), Some("Mairie"));
+    assert!((poi.lat - 45.1880).abs() < 1e-6);
+    assert!((poi.lon - 5.7245).abs() < 1e-6);
+    assert_eq!(poi.end_level, Some(4));
+}
+
+#[test]
+fn test_parse_minimal_fixture_polyline() {
+    let mp = MpParser::parse_file(&fixture("minimal.mp")).unwrap();
+    let poly = &mp.polylines[0];
+    assert_eq!(poly.type_code, "0x01");
+    assert_eq!(poly.coords.len(), 3);
+    assert!(poly.routing.is_none());
+}
+
+#[test]
+fn test_parse_minimal_fixture_polygon() {
+    let mp = MpParser::parse_file(&fixture("minimal.mp")).unwrap();
+    let polygon = &mp.polygons[0];
+    assert_eq!(polygon.type_code, "0x50");
+    assert_eq!(polygon.coords.len(), 5);
+    assert!(polygon.holes.is_empty());
+}
+
+// ----------------------------------------------------------------
+// Routing fixture
+// ----------------------------------------------------------------
+
+#[test]
+fn test_parse_routing_fixture() {
+    let mp = MpParser::parse_file(&fixture("routing.mp")).unwrap();
+    assert_eq!(mp.polylines.len(), 2);
+}
+
+#[test]
+fn test_parse_routing_fixture_first_road() {
+    let mp = MpParser::parse_file(&fixture("routing.mp")).unwrap();
+    let poly = &mp.polylines[0];
+    let routing = poly.routing.as_ref().unwrap();
+    assert_eq!(routing.road_id.as_deref(), Some("A480_001"));
+    assert_eq!(routing.route_param.as_deref(), Some("7,4,0,1,0,0,0,0,0"));
+    assert_eq!(routing.dir_indicator, Some(0));
+    assert!(routing.speed_type.is_none());
+}
+
+#[test]
+fn test_parse_routing_fixture_second_road_speed() {
+    let mp = MpParser::parse_file(&fixture("routing.mp")).unwrap();
+    let poly = &mp.polylines[1];
+    let routing = poly.routing.as_ref().unwrap();
+    assert_eq!(routing.road_id.as_deref(), Some("N87_001"));
+    assert_eq!(routing.speed_type, Some(5));
+    assert_eq!(routing.dir_indicator, Some(1));
+}
+
+// ----------------------------------------------------------------
+// Error fixtures
+// ----------------------------------------------------------------
+
+#[test]
+fn test_parse_no_img_id_fixture() {
+    let result = MpParser::parse_file(&fixture("no_img_id.mp"));
+    assert!(matches!(result, Err(ParseError::MissingImgId)));
+}
+
+#[test]
+fn test_parse_invalid_coords_fixture() {
+    let result = MpParser::parse_file(&fixture("invalid_coords.mp"));
+    assert!(matches!(result, Err(ParseError::InvalidFormat { .. })));
+    if let Err(ParseError::InvalidFormat { line, message }) = result {
+        assert!(line > 0, "line number must be positive, got {}", line);
+        assert!(!message.is_empty(), "error message must not be empty");
+    }
+}
+
+// ----------------------------------------------------------------
+// Unknown fields fixture
+// ----------------------------------------------------------------
+
+#[test]
+fn test_parse_unknown_fields_fixture_header() {
+    let mp = MpParser::parse_file(&fixture("unknown_fields.mp")).unwrap();
+    assert_eq!(
+        mp.header
+            .other_fields
+            .get("CustomVendorField")
+            .map(|s| s.as_str()),
+        Some("custom_value_123")
+    );
+    assert_eq!(
+        mp.header
+            .other_fields
+            .get("AnotherUnknownField")
+            .map(|s| s.as_str()),
+        Some("hello_world")
+    );
+}
+
+#[test]
+fn test_parse_unknown_fields_fixture_poi() {
+    let mp = MpParser::parse_file(&fixture("unknown_fields.mp")).unwrap();
+    let poi = &mp.points[0];
+    assert_eq!(
+        poi.other_fields
+            .get("CustomPOIAttribute")
+            .map(|s| s.as_str()),
+        Some("poi_custom_value")
+    );
+    assert_eq!(
+        poi.other_fields.get("ExtraField").map(|s| s.as_str()),
+        Some("extra")
+    );
+}
+
+#[test]
+fn test_parse_unknown_fields_fixture_polyline() {
+    let mp = MpParser::parse_file(&fixture("unknown_fields.mp")).unwrap();
+    let poly = &mp.polylines[0];
+    assert_eq!(
+        poly.other_fields.get("CustomLineField").map(|s| s.as_str()),
+        Some("line_value")
+    );
+}
+
+#[test]
+fn test_parse_unknown_fields_fixture_polygon() {
+    let mp = MpParser::parse_file(&fixture("unknown_fields.mp")).unwrap();
+    let poly = &mp.polygons[0];
+    assert_eq!(
+        poly.other_fields
+            .get("CustomPolygonField")
+            .map(|s| s.as_str()),
+        Some("polygon_value")
+    );
+}
+
+// ----------------------------------------------------------------
+// CLI integration tests
+// ----------------------------------------------------------------
+
+#[test]
+fn test_cli_help() {
+    use assert_cmd::Command;
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_compile_help() {
+    use assert_cmd::Command;
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args(["compile", "--help"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_compile_real_file() {
+    use assert_cmd::Command;
+    use tempfile::NamedTempFile;
+
+    let output = NamedTempFile::new().unwrap();
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args([
+        "compile",
+        fixture("minimal.mp").to_str().unwrap(),
+        "-o",
+        output.path().to_str().unwrap(),
+    ]);
+    // Should succeed: parses .mp and writes a valid .img filesystem.
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_compile_nonexistent_file() {
+    use assert_cmd::Command;
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args(["compile", "/nonexistent/path/file.mp", "-o", "/tmp/out.img"]);
+    cmd.assert().failure();
+}
+
+// ----------------------------------------------------------------
+// IMG filesystem integration tests (Story 13.2)
+// ----------------------------------------------------------------
+
+#[test]
+fn test_compile_creates_img() {
+    use assert_cmd::Command;
+    use tempfile::NamedTempFile;
+
+    let output = NamedTempFile::new().unwrap();
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args([
+        "compile",
+        fixture("minimal_for_img.mp").to_str().unwrap(),
+        "-o",
+        output.path().to_str().unwrap(),
+    ]);
+    cmd.assert().success();
+    let metadata = std::fs::metadata(output.path()).unwrap();
+    assert!(metadata.len() > 0, "compiled .img must be non-empty");
+}
+
+#[test]
+fn test_img_header_magic() {
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(
+        &bytes[0x002..0x008],
+        b"GARMIN",
+        "IMG magic must be 'GARMIN'"
+    );
+}
+
+#[test]
+fn test_img_signature() {
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(bytes[0x1FE], 0x55, "DOS signature byte 1 must be 0x55");
+    assert_eq!(bytes[0x1FF], 0xAA, "DOS signature byte 2 must be 0xAA");
+}
+
+#[test]
+fn test_img_subfile_names() {
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Directory is at block 1 (offset 512 for block_size=512).
+    let dir_start = 512usize;
+    // Each Dirent is 32 bytes.
+    let extensions = ["TRE", "RGN", "LBL"];
+    for (i, expected_ext) in extensions.iter().enumerate() {
+        let offset = dir_start + i * 32;
+        let name = &bytes[offset..offset + 8];
+        let ext = &bytes[offset + 8..offset + 11];
+        // Name must be "63240001" (no padding since it's exactly 8 chars).
+        assert_eq!(name, b"63240001", "subfile {i} name must be '63240001'");
+        assert_eq!(
+            ext,
+            expected_ext.as_bytes(),
+            "subfile {i} extension must be '{expected_ext}'"
+        );
+    }
+}
+
+#[test]
+fn test_img_header_xor() {
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
+    assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00");
+}
