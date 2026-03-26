@@ -1,6 +1,9 @@
-//! Tests for parallel tile export functionality (Story 7.1 + Story 11.1 + Story 11.2).
+//! Tests for parallel tile export functionality (Story 7.1 + Story 11.1 + Story 11.2 + Story 11.3).
 
 use clap::Parser;
+use gdal::spatial_ref::SpatialRef;
+use gdal::vector::{FieldDefn, LayerAccess, OGRFieldType};
+use gdal::DriverManager;
 use mpforge_cli::cli::BuildArgs;
 use mpforge_cli::config::Config;
 use mpforge_cli::pipeline;
@@ -12,7 +15,7 @@ use mpforge_cli::pipeline::reader::{MultiGeometryStats, UnsupportedTypeStats};
 use mpforge_cli::pipeline::writer::ExportStats;
 use mpforge_cli::rules::RuleStats;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tempfile::TempDir;
@@ -182,6 +185,71 @@ fn test_rayon_try_for_each_stops_on_first_error() {
 // Integration Tests: Parallel vs Sequential Export
 // ============================================================================
 
+/// Crée un GeoPackage WGS84 avec `n_features` points distribués sur une grille 2°×1°.
+/// Utilisé par les tests de performance #[ignore] de Story 11.3.
+/// Grille couverte : lon [0.0, 2.0], lat [0.0, 1.0] — avec cell_size 0.1 → 200 tuiles (20×10).
+fn create_performance_gpkg(dir: &Path, n_features: usize) -> PathBuf {
+    let gpkg_path = dir.join("perf_dataset.gpkg");
+    let driver = DriverManager::get_driver_by_name("GPKG")
+        .expect("GPKG driver not available");
+    let mut ds = driver
+        .create_vector_only(gpkg_path.to_str().expect("valid path"))
+        .expect("Failed to create GeoPackage");
+
+    let mut srs = SpatialRef::from_epsg(4326).expect("EPSG:4326 not found");
+    srs.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+
+    let layer = ds
+        .create_layer(gdal::vector::LayerOptions {
+            name: "perf_layer",
+            srs: Some(&srs),
+            ty: gdal::vector::OGRwkbGeometryType::wkbPoint,
+            ..Default::default()
+        })
+        .expect("Failed to create layer");
+
+    let fd = FieldDefn::new("name", OGRFieldType::OFTString).expect("FieldDefn");
+    fd.set_width(50);
+    fd.add_to_layer(&layer).expect("add field");
+
+    let defn = layer.defn();
+    for i in 0..n_features {
+        // Distribution régulière en grille : lon 0.0→2.0, lat 0.0→1.0
+        let lon = (i % 200) as f64 * (2.0 / 200.0);
+        let lat = (i / 200) as f64 * (1.0 / (n_features / 200 + 1) as f64);
+        let mut f = gdal::vector::Feature::new(defn).expect("Feature");
+        f.set_field_string(0, &format!("feature_{}", i))
+            .expect("set field");
+        let geom = gdal::vector::Geometry::from_wkt(&format!("POINT ({} {})", lon, lat))
+            .expect("valid WKT");
+        f.set_geometry(geom).expect("set geometry");
+        f.create(&layer).expect("create feature");
+    }
+
+    gpkg_path
+}
+
+/// Crée une Config pipeline pour le test de performance : 200 tuiles (cell_size 0.1, grille 20×10).
+fn create_performance_config(output_dir: &Path, gpkg_path: &Path) -> Config {
+    let config_yaml = format!(
+        r#"
+version: 1
+grid:
+  cell_size: 0.1
+  overlap: 0.0
+inputs:
+  - path: "{}"
+output:
+  directory: "{}"
+  filename_pattern: "{{x}}_{{y}}.mp"
+error_handling: "continue"
+"#,
+        gpkg_path.display(),
+        output_dir.join("tiles").display(),
+    );
+    serde_yml::from_str(&config_yaml).expect("Failed to parse performance test config")
+}
+
 /// Helper to create a test configuration for parallel export
 fn create_parallel_test_config(
     temp_dir: &TempDir,
@@ -268,9 +336,9 @@ fn test_parallel_export_produces_same_results() {
     assert!(result_seq.is_ok());
     let summary_seq = result_seq.unwrap();
 
-    // Parallel export (jobs=2)
+    // Parallel export (jobs=4) — AC3 requires --jobs 4 specifically
     let config_par = create_parallel_test_config(&temp_dir_par, fixture_path, "continue");
-    let args_par = create_test_args_with_jobs(2);
+    let args_par = create_test_args_with_jobs(4);
     let result_par = pipeline::run(&config_par, &args_par);
     assert!(result_par.is_ok());
     let summary_par = result_par.unwrap();
@@ -309,56 +377,53 @@ fn test_parallel_export_produces_same_results() {
     );
     assert_eq!(seq_files, par_files, "Same tile filenames should exist");
 
-    // Compare file sizes to verify content consistency
+    // Compare file contents byte-by-byte (AC3: "strictement identiques — même contenu")
+    // File size alone is insufficient for text-based .mp format
     for filename in &seq_files {
         let seq_path = tiles_seq_dir.join(filename);
         let par_path = tiles_par_dir.join(filename);
 
-        let seq_metadata = fs::metadata(&seq_path).expect("Failed to read seq file metadata");
-        let par_metadata = fs::metadata(&par_path).expect("Failed to read par file metadata");
-
-        assert_eq!(
-            seq_metadata.len(),
-            par_metadata.len(),
-            "File {} should have same size in sequential and parallel export",
-            filename
-        );
+        let seq_content = fs::read(&seq_path)
+            .unwrap_or_else(|_| panic!("Failed to read seq file {}", filename));
+        let par_content = fs::read(&par_path)
+            .unwrap_or_else(|_| panic!("Failed to read par file {}", filename));
 
         assert!(
-            seq_metadata.len() > 0,
+            !seq_content.is_empty(),
             "Sequential file {} should not be empty",
             filename
         );
-        assert!(
-            par_metadata.len() > 0,
-            "Parallel file {} should not be empty",
+        assert_eq!(
+            seq_content, par_content,
+            "File {} must have identical content in sequential and parallel export (AC3)",
             filename
         );
     }
 }
 
 #[test]
-#[ignore] // Ignore by default as it requires specific performance setup
+#[ignore] // Story 11.3 AC5: Exécuter manuellement via: cargo test -- --ignored test_speedup_jobs_4_vs_jobs_1
 fn test_speedup_jobs_4_vs_jobs_1() {
-    // Story 11.1 AC8: Speedup > 2× pour --jobs 4 avec 100+ tuiles
+    // AC1 + AC5: Speedup ≥ 2× pour --jobs 4 avec 200 tuiles synthétiques (grille 20×10)
+    // Dataset : 5000 features WGS84 sur 2°×1°, cell_size 0.1 → 200 tuiles (25 features/tuile)
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+    let gpkg_path = create_performance_gpkg(temp_dir.path(), 5000);
+    let config = create_performance_config(temp_dir.path(), &gpkg_path);
 
-    if !PathBuf::from(fixture_path).exists() {
-        eprintln!("Skipping test: fixture not found");
-        return;
-    }
-
-    let config = create_parallel_test_config(&temp_dir, fixture_path, "continue");
-
-    // Baseline: --jobs 1
+    // Baseline: --jobs 1 (séquentiel)
     let args_1 = create_test_args_with_jobs(1);
     let start_1 = Instant::now();
     let result_1 = pipeline::run(&config, &args_1);
     let duration_1 = start_1.elapsed();
-    assert!(result_1.is_ok());
+    assert!(result_1.is_ok(), "Pipeline --jobs 1 should succeed");
+    let summary_1 = result_1.unwrap();
+    assert!(
+        summary_1.tiles_succeeded >= 100,
+        "Dataset should generate >= 100 tuiles, got {}",
+        summary_1.tiles_succeeded
+    );
 
-    // Cleanup for second run
+    // Cleanup tiles pour le second run
     fs::remove_dir_all(temp_dir.path().join("tiles")).ok();
 
     // Parallel: --jobs 4
@@ -366,18 +431,63 @@ fn test_speedup_jobs_4_vs_jobs_1() {
     let start_4 = Instant::now();
     let result_4 = pipeline::run(&config, &args_4);
     let duration_4 = start_4.elapsed();
-    assert!(result_4.is_ok());
+    assert!(result_4.is_ok(), "Pipeline --jobs 4 should succeed");
 
-    // Calculate speedup
-    let speedup = duration_1.as_secs_f64() / duration_4.as_secs_f64();
+    // Calcul du speedup
+    let time_seq = duration_1.as_secs_f64();
+    let time_par4 = duration_4.as_secs_f64();
+    let speedup = time_seq / time_par4;
 
-    println!("Duration --jobs 1: {:?}", duration_1);
-    println!("Duration --jobs 4: {:?}", duration_4);
-    println!("Speedup: {:.2}×", speedup);
+    eprintln!("Duration --jobs 1: {:?}", duration_1);
+    eprintln!("Duration --jobs 4: {:?}", duration_4);
+    eprintln!("Speedup: {:.2}×", speedup);
 
-    // AC8: Speedup > 2× (requires large dataset with 100+ tiles)
-    // For small datasets, speedup may be < 1 due to thread pool overhead
-    // assert!(speedup > 2.0, "Speedup {:.2}× is below 2× threshold", speedup);
+    // AC5: Ratio ≥ 2.0 asserté (BDTOPO-NFR2)
+    assert!(
+        speedup >= 2.0,
+        "Speedup {:.2}× est inférieur au seuil de 2× (BDTOPO-NFR2). \
+         time_seq={:.3}s, time_par4={:.3}s",
+        speedup, time_seq, time_par4
+    );
+}
+
+#[test]
+#[ignore] // Story 11.3 Subtask 1.5: Exécuter via: cargo test -- --ignored test_speedup_jobs_8_vs_jobs_1
+fn test_speedup_jobs_8_vs_jobs_1() {
+    // AC1: Mesure du speedup --jobs 8 — objectif documenté, non asserté (variable selon machine)
+    // Dataset : 5000 features WGS84 sur 2°×1°, cell_size 0.1 → 200 tuiles
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let gpkg_path = create_performance_gpkg(temp_dir.path(), 5000);
+    let config = create_performance_config(temp_dir.path(), &gpkg_path);
+
+    // Baseline: --jobs 1
+    let args_1 = create_test_args_with_jobs(1);
+    let start_1 = Instant::now();
+    let result_1 = pipeline::run(&config, &args_1);
+    let duration_1 = start_1.elapsed();
+    assert!(result_1.is_ok(), "Pipeline --jobs 1 should succeed");
+
+    fs::remove_dir_all(temp_dir.path().join("tiles")).ok();
+
+    // Parallel: --jobs 8
+    let args_8 = create_test_args_with_jobs(8);
+    let start_8 = Instant::now();
+    let result_8 = pipeline::run(&config, &args_8);
+    let duration_8 = start_8.elapsed();
+    assert!(result_8.is_ok(), "Pipeline --jobs 8 should succeed");
+
+    let time_seq = duration_1.as_secs_f64();
+    let time_par8 = duration_8.as_secs_f64();
+    let speedup = time_seq / time_par8;
+
+    // Résultats documentés uniquement (pas d'assertion : dépend du hardware)
+    eprintln!("Duration --jobs 1: {:?}", duration_1);
+    eprintln!("Duration --jobs 8: {:?}", duration_8);
+    eprintln!("Speedup --jobs 8: {:.2}×", speedup);
+    eprintln!(
+        "Note: speedup >= 2× attendu pour > 4 CPUs, valeur observée: {:.2}×",
+        speedup
+    );
 }
 
 #[test]
@@ -492,7 +602,7 @@ error_handling: "fail-fast"
                 "Error should mention fail-fast mode, parallel export failure, or driver: {}",
                 error_msg
             );
-            println!("Fail-fast triggered, duration: {:?}", duration);
+            eprintln!("Fail-fast triggered, duration: {:?}", duration);
         }
     }
 }
