@@ -58,7 +58,6 @@ impl ImgWriter {
         fs.description = mp_file.header.name.clone();
 
         // Story 14.2: Build road network graph (before subfile generation).
-        // TODO(14.3/14.4): pass road_network to NET/NOD writers.
         let road_network = crate::routing::graph_builder::build_road_network(&mp_file.polylines);
         let routable_count = mp_file.polylines.iter().filter(|p| p.routing.is_some()).count();
         tracing::info!(
@@ -73,34 +72,98 @@ impl ImgWriter {
             },
             "Road network graph built"
         );
-        // Keep road_network alive for future NET/NOD writers (Stories 14.3, 14.4).
-        let _road_network = road_network;
 
         use crate::img::lbl::LblWriter;
+        use crate::img::net::{NetWriter, SubdivRoadRef};
         use crate::img::rgn::RgnWriter;
         use crate::img::tre::{levels_from_mp, TreWriter};
         let levels = levels_from_mp(&mp_file.header);
+        let has_routing = !road_network.road_defs.is_empty();
 
-        // Pass 0: build LBL → label_offsets used by RGN pass.
+        // Pass 0: build LBL → label_offsets used by NET and RGN passes.
         let lbl = LblWriter::build(mp_file);
 
-        // Pass 1: build RGN with real LBL label offsets.
-        let rgn = RgnWriter::build_with_lbl_offsets(mp_file, &levels, &lbl.label_offsets);
+        // Pre-compute subdiv_road_refs for NET level divisions.
+        // Maps each routable polyline to its road_def index and tracks its
+        // sequential position within each subdivision (matching RGN ordering).
+        let subdiv_road_refs: Vec<SubdivRoadRef> = if has_routing {
+            let mut polyline_road_def: Vec<Option<usize>> = vec![None; mp_file.polylines.len()];
+            let mut rd_idx = 0usize;
+            for (pi, pl) in mp_file.polylines.iter().enumerate() {
+                if pl.routing.is_some() {
+                    polyline_road_def[pi] = Some(rd_idx);
+                    rd_idx += 1;
+                }
+            }
+            let mut refs = Vec::new();
+            for (i, _) in levels.iter().enumerate() {
+                let subdiv_number = (i + 1) as u16;
+                let mut polyline_index: u8 = 0;
+                for (pi, pl) in mp_file.polylines.iter().enumerate() {
+                    if pl.end_level.unwrap_or(u8::MAX) >= i as u8 {
+                        if let Some(rd_idx) = polyline_road_def[pi] {
+                            refs.push(SubdivRoadRef {
+                                road_def_idx: rd_idx,
+                                subdiv_number,
+                                polyline_index,
+                            });
+                        }
+                        polyline_index = polyline_index.saturating_add(1);
+                    }
+                }
+            }
+            refs
+        } else {
+            Vec::new()
+        };
 
-        // Pass 2: build TRE with real RGN subdivision offsets (unchanged).
-        let tre_data = TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets);
+        // Pass 1: build NET → road_offsets used by RGN for cross-references.
+        // NET is built before RGN so that NET1 offsets are available for embedding in RGN.
+        let net = if has_routing {
+            let net_result =
+                NetWriter::build(&road_network, &lbl.label_offsets, &subdiv_road_refs, &mp_file.polylines);
+            tracing::info!(
+                road_defs = road_network.road_defs.len(),
+                net1_size = net_result.data.len() - 55,
+                net3_records = road_network.road_defs.iter().filter(|r| r.label.is_some()).count(),
+                "NET subfile encoded"
+            );
+            Some(net_result)
+        } else {
+            None
+        };
+
+        // Pass 2: build RGN with LBL offsets and NET1 cross-references.
+        let net_offsets: Vec<u32> = net.as_ref().map_or_else(Vec::new, |n| n.road_offsets.clone());
+        let rgn = RgnWriter::build_with_net_offsets(
+            mp_file,
+            &levels,
+            &lbl.label_offsets,
+            &net_offsets,
+        );
+
+        // Pass 3: build TRE with RGN subdivision offsets and routing flag.
+        let tre_data = if has_routing {
+            TreWriter::build_with_rgn_offsets_and_routing(mp_file, &rgn.subdivision_offsets)
+        } else {
+            TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets)
+        };
 
         fs.add_subfile(map_id, "TRE", tre_data)?;
         fs.add_subfile(map_id, "RGN", rgn.data)?;
         fs.add_subfile(map_id, "LBL", lbl.data)?;
+        if let Some(ref net_result) = net {
+            fs.add_subfile(map_id, "NET", net_result.data.clone())?;
+        }
 
         // Capture per-subfile stats before consuming fs into bytes.
-        // Order must match add_subfile calls above: TRE=0, RGN=1, LBL=2.
-        // Guard the index-based access below: entries must be in TRE=0, RGN=1, LBL=2 order.
+        let entry_count = fs.entries.len();
+        let expected = if has_routing { 4 } else { 3 };
         assert!(
-            fs.entries.len() == 3,
-            "expected exactly 3 subfile entries (TRE, RGN, LBL), got {}",
-            fs.entries.len()
+            entry_count == expected,
+            "expected {} subfile entries, got {}",
+            expected,
+            entry_count
         );
         let (tre_offset_b, tre_size) = (
             fs.entries[0].0.block_start as u64 * block_size as u64,
@@ -118,18 +181,39 @@ impl ImgWriter {
         // Serialise.
         let bytes = fs.to_bytes();
 
-        tracing::info!(
-            map_id = %map_id,
-            block_size = block_size,
-            total_bytes = bytes.len(),
-            tre_offset = tre_offset_b,
-            tre_size = tre_size,
-            rgn_offset = rgn_offset_b,
-            rgn_size = rgn_size,
-            lbl_offset = lbl_offset_b,
-            lbl_size = lbl_size,
-            "IMG written"
-        );
+        if has_routing {
+            let (net_offset_b, net_size) = (
+                fs.entries[3].0.block_start as u64 * block_size as u64,
+                fs.entries[3].0.size_allocated,
+            );
+            tracing::info!(
+                map_id = %map_id,
+                block_size = block_size,
+                total_bytes = bytes.len(),
+                tre_offset = tre_offset_b,
+                tre_size = tre_size,
+                rgn_offset = rgn_offset_b,
+                rgn_size = rgn_size,
+                lbl_offset = lbl_offset_b,
+                lbl_size = lbl_size,
+                net_offset = net_offset_b,
+                net_size = net_size,
+                "IMG written (with routing)"
+            );
+        } else {
+            tracing::info!(
+                map_id = %map_id,
+                block_size = block_size,
+                total_bytes = bytes.len(),
+                tre_offset = tre_offset_b,
+                tre_size = tre_size,
+                rgn_offset = rgn_offset_b,
+                rgn_size = rgn_size,
+                lbl_offset = lbl_offset_b,
+                lbl_size = lbl_size,
+                "IMG written"
+            );
+        }
 
         std::fs::write(output, &bytes)?;
         Ok(())

@@ -200,6 +200,8 @@ pub struct Subdivision {
     pub rgn_offset: u32,
     /// True if this subdivision contains indexed points (POI).
     pub has_points: bool,
+    /// True if this subdivision contains indexed/routable lines (NET routing).
+    pub has_indexed_lines: bool,
     /// True if this subdivision contains indexed polylines.
     pub has_polylines: bool,
     /// True if this subdivision contains polygons.
@@ -231,10 +233,11 @@ impl Subdivision {
 
         // 0x03: data_flags — Garmin format (mkgmap TREFile.java):
         //   bit 0 (0x01) = indexed points
-        //   bit 1 (0x02) = indexed lines / routing (always 0 until Epic 14 NET/NOD)
+        //   bit 1 (0x02) = indexed lines / routing (set when NET subfile present)
         //   bit 2 (0x04) = polylines
         //   bit 3 (0x08) = polygons
         buf[3] = (self.has_points as u8)
+            | ((self.has_indexed_lines as u8) << 1)
             | ((self.has_polylines as u8) << 2)
             | ((self.has_polygons as u8) << 3);
 
@@ -302,6 +305,7 @@ impl Subdivision {
         Self {
             rgn_offset: 0,
             has_points,
+            has_indexed_lines: false,
             has_polylines,
             has_polygons,
             lon_center,
@@ -390,6 +394,20 @@ impl TreWriter {
     ///
     /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
     pub fn build_with_rgn_offsets(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
+        Self::build_tre_inner(mp, rgn_offsets, false)
+    }
+
+    /// Build the TRE subfile with routing flag (bit 1 = has_indexed_lines) active.
+    ///
+    /// Same as [`build_with_rgn_offsets`] but sets the `has_indexed_lines` flag
+    /// on subdivisions that contain routable polylines. This tells the GPS that
+    /// NET cross-references are present in the RGN data.
+    pub fn build_with_rgn_offsets_and_routing(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
+        Self::build_tre_inner(mp, rgn_offsets, true)
+    }
+
+    /// Shared implementation for TRE building with optional routing support.
+    fn build_tre_inner(mp: &MpFile, rgn_offsets: &[u32], routing: bool) -> Vec<u8> {
         // Step 1: bounding box in degrees
         let (min_lat, max_lat, min_lon, max_lon) = Self::compute_bounds(mp);
 
@@ -433,6 +451,16 @@ impl TreWriter {
                     .polygons
                     .iter()
                     .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                // Routing: set has_indexed_lines when routing is active and routable polylines
+                // are visible at this level.
+                let has_indexed_lines = routing
+                    && mp
+                        .polylines
+                        .iter()
+                        .any(|f| {
+                            f.routing.is_some()
+                                && f.end_level.unwrap_or(u8::MAX) >= i as u8
+                        });
                 let mut s = Subdivision::compute_subdivision(
                     bounds_g,
                     has_points,
@@ -441,6 +469,7 @@ impl TreWriter {
                     true,
                     next_idx,
                 );
+                s.has_indexed_lines = has_indexed_lines;
                 if i < rgn_offsets.len() {
                     s.rgn_offset = rgn_offsets[i];
                 }

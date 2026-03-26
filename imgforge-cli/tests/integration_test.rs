@@ -998,3 +998,317 @@ fn test_routing_graph_compile_no_crash() {
     let bytes = std::fs::read(tmp.path()).unwrap();
     assert_eq!(&bytes[0x002..0x008], b"GARMIN");
 }
+
+// ----------------------------------------------------------------
+// Story 14.3: NET Writer integration tests
+// ----------------------------------------------------------------
+
+#[test]
+fn test_net_validation_compile_produces_net_subfile() {
+    // Task 6.1/5.4: Compile net_validation.mp → .img contains NET subfile
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    assert!(bytes.len() > 512, "IMG output must be non-empty");
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "valid GARMIN header");
+
+    // With routing, 4 subfiles: TRE(0), RGN(1), LBL(2), NET(3).
+    // NET directory entry is at dir_start + 3*32.
+    let dir_start = 512usize;
+    let net_dirent = dir_start + 3 * 32;
+
+    // Read size_used for NET subfile (offset 0x12 within dirent)
+    let net_size = u32::from_le_bytes([
+        bytes[net_dirent + 0x12],
+        bytes[net_dirent + 0x13],
+        bytes[net_dirent + 0x14],
+        bytes[net_dirent + 0x15],
+    ]);
+    assert!(
+        net_size > 55,
+        "NET subfile must be > 55 bytes (header=55), got {}",
+        net_size
+    );
+}
+
+#[test]
+fn test_net_validation_header_parsable() {
+    // Task 5.4: NET header is parsable — signature "GARMIN NET" at correct offset
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Find NET subfile start: dirent[3].block_start × block_size
+    let dir_start = 512usize;
+    let net_dirent = dir_start + 3 * 32;
+    let block_start = u16::from_le_bytes([
+        bytes[net_dirent + 0x0C],
+        bytes[net_dirent + 0x0D],
+    ]) as usize;
+    let block_size = 512usize; // exponent=9 in ImgWriter::write
+    let net_start = block_start * block_size;
+
+    // NET header: "GARMIN NET" at offset 0x0B from subfile start
+    assert_eq!(
+        &bytes[net_start + 0x0B..net_start + 0x15],
+        b"GARMIN NET",
+        "NET subfile must contain GARMIN NET signature"
+    );
+
+    // NET1 length > 0
+    let net1_len = u32::from_le_bytes([
+        bytes[net_start + 0x19],
+        bytes[net_start + 0x1A],
+        bytes[net_start + 0x1B],
+        bytes[net_start + 0x1C],
+    ]);
+    assert!(net1_len > 0, "NET1 section length must be > 0, got {}", net1_len);
+
+    // NET3 length = 5 roads with labels × 3 bytes = 15 bytes
+    let net3_len = u32::from_le_bytes([
+        bytes[net_start + 0x2B],
+        bytes[net_start + 0x2C],
+        bytes[net_start + 0x2D],
+        bytes[net_start + 0x2E],
+    ]);
+    assert_eq!(net3_len, 15, "5 labeled roads → 5 NET3 records × 3 bytes = 15");
+}
+
+#[test]
+fn test_net_validation_net1_oneway_flag() {
+    // Task 6.3: Verify NET1 flags — oneway road has NET_FLAG_ONEWAY set
+    use imgforge_cli::img::net::NetWriter;
+    use imgforge_cli::img::lbl::LblWriter;
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+    let lbl = LblWriter::build(&mp);
+    let net = NetWriter::build(&network, &lbl.label_offsets, &[], &mp.polylines);
+
+    // Road 3 (index 2): "Rue Victor Hugo", oneway=true
+    // Its NET1 record flags should have NET_FLAG_ONEWAY (0x02) set
+    assert!(net.road_offsets.len() >= 3);
+    let offset = net.road_offsets[2] as usize;
+    let flags = net.data[55 + offset + 3]; // header(55) + label(3) → flags at byte 3
+
+    assert_ne!(flags & 0x02, 0, "oneway road must have NET_FLAG_ONEWAY (0x02) set, got 0x{:02X}", flags);
+    assert_ne!(flags & 0x04, 0, "NET_FLAG_UNK1 (0x04) must always be set, got 0x{:02X}", flags);
+    assert_ne!(flags & 0x40, 0, "NET_FLAG_NODINFO (0x40) must be set, got 0x{:02X}", flags);
+}
+
+#[test]
+fn test_net_validation_net1_bidirectional_flag() {
+    // Task 6.3: Bidirectional road does NOT have NET_FLAG_ONEWAY
+    use imgforge_cli::img::net::NetWriter;
+    use imgforge_cli::img::lbl::LblWriter;
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+    let lbl = LblWriter::build(&mp);
+    let net = NetWriter::build(&network, &lbl.label_offsets, &[], &mp.polylines);
+
+    // Road 1 (index 0): "A480", bidirectional (oneway=false)
+    let offset = net.road_offsets[0] as usize;
+    let flags = net.data[55 + offset + 3];
+
+    assert_eq!(flags & 0x02, 0, "bidirectional road must NOT have NET_FLAG_ONEWAY, got 0x{:02X}", flags);
+    assert_ne!(flags & 0x04, 0, "NET_FLAG_UNK1 must be set");
+}
+
+#[test]
+fn test_net_validation_net1_road_length() {
+    // Task 6.3: Verify road length encoding (metres / 4.8)
+    use imgforge_cli::img::net::NetWriter;
+    use imgforge_cli::img::lbl::LblWriter;
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+    let lbl = LblWriter::build(&mp);
+    let net = NetWriter::build(&network, &lbl.label_offsets, &[], &mp.polylines);
+
+    // Road 1: A480, coords (45.19, 5.72) → (45.19, 5.74)
+    // Horizontal distance at lat=45.19° ≈ 0.02° × cos(45.19°) × 111320 ≈ 1568m
+    // Raw = round(1568 / 4.8) ≈ 327
+    let offset = net.road_offsets[0] as usize;
+    let raw_len = u32::from_le_bytes([
+        net.data[55 + offset + 4],
+        net.data[55 + offset + 5],
+        net.data[55 + offset + 6],
+        0,
+    ]);
+    // Allow ±50 tolerance for haversine rounding
+    assert!(
+        (250..450).contains(&raw_len),
+        "A480 road length raw ≈ 327 (1568m / 4.8), got {} ({}m)",
+        raw_len,
+        (raw_len as f64) * 4.8
+    );
+}
+
+#[test]
+fn test_net_validation_net3_sorted_by_name() {
+    // Task 6.4: NET3 records must be sorted by route name
+    use imgforge_cli::img::net::NetWriter;
+    use imgforge_cli::img::lbl::LblWriter;
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+    let lbl = LblWriter::build(&mp);
+    let net = NetWriter::build(&network, &lbl.label_offsets, &[], &mp.polylines);
+
+    // 5 routable labeled roads → 5 NET3 records
+    // Expected sort order (case-insensitive):
+    //   A480, D1075, Rond-point des Alpes, Rue Victor Hugo, Zone Industrielle
+    let net3_offset = u32::from_le_bytes([
+        net.data[0x27], net.data[0x28], net.data[0x29], net.data[0x2A],
+    ]) as usize;
+    let net3_len = u32::from_le_bytes([
+        net.data[0x2B], net.data[0x2C], net.data[0x2D], net.data[0x2E],
+    ]) as usize;
+
+    assert_eq!(net3_len, 15, "5 records × 3 bytes");
+
+    // Extract NET1 offsets from NET3 records
+    let mut net3_offsets = Vec::new();
+    for i in 0..5 {
+        let base = net3_offset + i * 3;
+        let val = u32::from_le_bytes([net.data[base], net.data[base + 1], net.data[base + 2], 0]);
+        net3_offsets.push(val & 0x3F_FFFF);
+    }
+
+    // The offsets should map to roads in alphabetical order:
+    // A480 → road_offsets[0], D1075 → road_offsets[1], Rond-point → road_offsets[3],
+    // Rue Victor Hugo → road_offsets[2], Zone Industrielle → road_offsets[4]
+    assert_eq!(net3_offsets[0], net.road_offsets[0], "first NET3: A480");
+    assert_eq!(net3_offsets[1], net.road_offsets[1], "second NET3: D1075");
+    assert_eq!(net3_offsets[2], net.road_offsets[3], "third NET3: Rond-point des Alpes");
+    assert_eq!(net3_offsets[3], net.road_offsets[2], "fourth NET3: Rue Victor Hugo");
+    assert_eq!(net3_offsets[4], net.road_offsets[4], "fifth NET3: Zone Industrielle");
+}
+
+#[test]
+fn test_net_validation_tre_routing_bit() {
+    // Task 6.5: TRE data_flags bit 1 is set when routing is present
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Find TRE subfile: first dirent → block_start × block_size
+    let dir_start = 512usize;
+    let tre_dirent = dir_start; // TRE is dirent 0
+    let block_start = u16::from_le_bytes([
+        bytes[tre_dirent + 0x0C],
+        bytes[tre_dirent + 0x0D],
+    ]) as usize;
+    let tre_start = block_start * 512;
+
+    // TRE header is 148 bytes. Levels section follows.
+    // With 1 level: levels = 4 bytes, subdivisions = 16 bytes
+    // First subdivision starts at tre_start + 148 + 4
+    let subdiv_start = tre_start + 148 + 4;
+
+    // data_flags at byte 0x03 within subdivision
+    let data_flags = bytes[subdiv_start + 3];
+
+    // bit 1 (0x02) = has_indexed_lines (routing)
+    assert_ne!(
+        data_flags & 0x02,
+        0,
+        "TRE data_flags bit 1 (has_indexed_lines) must be set when routing is present, got 0x{:02X}",
+        data_flags
+    );
+}
+
+#[test]
+fn test_net_validation_no_regression() {
+    // Task 6.6: Full test suite — compile routing_graph.mp (existing fixture) still works
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    assert!(bytes.len() > 512);
+}
+
+#[test]
+fn test_net_validation_minimal_no_routing_still_works() {
+    // Regression: minimal_for_img.mp (no routing) should still compile without NET subfile
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+
+    // Only 3 subfile directory entries (TRE, RGN, LBL — no NET)
+    let dir_start = 512usize;
+    // Check that there's no 4th dirent with valid content
+    // (the 4th dirent would be at dir_start + 3*32 = dir_start + 96)
+    // If no NET, the 4th slot should be zero/unused
+    let fourth_dirent_start = dir_start + 3 * 32;
+    if fourth_dirent_start + 32 <= bytes.len() {
+        let size_used = u32::from_le_bytes([
+            bytes[fourth_dirent_start + 0x12],
+            bytes[fourth_dirent_start + 0x13],
+            bytes[fourth_dirent_start + 0x14],
+            bytes[fourth_dirent_start + 0x15],
+        ]);
+        // If there's no NET subfile, this should be 0 or the 4th dirent doesn't exist
+        assert_eq!(
+            size_used, 0,
+            "minimal_for_img.mp should have no NET subfile (4th dirent size_used should be 0)"
+        );
+    }
+}
+
+#[test]
+fn test_net_validation_roundabout_preserved_in_road_def() {
+    // L1: AC3 — roundabout flag preserved in RoadDef after graph building
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Road 4 (index 3): "Rond-point des Alpes", Roundabout=1
+    assert!(
+        network.road_defs.len() >= 4,
+        "expected at least 4 road_defs, got {}",
+        network.road_defs.len()
+    );
+    assert!(
+        network.road_defs[3].roundabout,
+        "road_def[3] (Rond-point des Alpes) must have roundabout=true"
+    );
+    // Non-roundabout roads must NOT have the flag
+    assert!(
+        !network.road_defs[0].roundabout,
+        "road_def[0] (A480) must not be a roundabout"
+    );
+}
+
+#[test]
+fn test_net_validation_toll_preserved_in_road_def() {
+    // L2: toll flag preserved in RoadDef for later use by NOD writer
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Road 1 (index 0): "A480", toll=true
+    assert!(
+        network.road_defs[0].toll,
+        "road_def[0] (A480) must have toll=true"
+    );
+    // Road 2 (index 1): "D1075", toll=false
+    assert!(
+        !network.road_defs[1].toll,
+        "road_def[1] (D1075) must have toll=false"
+    );
+}

@@ -323,6 +323,9 @@ pub struct RgnBuildResult {
     /// `subdivision_offsets[0]` = 0 (first level starts at the beginning of data section).
     /// `subdivision_offsets[i]` = total bytes written for levels 0..i.
     pub subdivision_offsets: Vec<u32>,
+    /// Cross-references from RGN polylines to NET road definitions.
+    /// Populated only when `build_with_net_offsets` is used.
+    pub subdiv_road_refs: Vec<crate::img::net::SubdivRoadRef>,
 }
 
 /// Builds the RGN subfile binary from a parsed Polish Map.
@@ -345,6 +348,17 @@ impl RgnWriter {
 
     /// Build the complete RGN subfile binary with real LBL label offsets.
     ///
+    /// Convenience wrapper without NET offsets.
+    pub fn build_with_lbl_offsets(
+        mp: &MpFile,
+        levels: &[MapLevel],
+        label_offsets: &HashMap<String, u32>,
+    ) -> RgnBuildResult {
+        Self::build_with_net_offsets(mp, levels, label_offsets, &[])
+    }
+
+    /// Build the complete RGN subfile binary with real LBL label offsets and NET1 cross-references.
+    ///
     /// For each level `i`, features are filtered by `end_level >= i` (i.e. a feature
     /// with `end_level = 0` appears only in level 0; `None` means all levels).
     ///
@@ -354,10 +368,14 @@ impl RgnWriter {
     /// `label_offsets`: map from label string → offset from the start of the LBL data
     /// section (as returned by [`LblWriter::build`]). An empty map produces stub
     /// 0x000000 offsets.
-    pub fn build_with_lbl_offsets(
+    ///
+    /// `net_road_offsets`: for each routable polyline (by `polyline_idx` in RoadDef),
+    /// the byte offset of its NET1 record. Empty slice = no NET cross-references.
+    pub fn build_with_net_offsets(
         mp: &MpFile,
         levels: &[MapLevel],
         label_offsets: &HashMap<String, u32>,
+        net_road_offsets: &[u32],
     ) -> RgnBuildResult {
         let n = levels.len();
 
@@ -370,14 +388,35 @@ impl RgnWriter {
         let center_lat_g = (max_lat_g + min_lat_g) / 2;
         let center_lon_g = (max_lon_g + min_lon_g) / 2;
 
+        // Build mapping: polyline original index → NET1 offset (if routable).
+        // net_road_offsets is indexed by road_def_idx; we need polyline_idx → net1_offset.
+        // RoadDef.polyline_idx maps road_def → polyline. We invert this.
+        let has_net = !net_road_offsets.is_empty();
+        let mut polyline_net_offset: HashMap<usize, (u32, usize)> = HashMap::new();
+        if has_net {
+            // We need to find which polylines are routable. Since we don't have the
+            // RoadNetwork here, we use the polyline's `routing` field directly.
+            // net_road_offsets[road_def_idx] = NET1 offset. road_def_idx corresponds to
+            // the order of routable polylines (those with routing.is_some()).
+            let mut road_def_idx = 0usize;
+            for (pi, pl) in mp.polylines.iter().enumerate() {
+                if pl.routing.is_some() && road_def_idx < net_road_offsets.len() {
+                    polyline_net_offset.insert(pi, (net_road_offsets[road_def_idx], road_def_idx));
+                    road_def_idx += 1;
+                }
+            }
+        }
+
         let mut feature_data: Vec<u8> = Vec::new();
         let mut subdivision_offsets = Vec::with_capacity(n);
+        let mut subdiv_road_refs: Vec<crate::img::net::SubdivRoadRef> = Vec::new();
 
         for (i, level) in levels.iter().enumerate() {
             // Record the offset into the feature data for this level.
             subdivision_offsets.push(feature_data.len() as u32);
 
             let bits = level.bits_per_coord;
+            let subdiv_number = (i + 1) as u16; // 1-based
 
             // Filter features: include if end_level >= level_index, or if end_level is unset.
             let points: Vec<_> = mp
@@ -385,10 +424,12 @@ impl RgnWriter {
                 .iter()
                 .filter(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8)
                 .collect();
-            let polylines: Vec<_> = mp
+            // Keep original index for polylines (needed for NET cross-reference).
+            let polylines: Vec<(usize, &MpPolyline)> = mp
                 .polylines
                 .iter()
-                .filter(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8)
+                .enumerate()
+                .filter(|(_, f)| f.end_level.unwrap_or(u8::MAX) >= i as u8)
                 .collect();
             let polygons: Vec<_> = mp
                 .polygons
@@ -410,9 +451,10 @@ impl RgnWriter {
                 feature_data.extend_from_slice(&record);
             }
 
-            // Write polyline records.
+            // Write polyline records with optional NET1 cross-references.
             let line_count = polylines.len();
-            for (j, line) in polylines.iter().enumerate() {
+            let mut polyline_index_in_subdiv: u8 = 0;
+            for (j, (orig_idx, line)) in polylines.iter().enumerate() {
                 let last = j + 1 == line_count;
                 let lbl_offset = line
                     .label
@@ -422,6 +464,21 @@ impl RgnWriter {
                 let record =
                     encode_polyline_record(line, center_lat_g, center_lon_g, bits, last, lbl_offset);
                 feature_data.extend_from_slice(&record);
+
+                // Append NET1 offset (3 bytes) for routable polylines.
+                if let Some(&(net1_offset, road_def_idx)) = polyline_net_offset.get(orig_idx) {
+                    let net_ref: u32 = net1_offset & 0x003F_FFFF; // bits 0-21
+                    feature_data.push((net_ref & 0xFF) as u8);
+                    feature_data.push(((net_ref >> 8) & 0xFF) as u8);
+                    feature_data.push(((net_ref >> 16) & 0xFF) as u8);
+
+                    subdiv_road_refs.push(crate::img::net::SubdivRoadRef {
+                        road_def_idx,
+                        subdiv_number,
+                        polyline_index: polyline_index_in_subdiv,
+                    });
+                }
+                polyline_index_in_subdiv = polyline_index_in_subdiv.saturating_add(1);
             }
 
             // Write polygon records.
@@ -449,6 +506,7 @@ impl RgnWriter {
         RgnBuildResult {
             data,
             subdivision_offsets,
+            subdiv_road_refs,
         }
     }
 }
