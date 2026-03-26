@@ -83,8 +83,10 @@ impl TileExportSummary {
 
 /// Result of processing a single tile.
 /// Story 11.1 — Task 1: Returned by `process_single_tile()`.
+/// Story 11.2 — Task 2: Made pub for production-code unit tests.
 #[derive(Debug)]
-enum TileOutcome {
+#[doc(hidden)]
+pub enum TileOutcome {
     /// Tile exported successfully with stats.
     Success(TileResult),
     /// Tile skipped (empty features, already exists, etc.).
@@ -95,13 +97,89 @@ enum TileOutcome {
 
 /// Successful tile result with export statistics.
 /// Story 11.1 — Task 1: Aggregated by `aggregate_outcome()`.
+/// Story 11.2 — Task 2: Made pub for production-code unit tests.
 #[derive(Debug)]
-struct TileResult {
-    stats: ExportStats,
-    validation_stats: ValidationStats,
-    unsupported: UnsupportedTypeStats,
-    multi_geom: MultiGeometryStats,
-    rules_stats: RuleStats,
+#[doc(hidden)]
+pub struct TileResult {
+    pub stats: ExportStats,
+    pub validation_stats: ValidationStats,
+    pub unsupported: UnsupportedTypeStats,
+    pub multi_geom: MultiGeometryStats,
+    pub rules_stats: RuleStats,
+}
+
+/// Accumulateurs partagés thread-safe pour le pipeline parallèle.
+/// Story 11.2 — Task 1: Regroupe tous les compteurs atomiques et collections Mutex
+/// utilisés par process_and_aggregate() et aggregate_outcome().
+#[derive(Debug)]
+#[doc(hidden)]
+pub struct SharedAccumulators {
+    // Compteurs atomiques (lock-free)
+    pub tiles_succeeded: AtomicUsize,
+    pub tiles_failed: AtomicUsize,
+    pub tiles_skipped: AtomicUsize,
+    pub tiles_skipped_existing: AtomicUsize,
+
+    // Collections protégées par Mutex
+    pub global_stats: Mutex<ExportStats>,
+    pub export_errors: Mutex<Vec<TileExportError>>,
+    pub global_validation_stats: Mutex<ValidationStats>,
+    pub all_unsupported: Mutex<UnsupportedTypeStats>,
+    pub all_multi_geom: Mutex<MultiGeometryStats>,
+    pub rules_stats: Mutex<RuleStats>,
+}
+
+impl Default for SharedAccumulators {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SharedAccumulators {
+    pub fn new() -> Self {
+        Self {
+            tiles_succeeded: AtomicUsize::new(0),
+            tiles_failed: AtomicUsize::new(0),
+            tiles_skipped: AtomicUsize::new(0),
+            tiles_skipped_existing: AtomicUsize::new(0),
+            global_stats: Mutex::new(ExportStats::default()),
+            export_errors: Mutex::new(Vec::new()),
+            global_validation_stats: Mutex::new(ValidationStats::default()),
+            all_unsupported: Mutex::new(UnsupportedTypeStats::default()),
+            all_multi_geom: Mutex::new(MultiGeometryStats::default()),
+            rules_stats: Mutex::new(RuleStats::default()),
+        }
+    }
+
+    /// Extrait un TileExportSummary en consommant les Mutex.
+    /// Appelé une fois après la fin du pipeline parallèle.
+    pub fn into_summary(self) -> (TileExportSummary, usize, UnsupportedTypeStats, MultiGeometryStats, RuleStats) {
+        let tiles_succeeded = self.tiles_succeeded.load(Ordering::Relaxed);
+        let tiles_failed = self.tiles_failed.load(Ordering::Relaxed);
+        let tiles_skipped = self.tiles_skipped.load(Ordering::Relaxed);
+        let tiles_skipped_existing = self.tiles_skipped_existing.load(Ordering::Relaxed);
+
+        let global_stats = self.global_stats.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let export_errors = self.export_errors.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let global_validation_stats = self.global_validation_stats.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let all_unsupported = self.all_unsupported.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let all_multi_geom = self.all_multi_geom.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+        let rules_stats = self.rules_stats.into_inner()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let mut summary = TileExportSummary::new(
+            tiles_succeeded, tiles_failed, tiles_skipped,
+            global_stats, export_errors,
+        );
+        summary.validation_stats = Some(global_validation_stats);
+
+        (summary, tiles_skipped_existing, all_unsupported, all_multi_geom, rules_stats)
+    }
 }
 
 /// Immutable context shared across all tile workers.
@@ -343,31 +421,21 @@ fn process_single_tile(
 }
 
 /// Aggregate a `TileOutcome` into the thread-safe accumulators.
-#[allow(clippy::too_many_arguments)]
-fn aggregate_outcome(
-    outcome: TileOutcome,
-    tiles_succeeded: &AtomicUsize,
-    tiles_failed: &AtomicUsize,
-    tiles_skipped: &AtomicUsize,
-    tiles_skipped_existing: &AtomicUsize,
-    global_stats: &Mutex<ExportStats>,
-    export_errors: &Mutex<Vec<TileExportError>>,
-    global_validation_stats: &Mutex<ValidationStats>,
-    all_unsupported: &Mutex<UnsupportedTypeStats>,
-    all_multi_geom: &Mutex<MultiGeometryStats>,
-    rules_stats: &Mutex<RuleStats>,
-) {
+/// Story 11.2 — Task 1: Refactored from 11 params to 2 params.
+/// Story 11.2 — Task 2: Made pub for production-code unit tests.
+#[doc(hidden)]
+pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators) {
     match outcome {
         TileOutcome::Success(result) => {
-            tiles_succeeded.fetch_add(1, Ordering::Relaxed);
+            accumulators.tiles_succeeded.fetch_add(1, Ordering::Relaxed);
             {
-                let mut stats = global_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut stats = accumulators.global_stats.lock().unwrap_or_else(|e| e.into_inner());
                 stats.point_count += result.stats.point_count;
                 stats.linestring_count += result.stats.linestring_count;
                 stats.polygon_count += result.stats.polygon_count;
             }
             {
-                let mut vs = global_validation_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut vs = accumulators.global_validation_stats.lock().unwrap_or_else(|e| e.into_inner());
                 vs.valid_count += result.validation_stats.valid_count;
                 vs.repaired_make_valid += result.validation_stats.repaired_make_valid;
                 vs.repaired_buffer_zero += result.validation_stats.repaired_buffer_zero;
@@ -375,15 +443,15 @@ fn aggregate_outcome(
                 vs.rejected_irrecoverable += result.validation_stats.rejected_irrecoverable;
             }
             {
-                let mut us = all_unsupported.lock().unwrap_or_else(|e| e.into_inner());
+                let mut us = accumulators.all_unsupported.lock().unwrap_or_else(|e| e.into_inner());
                 us.merge(&result.unsupported);
             }
             {
-                let mut mg = all_multi_geom.lock().unwrap_or_else(|e| e.into_inner());
+                let mut mg = accumulators.all_multi_geom.lock().unwrap_or_else(|e| e.into_inner());
                 mg.merge(&result.multi_geom);
             }
             {
-                let mut rs = rules_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut rs = accumulators.rules_stats.lock().unwrap_or_else(|e| e.into_inner());
                 rs.matched += result.rules_stats.matched;
                 rs.ignored += result.rules_stats.ignored;
                 rs.errors += result.rules_stats.errors;
@@ -396,14 +464,14 @@ fn aggregate_outcome(
             }
         }
         TileOutcome::Skipped { existing } => {
-            tiles_skipped.fetch_add(1, Ordering::Relaxed);
+            accumulators.tiles_skipped.fetch_add(1, Ordering::Relaxed);
             if existing {
-                tiles_skipped_existing.fetch_add(1, Ordering::Relaxed);
+                accumulators.tiles_skipped_existing.fetch_add(1, Ordering::Relaxed);
             }
         }
         TileOutcome::Failed(err) => {
-            tiles_failed.fetch_add(1, Ordering::Relaxed);
-            export_errors.lock().unwrap_or_else(|e| e.into_inner()).push(err);
+            accumulators.tiles_failed.fetch_add(1, Ordering::Relaxed);
+            accumulators.export_errors.lock().unwrap_or_else(|e| e.into_inner()).push(err);
         }
     }
 }
@@ -528,17 +596,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         None
     };
 
-    // Story 11.1 — Task 2: Thread-safe counters and accumulators
-    let tiles_succeeded = Arc::new(AtomicUsize::new(0));
-    let tiles_failed = Arc::new(AtomicUsize::new(0));
-    let tiles_skipped = Arc::new(AtomicUsize::new(0));
-    let tiles_skipped_existing = Arc::new(AtomicUsize::new(0));
-    let global_stats = Arc::new(Mutex::new(ExportStats::default()));
-    let export_errors: Arc<Mutex<Vec<TileExportError>>> = Arc::new(Mutex::new(Vec::new()));
-    let global_validation_stats = Arc::new(Mutex::new(ValidationStats::default()));
-    let all_unsupported = Arc::new(Mutex::new(UnsupportedTypeStats::default()));
-    let all_multi_geom = Arc::new(Mutex::new(MultiGeometryStats::default()));
-    let rules_stats = Arc::new(Mutex::new(RuleStats::default()));
+    // Story 11.2 — Task 1: Thread-safe accumulators grouped in SharedAccumulators
+    let accumulators = Arc::new(SharedAccumulators::new());
 
     // Story 8.3: Pre-calculate skip-existing flag
     let should_skip_existing =
@@ -572,23 +631,13 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Story 11.1 — Task 3 & 4: Conditional sequential/parallel execution
     let fail_fast = error_mode == ErrorMode::FailFast || args.fail_fast;
 
-    // Inner function to process one tile and aggregate results
-    #[allow(clippy::too_many_arguments)]
+    // Story 11.2 — Task 1: Refactored from 14 params to 5 params.
     fn process_and_aggregate(
         tile_bounds: &TileBounds,
         ctx: &TileContext<'_>,
         seq_counter: &AtomicUsize,
         progress: &Option<Arc<ProgressBar>>,
-        tiles_succeeded: &AtomicUsize,
-        tiles_failed: &AtomicUsize,
-        tiles_skipped: &AtomicUsize,
-        tiles_skipped_existing: &AtomicUsize,
-        global_stats: &Mutex<ExportStats>,
-        export_errors: &Mutex<Vec<TileExportError>>,
-        global_validation_stats: &Mutex<ValidationStats>,
-        all_unsupported: &Mutex<UnsupportedTypeStats>,
-        all_multi_geom: &Mutex<MultiGeometryStats>,
-        rules_stats: &Mutex<RuleStats>,
+        accumulators: &SharedAccumulators,
     ) -> Result<(), TileExportError> {
         let seq = seq_counter.fetch_add(1, Ordering::Relaxed) + 1; // 1-based
 
@@ -602,19 +651,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             }
         };
 
-        aggregate_outcome(
-            outcome,
-            tiles_succeeded,
-            tiles_failed,
-            tiles_skipped,
-            tiles_skipped_existing,
-            global_stats,
-            export_errors,
-            global_validation_stats,
-            all_unsupported,
-            all_multi_geom,
-            rules_stats,
-        );
+        aggregate_outcome(outcome, accumulators);
 
         if let Some(ref pb) = progress {
             pb.inc(1);
@@ -628,19 +665,13 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         if fail_fast {
             for tile_bounds in &tiles {
                 process_and_aggregate(
-                    tile_bounds, &ctx, &seq_counter, &progress,
-                    &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
-                    &global_stats, &export_errors, &global_validation_stats,
-                    &all_unsupported, &all_multi_geom, &rules_stats,
+                    tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
                 ).map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
             }
         } else {
             for tile_bounds in &tiles {
                 let _ = process_and_aggregate(
-                    tile_bounds, &ctx, &seq_counter, &progress,
-                    &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
-                    &global_stats, &export_errors, &global_validation_stats,
-                    &all_unsupported, &all_multi_geom, &rules_stats,
+                    tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
                 );
             }
         }
@@ -656,20 +687,14 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                 // Story 11.1 — Task 4: try_for_each stops on first error (AC6)
                 tiles.par_iter().try_for_each(|tile_bounds| {
                     process_and_aggregate(
-                        tile_bounds, &ctx, &seq_counter, &progress,
-                        &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
-                        &global_stats, &export_errors, &global_validation_stats,
-                        &all_unsupported, &all_multi_geom, &rules_stats,
+                        tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
                     )
                 })
             } else {
                 // Continue mode: process all tiles, collect errors (AC5)
                 tiles.par_iter().for_each(|tile_bounds| {
                     let _ = process_and_aggregate(
-                        tile_bounds, &ctx, &seq_counter, &progress,
-                        &tiles_succeeded, &tiles_failed, &tiles_skipped, &tiles_skipped_existing,
-                        &global_stats, &export_errors, &global_validation_stats,
-                        &all_unsupported, &all_multi_geom, &rules_stats,
+                        tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
                     );
                 });
                 Ok(())
@@ -683,48 +708,15 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         }
     }
 
-    // Extract final values from thread-safe accumulators
-    let tiles_succeeded = tiles_succeeded.load(Ordering::Relaxed);
-    let tiles_failed = tiles_failed.load(Ordering::Relaxed);
-    let tiles_skipped = tiles_skipped.load(Ordering::Relaxed);
-    let tiles_skipped_existing = tiles_skipped_existing.load(Ordering::Relaxed);
-    let global_stats = Arc::try_unwrap(global_stats)
-        .map_err(|_| anyhow::anyhow!("global_stats Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    let export_errors = Arc::try_unwrap(export_errors)
-        .map_err(|_| anyhow::anyhow!("export_errors Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    let global_validation_stats = Arc::try_unwrap(global_validation_stats)
-        .map_err(|_| anyhow::anyhow!("validation_stats Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    let all_unsupported = Arc::try_unwrap(all_unsupported)
-        .map_err(|_| anyhow::anyhow!("all_unsupported Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    let all_multi_geom = Arc::try_unwrap(all_multi_geom)
-        .map_err(|_| anyhow::anyhow!("all_multi_geom Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
-    let rules_stats = Arc::try_unwrap(rules_stats)
-        .map_err(|_| anyhow::anyhow!("rules_stats Arc still has active references"))?
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
+    // Story 11.2 — Task 1: Extract final values via into_summary()
+    let accumulators = Arc::try_unwrap(accumulators)
+        .map_err(|_| anyhow::anyhow!("accumulators Arc still has active references"))?;
+    let (summary, tiles_skipped_existing, all_unsupported, all_multi_geom, rules_stats) =
+        accumulators.into_summary();
 
     // ========================================================================
     // Phase 3: Reporting
     // ========================================================================
-
-    let mut summary = TileExportSummary::new(
-        tiles_succeeded,
-        tiles_failed,
-        tiles_skipped,
-        global_stats,
-        export_errors,
-    );
-    summary.validation_stats = Some(global_validation_stats);
 
     // Finalize progress bar
     if let Some(pb) = progress {

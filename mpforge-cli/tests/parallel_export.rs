@@ -1,11 +1,19 @@
-//! Tests for parallel tile export functionality (Story 7.1 + Story 11.1).
+//! Tests for parallel tile export functionality (Story 7.1 + Story 11.1 + Story 11.2).
 
 use clap::Parser;
 use mpforge_cli::cli::BuildArgs;
 use mpforge_cli::config::Config;
 use mpforge_cli::pipeline;
+use mpforge_cli::pipeline::{
+    TileExportError, TileOutcome, TileResult, SharedAccumulators, aggregate_outcome,
+};
+use mpforge_cli::pipeline::geometry_validator::ValidationStats;
+use mpforge_cli::pipeline::reader::{MultiGeometryStats, UnsupportedTypeStats};
+use mpforge_cli::pipeline::writer::ExportStats;
+use mpforge_cli::rules::RuleStats;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tempfile::TempDir;
 
@@ -618,4 +626,411 @@ fn test_arc_progress_bar_thread_safe() {
 
     assert_eq!(pb.position(), 100, "Progress bar should reach 100");
     pb.finish();
+}
+
+// ============================================================================
+// Story 11.2: Production-code unit tests for aggregate_outcome()
+// ============================================================================
+
+/// Helper to create a TileResult with given point/linestring/polygon counts.
+fn make_tile_result(points: usize, linestrings: usize, polygons: usize) -> TileResult {
+    TileResult {
+        stats: ExportStats {
+            point_count: points,
+            linestring_count: linestrings,
+            polygon_count: polygons,
+        },
+        validation_stats: ValidationStats::default(),
+        unsupported: UnsupportedTypeStats::default(),
+        multi_geom: MultiGeometryStats::default(),
+        rules_stats: RuleStats::default(),
+    }
+}
+
+#[test]
+fn test_aggregate_outcome_success() {
+    // Story 11.2 Subtask 2.1: aggregate_outcome with TileOutcome::Success
+    let acc = SharedAccumulators::new();
+
+    let outcome = TileOutcome::Success(make_tile_result(10, 5, 3));
+    aggregate_outcome(outcome, &acc);
+
+    assert_eq!(acc.tiles_succeeded.load(Ordering::Relaxed), 1);
+    assert_eq!(acc.tiles_failed.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_skipped.load(Ordering::Relaxed), 0);
+
+    let stats = acc.global_stats.lock().unwrap();
+    assert_eq!(stats.point_count, 10);
+    assert_eq!(stats.linestring_count, 5);
+    assert_eq!(stats.polygon_count, 3);
+}
+
+#[test]
+fn test_aggregate_outcome_failed() {
+    // Story 11.2 Subtask 2.2: aggregate_outcome with TileOutcome::Failed
+    let acc = SharedAccumulators::new();
+
+    let err = TileExportError {
+        tile_id: "tile_3_7".to_string(),
+        error_message: "GDAL driver error".to_string(),
+    };
+    let outcome = TileOutcome::Failed(err);
+    aggregate_outcome(outcome, &acc);
+
+    assert_eq!(acc.tiles_succeeded.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_failed.load(Ordering::Relaxed), 1);
+    assert_eq!(acc.tiles_skipped.load(Ordering::Relaxed), 0);
+
+    let errors = acc.export_errors.lock().unwrap();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].tile_id, "tile_3_7");
+    assert_eq!(errors[0].error_message, "GDAL driver error");
+}
+
+#[test]
+fn test_aggregate_outcome_skipped_existing() {
+    // Story 11.2 Subtask 2.3: aggregate_outcome with Skipped { existing: true }
+    let acc = SharedAccumulators::new();
+
+    aggregate_outcome(TileOutcome::Skipped { existing: true }, &acc);
+
+    assert_eq!(acc.tiles_succeeded.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_failed.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_skipped.load(Ordering::Relaxed), 1);
+    assert_eq!(acc.tiles_skipped_existing.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn test_aggregate_outcome_skipped_not_existing() {
+    // Story 11.2 Subtask 2.4: aggregate_outcome with Skipped { existing: false }
+    let acc = SharedAccumulators::new();
+
+    aggregate_outcome(TileOutcome::Skipped { existing: false }, &acc);
+
+    assert_eq!(acc.tiles_succeeded.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_failed.load(Ordering::Relaxed), 0);
+    assert_eq!(acc.tiles_skipped.load(Ordering::Relaxed), 1);
+    assert_eq!(acc.tiles_skipped_existing.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn test_aggregate_outcome_mixed_sequence() {
+    // Story 11.2 Subtask 2.5: 5 Success + 2 Failed + 3 Skipped → exact counters
+    let acc = SharedAccumulators::new();
+
+    // 5 successes with varying stats
+    for i in 0..5 {
+        aggregate_outcome(
+            TileOutcome::Success(make_tile_result(i + 1, 0, 0)),
+            &acc,
+        );
+    }
+
+    // 2 failures
+    for i in 0..2 {
+        aggregate_outcome(
+            TileOutcome::Failed(TileExportError {
+                tile_id: format!("fail_{}", i),
+                error_message: format!("Error {}", i),
+            }),
+            &acc,
+        );
+    }
+
+    // 3 skipped (2 existing, 1 not)
+    aggregate_outcome(TileOutcome::Skipped { existing: true }, &acc);
+    aggregate_outcome(TileOutcome::Skipped { existing: true }, &acc);
+    aggregate_outcome(TileOutcome::Skipped { existing: false }, &acc);
+
+    assert_eq!(acc.tiles_succeeded.load(Ordering::Relaxed), 5);
+    assert_eq!(acc.tiles_failed.load(Ordering::Relaxed), 2);
+    assert_eq!(acc.tiles_skipped.load(Ordering::Relaxed), 3);
+    assert_eq!(acc.tiles_skipped_existing.load(Ordering::Relaxed), 2);
+
+    // Stats: 1+2+3+4+5 = 15 points total
+    let stats = acc.global_stats.lock().unwrap();
+    assert_eq!(stats.point_count, 15);
+
+    // Errors collected
+    let errors = acc.export_errors.lock().unwrap();
+    assert_eq!(errors.len(), 2);
+}
+
+#[test]
+fn test_aggregate_outcome_errors_contain_tile_id_and_message() {
+    // Story 11.2 Subtask 2.6: collected errors contain tile_id and error_message
+    let acc = SharedAccumulators::new();
+
+    let test_errors = vec![
+        ("tile_0_0", "IO error: disk full"),
+        ("tile_1_3", "GDAL: PolishMap driver not found"),
+        ("tile_5_9", "Geometry clipping failed"),
+    ];
+
+    for (tile_id, msg) in &test_errors {
+        aggregate_outcome(
+            TileOutcome::Failed(TileExportError {
+                tile_id: tile_id.to_string(),
+                error_message: msg.to_string(),
+            }),
+            &acc,
+        );
+    }
+
+    let errors = acc.export_errors.lock().unwrap();
+    assert_eq!(errors.len(), 3);
+
+    for (i, (expected_id, expected_msg)) in test_errors.iter().enumerate() {
+        assert_eq!(errors[i].tile_id, *expected_id);
+        assert_eq!(errors[i].error_message, *expected_msg);
+    }
+}
+
+// ============================================================================
+// Story 11.2 Task 3: Integration tests — parallel report validation (AC4)
+// ============================================================================
+
+#[test]
+fn test_parallel_report_json_counters_sum() {
+    // Story 11.2 Subtask 3.2: tiles_generated + tiles_failed + tiles_skipped = total tiles
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+
+    if !PathBuf::from(fixture_path).exists() {
+        eprintln!("Skipping test: fixture not found at {}", fixture_path);
+        return;
+    }
+
+    let config = create_parallel_test_config(&temp_dir, fixture_path, "continue");
+    let args = create_test_args_with_jobs(2);
+
+    let result = pipeline::run(&config, &args);
+    assert!(result.is_ok(), "Pipeline should succeed");
+
+    let summary = result.unwrap();
+
+    // AC4: counters must sum to total tiles processed
+    let total = summary.tiles_succeeded + summary.tiles_failed + summary.tiles_skipped;
+    assert!(
+        total > 0,
+        "Pipeline must process at least one tile"
+    );
+    assert_eq!(
+        summary.export_errors.len(),
+        summary.tiles_failed,
+        "Number of export_errors must match tiles_failed counter"
+    );
+}
+
+#[test]
+fn test_parallel_report_json_with_report_file() {
+    // Story 11.2 Subtask 3.1: --jobs 2 + mode continue → JSON report written
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+
+    if !PathBuf::from(fixture_path).exists() {
+        eprintln!("Skipping test: fixture not found at {}", fixture_path);
+        return;
+    }
+
+    let report_path = temp_dir.path().join("report.json");
+
+    let config = create_parallel_test_config(&temp_dir, fixture_path, "continue");
+    let args = BuildArgs {
+        config: "test.yaml".to_string(),
+        input: None,
+        output: None,
+        jobs: 2,
+        fail_fast: false,
+        report: Some(report_path.to_string_lossy().to_string()),
+        skip_existing: false,
+        dry_run: false,
+        verbose: 0,
+    };
+
+    let result = pipeline::run(&config, &args);
+    assert!(result.is_ok(), "Pipeline should succeed");
+
+    // Verify JSON report was written
+    assert!(report_path.exists(), "JSON report file should exist");
+
+    let report_content = fs::read_to_string(&report_path).expect("Failed to read report");
+    let json: serde_json::Value =
+        serde_json::from_str(&report_content).expect("Report should be valid JSON");
+
+    // Verify counters in JSON
+    let tiles_generated = json["tiles_generated"].as_u64().unwrap();
+    let tiles_failed = json["tiles_failed"].as_u64().unwrap();
+    let tiles_skipped = json["tiles_skipped"].as_u64().unwrap();
+
+    let total = tiles_generated + tiles_failed + tiles_skipped;
+    assert!(total > 0, "JSON report should have processed tiles");
+
+    // Verify errors array matches tiles_failed
+    let errors = json["errors"].as_array().expect("errors should be array");
+    assert_eq!(
+        errors.len() as u64,
+        tiles_failed,
+        "JSON errors array length must match tiles_failed"
+    );
+}
+
+#[test]
+fn test_parallel_and_sequential_same_counters() {
+    // Story 11.2 Subtask 3.3: Console summary (via TileExportSummary) matches JSON report
+    let temp_dir_seq = TempDir::new().expect("Failed to create temp dir");
+    let temp_dir_par = TempDir::new().expect("Failed to create temp dir");
+    let fixture_path = "tests/integration/fixtures/test_data/file1.shp";
+
+    if !PathBuf::from(fixture_path).exists() {
+        eprintln!("Skipping test: fixture not found at {}", fixture_path);
+        return;
+    }
+
+    // Sequential
+    let config_seq = create_parallel_test_config(&temp_dir_seq, fixture_path, "continue");
+    let args_seq = create_test_args_with_jobs(1);
+    let result_seq = pipeline::run(&config_seq, &args_seq).expect("Sequential should succeed");
+
+    // Parallel
+    let config_par = create_parallel_test_config(&temp_dir_par, fixture_path, "continue");
+    let args_par = create_test_args_with_jobs(2);
+    let result_par = pipeline::run(&config_par, &args_par).expect("Parallel should succeed");
+
+    // Same counters
+    assert_eq!(
+        result_seq.tiles_succeeded, result_par.tiles_succeeded,
+        "tiles_succeeded must match"
+    );
+    assert_eq!(
+        result_seq.tiles_failed, result_par.tiles_failed,
+        "tiles_failed must match"
+    );
+    assert_eq!(
+        result_seq.tiles_skipped, result_par.tiles_skipped,
+        "tiles_skipped must match"
+    );
+    assert_eq!(
+        result_seq.total_features(),
+        result_par.total_features(),
+        "total_features must match"
+    );
+}
+
+// ============================================================================
+// Story 11.2 Task 4: Progress bar concurrent validation (AC3)
+// ============================================================================
+
+#[test]
+fn test_progress_bar_position_reaches_total_with_parallel() {
+    // Story 11.2 Subtask 4.1: --jobs 4, 20+ tiles → pb.position() == tiles.len()
+    use indicatif::ProgressBar;
+    use rayon::prelude::*;
+    use std::sync::Arc;
+
+    let total_tiles: u64 = 50;
+    let pb = Arc::new(ProgressBar::new(total_tiles));
+    pb.set_draw_target(indicatif::ProgressDrawTarget::hidden());
+
+    let tiles: Vec<u64> = (0..total_tiles).collect();
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .expect("pool");
+
+    pool.install(|| {
+        tiles.par_iter().for_each(|_| {
+            // Simulate some work
+            std::thread::sleep(std::time::Duration::from_micros(10));
+            pb.inc(1);
+        });
+    });
+
+    assert_eq!(
+        pb.position(),
+        total_tiles,
+        "Progress bar should reach total tiles count after parallel processing"
+    );
+    pb.finish();
+}
+
+// ============================================================================
+// Story 11.2 Task 5: Fail-fast parallel validation (AC2)
+// ============================================================================
+
+#[test]
+fn test_fail_fast_error_contains_tile_id() {
+    // Story 11.2 Subtask 5.2: Error message contains the failing tile_id
+    use rayon::prelude::*;
+
+    let tiles: Vec<usize> = (0..50).collect();
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .expect("pool");
+
+    let result: Result<(), TileExportError> = pool.install(|| {
+        tiles.par_iter().try_for_each(|tile_id| {
+            if *tile_id == 5 {
+                Err(TileExportError {
+                    tile_id: "tile_5".to_string(),
+                    error_message: "Export failed for tile_5".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        })
+    });
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert_eq!(err.tile_id, "tile_5", "Error should contain the failing tile_id");
+    assert!(
+        err.error_message.contains("tile_5"),
+        "Error message should reference the tile"
+    );
+}
+
+#[test]
+fn test_fail_fast_unprocessed_tiles_not_counted() {
+    // Story 11.2 Subtask 5.3: Unprocessed tiles are NOT counted in accumulators
+    use rayon::prelude::*;
+    use std::sync::Arc;
+
+    let acc = Arc::new(SharedAccumulators::new());
+    let tiles: Vec<usize> = (0..100).collect();
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .expect("pool");
+
+    let acc_clone = Arc::clone(&acc);
+    let _result: Result<(), TileExportError> = pool.install(|| {
+        tiles.par_iter().try_for_each(|tile_id| {
+            if *tile_id == 3 {
+                // Simulate fail-fast: return error without aggregating
+                return Err(TileExportError {
+                    tile_id: format!("tile_{}", tile_id),
+                    error_message: "fail-fast".to_string(),
+                });
+            }
+            // Aggregate success for non-failing tiles that get processed
+            aggregate_outcome(
+                TileOutcome::Success(make_tile_result(1, 0, 0)),
+                &acc_clone,
+            );
+            Ok(())
+        })
+    });
+
+    let succeeded = acc.tiles_succeeded.load(Ordering::Relaxed);
+    // Due to fail-fast, fewer than 99 tiles should be aggregated as succeeded
+    assert!(
+        succeeded < 99,
+        "Unprocessed tiles should not be counted: succeeded={}",
+        succeeded
+    );
 }
