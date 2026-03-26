@@ -3,6 +3,7 @@
 pub mod directory;
 pub mod filesystem;
 pub mod header;
+pub mod tre;
 pub mod writer;
 
 pub use writer::ImgWriter;

@@ -24,8 +24,9 @@ impl ImgWriter {
     ///
     /// The resulting `.img` contains:
     /// - A valid 512-byte header (magic, date, XOR, DOS signature)
-    /// - A FAT-like directory with stub entries for TRE, RGN and LBL
-    /// - Empty (all-zero) subfile blocks for each entry
+    /// - A FAT-like directory with entries for TRE, RGN and LBL
+    /// - Real TRE binary content (geographic index) for the TRE entry
+    /// - Empty placeholder blocks for RGN and LBL (populated in Stories 13.4–13.5)
     ///
     /// Uses `block_size_exponent = 9` (512-byte blocks) which is appropriate for
     /// stub/test output. For production maps with real TRE/RGN/LBL content
@@ -36,7 +37,7 @@ impl ImgWriter {
     /// - [`ImgError::InvalidMapId`] if `mp_file.header.id` is not a valid numeric string ≤ 8 chars
     /// - [`ImgError::IoError`] on I/O failure
     pub fn write(mp_file: &MpFile, output: &Path) -> Result<(), ImgError> {
-        let writer = Self::new(9); // 512-byte blocks — suitable for stub output (Stories 13.2)
+        let writer = Self::new(9); // 512-byte blocks — suitable for test/stub output
         writer.write_with_block_size(mp_file, output)
     }
 
@@ -55,31 +56,45 @@ impl ImgWriter {
         let mut fs = ImgFilesystem::new(self.block_size_exponent);
         fs.description = mp_file.header.name.clone();
 
-        // Add empty stub subfiles.
-        fs.add_subfile(map_id, "TRE", vec![])?;
+        // Add subfiles: real TRE geographic index content + stub placeholders for RGN and LBL.
+        use crate::img::tre::TreWriter;
+        let tre_data = TreWriter::build(mp_file);
+        fs.add_subfile(map_id, "TRE", tre_data)?;
         fs.add_subfile(map_id, "RGN", vec![])?;
         fs.add_subfile(map_id, "LBL", vec![])?;
 
+        // Capture per-subfile stats before consuming fs into bytes.
+        // Order must match add_subfile calls above: TRE=0, RGN=1, LBL=2.
+        debug_assert!(
+            fs.entries.len() == 3,
+            "expected exactly 3 subfile entries (TRE, RGN, LBL), got {}",
+            fs.entries.len()
+        );
+        let (tre_offset_b, tre_size) = (
+            fs.entries[0].0.block_start as u64 * block_size as u64,
+            fs.entries[0].0.size_allocated,
+        );
+        let (rgn_offset_b, rgn_size) = (
+            fs.entries[1].0.block_start as u64 * block_size as u64,
+            fs.entries[1].0.size_allocated,
+        );
+        let (lbl_offset_b, lbl_size) = (
+            fs.entries[2].0.block_start as u64 * block_size as u64,
+            fs.entries[2].0.size_allocated,
+        );
+
         // Serialise.
         let bytes = fs.to_bytes();
-
-        // Log stats.
-        let tre_block = fs.entries[0].0.block_start;
-        let rgn_block = fs.entries[1].0.block_start;
-        let lbl_block = fs.entries[2].0.block_start;
-        let tre_size = fs.entries[0].0.size_allocated;
-        let rgn_size = fs.entries[1].0.size_allocated;
-        let lbl_size = fs.entries[2].0.size_allocated;
 
         tracing::info!(
             map_id = %map_id,
             block_size = block_size,
             total_bytes = bytes.len(),
-            tre_offset = tre_block as u64 * block_size as u64,
+            tre_offset = tre_offset_b,
             tre_size = tre_size,
-            rgn_offset = rgn_block as u64 * block_size as u64,
+            rgn_offset = rgn_offset_b,
             rgn_size = rgn_size,
-            lbl_offset = lbl_block as u64 * block_size as u64,
+            lbl_offset = lbl_offset_b,
             lbl_size = lbl_size,
             "IMG written"
         );

@@ -300,3 +300,81 @@ fn test_img_header_xor() {
     let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
     assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00");
 }
+
+// ----------------------------------------------------------------
+// TRE subfile integration tests (Story 13.3)
+// ----------------------------------------------------------------
+
+#[test]
+fn test_img_tre_subfile_not_empty() {
+    // After Story 13.3, the TRE subfile contains real binary content (not zeros).
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Directory at block 1 (offset = 1 × 512 for block_size = 512).
+    // TRE is the first Dirent (index 0), each entry is 32 bytes.
+    // size_used is at offset 0x12 within the Dirent.
+    let dir_start = 512usize;
+    let size_used = u32::from_le_bytes([
+        bytes[dir_start + 0x12],
+        bytes[dir_start + 0x13],
+        bytes[dir_start + 0x14],
+        bytes[dir_start + 0x15],
+    ]);
+    assert!(
+        size_used > 0,
+        "TRE subfile size_used must be > 0 (real TRE content)"
+    );
+}
+
+#[test]
+fn test_img_tre_header_version() {
+    // Verify that the TRE subfile starts with the correct version 3 magic.
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    // Read TRE block_start from the first Dirent (offset 0x0C within the Dirent).
+    let dir_start = 512usize;
+    let block_start =
+        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_offset = block_start * 512;
+
+    assert_eq!(
+        &bytes[tre_offset..tre_offset + 4],
+        &[0x94, 0x00, 0x03, 0x00],
+        "TRE header must start with [0x94, 0x00, 0x03, 0x00] (header_length=148, version=3)"
+    );
+}
+
+#[test]
+fn test_img_tre_bounds_nonzero() {
+    // minimal_for_img.mp has a POI in France → max_lat garmin value must be positive.
+    let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+
+    let dir_start = 512usize;
+    let block_start =
+        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_offset = block_start * 512;
+
+    // max_lat is at offset 0x04 of the TRE subfile, encoded as LE24 signed.
+    let raw = (bytes[tre_offset + 4] as i32)
+        | ((bytes[tre_offset + 5] as i32) << 8)
+        | ((bytes[tre_offset + 6] as i32) << 16);
+    let max_lat_g = if raw & 0x80_0000 != 0 {
+        raw | !0xFF_FFFF
+    } else {
+        raw
+    };
+    assert!(
+        max_lat_g > 0,
+        "France tile max_lat garmin must be > 0, got {}",
+        max_lat_g
+    );
+}
