@@ -12,7 +12,7 @@
  * 3. Read POLYLINE with extended attributes (DirIndicator, RoadID, SpeedType)
  * 4. POLYLINE schema has POLYLINE fields but NOT POI-specific fields
  * 5. Read POLYGON with extended attributes (CityName, RegionName, CountryName)
- * 6. POLYGON schema does NOT have StreetDesc, DirIndicator, RoadID, SpeedType, Zip
+ * 6. POLYGON schema does NOT have StreetDesc, DirIndicator, RoadID, SpeedType (but HAS Zip)
  * 7. Round-trip write/read POI with extended attributes
  * 8. Round-trip write/read POLYLINE with extended attributes
  * 9. CreateField alias mapping (NOM->Label, VILLE->CityName, PAYS->CountryName)
@@ -226,7 +226,7 @@ static bool Test_POLYGON_Schema_No_Specific_Fields() {
     CHECK(poLayer != nullptr, "Get POLYGON layer");
 
     OGRFeatureDefn* poDefn = poLayer->GetLayerDefn();
-    CHECK(poDefn->GetFieldCount() == 10, "POLYGON has 10 fields");
+    CHECK(poDefn->GetFieldCount() == 11, "POLYGON has 11 fields (incl. Zip)");
 
     // Common fields present
     CHECK(poDefn->GetFieldIndex("CityName") >= 0, "CityName exists");
@@ -238,7 +238,7 @@ static bool Test_POLYGON_Schema_No_Specific_Fields() {
     CHECK(poDefn->GetFieldIndex("DirIndicator") < 0, "DirIndicator NOT in POLYGON");
     CHECK(poDefn->GetFieldIndex("RoadID") < 0, "RoadID NOT in POLYGON");
     CHECK(poDefn->GetFieldIndex("SpeedType") < 0, "SpeedType NOT in POLYGON");
-    CHECK(poDefn->GetFieldIndex("Zip") < 0, "Zip NOT in POLYGON");
+    CHECK(poDefn->GetFieldIndex("Zip") >= 0, "Zip exists in POLYGON (communes need postal codes)");
     CHECK(poDefn->GetFieldIndex("City") < 0, "City NOT in POLYGON");
     CHECK(poDefn->GetFieldIndex("HouseNumber") < 0, "HouseNumber NOT in POLYGON");
     CHECK(poDefn->GetFieldIndex("PhoneNumber") < 0, "PhoneNumber NOT in POLYGON");

@@ -82,8 +82,8 @@ static const PolishMapFieldDef g_aoPolishMapFields[] = {
     { "RegionName",  OFTString,  LAYER_ALL },
     { "CountryName", OFTString,  LAYER_ALL },
 
-    // POI + POLYLINE fields
-    { "Zip",         OFTString,  LAYER_POI | LAYER_POLYLINE },
+    // All layers — Zip is used on POI (addresses), POLYLINE (roads), POLYGON (communes)
+    { "Zip",         OFTString,  LAYER_ALL },
 
     // POLYLINE-specific fields
     { "DirIndicator", OFTInteger, LAYER_POLYLINE },
