@@ -4,3 +4,4 @@ export/
 rapport-*.json
 __pycache__/
 data/
+output/
