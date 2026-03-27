@@ -128,9 +128,11 @@ impl ImgHeader {
             n
         };
         buf[0x013..0x013 + safe_len].copy_from_slice(&desc_bytes[..safe_len]);
-        // 0x044 — null terminator (already 0x00).
+        // 0x041–0x046 — "DSKIMG" signature (mandatory for Garmin tools / QMapShack / gmt).
+        buf[0x041..0x047].copy_from_slice(b"DSKIMG");
+        // 0x047 — null terminator (already 0x00).
 
-        // 0x045–0x048 — reserved (already 0x00).
+        // 0x048 — reserved (already 0x00).
 
         // 0x049 — heads = 1
         buf[0x049] = 1;
