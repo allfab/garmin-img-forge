@@ -4,12 +4,14 @@ pub mod cli;
 pub mod error;
 pub mod img;
 pub mod parser;
+pub mod report;
 pub mod routing;
 
 pub use error::ImgError;
-pub use img::assembler::{AssemblyStats, BuildConfig, GmapsuppAssembler};
+pub use img::assembler::{AssemblyStats, BuildConfig, CompilationStats, GmapsuppAssembler};
 pub use img::tdb::{TdbConfig, TdbWriter, TileInfo};
 pub use img::writer::ImgWriter;
+pub use report::{BuildReport, FeaturesByType, ReportStatus, TileError};
 
 use std::path::Path;
 
@@ -30,14 +32,14 @@ pub fn compile(input: &Path, output: &Path) -> anyhow::Result<()> {
 ///
 /// Scans `input_dir` for `.mp` files, compiles each tile in memory, and writes
 /// the resulting multi-tile `gmapsupp.img` to `output`.
-pub fn build(input_dir: &Path, output: &Path, config: BuildConfig) -> anyhow::Result<()> {
+pub fn build(input_dir: &Path, output: &Path, config: BuildConfig) -> anyhow::Result<AssemblyStats> {
     let stats = GmapsuppAssembler::build(input_dir, output, &config)?;
     tracing::info!(
         tiles = stats.tile_count,
         subfiles = stats.subfile_count,
         bytes = stats.total_bytes,
-        tdb = %stats.tdb_path.display(),
+        jobs = config.jobs,
         "gmapsupp.img assemblé"
     );
-    Ok(())
+    Ok(stats)
 }

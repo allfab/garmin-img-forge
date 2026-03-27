@@ -21,7 +21,8 @@ use clap::{Parser, Subcommand};
                   imgforge-cli compile map.mp -o map.img -v\n  \
                   imgforge-cli build --input-dir tiles/ -o gmapsupp.img\n  \
                   imgforge-cli build --input-dir tiles/ -o gmapsupp.img --family-id 6324 --description \"France BDTOPO 2025\"\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --typ garmin-style.typ"
+                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --typ garmin-style.typ\n  \
+                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --jobs 8 --report build.json"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -84,6 +85,15 @@ pub struct BuildArgs {
     /// Produced by TYPViewer or similar Garmin style editors.
     #[arg(long, value_name = "FILE")]
     pub typ: Option<String>,
+
+    /// Number of parallel compilation threads (0 = auto-detect CPU count).
+    /// Default: 0 (all available CPU cores).
+    #[arg(long, default_value_t = 0)]
+    pub jobs: usize,
+
+    /// Write JSON execution report to FILE after build.
+    #[arg(long, value_name = "FILE")]
+    pub report: Option<String>,
 
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -231,5 +241,82 @@ mod tests {
             Some("garmin-style.typ"),
             "--typ doit être parsé correctement"
         );
+    }
+
+    #[test]
+    fn test_cli_build_jobs_default() {
+        let cli = Cli::try_parse_from([
+            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert_eq!(args.jobs, 0, "--jobs doit être 0 (auto) par défaut");
+    }
+
+    #[test]
+    fn test_cli_build_jobs_explicit() {
+        let cli = Cli::try_parse_from([
+            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img", "--jobs", "8",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert_eq!(args.jobs, 8, "--jobs 8 doit être parsé à 8");
+    }
+
+    #[test]
+    fn test_cli_build_report_absent() {
+        let cli = Cli::try_parse_from([
+            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert!(args.report.is_none(), "--report doit être None quand non fourni");
+    }
+
+    #[test]
+    fn test_cli_build_report_explicit() {
+        let cli = Cli::try_parse_from([
+            "imgforge-cli",
+            "build",
+            "--input-dir",
+            "tiles/",
+            "-o",
+            "out.img",
+            "--report",
+            "build.json",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert_eq!(args.report.as_deref(), Some("build.json"));
+    }
+
+    #[test]
+    fn test_cli_build_jobs_and_report_combined() {
+        let cli = Cli::try_parse_from([
+            "imgforge-cli",
+            "build",
+            "--input-dir",
+            "tiles/",
+            "-o",
+            "out.img",
+            "--jobs",
+            "4",
+            "--report",
+            "out.json",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert_eq!(args.jobs, 4);
+        assert_eq!(args.report.as_deref(), Some("out.json"));
     }
 }

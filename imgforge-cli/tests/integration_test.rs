@@ -1977,6 +1977,8 @@ fn test_build_config_512() -> BuildConfig {
         description: "Test Assembly".into(),
         block_size_exponent: 9, // 512 bytes — fast for integration tests
         typ_file: None,
+        jobs: 1, // sequential for deterministic tests
+        show_progress: false,
     }
 }
 
@@ -2076,6 +2078,8 @@ fn test_build_gmapsupp_family_id() {
         description: "Test".into(),
         block_size_exponent: 9,
         typ_file: None,
+        jobs: 1,
+        show_progress: false,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2094,6 +2098,8 @@ fn test_build_gmapsupp_product_id() {
         description: "Test".into(),
         block_size_exponent: 9,
         typ_file: None,
+        jobs: 1,
+        show_progress: false,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2146,6 +2152,8 @@ fn test_build_boundary_nodes_detected() {
         description: "Test".into(),
         block_size_exponent: 9,
         typ_file: None,
+        jobs: 1,
+        show_progress: false,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2214,6 +2222,8 @@ fn tdb_build_config() -> BuildConfig {
         description: "France BDTOPO 2025".into(),
         block_size_exponent: 9,
         typ_file: None,
+        jobs: 1,
+        show_progress: false,
     }
 }
 
@@ -2414,6 +2424,8 @@ fn build_with_typ(
         description: "Test TYP".into(),
         block_size_exponent: 9,
         typ_file: Some(typ_file),
+        jobs: 1,
+        show_progress: false,
     };
     let stats = GmapsuppAssembler::build(tiles.path(), &output, &config).unwrap();
     let bytes = std::fs::read(&output).unwrap();
@@ -2514,6 +2526,8 @@ fn test_build_typ_missing_file_returns_error() {
         description: "Test TYP Missing".into(),
         block_size_exponent: 9,
         typ_file: Some(std::path::PathBuf::from("/nonexistent/path/style.typ")),
+        jobs: 1,
+        show_progress: false,
     };
     let result = GmapsuppAssembler::build(tiles.path(), output.path(), &config);
     assert!(result.is_err(), "fichier TYP inexistant doit retourner une erreur");
@@ -2646,6 +2660,8 @@ fn test_build_srt_with_typ_both_embedded() {
         description: "Test TYP+SRT".into(),
         block_size_exponent: 9,
         typ_file: Some(typ_file),
+        jobs: 1,
+        show_progress: false,
     };
     let stats = GmapsuppAssembler::build(tiles.path(), &output, &config).unwrap();
     let bytes = std::fs::read(&output).unwrap();
@@ -2657,4 +2673,183 @@ fn test_build_srt_with_typ_both_embedded() {
     assert!(has_srt, "avec --typ, le subfile SRT doit aussi être présent");
     assert!(stats.typ_embedded, "stats.typ_embedded doit être true");
     assert!(stats.srt_embedded, "stats.srt_embedded doit être true");
+}
+
+// ── Story 15.5 — Compilation Parallèle & Rapport JSON ────────────────────────
+
+#[test]
+fn test_build_parallel_jobs_2() {
+    // AC1 — jobs=2 produit un gmapsupp.img fonctionnellement identique à jobs=1.
+    // Même tile_count, subfile_count, et bytes identiques.
+    let tmp_seq = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), tmp_seq.path().join("tile_a.mp")).unwrap();
+    std::fs::copy(fixture("tile_b.mp"), tmp_seq.path().join("tile_b.mp")).unwrap();
+
+    let tmp_par = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), tmp_par.path().join("tile_a.mp")).unwrap();
+    std::fs::copy(fixture("tile_b.mp"), tmp_par.path().join("tile_b.mp")).unwrap();
+
+    let out_seq = tempfile::NamedTempFile::new().unwrap();
+    let out_par = tempfile::NamedTempFile::new().unwrap();
+
+    let config_seq = BuildConfig {
+        family_id: 6324,
+        product_id: 1,
+        description: "Test Parallel".into(),
+        block_size_exponent: 9,
+        typ_file: None,
+        jobs: 1,
+        show_progress: false,
+    };
+    let config_par = BuildConfig { jobs: 2, ..config_seq.clone() };
+
+    let stats_seq =
+        GmapsuppAssembler::build(tmp_seq.path(), out_seq.path(), &config_seq).unwrap();
+    let stats_par =
+        GmapsuppAssembler::build(tmp_par.path(), out_par.path(), &config_par).unwrap();
+
+    assert_eq!(stats_seq.tile_count, stats_par.tile_count, "tile_count identique");
+    assert_eq!(
+        stats_seq.subfile_count, stats_par.subfile_count,
+        "subfile_count identique"
+    );
+
+    let bytes_seq = std::fs::read(out_seq.path()).unwrap();
+    let bytes_par = std::fs::read(out_par.path()).unwrap();
+    assert_eq!(bytes_seq, bytes_par, "output binaire identique (déterminisme FAT)");
+}
+
+#[test]
+fn test_build_parallel_jobs_0_auto() {
+    // AC2 — jobs=0 (auto) produit le même résultat que jobs=1.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), tmp.path().join("tile_a.mp")).unwrap();
+    std::fs::copy(fixture("tile_b.mp"), tmp.path().join("tile_b.mp")).unwrap();
+
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let config = BuildConfig {
+        family_id: 6324,
+        product_id: 1,
+        description: "Test Auto Jobs".into(),
+        block_size_exponent: 9,
+        typ_file: None,
+        jobs: 0, // auto-detect
+        show_progress: false,
+    };
+    let stats = GmapsuppAssembler::build(tmp.path(), output.path(), &config).unwrap();
+    assert_eq!(stats.tile_count, 2, "doit compiler exactement 2 tuiles");
+    assert!(stats.subfile_count >= 6, "doit avoir au moins 6 subfiles");
+}
+
+#[test]
+fn test_build_report_json_schema() {
+    // AC4 — CLI --report → fichier JSON avec les champs attendus.
+    use assert_cmd::Command;
+
+    let tmp_tiles = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), tmp_tiles.path().join("tile_a.mp")).unwrap();
+
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output_img = tmp_out.path().join("gmapsupp.img");
+    let report_path = tmp_out.path().join("rapport.json");
+
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args([
+        "build",
+        "--input-dir",
+        tmp_tiles.path().to_str().unwrap(),
+        "-o",
+        output_img.to_str().unwrap(),
+        "--report",
+        report_path.to_str().unwrap(),
+    ]);
+    cmd.assert().success();
+
+    assert!(report_path.exists(), "le fichier rapport.json doit être créé");
+
+    let content = std::fs::read_to_string(&report_path).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&content)
+        .expect("le rapport doit être du JSON valide");
+
+    // Vérifier que tous les champs du schéma sont présents.
+    assert!(value.get("status").is_some(), "champ 'status' manquant");
+    assert!(value.get("tiles_compiled").is_some(), "champ 'tiles_compiled' manquant");
+    assert!(value.get("tiles_failed").is_some(), "champ 'tiles_failed' manquant");
+    assert!(value.get("features_by_type").is_some(), "champ 'features_by_type' manquant");
+    assert!(
+        value["features_by_type"].get("poi").is_some(),
+        "champ 'features_by_type.poi' manquant"
+    );
+    assert!(
+        value["features_by_type"].get("polyline").is_some(),
+        "champ 'features_by_type.polyline' manquant"
+    );
+    assert!(
+        value["features_by_type"].get("polygon").is_some(),
+        "champ 'features_by_type.polygon' manquant"
+    );
+    assert!(value.get("routing_nodes").is_some(), "champ 'routing_nodes' manquant");
+    assert!(value.get("routing_arcs").is_some(), "champ 'routing_arcs' manquant");
+    assert!(value.get("img_size_bytes").is_some(), "champ 'img_size_bytes' manquant");
+    assert!(value.get("duration_seconds").is_some(), "champ 'duration_seconds' manquant");
+    assert!(value.get("errors").is_some(), "champ 'errors' manquant");
+
+    // Vérifier les valeurs logiques pour une compilation réussie.
+    assert_eq!(value["status"], "success", "status doit être 'success'");
+    assert_eq!(value["tiles_compiled"], 1, "doit avoir compilé 1 tuile");
+    assert_eq!(value["tiles_failed"], 0, "doit avoir 0 tuile en échec");
+    assert!(
+        value["img_size_bytes"].as_u64().unwrap() > 0,
+        "img_size_bytes doit être > 0"
+    );
+    assert!(
+        value["duration_seconds"].as_f64().unwrap() >= 0.0,
+        "duration_seconds doit être >= 0"
+    );
+    // tile_a.mp a 1 POI, 2 polylines (dont 1 routable), 0 polygons.
+    assert_eq!(value["features_by_type"]["poi"], 1, "tile_a a 1 POI");
+    assert_eq!(value["features_by_type"]["polyline"], 2, "tile_a a 2 polylines");
+    assert_eq!(value["features_by_type"]["polygon"], 0, "tile_a a 0 polygons");
+    assert!(
+        value["routing_nodes"].as_u64().unwrap() > 0,
+        "tile_a a une route → routing_nodes > 0"
+    );
+    assert!(
+        value["routing_arcs"].as_u64().unwrap() > 0,
+        "tile_a a une route → routing_arcs > 0"
+    );
+    assert!(value["errors"].as_array().unwrap().is_empty(), "0 erreur attendue");
+}
+
+#[test]
+fn test_build_no_report_creates_no_json_file() {
+    // AC5 — sans --report, aucun fichier JSON ne doit être créé.
+    use assert_cmd::Command;
+
+    let tmp_tiles = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), tmp_tiles.path().join("tile_a.mp")).unwrap();
+
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output_img = tmp_out.path().join("gmapsupp.img");
+
+    let mut cmd = Command::cargo_bin("imgforge-cli").unwrap();
+    cmd.args([
+        "build",
+        "--input-dir",
+        tmp_tiles.path().to_str().unwrap(),
+        "-o",
+        output_img.to_str().unwrap(),
+    ]);
+    cmd.assert().success();
+
+    // Aucun fichier .json ne doit exister dans le répertoire de sortie.
+    let json_files: Vec<_> = std::fs::read_dir(tmp_out.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    assert!(
+        json_files.is_empty(),
+        "aucun fichier .json ne doit être créé sans --report"
+    );
 }
