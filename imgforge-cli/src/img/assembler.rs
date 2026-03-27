@@ -486,14 +486,12 @@ mod tests {
         assert!(output.exists());
         let bytes = std::fs::read(&output).unwrap();
         assert!(!bytes.is_empty());
-        // Valid GARMIN header
-        assert_eq!(&bytes[0x002..0x008], b"GARMIN");
-        // DOS signature
+        // Standard Garmin IMG signatures
+        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
+        // Boot signature
         assert_eq!(bytes[0x1FE], 0x55);
         assert_eq!(bytes[0x1FF], 0xAA);
-        // XOR invariant
-        let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-        assert_eq!(xor, 0x00, "header XOR must be 0x00");
     }
 
     #[test]
@@ -512,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn test_assembler_family_id_in_header() {
+    fn test_assembler_standard_header_format() {
         let tmp_tiles = tempfile::tempdir().unwrap();
         std::fs::copy(tile_a(), tmp_tiles.path().join("tile_a.mp")).unwrap();
 
@@ -528,9 +526,10 @@ mod tests {
         let output = tempfile::NamedTempFile::new().unwrap();
         GmapsuppAssembler::build(tmp_tiles.path(), output.path(), &config).unwrap();
         let bytes = std::fs::read(output.path()).unwrap();
-        let fid = u16::from_le_bytes([bytes[0x054], bytes[0x055]]);
-        let pid = u16::from_le_bytes([bytes[0x056], bytes[0x057]]);
-        assert_eq!(fid, 6324, "family_id must be at header offset 0x054");
-        assert_eq!(pid, 1, "product_id must be at header offset 0x056");
+        // Standard Garmin IMG header signatures
+        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
+        // Description at 0x049
+        assert_eq!(&bytes[0x049..0x049 + 4], b"Test");
     }
 }

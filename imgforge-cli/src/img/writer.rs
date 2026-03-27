@@ -289,14 +289,12 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         ImgWriter::write(&mp, tmp.path()).unwrap();
         let bytes = std::fs::read(tmp.path()).unwrap();
-        // Magic "GARMIN" at 0x002
-        assert_eq!(&bytes[0x002..0x008], b"GARMIN");
-        // DOS signature at 0x1FE
+        // DSKIMG at 0x010, GARMIN at 0x041 (standard Garmin IMG format)
+        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
+        // Boot signature at 0x1FE
         assert_eq!(bytes[0x1FE], 0x55);
         assert_eq!(bytes[0x1FF], 0xAA);
-        // XOR of all 512 header bytes must be 0x00.
-        let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-        assert_eq!(xor, 0x00, "header XOR must be 0x00");
     }
 
     #[test]
@@ -323,22 +321,33 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         ImgWriter::write(&mp, tmp.path()).unwrap();
         let bytes = std::fs::read(tmp.path()).unwrap();
-        // Directory at block 1 (offset 512 for block_size=512). LBL is Dirent index 2.
-        let dir_start = 512usize;
-        let lbl_dirent = dir_start + 2 * 32;
-        let size_used = u32::from_le_bytes([
-            bytes[lbl_dirent + 0x12],
-            bytes[lbl_dirent + 0x13],
-            bytes[lbl_dirent + 0x14],
-            bytes[lbl_dirent + 0x15],
-        ]);
+        // In the FAT format (512-byte entries), find the LBL entry by scanning
+        // FAT sectors starting at offset 0x400 (sector 2).
+        let mut lbl_size_used = 0u32;
+        let mut fat_offset = 0x400usize;
+        while fat_offset + 512 <= bytes.len() {
+            if bytes[fat_offset] != 0x01 {
+                break;
+            }
+            let ext = &bytes[fat_offset + 9..fat_offset + 12];
+            if ext == b"LBL" && bytes[fat_offset + 0x11] == 0 {
+                lbl_size_used = u32::from_le_bytes([
+                    bytes[fat_offset + 0x0C],
+                    bytes[fat_offset + 0x0D],
+                    bytes[fat_offset + 0x0E],
+                    bytes[fat_offset + 0x0F],
+                ]);
+                break;
+            }
+            fat_offset += 512;
+        }
         // A minimal LBL with no labels is 29 bytes (28-byte header + 1-byte null sentinel).
         // Any fixture with at least one labeled feature must produce size_used > 29.
         assert!(
-            size_used > 29,
+            lbl_size_used > 29,
             "LBL subfile size_used must be > 29 (header=28 + sentinel=1 is minimum; \
              real labels add more). Got {}",
-            size_used
+            lbl_size_used
         );
     }
 

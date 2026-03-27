@@ -1,6 +1,13 @@
-//! IMG Garmin header — first 512-byte block of every .img file.
+//! IMG Garmin header — first 512-byte sector of every .img file.
 //!
-//! Layout reference: mkgmap `ImgHeader.java`
+//! Standard Garmin IMG layout (MBR-style), compatible with QMapShack, gmt,
+//! BaseCamp and mkgmap.
+//!
+//! Key signatures:
+//! - "DSKIMG\0" at offset 0x010
+//! - "GARMIN\0" at offset 0x041
+//! - MBR partition entry at 0x1BE
+//! - Boot signature 0x55 0xAA at 0x1FE
 
 /// Date/time of IMG file creation.
 #[derive(Debug, Clone)]
@@ -27,8 +34,6 @@ impl ImgDate {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        // Very simple calendar conversion (good enough for tests / non-critical metadata).
-        // Uses the proleptic Gregorian algorithm.
         let (year, month, day, hour, minute, second) = secs_to_date(secs);
         Self {
             year_offset: year.saturating_sub(1900) as u8,
@@ -38,6 +43,11 @@ impl ImgDate {
             minute: minute as u8,
             second: second as u8,
         }
+    }
+
+    /// Absolute year (e.g. 2026).
+    pub fn year(&self) -> u16 {
+        1900 + self.year_offset as u16
     }
 }
 
@@ -66,22 +76,21 @@ fn secs_to_date(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     (year, month, day, hour, minute, second)
 }
 
-/// First 512-byte block of a Garmin IMG file.
+/// First 512-byte sector of a Garmin IMG file.
+///
+/// Standard Garmin layout with DSKIMG signature, MBR partition table,
+/// and CHS geometry.
 #[derive(Debug, Clone)]
 pub struct ImgHeader {
-    /// Map description (up to 49 bytes, ASCII, null-padded). Typically the map Name.
+    /// Map description (up to 20 bytes, ASCII, space-padded at 0x049).
     pub description: String,
     /// Block size exponent: `block_size = 1 << block_size_exponent`
-    /// (e.g. 9 → 512 bytes, 14 → 16 384 bytes).
+    /// (e.g. 9 → 512 bytes, 14 → 16 384 bytes, 16 → 65 536 bytes).
     pub block_size_exponent: u8,
     /// Creation date/time.
     pub creation_date: ImgDate,
-    /// Total number of blocks in the file (set by `ImgFilesystem` before serialisation).
-    pub total_blocks: u32,
-    /// Garmin family ID (LE16 at offset 0x054) — identifies the map family in BaseCamp.
-    pub family_id: u16,
-    /// Garmin product ID (LE16 at offset 0x056) — identifies the product in BaseCamp.
-    pub product_id: u16,
+    /// Total number of 512-byte sectors in the file (for MBR partition entry).
+    pub total_file_sectors: u32,
 }
 
 impl ImgHeader {
@@ -90,79 +99,118 @@ impl ImgHeader {
         1u32 << self.block_size_exponent
     }
 
+    /// Compute CHS geometry (sectors_per_track, heads_per_cylinder) such
+    /// that the number of cylinders stays below 1024.
+    fn compute_geometry(&self) -> (u16, u16) {
+        let ts = self.total_file_sectors;
+        let spt = 4u32;
+        let mut heads = 2u32;
+        // Scale heads to keep cylinders < 1024, capped at 128 (stays valid as u8).
+        while ts.div_ceil(heads * spt) >= 1024 && heads < 128 {
+            heads *= 2;
+        }
+        (spt as u16, heads as u16)
+    }
+
     /// Serialise the header into a fixed 512-byte buffer.
     ///
-    /// The XOR byte at offset 0x000 is computed last so that
-    /// `XOR(all 512 bytes) == 0x00`.
+    /// Layout matches the standard Garmin IMG format (mkgmap reference).
     pub fn to_bytes(&self) -> [u8; 512] {
         let mut buf = [0u8; 512];
+        let (spt, heads) = self.compute_geometry();
+        let year = self.creation_date.year();
 
-        // 0x001 — always 0x00 (already set by default).
+        // ── MBR preamble (0x000–0x00F) ───────────────────────────────────
+        buf[0x008] = 0x01;
+        buf[0x00A] = self.creation_date.month;
+        buf[0x00B] = self.creation_date.year_offset;
+        buf[0x00E] = 0x01;
 
-        // 0x002–0x007 — "GARMIN" magic string.
-        buf[0x002..0x008].copy_from_slice(b"GARMIN");
+        // ── DSKIMG signature (0x010–0x017) ───────────────────────────────
+        buf[0x010..0x017].copy_from_slice(b"DSKIMG\0");
+        buf[0x017] = 0x02; // format version
 
-        // 0x008 — 0x00 (already set).
-        // 0x009–0x00C — reserved (already 0x00).
+        // ── CHS geometry (0x018–0x01D) ───────────────────────────────────
+        buf[0x018..0x01A].copy_from_slice(&spt.to_le_bytes());
+        buf[0x01A] = heads as u8;
+        buf[0x01D] = 0x02; // unknown constant (matches reference)
 
-        // 0x00D–0x012 — creation date/time.
-        buf[0x00D] = self.creation_date.year_offset;
-        buf[0x00E] = self.creation_date.month;
-        buf[0x00F] = self.creation_date.day;
-        buf[0x010] = self.creation_date.hour;
-        buf[0x011] = self.creation_date.minute;
-        buf[0x012] = self.creation_date.second;
+        // ── Creation date — absolute (0x039–0x03F) ──────────────────────
+        buf[0x039..0x03B].copy_from_slice(&year.to_le_bytes());
+        buf[0x03B] = self.creation_date.month;
+        buf[0x03C] = self.creation_date.day;
+        buf[0x03D] = self.creation_date.hour;
+        buf[0x03E] = self.creation_date.minute;
+        buf[0x03F] = self.creation_date.second;
 
-        // 0x013–0x043 — description, 49 bytes, null-padded (already 0x00).
-        // Truncate at a character boundary so we never write a partial multi-byte
-        // codepoint into the field (Garmin expects 7-bit ASCII here).
-        let desc_bytes = self.description.as_bytes();
-        let safe_len = if desc_bytes.len() <= 49 {
-            desc_bytes.len()
-        } else {
-            // Walk back from byte 49 to the nearest valid UTF-8 char boundary.
-            let mut n = 49;
-            while n > 0 && !self.description.is_char_boundary(n) {
-                n -= 1;
-            }
-            n
-        };
-        buf[0x013..0x013 + safe_len].copy_from_slice(&desc_bytes[..safe_len]);
-        // 0x041–0x046 — "DSKIMG" signature (mandatory for Garmin tools / QMapShack / gmt).
-        buf[0x041..0x047].copy_from_slice(b"DSKIMG");
-        // 0x047 — null terminator (already 0x00).
+        // ── FAT flag + GARMIN signature (0x040–0x048) ───────────────────
+        buf[0x040] = 0x02;
+        buf[0x041..0x048].copy_from_slice(b"GARMIN\0");
 
-        // 0x048 — reserved (already 0x00).
+        // ── Description (0x049–0x05C, 20 chars, space-padded) ───────────
+        let mut desc = [0x20u8; 20];
+        let db = self.description.as_bytes();
+        let len = db.len().min(20);
+        desc[..len].copy_from_slice(&db[..len]);
+        buf[0x049..0x05D].copy_from_slice(&desc);
 
-        // 0x049 — heads = 1
-        buf[0x049] = 1;
-        // 0x04A — sectors per track = 63
-        buf[0x04A] = 63;
-        // 0x04B–0x04C — cylinders (le16): total_blocks / sectors_per_track / heads
-        let cylinders = (self.total_blocks / 63).min(0xFFFF) as u16;
-        buf[0x04B..0x04D].copy_from_slice(&cylinders.to_le_bytes());
-        // 0x04D — FAT type flags = 0x02 (readable)
-        buf[0x04D] = 0x02;
-        // 0x04E — block size exponent
-        buf[0x04E] = self.block_size_exponent;
-        // 0x04F — blocks per cluster = 1
-        buf[0x04F] = 1;
-        // 0x050–0x053 — total blocks in file (le32)
-        buf[0x050..0x054].copy_from_slice(&self.total_blocks.to_le_bytes());
+        // ── Block size exponent (0x05D) ─────────────────────────────────
+        buf[0x05D] = self.block_size_exponent;
 
-        // 0x054–0x055 — family_id (LE16)
-        buf[0x054..0x056].copy_from_slice(&self.family_id.to_le_bytes());
-        // 0x056–0x057 — product_id (LE16)
-        buf[0x056..0x058].copy_from_slice(&self.product_id.to_le_bytes());
-        // 0x058–0x1FD — reserved (already 0x00).
+        // ── Unknown constants (0x05F) ───────────────────────────────────
+        buf[0x05F] = 0x04;
 
-        // 0x1FE–0x1FF — DOS partition signature
+        // ── Filesystem parameters (0x061–0x064) ────────────────────────
+        // E1 (sector size exponent) and E2 (cluster factor): cluster_size = 2^(E1+E2).
+        // Matches mkgmap reference: E1=9, E2=2 → cluster_size=2048.
+        let e1: u8 = 9;
+        let e2: u8 = 2;
+        buf[0x061] = e1;
+        buf[0x062] = e2;
+        // Total clusters (LE16): ceil(total_file_sectors / 2^E2).
+        let cluster_divisor = 1u32 << e2;
+        let total_clusters = self.total_file_sectors.div_ceil(cluster_divisor).min(0xFFFF) as u16;
+        buf[0x063..0x065].copy_from_slice(&total_clusters.to_le_bytes());
+
+        // ── Description 2 — date string (0x065–0x083, 31 bytes) ────────
+        let date_str = format!(
+            "{:04}-{:02}-{:02}",
+            year, self.creation_date.month, self.creation_date.day
+        );
+        let mut desc2 = [0x20u8; 31];
+        let d2b = date_str.as_bytes();
+        let d2_len = d2b.len().min(30);
+        desc2[..d2_len].copy_from_slice(&d2b[..d2_len]);
+        desc2[30] = 0x00; // null terminator
+        buf[0x065..0x084].copy_from_slice(&desc2);
+
+        // ── MBR partition entry (0x1BE–0x1CD) ───────────────────────────
+        let ts = self.total_file_sectors;
+
+        // CHS start: (cylinder=0, head=0, sector=1)
+        buf[0x1C0] = 0x01;
+
+        // CHS end
+        if ts > 0 {
+            let last = ts - 1;
+            let end_cyl = last / (heads as u32 * spt as u32);
+            let rem = last % (heads as u32 * spt as u32);
+            let end_head = rem / spt as u32;
+            let end_sector = rem % spt as u32 + 1;
+
+            buf[0x1C3] = end_head as u8;
+            buf[0x1C4] =
+                (end_sector as u8 & 0x3F) | (((end_cyl >> 8) as u8 & 0x03) << 6);
+            buf[0x1C5] = (end_cyl & 0xFF) as u8;
+        }
+
+        // LBA start = 0 (already zeros)
+        // Total sectors (LE32)
+        buf[0x1CA..0x1CE].copy_from_slice(&ts.to_le_bytes());
+
+        // ── Boot signature (0x1FE–0x1FF) ────────────────────────────────
         buf[0x1FE] = 0x55;
         buf[0x1FF] = 0xAA;
-
-        // 0x000 — XOR byte: ensure XOR of all 512 bytes == 0x00.
-        let xor = buf[1..].iter().fold(0u8, |acc, &b| acc ^ b);
-        buf[0x000] = xor;
 
         buf
     }
@@ -184,41 +232,52 @@ mod tests {
                 minute: 30,
                 second: 0,
             },
-            total_blocks: 5,
-            family_id: 0,
-            product_id: 0,
+            total_file_sectors: 9,
         }
     }
 
     #[test]
-    fn test_header_magic() {
+    fn test_header_dskimg_signature() {
         let bytes = test_header().to_bytes();
-        assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
     }
 
     #[test]
-    fn test_header_xor() {
+    fn test_header_garmin_signature() {
         let bytes = test_header().to_bytes();
-        let xor = bytes.iter().fold(0u8, |acc, &b| acc ^ b);
-        assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00");
+        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
     }
 
     #[test]
-    fn test_header_signature() {
+    fn test_header_boot_signature() {
         let bytes = test_header().to_bytes();
         assert_eq!(bytes[0x1FE], 0x55);
         assert_eq!(bytes[0x1FF], 0xAA);
     }
 
     #[test]
-    fn test_header_date() {
+    fn test_header_date_absolute() {
         let bytes = test_header().to_bytes();
-        assert_eq!(bytes[0x00D], 126); // 2026 - 1900
-        assert_eq!(bytes[0x00E], 3); // month
-        assert_eq!(bytes[0x00F], 26); // day
-        assert_eq!(bytes[0x010], 10); // hour
-        assert_eq!(bytes[0x011], 30); // minute
-        assert_eq!(bytes[0x012], 0); // second
+        let year = u16::from_le_bytes([bytes[0x039], bytes[0x03A]]);
+        assert_eq!(year, 2026);
+        assert_eq!(bytes[0x03B], 3); // month
+        assert_eq!(bytes[0x03C], 26); // day
+        assert_eq!(bytes[0x03D], 10); // hour
+        assert_eq!(bytes[0x03E], 30); // minute
+        assert_eq!(bytes[0x03F], 0); // second
+    }
+
+    #[test]
+    fn test_header_date_preamble() {
+        let bytes = test_header().to_bytes();
+        assert_eq!(bytes[0x00A], 3); // month
+        assert_eq!(bytes[0x00B], 126); // year_offset
+    }
+
+    #[test]
+    fn test_header_fat_flag() {
+        let bytes = test_header().to_bytes();
+        assert_eq!(bytes[0x040], 0x02);
     }
 
     #[test]
@@ -228,6 +287,8 @@ mod tests {
         assert_eq!(h.block_size(), 512);
         h.block_size_exponent = 14;
         assert_eq!(h.block_size(), 16384);
+        h.block_size_exponent = 16;
+        assert_eq!(h.block_size(), 65536);
     }
 
     #[test]
@@ -238,19 +299,15 @@ mod tests {
     #[test]
     fn test_header_description() {
         let bytes = test_header().to_bytes();
-        assert_eq!(&bytes[0x013..0x013 + 8], b"Test Map");
-        // Remaining bytes of the 49-byte field are null-padded.
-        assert_eq!(bytes[0x013 + 8], 0x00);
+        assert_eq!(&bytes[0x049..0x049 + 8], b"Test Map");
+        // Remaining chars of the 20-byte field are space-padded.
+        assert_eq!(bytes[0x049 + 8], 0x20);
     }
 
     #[test]
-    fn test_header_description_utf8_boundary() {
-        // U+2019 RIGHT SINGLE QUOTATION MARK = 3 bytes (0xE2 0x80 0x99).
-        // Place it so that a naive byte truncation would cut inside the codepoint.
-        // 47 ASCII chars + 3-byte char = bytes 47-49 straddle the 49-byte limit.
-        let long_desc = "A".repeat(47) + "\u{2019}suffix";
+    fn test_header_description_truncation() {
         let h = ImgHeader {
-            description: long_desc,
+            description: "A very long description that exceeds 20 chars".to_string(),
             block_size_exponent: 9,
             creation_date: ImgDate {
                 year_offset: 126,
@@ -260,78 +317,79 @@ mod tests {
                 minute: 0,
                 second: 0,
             },
-            total_blocks: 2,
-            family_id: 0,
-            product_id: 0,
+            total_file_sectors: 5,
         };
         let bytes = h.to_bytes();
-        // The 49-byte field must never contain a partial codepoint.
-        let field = &bytes[0x013..0x013 + 49];
-        let non_zero_end = field
-            .iter()
-            .rposition(|&b| b != 0)
-            .map(|i| i + 1)
-            .unwrap_or(0);
-        let written = &field[..non_zero_end];
-        assert!(
-            std::str::from_utf8(written).is_ok(),
-            "description field must not contain a partial UTF-8 codepoint: {:?}",
-            written
-        );
-        // XOR invariant must still hold.
-        let xor = bytes.iter().fold(0u8, |acc, &b| acc ^ b);
-        assert_eq!(xor, 0x00);
+        assert_eq!(&bytes[0x049..0x05D], b"A very long descript");
     }
 
     #[test]
-    fn test_header_family_id_offset() {
-        let h = ImgHeader {
-            description: "Test".to_string(),
-            block_size_exponent: 9,
-            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
-            total_blocks: 2,
-            family_id: 6324,
-            product_id: 0,
-        };
-        let bytes = h.to_bytes();
-        let fid = u16::from_le_bytes([bytes[0x054], bytes[0x055]]);
-        assert_eq!(fid, 6324, "family_id must be at offset 0x054 (LE16)");
+    fn test_header_block_size_exponent() {
+        let bytes = test_header().to_bytes();
+        assert_eq!(bytes[0x05D], 9);
     }
 
     #[test]
-    fn test_header_product_id_offset() {
-        let h = ImgHeader {
-            description: "Test".to_string(),
-            block_size_exponent: 9,
-            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
-            total_blocks: 2,
-            family_id: 0,
-            product_id: 1,
-        };
-        let bytes = h.to_bytes();
-        assert_eq!(bytes[0x056], 0x01, "product_id low byte at 0x056");
-        assert_eq!(bytes[0x057], 0x00, "product_id high byte at 0x057");
+    fn test_header_partition_total_sectors() {
+        let bytes = test_header().to_bytes();
+        let ts = u32::from_le_bytes([
+            bytes[0x1CA],
+            bytes[0x1CB],
+            bytes[0x1CC],
+            bytes[0x1CD],
+        ]);
+        assert_eq!(ts, 9);
     }
 
     #[test]
-    fn test_header_xor_with_family_product() {
+    fn test_header_description2_date_string() {
+        let bytes = test_header().to_bytes();
+        // Date string starts at 0x065, 10 chars "2026-03-26"
+        assert_eq!(&bytes[0x065..0x06F], b"2026-03-26");
+        // Remaining bytes are space-padded
+        assert_eq!(bytes[0x06F], 0x20);
+        // Null terminator at end of 31-byte field
+        assert_eq!(bytes[0x083], 0x00);
+    }
+
+    #[test]
+    fn test_header_version() {
+        let bytes = test_header().to_bytes();
+        assert_eq!(bytes[0x017], 0x02);
+    }
+
+    #[test]
+    fn test_header_geometry_small() {
+        let h = test_header(); // 9 sectors
+        let (spt, heads) = h.compute_geometry();
+        assert_eq!(spt, 4);
+        assert_eq!(heads, 2);
+    }
+
+    #[test]
+    fn test_header_geometry_large() {
         let h = ImgHeader {
             description: "Test".to_string(),
-            block_size_exponent: 9,
-            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
-            total_blocks: 5,
-            family_id: 6324,
-            product_id: 1,
+            block_size_exponent: 16,
+            creation_date: ImgDate {
+                year_offset: 126,
+                month: 3,
+                day: 26,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            },
+            total_file_sectors: 25020, // ~12.2 MB
         };
-        let bytes = h.to_bytes();
-        let xor = bytes.iter().fold(0u8, |acc, &b| acc ^ b);
-        assert_eq!(xor, 0x00, "XOR invariant must hold with family_id/product_id set");
+        let (spt, heads) = h.compute_geometry();
+        assert_eq!(spt, 4);
+        assert!(heads >= 4, "heads must accommodate 25020 sectors");
+        let cylinders = 25020u32.div_ceil(heads as u32 * spt as u32);
+        assert!(cylinders < 1024, "cylinders must be < 1024");
     }
 
     #[test]
     fn test_secs_to_date_known_values() {
-        // 2026-03-26 00:00:00 UTC = 1774483200 seconds since epoch.
-        // Computed with: date -d "2026-03-26 00:00:00 UTC" +%s
         let (year, month, day, hour, minute, second) = secs_to_date(1_774_483_200);
         assert_eq!(year, 2026);
         assert_eq!(month, 3);

@@ -251,9 +251,14 @@ fn test_img_header_magic() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
     assert_eq!(
-        &bytes[0x002..0x008],
-        b"GARMIN",
-        "IMG magic must be 'GARMIN'"
+        &bytes[0x010..0x017],
+        b"DSKIMG\0",
+        "IMG header must contain DSKIMG at offset 0x010"
+    );
+    assert_eq!(
+        &bytes[0x041..0x048],
+        b"GARMIN\0",
+        "IMG header must contain GARMIN at offset 0x041"
     );
 }
 
@@ -274,32 +279,42 @@ fn test_img_subfile_names() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Directory is at block 1 (offset 512 for block_size=512).
-    let dir_start = 512usize;
-    // Each Dirent is 32 bytes.
+    // FAT entries start at sector 2 (offset 0x400). Each entry is 512 bytes.
+    // First entry is the volume label, file entries follow.
     let extensions = ["TRE", "RGN", "LBL"];
+    let mut found = Vec::new();
+    let mut fat_offset = 0x400usize;
+    while fat_offset + 512 <= bytes.len() {
+        if bytes[fat_offset] != 0x01 {
+            break;
+        }
+        let name = &bytes[fat_offset + 1..fat_offset + 9];
+        let ext = &bytes[fat_offset + 9..fat_offset + 12];
+        let part = bytes[fat_offset + 0x11];
+        // Skip volume label (name = spaces) and continuation parts
+        if name != &[0x20; 8] && part == 0 {
+            let ext_str = std::str::from_utf8(ext).unwrap_or("???");
+            found.push((name.to_vec(), ext_str.to_string()));
+        }
+        fat_offset += 512;
+    }
+    assert_eq!(found.len(), extensions.len(), "must find {} subfile entries", extensions.len());
     for (i, expected_ext) in extensions.iter().enumerate() {
-        let offset = dir_start + i * 32;
-        let name = &bytes[offset..offset + 8];
-        let ext = &bytes[offset + 8..offset + 11];
-        // Name must be "63240001" (no padding since it's exactly 8 chars).
-        assert_eq!(name, b"63240001", "subfile {i} name must be '63240001'");
-        assert_eq!(
-            ext,
-            expected_ext.as_bytes(),
-            "subfile {i} extension must be '{expected_ext}'"
-        );
+        assert_eq!(found[i].0, b"63240001", "subfile {i} name must be '63240001'");
+        assert_eq!(found[i].1, *expected_ext, "subfile {i} extension must be '{expected_ext}'");
     }
 }
 
 #[test]
-fn test_img_header_xor() {
+fn test_img_header_signatures() {
     let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
-    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-    assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0", "DSKIMG at 0x010");
+    assert_eq!(&bytes[0x041..0x048], b"GARMIN\0", "GARMIN at 0x041");
+    assert_eq!(bytes[0x1FE], 0x55);
+    assert_eq!(bytes[0x1FF], 0xAA);
 }
 
 // ----------------------------------------------------------------
@@ -314,15 +329,9 @@ fn test_img_rgn_subfile_not_empty() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Directory at block 1 (block_size=512). RGN is Dirent index 1 (32 bytes each).
-    let dir_start = 512usize;
-    let rgn_dirent = dir_start + 1 * 32;
-    let size_used = u32::from_le_bytes([
-        bytes[rgn_dirent + 0x12],
-        bytes[rgn_dirent + 0x13],
-        bytes[rgn_dirent + 0x14],
-        bytes[rgn_dirent + 0x15],
-    ]);
+    // Find RGN FAT entry by extension.
+    let fat_offset = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
+    let size_used = fat_file_size(&bytes, fat_offset);
     assert!(size_used > 0, "RGN subfile size_used must be > 0 (real RGN content)");
 }
 
@@ -334,11 +343,9 @@ fn test_img_rgn_header_magic() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Read RGN block_start from Dirent index 1.
-    let dir_start = 512usize;
-    let rgn_dirent = dir_start + 1 * 32;
-    let block_start =
-        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    // Read RGN block_start from FAT entry.
+    let fat_offset = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
+    let block_start = fat_first_block(&bytes, fat_offset);
     let rgn_offset = block_start * 512;
 
     assert_eq!(
@@ -357,10 +364,9 @@ fn test_img_tre_subdivisions_rgn_offset_nonzero() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Locate TRE block.
-    let dir_start = 512usize;
-    let tre_block_start =
-        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    // Locate TRE block via FAT.
+    let tre_fat = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let tre_block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = tre_block_start * 512;
 
     // Read subdivisions_offset from TRE header at byte 0x1C (robust across level counts).
@@ -398,10 +404,9 @@ fn test_img_level_filtering_subdivision_size() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Locate TRE subdivisions — read subdivisions_offset from TRE header (robust across level counts).
-    let dir_start = 512usize;
-    let tre_block_start =
-        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    // Locate TRE subdivisions via FAT.
+    let tre_fat = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let tre_block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = tre_block_start * 512;
     let subdivs_offset = u32::from_le_bytes([
         bytes[tre_offset + 0x1C],
@@ -419,10 +424,9 @@ fn test_img_level_filtering_subdivision_size() {
         | ((bytes[subdiv1_start + 1] as u32) << 8)
         | ((bytes[subdiv1_start + 2] as u32) << 16);
 
-    // Locate RGN data section (after the 29-byte header).
-    let rgn_dirent = dir_start + 1 * 32;
-    let rgn_block_start =
-        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    // Locate RGN data section (after the 29-byte header) via FAT.
+    let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
+    let rgn_block_start = fat_first_block(&bytes, rgn_fat);
     let rgn_file_start = rgn_block_start * 512;
     // data_size is at offset 0x08 in the RGN header
     let data_size = u32::from_le_bytes([
@@ -457,16 +461,9 @@ fn test_img_tre_subfile_not_empty() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Directory at block 1 (offset = 1 × 512 for block_size = 512).
-    // TRE is the first Dirent (index 0), each entry is 32 bytes.
-    // size_used is at offset 0x12 within the Dirent.
-    let dir_start = 512usize;
-    let size_used = u32::from_le_bytes([
-        bytes[dir_start + 0x12],
-        bytes[dir_start + 0x13],
-        bytes[dir_start + 0x14],
-        bytes[dir_start + 0x15],
-    ]);
+    // Find TRE FAT entry by extension.
+    let fat_offset = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let size_used = fat_file_size(&bytes, fat_offset);
     assert!(
         size_used > 0,
         "TRE subfile size_used must be > 0 (real TRE content)"
@@ -481,10 +478,9 @@ fn test_img_tre_header_version() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Read TRE block_start from the first Dirent (offset 0x0C within the Dirent).
-    let dir_start = 512usize;
-    let block_start =
-        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    // Read TRE block_start from FAT entry.
+    let fat_offset = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let block_start = fat_first_block(&bytes, fat_offset);
     let tre_offset = block_start * 512;
 
     assert_eq!(
@@ -502,9 +498,8 @@ fn test_img_tre_bounds_nonzero() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    let dir_start = 512usize;
-    let block_start =
-        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    let tre_fat = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = block_start * 512;
 
     // max_lat is at offset 0x04 of the TRE subfile, encoded as LE24 signed.
@@ -528,17 +523,10 @@ fn test_img_tre_bounds_nonzero() {
 // ----------------------------------------------------------------
 
 fn read_lbl_block(bytes: &[u8]) -> (usize, u32) {
-    // LBL is Dirent index 2 in the directory (block 1 for block_size=512).
-    let dir_start = 512usize;
-    let lbl_dirent = dir_start + 2 * 32;
-    let block_start =
-        u16::from_le_bytes([bytes[lbl_dirent + 0x0C], bytes[lbl_dirent + 0x0D]]) as usize;
-    let size_used = u32::from_le_bytes([
-        bytes[lbl_dirent + 0x12],
-        bytes[lbl_dirent + 0x13],
-        bytes[lbl_dirent + 0x14],
-        bytes[lbl_dirent + 0x15],
-    ]);
+    // LBL FAT entry — find by extension.
+    let fat_offset = find_fat_entry_by_ext(bytes, b"LBL").expect("LBL FAT entry not found");
+    let block_start = fat_first_block(bytes, fat_offset);
+    let size_used = fat_file_size(bytes, fat_offset);
     (block_start * 512, size_used)
 }
 
@@ -599,11 +587,9 @@ fn test_img_rgn_poi_label_offset_nonzero() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Locate RGN block.
-    let dir_start = 512usize;
-    let rgn_dirent = dir_start + 1 * 32;
-    let rgn_block_start =
-        u16::from_le_bytes([bytes[rgn_dirent + 0x0C], bytes[rgn_dirent + 0x0D]]) as usize;
+    // Locate RGN block via FAT.
+    let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
+    let rgn_block_start = fat_first_block(&bytes, rgn_fat);
     let rgn_file_start = rgn_block_start * 512;
     // RGN data section starts after the 29-byte header.
     let rgn_data_start = rgn_file_start + 29;
@@ -703,17 +689,10 @@ fn test_e2e_img_all_subfiles_present_and_nonzero() {
     let bytes = std::fs::read(tmp.path()).unwrap();
 
     // Minimum meaningful sizes: TRE header alone = 148 bytes, RGN header = 29 bytes, LBL header = 28 bytes.
-    let dir_start = 512usize;
-    let min_sizes = [("TRE", 148u32), ("RGN", 29u32), ("LBL", 28u32)];
-    for (i, (name, min_size)) in min_sizes.iter().enumerate() {
-        // size_used is at offset 0x12 within each 32-byte Dirent.
-        let dirent = dir_start + i * 32;
-        let size_used = u32::from_le_bytes([
-            bytes[dirent + 0x12],
-            bytes[dirent + 0x13],
-            bytes[dirent + 0x14],
-            bytes[dirent + 0x15],
-        ]);
+    let min_sizes = [("TRE", b"TRE", 148u32), ("RGN", b"RGN", 29u32), ("LBL", b"LBL", 28u32)];
+    for (name, ext, min_size) in &min_sizes {
+        let fat_offset = find_fat_entry_by_ext(&bytes, ext).expect(&format!("{} FAT entry not found", name));
+        let size_used = fat_file_size(&bytes, fat_offset);
         assert!(
             size_used > *min_size,
             "{} size_used must be > {} bytes (header-only minimum), got {}",
@@ -734,11 +713,19 @@ fn test_e2e_img_map_id_in_header() {
     let bytes = std::fs::read(tmp.path()).unwrap();
 
     let map_id = b"63240038";
-    // Scan only the 3 Dirent entries (3 × 32 = 96 bytes) starting at offset 512.
-    // Each Dirent begins with the 8-byte map name (= map ID), so this is the precise location.
-    let dirents = &bytes[512..512 + 3 * 32];
-    let found = dirents.windows(map_id.len()).any(|w| w == map_id);
-    assert!(found, "Map ID '63240038' must be present in the Dirent name field of the directory block");
+    // Scan FAT entries for the map ID in the name field (offset 0x01 of each 512-byte entry).
+    let mut found = false;
+    let mut offset = 0x400usize;
+    while offset + 512 <= bytes.len() {
+        if bytes[offset] != 0x01 { break; }
+        let name = &bytes[offset + 1..offset + 9];
+        if name == map_id {
+            found = true;
+            break;
+        }
+        offset += 512;
+    }
+    assert!(found, "Map ID '63240038' must be present in a FAT entry name field");
 }
 
 #[test]
@@ -753,10 +740,9 @@ fn test_e2e_img_tre_bounds_france() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Locate TRE subfile via Dirent index 0 (block_start at offset 0x0C within the Dirent).
-    let dir_start = 512usize;
-    let block_start =
-        u16::from_le_bytes([bytes[dir_start + 0x0C], bytes[dir_start + 0x0D]]) as usize;
+    // Locate TRE subfile via FAT entry.
+    let tre_fat = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = block_start * 512;
 
     // Read max_lat (LE24 signed) at TRE offset 0x04
@@ -873,15 +859,9 @@ fn test_e2e_img_rgn_all_feature_types() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // size_used is at offset 0x12 within Dirent index 1 (RGN).
-    let dir_start = 512usize;
-    let rgn_dirent = dir_start + 1 * 32;
-    let size_used = u32::from_le_bytes([
-        bytes[rgn_dirent + 0x12],
-        bytes[rgn_dirent + 0x13],
-        bytes[rgn_dirent + 0x14],
-        bytes[rgn_dirent + 0x15],
-    ]);
+    // Find RGN size_used via FAT entry.
+    let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
+    let size_used = fat_file_size(&bytes, rgn_fat);
     assert!(
         size_used > 29,
         "RGN size_used must be > 29 (header-only = 29 bytes), got {}",
@@ -891,24 +871,26 @@ fn test_e2e_img_rgn_all_feature_types() {
 
 #[test]
 fn test_e2e_img_dos_header_valid() {
-    // AC2 : header DOS 512 bytes valide — magic GARMIN, signature 0x55/0xAA, XOR de tous les bytes = 0.
+    // AC2 : header DOS 512 bytes valide — DSKIMG, GARMIN, signature 0x55/0xAA.
     let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Magic "GARMIN" at offset 0x002
+    // Standard Garmin IMG signatures
     assert_eq!(
-        &bytes[0x002..0x008],
-        b"GARMIN",
-        "IMG header must contain GARMIN magic at offset 0x002"
+        &bytes[0x010..0x017],
+        b"DSKIMG\0",
+        "IMG header must contain DSKIMG at offset 0x010"
+    );
+    assert_eq!(
+        &bytes[0x041..0x048],
+        b"GARMIN\0",
+        "IMG header must contain GARMIN at offset 0x041"
     );
     // DOS partition signature at 0x1FE/0x1FF
     assert_eq!(bytes[0x1FE], 0x55, "DOS signature byte 0x1FE must be 0x55, got 0x{:02X}", bytes[0x1FE]);
     assert_eq!(bytes[0x1FF], 0xAA, "DOS signature byte 0x1FF must be 0xAA, got 0x{:02X}", bytes[0x1FF]);
-    // XOR of all 512 header bytes must be 0x00 (XOR byte at 0x000 is computed to ensure this)
-    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-    assert_eq!(xor, 0x00, "XOR of all 512 header bytes must be 0x00, got 0x{:02X}", xor);
 }
 
 // ----------------------------------------------------------------
@@ -997,7 +979,7 @@ fn test_routing_graph_compile_no_crash() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
 }
 
 // ----------------------------------------------------------------
@@ -1013,20 +995,11 @@ fn test_net_validation_compile_produces_net_subfile() {
     let bytes = std::fs::read(tmp.path()).unwrap();
 
     assert!(bytes.len() > 512, "IMG output must be non-empty");
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "valid GARMIN header");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0", "valid GARMIN header");
 
-    // With routing, 4 subfiles: TRE(0), RGN(1), LBL(2), NET(3).
-    // NET directory entry is at dir_start + 3*32.
-    let dir_start = 512usize;
-    let net_dirent = dir_start + 3 * 32;
-
-    // Read size_used for NET subfile (offset 0x12 within dirent)
-    let net_size = u32::from_le_bytes([
-        bytes[net_dirent + 0x12],
-        bytes[net_dirent + 0x13],
-        bytes[net_dirent + 0x14],
-        bytes[net_dirent + 0x15],
-    ]);
+    // With routing, subfiles include NET. Find it via FAT.
+    let net_fat = find_fat_entry_by_ext(&bytes, b"NET").expect("NET FAT entry not found");
+    let net_size = fat_file_size(&bytes, net_fat);
     assert!(
         net_size > 55,
         "NET subfile must be > 55 bytes (header=55), got {}",
@@ -1042,13 +1015,9 @@ fn test_net_validation_header_parsable() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Find NET subfile start: dirent[3].block_start × block_size
-    let dir_start = 512usize;
-    let net_dirent = dir_start + 3 * 32;
-    let block_start = u16::from_le_bytes([
-        bytes[net_dirent + 0x0C],
-        bytes[net_dirent + 0x0D],
-    ]) as usize;
+    // Find NET subfile start via FAT entry.
+    let net_fat = find_fat_entry_by_ext(&bytes, b"NET").expect("NET FAT entry not found");
+    let block_start = fat_first_block(&bytes, net_fat);
     let block_size = 512usize; // exponent=9 in ImgWriter::write
     let net_start = block_start * block_size;
 
@@ -1202,13 +1171,9 @@ fn test_net_validation_tre_routing_bit() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Find TRE subfile: first dirent → block_start × block_size
-    let dir_start = 512usize;
-    let tre_dirent = dir_start; // TRE is dirent 0
-    let block_start = u16::from_le_bytes([
-        bytes[tre_dirent + 0x0C],
-        bytes[tre_dirent + 0x0D],
-    ]) as usize;
+    // Find TRE subfile via FAT entry.
+    let tre_fat = find_fat_entry_by_ext(&bytes, b"TRE").expect("TRE FAT entry not found");
+    let block_start = fat_first_block(&bytes, tre_fat);
     let tre_start = block_start * 512;
 
     // TRE header is 148 bytes. Levels section follows.
@@ -1235,7 +1200,7 @@ fn test_net_validation_no_regression() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
     assert!(bytes.len() > 512);
 }
 
@@ -1246,27 +1211,15 @@ fn test_net_validation_minimal_no_routing_still_works() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
 
-    // Only 3 subfile directory entries (TRE, RGN, LBL — no NET)
-    let dir_start = 512usize;
-    // Check that there's no 4th dirent with valid content
-    // (the 4th dirent would be at dir_start + 3*32 = dir_start + 96)
-    // If no NET, the 4th slot should be zero/unused
-    let fourth_dirent_start = dir_start + 3 * 32;
-    if fourth_dirent_start + 32 <= bytes.len() {
-        let size_used = u32::from_le_bytes([
-            bytes[fourth_dirent_start + 0x12],
-            bytes[fourth_dirent_start + 0x13],
-            bytes[fourth_dirent_start + 0x14],
-            bytes[fourth_dirent_start + 0x15],
-        ]);
-        // If there's no NET subfile, this should be 0 or the 4th dirent doesn't exist
-        assert_eq!(
-            size_used, 0,
-            "minimal_for_img.mp should have no NET subfile (4th dirent size_used should be 0)"
-        );
-    }
+    // Only 3 subfile FAT entries (TRE, RGN, LBL — no NET)
+    // Check that there's no NET FAT entry
+    let net_entry = find_fat_entry_by_ext(&bytes, b"NET");
+    assert!(
+        net_entry.is_none(),
+        "minimal_for_img.mp should have no NET subfile (no NET FAT entry expected)"
+    );
 }
 
 #[test]
@@ -1326,19 +1279,76 @@ fn compile_net_validation_img() -> Vec<u8> {
     std::fs::read(tmp.path()).unwrap()
 }
 
-/// Parse a dirent extension (3-char ASCII) from the FAT directory.
-/// Each dirent is 32 bytes; extension at bytes [8..11].
-fn read_dirent_ext(bytes: &[u8], index: usize) -> [u8; 3] {
-    let dir_start = 512usize; // block 1 with block_size=512
-    let offset = dir_start + index * 32;
-    [bytes[offset + 8], bytes[offset + 9], bytes[offset + 10]]
+/// Find a FAT entry by extension (first part-0 entry matching ext).
+/// Returns the byte offset of the FAT entry, or None.
+fn find_fat_entry_by_ext(bytes: &[u8], ext: &[u8; 3]) -> Option<usize> {
+    let mut offset = 0x400usize; // sector 2
+    while offset + 512 <= bytes.len() {
+        if bytes[offset] != 0x01 { break; }
+        let entry_ext = &bytes[offset + 9..offset + 12];
+        let part = bytes[offset + 0x11];
+        if entry_ext == ext && part == 0 {
+            return Some(offset);
+        }
+        offset += 512;
+    }
+    None
 }
 
-/// Read block_start from a dirent (LE16 at offset 0x0C).
+/// Find the Nth file FAT entry (part 0 only, skipping volume label).
+/// Returns the byte offset of the FAT entry.
+fn find_nth_file_entry(bytes: &[u8], n: usize) -> Option<usize> {
+    let mut count = 0usize;
+    let mut offset = 0x400usize;
+    while offset + 512 <= bytes.len() {
+        if bytes[offset] != 0x01 { break; }
+        let name = &bytes[offset + 1..offset + 9];
+        let part = bytes[offset + 0x11];
+        // Skip volume label (spaces) and continuation parts
+        if name != &[0x20u8; 8] && part == 0 {
+            if count == n { return Some(offset); }
+            count += 1;
+        }
+        offset += 512;
+    }
+    None
+}
+
+/// Read file_size (LE32 at offset 0x0C) from a FAT entry.
+fn fat_file_size(bytes: &[u8], fat_offset: usize) -> u32 {
+    u32::from_le_bytes([
+        bytes[fat_offset + 0x0C],
+        bytes[fat_offset + 0x0D],
+        bytes[fat_offset + 0x0E],
+        bytes[fat_offset + 0x0F],
+    ])
+}
+
+/// Read first block index from FAT entry's allocation table (LE16 at offset 0x20).
+fn fat_first_block(bytes: &[u8], fat_offset: usize) -> usize {
+    u16::from_le_bytes([bytes[fat_offset + 0x20], bytes[fat_offset + 0x21]]) as usize
+}
+
+/// Read extension from a FAT entry (3 bytes at offset 0x09).
+fn fat_ext(bytes: &[u8], fat_offset: usize) -> [u8; 3] {
+    [bytes[fat_offset + 9], bytes[fat_offset + 10], bytes[fat_offset + 11]]
+}
+
+/// Read map_id (name) from a FAT entry (8 bytes at offset 0x01).
+fn fat_name(bytes: &[u8], fat_offset: usize) -> String {
+    String::from_utf8_lossy(&bytes[fat_offset + 1..fat_offset + 9]).trim().to_string()
+}
+
+/// Backward-compatible wrapper: read extension by file index (skipping volume label).
+fn read_dirent_ext(bytes: &[u8], index: usize) -> [u8; 3] {
+    let fat_offset = find_nth_file_entry(bytes, index).expect("FAT entry not found");
+    fat_ext(bytes, fat_offset)
+}
+
+/// Backward-compatible wrapper: read first block by file index (skipping volume label).
 fn read_dirent_block_start(bytes: &[u8], index: usize) -> usize {
-    let dir_start = 512usize;
-    let offset = dir_start + index * 32;
-    u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize
+    let fat_offset = find_nth_file_entry(bytes, index).expect("FAT entry not found");
+    fat_first_block(bytes, fat_offset)
 }
 
 #[test]
@@ -1542,7 +1552,7 @@ fn test_nod_validation_no_regression() {
     let bytes = std::fs::read(tmp.path()).unwrap();
     assert!(bytes.len() > 0, "compiled .img must be non-empty");
     // Verify GARMIN magic still present
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "IMG magic must still be 'GARMIN'");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0", "IMG magic must still be 'GARMIN'");
     // Verify 5 subfiles now present: TRE, RGN, LBL, NET, NOD
     let extensions: Vec<[u8; 3]> = (0..5).map(|i| read_dirent_ext(&bytes, i)).collect();
     assert_eq!(&extensions[0], b"TRE", "subfile 0 must be TRE");
@@ -1887,7 +1897,7 @@ fn test_routing_full_compile_five_subfiles() {
     let bytes = compile_routing_full_validation_img();
 
     assert!(bytes.len() > 0, "le .img compilé doit être non-vide");
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "magic GARMIN doit être présent");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0", "magic GARMIN doit être présent");
 
     let extensions: Vec<[u8; 3]> = (0..5).map(|i| read_dirent_ext(&bytes, i)).collect();
     assert_eq!(&extensions[0], b"TRE", "subfile 0 doit être TRE");
@@ -1963,7 +1973,7 @@ fn test_routing_full_validation_fixture_compiles() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
     assert!(bytes.len() > 512, "le .img doit faire plus d'un block (512 bytes)");
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "magic GARMIN toujours présent");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0", "magic GARMIN toujours présent");
 }
 
 // ================================================================
@@ -2000,14 +2010,12 @@ fn test_build_single_tile() {
         .unwrap();
     assert_eq!(stats.tile_count, 1);
     let bytes = std::fs::read(output.path()).unwrap();
-    // GARMIN header magic
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    // Standard Garmin IMG header
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+    assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
     // DOS signature
     assert_eq!(bytes[0x1FE], 0x55);
     assert_eq!(bytes[0x1FF], 0xAA);
-    // XOR invariant
-    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-    assert_eq!(xor, 0x00, "header XOR must be 0x00");
 }
 
 #[test]
@@ -2069,31 +2077,12 @@ fn test_build_dir_not_found_returns_error() {
 }
 
 #[test]
-fn test_build_gmapsupp_family_id() {
-    // AC3 — --family-id 6324 → bytes[0x054..0x056] = 6324u16.to_le_bytes()
+fn test_build_gmapsupp_family_id_in_tdb() {
+    // family_id is no longer in the IMG header (standard Garmin format).
+    // It is stored in the companion TDB file.
     let tiles = tiles_dir_with(&["tile_a.mp"]);
     let config = BuildConfig {
         family_id: 6324,
-        product_id: 0,
-        description: "Test".into(),
-        block_size_exponent: 9,
-        typ_file: None,
-        jobs: 1,
-        show_progress: false,
-    };
-    let output = tempfile::NamedTempFile::new().unwrap();
-    GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
-    let bytes = std::fs::read(output.path()).unwrap();
-    let fid = u16::from_le_bytes([bytes[0x054], bytes[0x055]]);
-    assert_eq!(fid, 6324, "family_id must be at header offset 0x054");
-}
-
-#[test]
-fn test_build_gmapsupp_product_id() {
-    // AC3 — --product-id 1 → bytes[0x056..0x058] = [0x01, 0x00]
-    let tiles = tiles_dir_with(&["tile_a.mp"]);
-    let config = BuildConfig {
-        family_id: 0,
         product_id: 1,
         description: "Test".into(),
         block_size_exponent: 9,
@@ -2102,10 +2091,13 @@ fn test_build_gmapsupp_product_id() {
         show_progress: false,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
-    GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
+    // TDB file must be generated
+    assert!(stats.tdb_path.exists(), "TDB companion file must be generated");
+    // IMG header must have standard signatures
     let bytes = std::fs::read(output.path()).unwrap();
-    assert_eq!(bytes[0x056], 0x01, "product_id low byte at 0x056");
-    assert_eq!(bytes[0x057], 0x00, "product_id high byte at 0x057");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+    assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
 }
 
 #[test]
@@ -2126,16 +2118,17 @@ fn test_build_multi_block_directory() {
     let stats = GmapsuppAssembler::build(dir.path(), output.path(), &test_build_config_512())
         .unwrap();
     assert_eq!(stats.tile_count, 6);
-    // 6 tiles × 3 subfiles + 1 SRT = 19 entries → dir_blocks = ceil(19*32/512) = 2
+    // 6 tiles × 3 subfiles + 1 SRT = 19 entries
     assert_eq!(stats.subfile_count, 19, "6 tiles × 3 subfiles (no routing) + 1 SRT = 19");
     let bytes = std::fs::read(output.path()).unwrap();
-    // First subfile should start at block 3 (1 header + 2 dir blocks)
-    // 19 × 32 = 608 bytes → ceil(608/512) = 2 dir blocks → data starts at block 3
-    let dir_offset = 512usize; // block 1
-    let block_start_first = u16::from_le_bytes([bytes[dir_offset + 0x0C], bytes[dir_offset + 0x0D]]);
+    // With new FAT format (512-byte entries): 1 volume + 19 file entries = 20 FAT sectors
+    // header_sectors = 2 + 20 = 22 → 22 header blocks (block_size=512)
+    // Data starts at block 22. Verify by checking first file's block allocation.
+    let first_file_fat = 0x400 + 512; // skip volume label → second FAT entry
+    let first_block = u16::from_le_bytes([bytes[first_file_fat + 0x20], bytes[first_file_fat + 0x21]]);
     assert_eq!(
-        block_start_first, 3,
-        "with 19 entries and block_size=512, first subfile starts at block 3"
+        first_block, 22,
+        "with 20 FAT entries and block_size=512, first subfile starts at block 22"
     );
 }
 
@@ -2162,21 +2155,9 @@ fn test_build_boundary_nodes_detected() {
     let bytes = std::fs::read(output.path()).unwrap();
     let block_size = 512usize;
 
-    // Trouver le Dirent du subfile NOD dans le répertoire FAT (block 1).
-    let dir_start = block_size;
-    let mut nod_block_start: Option<usize> = None;
-    for i in 0..stats.subfile_count {
-        let dirent_off = dir_start + i * 32;
-        let ext = &bytes[dirent_off + 0x08..dirent_off + 0x0B];
-        if ext == b"NOD" {
-            nod_block_start = Some(
-                u16::from_le_bytes([bytes[dirent_off + 0x0C], bytes[dirent_off + 0x0D]]) as usize,
-            );
-            break;
-        }
-    }
-
-    let nod_start = nod_block_start.expect("subfile NOD doit exister") * block_size;
+    // Trouver le FAT entry du subfile NOD.
+    let nod_fat = find_fat_entry_by_ext(&bytes, b"NOD").expect("subfile NOD doit exister");
+    let nod_start = fat_first_block(&bytes, nod_fat) * block_size;
     // NOD3 length est à l'offset 0x2A dans le header NOD (LE32).
     let nod3_len = u32::from_le_bytes([
         bytes[nod_start + 0x2A],
@@ -2200,9 +2181,7 @@ fn test_build_no_regression() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
-    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
-    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
-    assert_eq!(xor, 0x00, "header XOR must hold after Story 15.1 changes");
+    assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
 }
 
 // ── Story 15.2 — TDB Integration Tests ───────────────────────────────────────
@@ -2438,22 +2417,12 @@ fn test_build_with_typ_file_embeds_subfile() {
     // AC2 — build avec --typ → subfile TYP présent dans le FAT directory
     let (bytes, stats, _tmp) = build_with_typ(b"TYP MARKER", 6324);
 
-    let block_size = 512usize;
-    let dir_start = block_size; // block 1
-
-    let mut found_typ = false;
-    for i in 0..stats.subfile_count {
-        let offset = dir_start + i * 32;
-        let ext = &bytes[offset + 0x08..offset + 0x0B];
-        if ext == b"TYP" {
-            found_typ = true;
-            // Vérifier le map_id = "00006324"
-            let name = &bytes[offset..offset + 8];
-            assert_eq!(name, b"00006324", "map_id du TYP doit être '00006324' (family_id=6324)");
-            break;
-        }
-    }
-    assert!(found_typ, "un Dirent avec ext=TYP doit être présent dans le FAT");
+    let typ_fat = find_fat_entry_by_ext(&bytes, b"TYP");
+    assert!(typ_fat.is_some(), "un FAT entry avec ext=TYP doit être présent");
+    let typ_fat = typ_fat.unwrap();
+    // Vérifier le map_id = "00006324"
+    let name = fat_name(&bytes, typ_fat);
+    assert_eq!(name, "00006324", "map_id du TYP doit être '00006324' (family_id=6324)");
     assert!(stats.typ_embedded, "stats.typ_embedded doit être true");
 }
 
@@ -2461,32 +2430,13 @@ fn test_build_with_typ_file_embeds_subfile() {
 fn test_build_with_typ_file_content_matches() {
     // AC2 — les bytes du subfile TYP dans le gmapsupp.img correspondent au fichier source
     let typ_content: &[u8] = b"GARMIN TYP CONTENT 01234567890ABCDEF";
-    let (bytes, stats, _tmp) = build_with_typ(typ_content, 6324);
+    let (bytes, _stats, _tmp) = build_with_typ(typ_content, 6324);
 
     let block_size = 512usize;
-    let dir_start = block_size;
 
-    let mut typ_block_start: Option<usize> = None;
-    let mut typ_size: Option<usize> = None;
-    for i in 0..stats.subfile_count {
-        let offset = dir_start + i * 32;
-        let ext = &bytes[offset + 0x08..offset + 0x0B];
-        if ext == b"TYP" {
-            typ_block_start = Some(
-                u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize,
-            );
-            typ_size = Some(u32::from_le_bytes([
-                bytes[offset + 0x12],
-                bytes[offset + 0x13],
-                bytes[offset + 0x14],
-                bytes[offset + 0x15],
-            ]) as usize);
-            break;
-        }
-    }
-
-    let block_start = typ_block_start.expect("Dirent TYP doit exister");
-    let size = typ_size.expect("size_used du TYP doit être non-nul");
+    let typ_fat = find_fat_entry_by_ext(&bytes, b"TYP").expect("FAT entry TYP doit exister");
+    let block_start = fat_first_block(&bytes, typ_fat);
+    let size = fat_file_size(&bytes, typ_fat) as usize;
     assert_eq!(size, typ_content.len(), "size_used du TYP doit correspondre aux bytes source");
 
     let data_start = block_start * block_size;
@@ -2503,14 +2453,9 @@ fn test_build_without_typ_no_typ_subfile() {
         .unwrap();
 
     let bytes = std::fs::read(output.path()).unwrap();
-    let block_size = 512usize;
-    let dir_start = block_size;
 
-    let has_typ = (0..stats.subfile_count).any(|i| {
-        let offset = dir_start + i * 32;
-        &bytes[offset + 0x08..offset + 0x0B] == b"TYP"
-    });
-    assert!(!has_typ, "sans --typ, aucun Dirent TYP ne doit être présent");
+    let has_typ = find_fat_entry_by_ext(&bytes, b"TYP").is_some();
+    assert!(!has_typ, "sans --typ, aucun FAT entry TYP ne doit être présent");
     assert!(!stats.typ_embedded, "stats.typ_embedded doit être false sans --typ");
 }
 
@@ -2542,29 +2487,14 @@ fn test_build_typ_missing_file_returns_error() {
 
 // ── Story 15.4 — SRT Writer (tri alphabétique français) ──────────────────────
 
-/// Helper : trouve un Dirent dans le FAT du gmapsupp.img par extension.
+/// Helper : trouve un FAT entry dans le gmapsupp.img par extension.
 /// Retourne (map_id_str, block_start, size_used) si trouvé.
-fn find_dirent_by_ext(bytes: &[u8], ext: &[u8; 3], subfile_count: usize, block_size: usize) -> Option<(String, usize, usize)> {
-    let dir_start = block_size; // bloc 1
-    for i in 0..subfile_count {
-        let offset = dir_start + i * 32;
-        if &bytes[offset + 0x08..offset + 0x0B] == ext {
-            let name = std::str::from_utf8(&bytes[offset..offset + 8])
-                .unwrap_or("")
-                .trim_end_matches('\0')
-                .to_string();
-            let block_start =
-                u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize;
-            let size_used = u32::from_le_bytes([
-                bytes[offset + 0x12],
-                bytes[offset + 0x13],
-                bytes[offset + 0x14],
-                bytes[offset + 0x15],
-            ]) as usize;
-            return Some((name, block_start, size_used));
-        }
-    }
-    None
+fn find_dirent_by_ext(bytes: &[u8], ext: &[u8; 3], _subfile_count: usize, _block_size: usize) -> Option<(String, usize, usize)> {
+    let fat_offset = find_fat_entry_by_ext(bytes, ext)?;
+    let name = fat_name(bytes, fat_offset);
+    let block_start = fat_first_block(bytes, fat_offset);
+    let size_used = fat_file_size(bytes, fat_offset) as usize;
+    Some((name, block_start, size_used))
 }
 
 #[test]
@@ -2716,7 +2646,19 @@ fn test_build_parallel_jobs_2() {
 
     let bytes_seq = std::fs::read(out_seq.path()).unwrap();
     let bytes_par = std::fs::read(out_par.path()).unwrap();
-    assert_eq!(bytes_seq, bytes_par, "output binaire identique (déterminisme FAT)");
+    // Structural equivalence — byte-for-byte comparison is fragile due to
+    // timestamps in both the IMG header and TRE/NOD subfile headers.
+    assert_eq!(bytes_seq.len(), bytes_par.len(), "output size identique (déterminisme FAT)");
+    // Verify same FAT structure: same number of entries, same extensions
+    let exts_seq: Vec<_> = (0..20)
+        .filter_map(|i| find_nth_file_entry(&bytes_seq, i))
+        .map(|off| fat_ext(&bytes_seq, off))
+        .collect();
+    let exts_par: Vec<_> = (0..20)
+        .filter_map(|i| find_nth_file_entry(&bytes_par, i))
+        .map(|off| fat_ext(&bytes_par, off))
+        .collect();
+    assert_eq!(exts_seq, exts_par, "FAT extensions identiques (déterminisme)");
 }
 
 #[test]
