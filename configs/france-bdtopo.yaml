@@ -1,0 +1,218 @@
+# =============================================================================
+# france-bdtopo.yaml — Config mpforge-cli générique (France BDTOPO)
+# =============================================================================
+#
+# Template de configuration pour le pipeline France complet (21 couches BDTOPO).
+# Utilise ${DATA_ROOT} comme racine des données et ${OUTPUT_DIR} pour la sortie.
+#
+# USAGE (Task 3.2 — substitution de variables via envsubst) :
+#
+#   export DATA_ROOT="./data/bdtopo/2025/v2025.12/D038"
+#   export OUTPUT_DIR="./output"
+#   envsubst < configs/france-bdtopo.yaml > /tmp/mpforge-config.yaml
+#   mpforge-cli build --config /tmp/mpforge-config.yaml --jobs 8
+#
+# NOTE : build-garmin-map.sh génère automatiquement une config équivalente en
+#        découvrant les couches disponibles dans DATA_ROOT. Ce fichier sert de
+#        référence ou pour une utilisation avancée (config manuelle, bbox, etc.)
+#
+# STRUCTURE ATTENDUE de DATA_ROOT :
+#   ${DATA_ROOT}/
+#   ├── TRANSPORT/
+#   │   ├── TRONCON_DE_ROUTE.shp
+#   │   ├── TRONCON_DE_VOIE_FERREE.shp
+#   │   ├── PISTE_D_AERODROME.shp
+#   │   └── TRANSPORT_PAR_CABLE.shp
+#   ├── ADMINISTRATIF/
+#   │   └── COMMUNE.shp
+#   ├── LIEUX_NOMMES/
+#   │   ├── ZONE_D_HABITATION.shp
+#   │   └── TOPONYMIE.shp
+#   ├── HYDROGRAPHIE/
+#   │   ├── TRONCON_HYDROGRAPHIQUE.shp
+#   │   ├── SURFACE_HYDROGRAPHIQUE.shp
+#   │   └── DETAIL_HYDROGRAPHIQUE.shp
+#   ├── BATI/
+#   │   ├── BATIMENT.shp
+#   │   ├── CIMETIERE.shp
+#   │   ├── CONSTRUCTION_LINEAIRE.shp
+#   │   ├── CONSTRUCTION_PONCTUELLE.shp
+#   │   ├── PYLONE.shp
+#   │   ├── TERRAIN_DE_SPORT.shp
+#   │   └── LIGNE_OROGRAPHIQUE.shp
+#   ├── OCCUPATION_DU_SOL/
+#   │   └── ZONE_DE_VEGETATION.shp
+#   ├── SERVICES_ET_ACTIVITES/
+#   │   ├── ZONE_D_ACTIVITE_OU_D_INTERET.shp
+#   │   └── LIGNE_ELECTRIQUE.shp
+#   └── ZONES_REGLEMENTEES/
+#       └── FORET_PUBLIQUE.shp
+# =============================================================================
+
+version: 1
+
+grid:
+  cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
+
+inputs:
+  # ==========================================================================
+  # TRANSPORT (4 couches — FME 01-TRANSPORT)
+  # ==========================================================================
+
+  # Routes (couche principale — la plus volumineuse)
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Voies ferrées
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Pistes d'aérodrome
+  - path: "${DATA_ROOT}/TRANSPORT/PISTE_D_AERODROME.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Transport par câble (téléphériques, télésièges)
+  - path: "${DATA_ROOT}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches — FME 01-TRANSPORT chef-lieu)
+  # ==========================================================================
+
+  # Communes (POI chef-lieu + polygone limites)
+  - path: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Zones d'habitation
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
+  # ==========================================================================
+
+  # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Détails hydrographiques (POI : sources, cascades, etc.)
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
+  # ==========================================================================
+
+  # Bâtiments (polygon — couche volumineuse)
+  - path: "${DATA_ROOT}/BATI/BATIMENT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Cimetières
+  - path: "${DATA_ROOT}/BATI/CIMETIERE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Constructions linéaires (murs, digues)
+  - path: "${DATA_ROOT}/BATI/CONSTRUCTION_LINEAIRE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Constructions ponctuelles (châteaux d'eau, monuments)
+  - path: "${DATA_ROOT}/BATI/CONSTRUCTION_PONCTUELLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Pylônes (POI)
+  - path: "${DATA_ROOT}/BATI/PYLONE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Terrains de sport
+  - path: "${DATA_ROOT}/BATI/TERRAIN_DE_SPORT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Lignes orographiques (FME 07-OROGRAPHIE)
+  - path: "${DATA_ROOT}/BATI/LIGNE_OROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # VEGETATION (1 couche — FME 05-VEGETATION)
+  # ==========================================================================
+
+  # Zones de végétation (forêts, haies — couche volumineuse)
+  - path: "${DATA_ROOT}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # SERVICES & ACTIVITÉS (2 couches — FME 03-SERVICES)
+  # ==========================================================================
+
+  # Zones d'activité ou d'intérêt (zones industrielles, touristiques)
+  - path: "${DATA_ROOT}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Lignes électriques
+  - path: "${DATA_ROOT}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # ZONES RÉGLEMENTÉES (1 couche — FME 02-ZONES_REG)
+  # ==========================================================================
+
+  # Forêts publiques (ONF)
+  - path: "${DATA_ROOT}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
+  # ==========================================================================
+
+  # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/TOPONYMIE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+output:
+  directory: "${OUTPUT_DIR}/tiles/"
+  filename_pattern: "tile_{col:03}_{row:03}.mp"
+  overwrite: true
+
+# Règles de transformation BDTOPO → types Garmin
+# ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)
+# Exemple absolu si usage direct : /home/user/mpforge/mpforge-cli/rules/bdtopo-garmin-rules.yaml
+rules: "${RULES_FILE}"
+
+error_handling: "continue"
+
+# =============================================================================
+# OPTIONS AVANCÉES (décommenter si nécessaire)
+# =============================================================================
+
+# Filtre bbox (WGS84) — exemple pour l'Isère :
+# filters:
+#   bbox: [5.0, 44.6, 6.4, 45.9]
+
+# Filtre bbox France métropolitaine complète :
+# filters:
+#   bbox: [-5.5, 41.2, 9.7, 51.1]
