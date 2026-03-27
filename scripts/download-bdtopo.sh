@@ -32,7 +32,15 @@ DRY_RUN=false
 SKIP_EXISTING=true
 AUTO_EXTRACT=true
 DEBUG=false
-SCRIPT_VERSION="1.0.0"
+JSON_OUTPUT=""          # chemin fichier pour résumé JSON (vide = stdout)
+SCRIPT_VERSION="1.1.0"
+
+# Métriques téléchargement — collecte pour résumé JSON (AC6)
+_LAST_DOWNLOAD_SIZE=0
+_LAST_DOWNLOAD_STATUS=""
+DOWNLOAD_START_TIME=0
+DOWNLOAD_STATUSES=()
+DOWNLOAD_SIZES=()
 
 # ---------------------------------------------------------------------------
 # Nettoyage — supprime _extract_tmp si interruption (SIGINT/SIGTERM/EXIT)
@@ -57,23 +65,29 @@ log_step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
 log_debug() { [[ "$DEBUG" == true ]] && echo -e "${YELLOW}[DEBUG]${NC} $*" || true; }
 
 # ---------------------------------------------------------------------------
-# Régions
+# Régions → codes zone INSEE (R-codes) — un fichier agrégé par région
+# L'API Géoplateforme fournit des fichiers régionaux pré-agrégés pour BDTOPO FULL
+# Format : --region ARA télécharge R84 (1 fichier ~2.5G vs 12 fichiers dept ~2.4G)
 # ---------------------------------------------------------------------------
 declare -A REGIONS=(
-    [ARA]="D001 D003 D007 D015 D026 D038 D042 D043 D063 D069 D073 D074"
-    [BFC]="D021 D025 D039 D058 D070 D071 D089 D090"
-    [BRE]="D022 D029 D035 D056"
-    [CVL]="D018 D028 D036 D037 D041 D045"
-    [COR]="D02A D02B"
-    [GES]="D008 D010 D051 D052 D054 D055 D057 D067 D068 D088"
-    [HDF]="D002 D059 D060 D062 D080"
-    [IDF]="D075 D077 D078 D091 D092 D093 D094 D095"
-    [NOR]="D014 D027 D050 D061 D076"
-    [NAQ]="D016 D017 D019 D023 D024 D033 D040 D047 D064 D079 D086 D087"
-    [OCC]="D009 D011 D012 D030 D031 D032 D034 D046 D048 D065 D066 D081 D082"
-    [PDL]="D044 D049 D053 D072 D085"
-    [PAC]="D004 D005 D006 D013 D083 D084"
-    [FXX]="D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D012 D013 D014 D015 D016 D017 D018 D019 D02A D02B D021 D022 D023 D024 D025 D026 D027 D028 D029 D030 D031 D032 D033 D034 D035 D036 D037 D038 D039 D040 D041 D042 D043 D044 D045 D046 D047 D048 D049 D050 D051 D052 D053 D054 D055 D056 D057 D058 D059 D060 D061 D062 D063 D064 D065 D066 D067 D068 D069 D070 D071 D072 D073 D074 D075 D076 D077 D078 D079 D080 D081 D082 D083 D084 D085 D086 D087 D088 D089 D090 D091 D092 D093 D094 D095"
+    # Régions métropolitaines (code INSEE → zone API)
+    [ARA]="R84"   # Auvergne-Rhône-Alpes
+    [BFC]="R27"   # Bourgogne-Franche-Comté
+    [BRE]="R53"   # Bretagne
+    [CVL]="R24"   # Centre-Val de Loire
+    [COR]="R94"   # Corse
+    [GES]="R44"   # Grand Est
+    [HDF]="R32"   # Hauts-de-France
+    [IDF]="R11"   # Île-de-France
+    [NOR]="R28"   # Normandie
+    [NAQ]="R75"   # Nouvelle-Aquitaine
+    [OCC]="R76"   # Occitanie
+    [PDL]="R52"   # Pays de la Loire
+    [PAC]="R93"   # Provence-Alpes-Côte d'Azur
+    # Groupements multi-régions
+    [FRANCE-SUD]="R75 R76 R84 R93 R94"              # 5 régions Sud
+    [FRANCE-NORD]="R11 R24 R27 R28 R32 R44 R52 R53" # 8 régions Nord
+    [FXX]="R11 R24 R27 R28 R32 R44 R52 R53 R75 R76 R84 R93 R94" # France métro (13 fichiers)
 )
 
 # ---------------------------------------------------------------------------
@@ -87,29 +101,39 @@ USAGE :
     ./download-bdtopo.sh [OPTIONS]
 
 OPTIONS :
-    --zones ZONES       Codes département (ex: D038 ou D001,D007,D038)
-    --region CODE       Raccourci région : ARA BFC BRE CVL COR GES HDF IDF
-                        NOR NAQ OCC PDL PAC FXX (France métro complète)
+    --zones ZONES       Codes zone (département D038, région R84, ou liste D038,D073,R84)
+    --region CODE       Raccourci région :
+                          Régions  : ARA BFC BRE CVL COR GES HDF IDF NOR NAQ OCC PDL PAC
+                          Groupes  : FRANCE-SUD (R75,R76,R84,R93,R94)
+                                     FRANCE-NORD (R11,R24,R27,R28,R32,R44,R52,R53)
+                                     FXX (France métro complète — 13 fichiers)
     --format FORMAT     SHP (défaut) | GPKG | SQL
     --product PRODUCT   FULL (défaut) | DIFF | EXPRESS
+                          FULL    → par département (D038) ou région (R84)
+                          DIFF    → par région uniquement (R84, FXX, etc.)
+                          EXPRESS → France entière en GPKG (zone=FXX, automatique)
     --themes THEMES     TOUSTHEMES (défaut) | TRANSPORT | HYDROGRAPHIE | etc.
     --date YYYY-MM-DD   Forcer une date d'édition (sinon la plus récente)
     --data-root DIR     Racine des données (défaut: ./data/bdtopo)
     --no-extract        Ne pas décompresser les .7z
     --no-skip           Re-télécharger même si déjà présent
     --dry-run           Simuler sans télécharger
+    --json-output FILE  Écrire le résumé JSON dans un fichier (défaut: stdout)
     --debug             Afficher les requêtes API et réponses
     --version           Version du script
     -h, --help          Aide
 
 EXEMPLES :
-    ./download-bdtopo.sh --zones D038 --format SHP
-    ./download-bdtopo.sh --region ARA --format GPKG
-    ./download-bdtopo.sh --zones D038 --product DIFF --format GPKG
-    ./download-bdtopo.sh --product EXPRESS
-    ./download-bdtopo.sh --region FXX --dry-run
-    ./download-bdtopo.sh --zones D038 --date 2025-12-15
-    DEBUG=1 ./download-bdtopo.sh --zones D038
+    ./download-bdtopo.sh --zones D038                       # Département Isère (SHP)
+    ./download-bdtopo.sh --zones D038,D073,D074             # Multi-départements
+    ./download-bdtopo.sh --region ARA                       # Auvergne-Rhône-Alpes (1 fichier R84 ~2.5G)
+    ./download-bdtopo.sh --region FRANCE-SUD --format GPKG  # 5 régions Sud (R75,R76,R84,R93,R94)
+    ./download-bdtopo.sh --region FRANCE-NORD               # 8 régions Nord
+    ./download-bdtopo.sh --region FXX --dry-run             # France entière (13 fichiers régionaux)
+    ./download-bdtopo.sh --zones R84 --product DIFF         # Différentiel ARA (région uniquement)
+    ./download-bdtopo.sh --product EXPRESS                  # Express France entière (GPKG)
+    ./download-bdtopo.sh --zones D038 --date 2025-12-15     # Date forcée
+    DEBUG=1 ./download-bdtopo.sh --zones D038               # Mode debug
 EOF
     exit 0
 }
@@ -132,6 +156,7 @@ parse_args() {
             --no-extract) AUTO_EXTRACT=false; shift ;;
             --no-skip)    SKIP_EXISTING=false; shift ;;
             --dry-run)    DRY_RUN=true; shift ;;
+            --json-output) JSON_OUTPUT="$2"; shift 2 ;;
             --debug)      DEBUG=true; shift ;;
             --version)    echo "download-bdtopo.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)    show_help ;;
@@ -155,6 +180,9 @@ check_prerequisites() {
         fi
     fi
 
+    command -v md5sum &>/dev/null || { log_error "md5sum requis (coreutils)"; exit 1; }
+    command -v numfmt &>/dev/null || { log_error "numfmt requis (coreutils)"; exit 1; }
+
     log_ok "curl $(curl --version | head -1 | awk '{print $2}')"
     if [[ "$AUTO_EXTRACT" == true ]]; then log_ok "7z disponible"; fi
 }
@@ -169,17 +197,20 @@ resolve_zones() {
             exit 1
         fi
         IFS=' ' read -ra ZONES <<< "${REGIONS[$REGION]}"
-        log_info "Région $REGION → ${#ZONES[@]} départements"
+        log_info "Région $REGION → ${#ZONES[@]} zone(s) : ${ZONES[*]}"
     fi
 
     if [[ "$PRODUCT" == "EXPRESS" ]]; then
+        if [[ -n "$REGION" || ${#ZONES[@]} -gt 0 ]]; then
+            log_warn "EXPRESS : --region / --zones ignorés (EXPRESS = France entière FXX en GPKG automatiquement)"
+        fi
         ZONES=("FXX"); FORMAT="GPKG"
         log_info "BD TOPO Express : France entière en GPKG"
         return
     fi
 
     if [[ ${#ZONES[@]} -eq 0 ]]; then
-        log_error "Aucune zone. Utilisez --zones D038 ou --region ARA"
+        log_error "Aucune zone. Utilisez --zones D038, --zones R84, ou --region ARA"
         exit 1
     fi
 }
@@ -242,7 +273,7 @@ xml_get_link_length() {
 get_resource_name() {
     case "$PRODUCT" in
         FULL)    echo "BDTOPO" ;;
-        DIFF)    echo "BDTOPO_DIFF" ;;
+        DIFF)    echo "BDTOPO-DIFF" ;;
         EXPRESS) echo "BDTOPO_EXPRESS" ;;
     esac
 }
@@ -439,6 +470,8 @@ download_file() {
                 local human_size
                 human_size=$(numfmt --to=iec "$local_size" 2>/dev/null || echo "${local_size} o")
                 log_ok "  Déjà complet et vérifié ($human_size, MD5 OK)"
+                _LAST_DOWNLOAD_SIZE=$local_size
+                _LAST_DOWNLOAD_STATUS="skipped"
                 return 0
             else
                 log_warn "  Fichier existant avec MD5 différent — re-téléchargement"
@@ -453,6 +486,8 @@ download_file() {
                 local human_size
                 human_size=$(numfmt --to=iec "$local_size" 2>/dev/null || echo "${local_size} o")
                 log_ok "  Déjà complet ($human_size)"
+                _LAST_DOWNLOAD_SIZE=$local_size
+                _LAST_DOWNLOAD_STATUS="skipped"
                 return 0
             fi
         fi
@@ -501,6 +536,8 @@ download_file() {
             local human_size
             human_size=$(numfmt --to=iec "$fsize" 2>/dev/null || echo "${fsize} o")
             log_ok "  Téléchargé ($human_size)"
+            _LAST_DOWNLOAD_SIZE=$fsize
+            _LAST_DOWNLOAD_STATUS="ok"
             return 0
         fi
 
@@ -509,21 +546,30 @@ download_file() {
     done
 
     log_error "  Échec après $max_retries tentatives"
+    _LAST_DOWNLOAD_STATUS="failed"
     return 1
 }
 
 download_all() {
     log_step "Téléchargement"
 
+    DOWNLOAD_START_TIME=$SECONDS
+    DOWNLOAD_STATUSES=()
+    DOWNLOAD_SIZES=()
+
     local total=${#DOWNLOAD_URLS[@]} success=0 failed=0
 
     for i in "${!DOWNLOAD_URLS[@]}"; do
+        _LAST_DOWNLOAD_SIZE=0
+        _LAST_DOWNLOAD_STATUS="failed"
         echo -e "\n${BOLD}[$((i+1))/$total]${NC} ${DOWNLOAD_NAMES[$i]}"
         if download_file "${DOWNLOAD_URLS[$i]}" "${DOWNLOAD_DIRS[$i]}" "${DOWNLOAD_NAMES[$i]}" "${DOWNLOAD_MD5S[$i]:-}"; then
             success=$((success + 1))
         else
             failed=$((failed + 1))
         fi
+        DOWNLOAD_STATUSES+=("$_LAST_DOWNLOAD_STATUS")
+        DOWNLOAD_SIZES+=("$_LAST_DOWNLOAD_SIZE")
     done
 
     echo ""
@@ -607,7 +653,7 @@ show_summary() {
     echo -e "  ${BOLD}Format :${NC}   $FORMAT"
     echo -e "  ${BOLD}Thèmes :${NC}   $THEMES"
     if [[ -n "$REGION" ]]; then
-        echo -e "  ${BOLD}Région :${NC}   $REGION (${#ZONES[@]} départements)"
+        echo -e "  ${BOLD}Région :${NC}   $REGION (${#ZONES[@]} zone(s) : ${ZONES[*]})"
     else
         echo -e "  ${BOLD}Zones :${NC}    ${ZONES[*]}"
     fi
@@ -615,6 +661,80 @@ show_summary() {
     echo -e "  ${BOLD}Fichiers :${NC} ${#DOWNLOAD_URLS[@]}"
     if [[ "$DRY_RUN" == true ]]; then echo -e "\n  ${YELLOW}${BOLD}MODE DRY-RUN${NC}"; fi
     echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Échappement JSON minimal (backslash, guillemets, caractères de contrôle)
+# Évite les injections JSON via noms de fichiers retournés par l'API IGN
+# ---------------------------------------------------------------------------
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"        # \ → \\
+    s="${s//\"/\\\"}"        # " → \"
+    s="${s//$'\n'/\\n}"      # newline → \n
+    s="${s//$'\r'/\\r}"      # CR → \r
+    s="${s//$'\t'/\\t}"      # tab → \t
+    printf '%s' "$s"
+}
+
+# ---------------------------------------------------------------------------
+# Résumé JSON (AC6) — sortie parsable par jq, sans dépendance externe
+# Option --json-output FILE pour écrire dans un fichier (défaut: stdout)
+# ---------------------------------------------------------------------------
+show_json_summary() {
+    local total=${#DOWNLOAD_URLS[@]}
+    local success=0 failed=0 total_bytes=0
+    local duration=$(( SECONDS - DOWNLOAD_START_TIME ))
+
+    # Construire le tableau zones
+    local zones_json=""
+    for z in "${ZONES[@]}"; do
+        [[ -n "$zones_json" ]] && zones_json+=","
+        zones_json+='"'"$z"'"'
+    done
+
+    # Construire le tableau files et calculer les totaux
+    local files_json=""
+    for i in "${!DOWNLOAD_URLS[@]}"; do
+        local zone
+        zone=$(basename "${DOWNLOAD_DIRS[$i]}")
+        local file="${DOWNLOAD_NAMES[$i]}"
+        local status="${DOWNLOAD_STATUSES[$i]:-failed}"
+        local size="${DOWNLOAD_SIZES[$i]:-0}"
+
+        case "$status" in
+            ok|skipped) success=$(( success + 1 )) ;;
+            failed)     failed=$(( failed + 1 )) ;;
+        esac
+        total_bytes=$(( total_bytes + size ))
+
+        local zone_esc file_esc status_esc
+        zone_esc=$(json_escape "$zone")
+        file_esc=$(json_escape "$file")
+        status_esc=$(json_escape "$status")
+        [[ -n "$files_json" ]] && files_json+=","
+        files_json+='{"zone":"'"$zone_esc"'","file":"'"$file_esc"'","size_bytes":'"$size"',"status":"'"$status_esc"'"}'
+    done
+
+    local json_output
+    json_output=$(printf '{\n'
+    printf '  "product": "%s",\n' "$(json_escape "$PRODUCT")"
+    printf '  "format": "%s",\n' "$(json_escape "$FORMAT")"
+    printf '  "zones": [%s],\n' "$zones_json"
+    printf '  "total": %d,\n' "$total"
+    printf '  "success": %d,\n' "$success"
+    printf '  "failed": %d,\n' "$failed"
+    printf '  "total_bytes": %d,\n' "$total_bytes"
+    printf '  "duration_seconds": %d,\n' "$duration"
+    printf '  "files": [%s]\n' "$files_json"
+    printf '}\n')
+
+    if [[ -n "$JSON_OUTPUT" ]]; then
+        echo "$json_output" > "$JSON_OUTPUT"
+        log_ok "Résumé JSON écrit dans : $JSON_OUTPUT"
+    else
+        echo "$json_output"
+    fi
 }
 
 show_next_steps() {
@@ -645,6 +765,7 @@ main() {
     download_all
     extract_archives
     show_next_steps
+    if [[ "$DRY_RUN" == false ]]; then show_json_summary; fi
     log_ok "Terminé — données dans : $DATA_ROOT"
 }
 
