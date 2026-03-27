@@ -1,8 +1,44 @@
 # Scripts utilitaires MPForge
 
-> Scripts pour faciliter la gestion des releases et tags Git
+> Scripts pour faciliter la gestion des releases, tags Git et le pipeline BDTOPO → Garmin
 
 ## 📜 Scripts disponibles
+
+### 📥 download-bdtopo.sh — Téléchargement BD TOPO® IGN
+
+**Usage** :
+```bash
+# Département unique
+./scripts/download-bdtopo.sh --zones D038 --format SHP
+
+# Dry-run (simulation sans téléchargement)
+./scripts/download-bdtopo.sh --zones D038 --dry-run
+
+# Avec debug
+./scripts/download-bdtopo.sh --zones D038 --debug
+```
+
+**Description** :
+- Interroge l'API Géoplateforme (`data.geopf.fr`) pour découvrir les datasets BDTOPO disponibles
+- Auto-détecte la dernière édition trimestrielle disponible
+- Télécharge l'archive `.7z` avec reprise automatique (`curl -C -`)
+- Vérifie le hash MD5 des fichiers téléchargés
+- Extrait les dossiers thématiques Shapefile (ADMINISTRATIF, BATI, HYDROGRAPHIE, …)
+- Organise les données dans `data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`
+- Idempotent : skip les fichiers déjà téléchargés et intacts (MD5 OK)
+
+**Prérequis** :
+```bash
+sudo apt install curl p7zip-full
+```
+
+**Pipeline complet** :
+```
+download-bdtopo.sh → mpforge-cli build → imgforge-cli → gmapsupp.img
+```
+
+---
+
 
 ### 🏷️ retag.sh - Forcer un tag existant
 
