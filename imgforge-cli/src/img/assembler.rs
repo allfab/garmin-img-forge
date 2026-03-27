@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::ImgError;
 use crate::img::filesystem::ImgFilesystem;
+use crate::img::srt::SrtWriter;
 use crate::img::tdb::{TdbConfig, TdbWriter, TileInfo};
 use crate::img::tre::TreWriter;
 use crate::img::writer::ImgWriter;
@@ -68,6 +69,8 @@ pub struct AssemblyStats {
     pub tdb_path: PathBuf,
     /// Whether a TYP file was embedded in the gmapsupp.img.
     pub typ_embedded: bool,
+    /// Whether the French CP1252 SRT (Sort Routines) subfile was embedded.
+    pub srt_embedded: bool,
 }
 
 // ── GmapsuppAssembler ─────────────────────────────────────────────────────────
@@ -155,6 +158,16 @@ impl GmapsuppAssembler {
             tracing::info!(typ = %typ_path.display(), "TYP file embedded");
         }
 
+        // Embed SRT (French CP1252 sort routines) — always generated for French maps.
+        let srt_map_id = format!("{:08}", config.family_id);
+        debug_assert!(
+            !outer_fs.entries.iter().any(|e| e.map_id == srt_map_id && e.ext == "SRT"),
+            "SRT subfile collision: map_id={srt_map_id} with ext=SRT already exists"
+        );
+        let srt_bytes = SrtWriter::build_french_cp1252();
+        outer_fs.add_subfile(&srt_map_id, "SRT", srt_bytes)?;
+        tracing::info!("SRT file embedded (French CP1252 collation)");
+
         let subfile_count = outer_fs.entry_count();
 
         // Serialise and write to disk.
@@ -186,6 +199,7 @@ impl GmapsuppAssembler {
             total_bytes,
             tdb_path,
             typ_embedded,
+            srt_embedded: true,
         })
     }
 

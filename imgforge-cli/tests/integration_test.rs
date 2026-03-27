@@ -2120,15 +2120,16 @@ fn test_build_multi_block_directory() {
     let stats = GmapsuppAssembler::build(dir.path(), output.path(), &test_build_config_512())
         .unwrap();
     assert_eq!(stats.tile_count, 6);
-    // 6 tiles × 3 subfiles = 18 entries → dir_blocks = ceil(18*32/512) = 2
-    assert_eq!(stats.subfile_count, 18, "6 tiles × 3 subfiles (no routing) = 18");
+    // 6 tiles × 3 subfiles + 1 SRT = 19 entries → dir_blocks = ceil(19*32/512) = 2
+    assert_eq!(stats.subfile_count, 19, "6 tiles × 3 subfiles (no routing) + 1 SRT = 19");
     let bytes = std::fs::read(output.path()).unwrap();
     // First subfile should start at block 3 (1 header + 2 dir blocks)
+    // 19 × 32 = 608 bytes → ceil(608/512) = 2 dir blocks → data starts at block 3
     let dir_offset = 512usize; // block 1
     let block_start_first = u16::from_le_bytes([bytes[dir_offset + 0x0C], bytes[dir_offset + 0x0D]]);
     assert_eq!(
         block_start_first, 3,
-        "with 18 entries and block_size=512, first subfile starts at block 3"
+        "with 19 entries and block_size=512, first subfile starts at block 3"
     );
 }
 
@@ -2148,7 +2149,7 @@ fn test_build_boundary_nodes_detected() {
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
-    assert_eq!(stats.subfile_count, 5, "tile_a avec routing → 5 subfiles (TRE/RGN/LBL/NET/NOD)");
+    assert_eq!(stats.subfile_count, 6, "tile_a avec routing → 5 subfiles (TRE/RGN/LBL/NET/NOD) + 1 SRT = 6");
 
     let bytes = std::fs::read(output.path()).unwrap();
     let block_size = 512usize;
@@ -2523,4 +2524,137 @@ fn test_build_typ_missing_file_returns_error() {
         "le message d'erreur doit indiquer le chemin du fichier introuvable, got: {}",
         err_msg
     );
+}
+
+// ── Story 15.4 — SRT Writer (tri alphabétique français) ──────────────────────
+
+/// Helper : trouve un Dirent dans le FAT du gmapsupp.img par extension.
+/// Retourne (map_id_str, block_start, size_used) si trouvé.
+fn find_dirent_by_ext(bytes: &[u8], ext: &[u8; 3], subfile_count: usize, block_size: usize) -> Option<(String, usize, usize)> {
+    let dir_start = block_size; // bloc 1
+    for i in 0..subfile_count {
+        let offset = dir_start + i * 32;
+        if &bytes[offset + 0x08..offset + 0x0B] == ext {
+            let name = std::str::from_utf8(&bytes[offset..offset + 8])
+                .unwrap_or("")
+                .trim_end_matches('\0')
+                .to_string();
+            let block_start =
+                u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize;
+            let size_used = u32::from_le_bytes([
+                bytes[offset + 0x12],
+                bytes[offset + 0x13],
+                bytes[offset + 0x14],
+                bytes[offset + 0x15],
+            ]) as usize;
+            return Some((name, block_start, size_used));
+        }
+    }
+    None
+}
+
+#[test]
+fn test_build_srt_always_embedded() {
+    // AC1, AC5 — le SRT est toujours intégré dans le gmapsupp.img ; stats.srt_embedded == true
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+
+    assert!(stats.srt_embedded, "stats.srt_embedded doit être true");
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let srt_dirent = find_dirent_by_ext(&bytes, b"SRT", stats.subfile_count, 512);
+    assert!(
+        srt_dirent.is_some(),
+        "un Dirent avec ext=SRT doit être présent dans le FAT"
+    );
+}
+
+#[test]
+fn test_build_srt_map_id_matches_family_id() {
+    // AC1 — le map_id du subfile SRT correspond à family_id zero-paddé 8 chiffres
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let (map_id, _, _) = find_dirent_by_ext(&bytes, b"SRT", stats.subfile_count, 512)
+        .expect("Dirent SRT doit être présent");
+
+    assert_eq!(
+        map_id, "00006324",
+        "map_id du SRT doit être '00006324' (family_id=6324 zero-paddé 8 chiffres)"
+    );
+}
+
+#[test]
+fn test_build_srt_size_is_4379_bytes() {
+    // AC4 — le subfile SRT dans le gmapsupp.img a une taille de 4379 bytes
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let (_, _, size_used) = find_dirent_by_ext(&bytes, b"SRT", stats.subfile_count, 512)
+        .expect("Dirent SRT doit être présent");
+
+    assert_eq!(
+        size_used, 4379,
+        "taille du subfile SRT doit être 4379 bytes (27 header + 256×17 data)"
+    );
+}
+
+#[test]
+fn test_build_srt_header_codepage_is_1252() {
+    // AC4 — le header du subfile SRT contient le codepage 1252 (0x04E4 en LE16)
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let block_size = 512usize;
+    let (_, block_start, _) = find_dirent_by_ext(&bytes, b"SRT", stats.subfile_count, block_size)
+        .expect("Dirent SRT doit être présent");
+
+    let srt_data_start = block_start * block_size;
+
+    // codepage at SRT offset 0x0C–0x0D (LE16 = 1252 = 0x04E4)
+    assert_eq!(
+        &bytes[srt_data_start + 0x0C..srt_data_start + 0x0E],
+        &[0xE4, 0x04],
+        "codepage dans le header SRT doit être 1252 (0x04E4 LE16)"
+    );
+}
+
+#[test]
+fn test_build_srt_with_typ_both_embedded() {
+    // AC1 + Story 15.3 non-régression — avec --typ, les subfiles TYP ET SRT sont présents
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    let typ_file = tmp_out.path().join("style.typ");
+    std::fs::write(&typ_file, b"TYP MARKER").unwrap();
+
+    let config = BuildConfig {
+        family_id: 6324,
+        product_id: 1,
+        description: "Test TYP+SRT".into(),
+        block_size_exponent: 9,
+        typ_file: Some(typ_file),
+    };
+    let stats = GmapsuppAssembler::build(tiles.path(), &output, &config).unwrap();
+    let bytes = std::fs::read(&output).unwrap();
+
+    let has_typ = find_dirent_by_ext(&bytes, b"TYP", stats.subfile_count, 512).is_some();
+    let has_srt = find_dirent_by_ext(&bytes, b"SRT", stats.subfile_count, 512).is_some();
+
+    assert!(has_typ, "avec --typ, le subfile TYP doit être présent");
+    assert!(has_srt, "avec --typ, le subfile SRT doit aussi être présent");
+    assert!(stats.typ_embedded, "stats.typ_embedded doit être true");
+    assert!(stats.srt_embedded, "stats.srt_embedded doit être true");
 }
