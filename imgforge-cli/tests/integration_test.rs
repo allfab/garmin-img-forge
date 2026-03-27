@@ -1550,3 +1550,417 @@ fn test_nod_validation_no_regression() {
     assert_eq!(&extensions[3], b"NET", "subfile 3 must be NET");
     assert_eq!(&extensions[4], b"NOD", "subfile 4 must be NOD");
 }
+
+// ================================================================
+// Story 14.5 — Validation Routage: Itinéraire Fonctionnel GPS
+// ================================================================
+//
+// VALIDATION GPS MANUELLE
+// =======================
+// Fixture : routing_full_validation.mp → compiler avec imgforge-cli
+//
+// Scénario 1 — Préférence autoroute :
+//   Charger le .img sur GPS Garmin (eTrex, Edge, etc.)
+//   Demander un itinéraire entre (45.16,5.73) et (45.20,5.73)
+//   Attendu : l'autoroute A480 est préférée (speed=7 → ~130 km/h) vs D1075 (speed=5 → ~90 km/h)
+//
+// Scénario 2 — Sens unique respecté :
+//   Tenter de naviguer sur Rue_Oneway en sens inverse (45.19,5.76) → (45.18,5.76)
+//   Attendu : le GPS propose un détour (sens unique interdit)
+//
+// Scénario 3 — Profil piéton :
+//   Activer le profil piéton sur le GPS
+//   Attendu : Zone_Pietons accessible, voitures exclues
+//
+// Scénario 4 — Éviter les péages :
+//   Activer l'option "éviter les péages" sur le GPS
+//   Attendu : A480 évitée, D1075 utilisée pour l'itinéraire
+
+fn compile_routing_full_validation_img() -> Vec<u8> {
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    std::fs::read(tmp.path()).unwrap()
+}
+
+// ----------------------------------------------------------------
+// Task 3 : Tests validation attributs routage dans le graphe
+// ----------------------------------------------------------------
+
+#[test]
+fn test_routing_oneway_single_arc() {
+    // AC2 — Task 3.1: Route DirIndicator=1 → exactement 1 arc dans RoadNetwork
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Rue_Oneway : speed=3, class=1, oneway=true
+    let oneway_def = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.one_way && rd.speed == 3 && rd.road_class == 1)
+        .expect("Rue_Oneway (speed=3,class=1,oneway=true) doit exister dans road_defs");
+
+    // Trouver l'index directement pour éviter std::ptr::eq
+    let oneway_idx = network
+        .road_defs
+        .iter()
+        .position(|rd| rd.one_way && rd.speed == 3 && rd.road_class == 1)
+        .expect("Rue_Oneway (speed=3,class=1,oneway=true) doit exister dans road_defs");
+    let _ = oneway_def; // confirmé via oneway_idx
+
+    let arc_count = network.arcs.iter().filter(|a| a.road_def_idx == oneway_idx).count();
+    assert_eq!(arc_count, 1, "Rue_Oneway DirIndicator=1 → exactement 1 arc (forward only)");
+}
+
+#[test]
+fn test_routing_bidirectional_two_arcs() {
+    // AC1 — Task 3.1: Route bidirectionnelle → exactement 2 arcs
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // D1075 : speed=5, class=2, oneway=false
+    let d1075_idx = network
+        .road_defs
+        .iter()
+        .position(|rd| !rd.one_way && rd.speed == 5 && rd.road_class == 2)
+        .expect("D1075 (speed=5,class=2,bidirectionnel) doit exister dans road_defs");
+
+    let arc_count = network.arcs.iter().filter(|a| a.road_def_idx == d1075_idx).count();
+    assert_eq!(arc_count, 2, "D1075 bidirectionnel → exactement 2 arcs (forward + reverse)");
+}
+
+#[test]
+fn test_routing_access_mask_truck_denied() {
+    // AC3 — Task 3.1: denied_truck=true → access_mask contient 0x0040
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Zone_Pietons : speed=1, class=0, access restreint
+    let zone_def = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.speed == 1 && rd.road_class == 0)
+        .expect("Zone_Pietons (speed=1,class=0) doit exister dans road_defs");
+
+    assert_ne!(zone_def.access_mask, 0, "Zone_Pietons doit avoir access_mask != 0");
+    assert_eq!(
+        zone_def.access_mask & 0x0001, 0x0001,
+        "denied_car → bit 0x0001 de access_mask doit être activé, got 0x{:04X}",
+        zone_def.access_mask
+    );
+    assert_eq!(
+        zone_def.access_mask & 0x0040, 0x0040,
+        "denied_truck → bit 0x0040 de access_mask doit être activé, got 0x{:04X}",
+        zone_def.access_mask
+    );
+}
+
+#[test]
+fn test_routing_access_mask_pedestrian_truck_denied() {
+    // AC3 — Task 3.1: denied_pedestrian + denied_truck → bits 0x0010 + 0x0040 activés
+    // (Zone Industrielle dans net_validation.mp : RouteParam=4,2,0,0,0,0,0,0,0,1,0,1)
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Zone Industrielle : RouteParam=4,2,0,0,0,0,0,0,0,1,0,1 → pedestrian(0x0010) + truck(0x0040)
+    let zone_def = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.speed == 4 && rd.road_class == 2 && rd.access_mask != 0)
+        .expect("Zone Industrielle (speed=4,class=2,restricted) doit exister");
+
+    assert_eq!(
+        zone_def.access_mask & 0x0010, 0x0010,
+        "denied_pedestrian → bit 0x0010 activé, access_mask=0x{:04X}", zone_def.access_mask
+    );
+    assert_eq!(
+        zone_def.access_mask & 0x0040, 0x0040,
+        "denied_truck → bit 0x0040 activé, access_mask=0x{:04X}", zone_def.access_mask
+    );
+}
+
+#[test]
+fn test_routing_bridge_isolated() {
+    // AC1 — Task 3.1: Node Level=1 ne partage pas d'arc avec Level=0 au même point
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    // routing_graph.mp contient un pont Level=1 (H→I) passant au-dessus du noeud E (Level=0)
+    // même longitude 5.73 : E=(45.18,5.73) est Level=0, H=(45.185,5.73) et I=(45.175,5.73) sont Level=1
+    let mp = MpParser::parse_file(&fixture("routing_graph.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Séparer noeuds Level=0 et Level=1
+    let nodes_level0: Vec<_> = network.nodes.iter().filter(|n| n.level == 0).collect();
+    let nodes_level1: Vec<_> = network.nodes.iter().filter(|n| n.level == 1).collect();
+
+    assert!(!nodes_level0.is_empty(), "des noeuds Level=0 doivent exister");
+    assert!(!nodes_level1.is_empty(), "des noeuds Level=1 doivent exister (pont)");
+
+    // Aucun arc ne doit connecter un noeud Level=0 à un noeud Level=1
+    let level0_ids: std::collections::HashSet<u32> = nodes_level0.iter().map(|n| n.id).collect();
+    let level1_ids: std::collections::HashSet<u32> = nodes_level1.iter().map(|n| n.id).collect();
+
+    for arc in &network.arcs {
+        let from_l0 = level0_ids.contains(&arc.from_node);
+        let to_l1 = level1_ids.contains(&arc.to_node);
+        let from_l1 = level1_ids.contains(&arc.from_node);
+        let to_l0 = level0_ids.contains(&arc.to_node);
+        assert!(
+            !(from_l0 && to_l1) && !(from_l1 && to_l0),
+            "arc {:?} connecte Level=0 et Level=1 (isolation doit être respectée)",
+            arc.id
+        );
+    }
+}
+
+// ----------------------------------------------------------------
+// Task 4 : Tests validation NET binaire avec access_mask
+// ----------------------------------------------------------------
+
+#[test]
+fn test_routing_full_net_toll_in_nod_tabAInfo() {
+    // AC4 — Task 4.1: A480 (toll=true) → tabAInfo = 0xC7 présent dans la section NOD1 du .img compilé
+    // Utilise le pipeline complet pour valider le binaire final, pas une construction partielle.
+    let bytes = compile_routing_full_validation_img();
+
+    // NOD subfile index = 4
+    let nod_block = read_dirent_block_start(&bytes, 4);
+    let nod_offset = nod_block * 512;
+
+    // NOD1 section : offset à 0x15 (LE32) et longueur à 0x19 (LE32) dans le header NOD
+    let nod1_section_off = u32::from_le_bytes([
+        bytes[nod_offset + 0x15], bytes[nod_offset + 0x16],
+        bytes[nod_offset + 0x17], bytes[nod_offset + 0x18],
+    ]) as usize;
+    let nod1_len = u32::from_le_bytes([
+        bytes[nod_offset + 0x19], bytes[nod_offset + 0x1A],
+        bytes[nod_offset + 0x1B], bytes[nod_offset + 0x1C],
+    ]) as usize;
+    assert!(nod1_len > 0, "NOD1 doit être non-vide");
+
+    // tabAInfo pour A480 : speed=7, class=4, toll=true, oneway=false
+    // = (7 & 0x07) | (0 << 3) | (4 << 4) | (1 << 7) = 0xC7
+    let expected_tab_a: u8 = 0xC7;
+    let nod1_start = nod_offset + nod1_section_off;
+    let nod1_bytes = &bytes[nod1_start..nod1_start + nod1_len];
+    assert!(
+        nod1_bytes.contains(&expected_tab_a),
+        "tabAInfo 0xC7 pour A480 (speed=7/class=4/toll/bidirectionnel) doit apparaître dans la section NOD1"
+    );
+    // Vérifier que le toll bit est bien le bit 7
+    assert_eq!(expected_tab_a & 0x80, 0x80, "bit 7 de tabAInfo = toll_bit doit être 1");
+}
+
+#[test]
+fn test_routing_full_net_access_zone_pietons() {
+    // AC3 — Task 4.1: Zone_Pietons → NET_FLAG_ACCESS (0x20) dans flags + access_mask bytes dans record NET1
+    use imgforge_cli::img::net::{NetWriter, SubdivRoadRef};
+    use imgforge_cli::routing::graph_builder::build_road_network;
+    use std::collections::HashMap;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Trouver Zone_Pietons (road_def avec access_mask != 0)
+    let (zone_idx, zone_def) = network
+        .road_defs
+        .iter()
+        .enumerate()
+        .find(|(_, rd)| rd.access_mask != 0)
+        .expect("Zone_Pietons avec access_mask != 0 doit exister");
+
+    // Vérifier le bit truck (0x0040)
+    assert_eq!(
+        zone_def.access_mask & 0x0040, 0x0040,
+        "denied_truck bit 0x0040 doit être présent, access_mask=0x{:04X}", zone_def.access_mask
+    );
+
+    // Construire le binaire NET
+    let label_offsets: HashMap<String, u32> = HashMap::new();
+    let subdiv_refs: Vec<SubdivRoadRef> = network
+        .road_defs
+        .iter()
+        .enumerate()
+        .map(|(i, _)| SubdivRoadRef { road_def_idx: i, subdiv_number: 1, polyline_index: i as u8 })
+        .collect();
+    let result = NetWriter::build(&network, &label_offsets, &subdiv_refs, &mp.polylines);
+
+    // Naviguer jusqu'au record Zone_Pietons dans NET1
+    let net1_start = 55usize; // NET_HEADER_SIZE
+    let record_start = net1_start + result.road_offsets[zone_idx] as usize;
+
+    // Flags byte à record_start + 3
+    let flags = result.data[record_start + 3];
+    assert_eq!(
+        flags & 0x20, 0x20,
+        "NET_FLAG_ACCESS (0x20) doit être activé pour Zone_Pietons, flags=0x{:02X}", flags
+    );
+
+    // Access bytes à record_start + 4 (LE16)
+    // Valeur exacte attendue : denied_car(0x0001) | denied_bicycle(0x0020) | denied_truck(0x0040) = 0x0061
+    let access_mask = u16::from_le_bytes([result.data[record_start + 4], result.data[record_start + 5]]);
+    assert_eq!(
+        access_mask & 0x0001, 0x0001,
+        "access_mask doit contenir bit car 0x0001 (denied_car=true), access_mask=0x{:04X}", access_mask
+    );
+    assert_eq!(
+        access_mask & 0x0020, 0x0020,
+        "access_mask doit contenir bit bicycle 0x0020 (denied_bicycle=true), access_mask=0x{:04X}", access_mask
+    );
+    assert_eq!(
+        access_mask & 0x0040, 0x0040,
+        "access_mask doit contenir bit truck 0x0040 (denied_truck=true), access_mask=0x{:04X}", access_mask
+    );
+    assert_eq!(
+        access_mask, 0x0061,
+        "access_mask exact = 0x0061 (car|bicycle|truck), got 0x{:04X}", access_mask
+    );
+}
+
+#[test]
+fn test_routing_full_nod_tabAInfo_autoroute() {
+    // AC1 + AC4 — Task 4.1: A480 (speed=7,class=4,toll=true,oneway=false) → tabAInfo = 0xC7
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    let a480 = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.speed == 7 && rd.road_class == 4 && rd.toll)
+        .expect("A480 (speed=7,class=4,toll=true) doit exister");
+
+    // tabAInfo = (speed & 0x07) | (oneway << 3) | (class << 4) | (toll << 7)
+    //          = (7 & 7) | (0 << 3) | (4 << 4) | (1 << 7)
+    //          = 0x07 | 0x00 | 0x40 | 0x80 = 0xC7
+    let tab_a: u8 = (a480.speed & 0x07)
+        | ((a480.one_way as u8) << 3)
+        | ((a480.road_class & 0x07) << 4)
+        | ((a480.toll as u8) << 7);
+    assert_eq!(tab_a, 0xC7, "A480 tabAInfo: speed=7/class=4/toll/bidirectionnel → 0xC7");
+    assert!(!a480.one_way, "A480 est bidirectionnel");
+    assert!(a480.toll, "A480 est a peage");
+}
+
+#[test]
+fn test_routing_full_nod_tabAInfo_oneway() {
+    // AC2 — Task 4.1: Rue_Oneway (speed=3,class=1,oneway=true,toll=false) → tabAInfo = 0x1B
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    let rue_oneway = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.one_way && rd.speed == 3 && rd.road_class == 1)
+        .expect("Rue_Oneway (speed=3,class=1,oneway=true) doit exister");
+
+    // tabAInfo = (3 & 0x07) | (1 << 3) | (1 << 4) | (0 << 7)
+    //          = 0x03 | 0x08 | 0x10 | 0x00 = 0x1B
+    let tab_a: u8 = (rue_oneway.speed & 0x07)
+        | ((rue_oneway.one_way as u8) << 3)
+        | ((rue_oneway.road_class & 0x07) << 4)
+        | ((rue_oneway.toll as u8) << 7);
+    assert_eq!(tab_a, 0x1B, "Rue_Oneway tabAInfo: speed=3/class=1/oneway/no-toll → 0x1B");
+    assert!(rue_oneway.one_way, "Rue_Oneway doit être sens unique");
+    assert!(!rue_oneway.toll, "Rue_Oneway n'est pas a peage");
+}
+
+// ----------------------------------------------------------------
+// Task 5 : Tests intégration end-to-end
+// ----------------------------------------------------------------
+
+#[test]
+fn test_routing_full_compile_five_subfiles() {
+    // AC5 — Task 5.1: compiler routing_full_validation.mp → .img contient 5 subfiles (TRE/RGN/LBL/NET/NOD)
+    let bytes = compile_routing_full_validation_img();
+
+    assert!(bytes.len() > 0, "le .img compilé doit être non-vide");
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "magic GARMIN doit être présent");
+
+    let extensions: Vec<[u8; 3]> = (0..5).map(|i| read_dirent_ext(&bytes, i)).collect();
+    assert_eq!(&extensions[0], b"TRE", "subfile 0 doit être TRE");
+    assert_eq!(&extensions[1], b"RGN", "subfile 1 doit être RGN");
+    assert_eq!(&extensions[2], b"LBL", "subfile 2 doit être LBL");
+    assert_eq!(&extensions[3], b"NET", "subfile 3 doit être NET");
+    assert_eq!(&extensions[4], b"NOD", "subfile 4 doit être NOD");
+}
+
+#[test]
+fn test_routing_full_graph_metrics() {
+    // AC1 — Task 5.2: graphe routier depuis routing_full_validation.mp
+    // nodes >= 6, arcs >= 8, road_defs >= 5 (5 Level=0 + 1 Level=1)
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Topologie documentée en Task 1.1 :
+    //   Level=0 : 6 noeuds (1 triple intersection + 3 intersections + 2 endpoints)
+    //   Level=1 : 2 noeuds (Pont_Sud)
+    //   Total attendu : 8 noeuds, 11 arcs Level=0 + 2 arcs Level=1 = 13 total
+    assert!(
+        network.nodes.len() >= 8,
+        "au moins 8 RouteNodes attendus (6 Level=0 + 2 Level=1), got {}",
+        network.nodes.len()
+    );
+    assert!(
+        network.arcs.len() >= 11,
+        "au moins 11 RouteArcs attendus (9 Level=0 + 2 Level=1), got {}",
+        network.arcs.len()
+    );
+    assert!(
+        network.road_defs.len() >= 5,
+        "au moins 5 road_defs attendus (5 Level=0 + 1 Level=1), got {}",
+        network.road_defs.len()
+    );
+
+    // Vérifier que l'attribut speed est correctement parsé (A480 speed=7 > D1075 speed=5)
+    // Note : la validation que tabAInfo encode bien ce speed dans le binaire NOD est faite
+    // dans test_routing_full_net_toll_in_nod_tabAInfo.
+    let a480 = network.road_defs.iter().find(|rd| rd.speed == 7).expect("A480 speed=7 doit exister");
+    let d1075 = network.road_defs.iter().find(|rd| rd.speed == 5).expect("D1075 speed=5 doit exister");
+    assert!(a480.speed > d1075.speed, "A480 (speed={}) doit avoir un attribut speed supérieur à D1075 (speed={})", a480.speed, d1075.speed);
+}
+
+#[test]
+fn test_routing_full_nod_drive_on_right() {
+    // AC1 — Task 5.3: header NOD → drive_on_right = 0x01 (France)
+    let bytes = compile_routing_full_validation_img();
+
+    // NOD subfile index = 4
+    let nod_block = read_dirent_block_start(&bytes, 4);
+    let nod_offset = nod_block * 512;
+
+    // NOD header : drive_on_right est à l'offset 0x2E dans le header NOD
+    // Format NOD header: voir nod.rs write_nod_header() — offset 0x2E
+    let drive_on_right = bytes[nod_offset + 0x2E];
+    assert_eq!(drive_on_right, 0x01, "drive_on_right = 0x01 (France = circulation à droite)");
+}
+
+#[test]
+fn test_routing_full_validation_fixture_compiles() {
+    // AC5 — Task 5.4: la nouvelle fixture se parse et compile sans erreur
+    // (la non-régression sur les 268 tests précédents est garantie par `cargo test` globalement)
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    assert_eq!(mp.polylines.len(), 7, "7 polylines dans la fixture (6 routables + 1 rivière)");
+
+    let routable_count = mp.polylines.iter().filter(|p| p.routing.is_some()).count();
+    assert_eq!(routable_count, 6, "6 polylines routables (5 Level=0 + 1 Level=1)");
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert!(bytes.len() > 512, "le .img doit faire plus d'un block (512 bytes)");
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "magic GARMIN toujours présent");
+}

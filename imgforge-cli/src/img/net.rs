@@ -20,6 +20,10 @@ const NET_HEADER_SIZE: u32 = 0x37; // 55 bytes
 const NET_FLAG_ONEWAY: u8 = 0x02;
 /// Unknown flag — "lock on road", always set (mkgmap convention).
 const NET_FLAG_UNK1: u8 = 0x04;
+/// Toll road flag (confirmed in mkgmap RoadDef.java::writeNet1()).
+const NET_FLAG_TOLL: u8 = 0x08;
+/// Access restriction present — 2-byte access_mask follows flags byte in record.
+const NET_FLAG_ACCESS: u8 = 0x20;
 /// NOD2 reference present in the record.
 const NET_FLAG_NODINFO: u8 = 0x40;
 
@@ -165,18 +169,29 @@ fn encode_road_def(
     if road_def.one_way {
         flags |= NET_FLAG_ONEWAY;
     }
+    if road_def.toll {
+        flags |= NET_FLAG_TOLL;
+    }
+    if road_def.access_mask != 0 {
+        flags |= NET_FLAG_ACCESS;
+    }
     // Set NODINFO flag — placeholder offset written, patched by NOD writer (Story 14.4)
     flags |= NET_FLAG_NODINFO;
     buf.push(flags);
 
-    // 3. Road length (3 bytes LE24 unsigned)
+    // 3. Access mask (2 bytes LE16) — UNIQUEMENT si NET_FLAG_ACCESS activé
+    if road_def.access_mask != 0 {
+        buf.extend_from_slice(&road_def.access_mask.to_le_bytes());
+    }
+
+    // 4. Road length (3 bytes LE24 unsigned)
     let length_meters = polyline_length(polyline_coords);
     let raw_length = (length_meters / DISTANCE_DIVISOR).round() as u32;
     buf.push((raw_length & 0xFF) as u8);
     buf.push(((raw_length >> 8) & 0xFF) as u8);
     buf.push(((raw_length >> 16) & 0xFF) as u8);
 
-    // 4. Level counts (1 byte per level, bit 7 = last level marker)
+    // 5. Level counts (1 byte per level, bit 7 = last level marker)
     // Collect references for this road_def, grouped by subdiv
     let my_refs: Vec<&SubdivRoadRef> = subdiv_refs
         .iter()
@@ -200,14 +215,14 @@ fn encode_road_def(
             buf.push(level_byte);
         }
 
-        // 5. Level divisions (3 bytes per reference)
+        // 6. Level divisions (3 bytes per reference)
         for r in &my_refs {
             buf.push(r.polyline_index);
             buf.extend_from_slice(&r.subdiv_number.to_le_bytes());
         }
     }
 
-    // 6. NOD2 reference placeholder (NET_FLAG_NODINFO is set)
+    // 7. NOD2 reference placeholder (NET_FLAG_NODINFO is set)
     // Format: 1 byte size indicator + 2 bytes offset (placeholder = 0)
     buf.push(0x01); // size indicator: 1 = 2-byte offset
     buf.extend_from_slice(&0u16.to_le_bytes()); // placeholder offset = 0x0000
@@ -454,8 +469,9 @@ mod tests {
         assert_eq!(label_val & OFFSET_22BIT_MASK, 42, "label offset = 42");
         assert_ne!(label_val & LAST_LABEL_BIT, 0, "last-label bit must be set");
 
-        // Flags: NET_FLAG_UNK1 | NET_FLAG_ONEWAY | NET_FLAG_NODINFO = 0x04 | 0x02 | 0x40 = 0x46
-        assert_eq!(record[3], 0x46, "flags: UNK1 + ONEWAY + NODINFO");
+        // Flags: NET_FLAG_UNK1 | NET_FLAG_ONEWAY | NET_FLAG_TOLL | NET_FLAG_NODINFO
+        // = 0x04 | 0x02 | 0x08 | 0x40 = 0x4E (toll=true in make_simple_road_network)
+        assert_eq!(record[3], 0x4E, "flags: UNK1 + ONEWAY + TOLL + NODINFO");
 
         // Road length: ~5000m / 4.8 ≈ 1042
         let raw_len = u32::from_le_bytes([record[4], record[5], record[6], 0]);
@@ -703,5 +719,175 @@ mod tests {
         let net3_len =
             u32::from_le_bytes([result.data[0x2B], result.data[0x2C], result.data[0x2D], result.data[0x2E]]);
         assert_eq!(net3_len, 0);
+    }
+
+    // ── Task 2.4 : Tests access_mask et toll ────────────────────────────────
+
+    #[test]
+    fn test_encode_road_def_with_access_mask() {
+        // access_mask=0x0040 (denied_truck) → NET_FLAG_ACCESS activé + 2 bytes dans record
+        let road_def = RoadDef {
+            road_id: 10,
+            polyline_idx: 0,
+            speed: 4,
+            road_class: 2,
+            one_way: false,
+            toll: false,
+            roundabout: false,
+            access_mask: 0x0040, // denied_truck
+            label: Some("Zone Test".to_string()),
+        };
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("Zone Test".to_string(), 5u32);
+        let coords = vec![(45.0, 5.0), (45.001, 5.0)];
+
+        let subdiv_refs = vec![SubdivRoadRef {
+            road_def_idx: 0,
+            subdiv_number: 1,
+            polyline_index: 0,
+        }];
+        let record = encode_road_def(0, &road_def, &label_offsets, &subdiv_refs, &coords);
+
+        // Flags: NET_FLAG_UNK1 | NET_FLAG_ACCESS | NET_FLAG_NODINFO = 0x04 | 0x20 | 0x40 = 0x64
+        assert_eq!(record[3], 0x64, "flags doit avoir NET_FLAG_ACCESS (0x20) activé, got 0x{:02X}", record[3]);
+
+        // Bytes 4-5 = access_mask LE16 = 0x0040
+        let access_mask = u16::from_le_bytes([record[4], record[5]]);
+        assert_eq!(access_mask, 0x0040, "access_mask LE16 doit être 0x0040 (denied_truck)");
+
+        // Record plus long de 2 bytes qu'une route sans accès (même structure)
+        let road_no_access = RoadDef { access_mask: 0, ..road_def.clone() };
+        let record_no_access = encode_road_def(0, &road_no_access, &label_offsets, &subdiv_refs, &coords);
+        assert_eq!(record.len(), record_no_access.len() + 2, "record avec access_mask 2 bytes plus long");
+    }
+
+    #[test]
+    fn test_encode_road_def_no_access_mask() {
+        // access_mask=0 → NET_FLAG_ACCESS absent, pas de bytes access dans le record
+        let road_def = RoadDef {
+            road_id: 11,
+            polyline_idx: 0,
+            speed: 5,
+            road_class: 2,
+            one_way: false,
+            toll: false,
+            roundabout: false,
+            access_mask: 0x0000,
+            label: Some("Route Libre".to_string()),
+        };
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("Route Libre".to_string(), 8u32);
+        let coords = vec![(45.0, 5.0), (45.001, 5.0)];
+
+        let record = encode_road_def(0, &road_def, &label_offsets, &[], &coords);
+
+        // Flags: NET_FLAG_UNK1 | NET_FLAG_NODINFO = 0x04 | 0x40 = 0x44
+        // NET_FLAG_ACCESS (0x20) doit être absent
+        assert_eq!(record[3] & 0x20, 0x00, "NET_FLAG_ACCESS ne doit pas être activé si access_mask=0");
+        assert_eq!(record[3], 0x44, "flags sans access: UNK1 + NODINFO = 0x44");
+    }
+
+    #[test]
+    fn test_encode_road_def_toll_flag() {
+        // toll=true → NET_FLAG_TOLL (0x08) activé dans flags
+        let road_def = RoadDef {
+            road_id: 12,
+            polyline_idx: 0,
+            speed: 7,
+            road_class: 4,
+            one_way: false,
+            toll: true,
+            roundabout: false,
+            access_mask: 0x0000,
+            label: Some("A480".to_string()),
+        };
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("A480".to_string(), 3u32);
+        let coords = vec![(45.0, 5.0), (45.001, 5.0)];
+
+        let record = encode_road_def(0, &road_def, &label_offsets, &[], &coords);
+
+        // Flags: NET_FLAG_UNK1 | NET_FLAG_TOLL | NET_FLAG_NODINFO = 0x04 | 0x08 | 0x40 = 0x4C
+        assert_eq!(record[3] & 0x08, 0x08, "NET_FLAG_TOLL (0x08) doit être activé si toll=true");
+        assert_eq!(record[3], 0x4C, "flags avec toll: UNK1 + TOLL + NODINFO = 0x4C");
+
+        // Vérifier que toll=false n'active pas le flag
+        let road_no_toll = RoadDef { toll: false, ..road_def };
+        let record_no_toll = encode_road_def(0, &road_no_toll, &label_offsets, &[], &coords);
+        assert_eq!(record_no_toll[3] & 0x08, 0x00, "NET_FLAG_TOLL ne doit pas être activé si toll=false");
+    }
+
+    #[test]
+    fn test_nod2_patch_position_correct_with_access() {
+        // access_mask=0x0040 → 2 bytes access insérés après flags
+        // La position NOD2 dans nod2_patch_positions doit pointer sur les 2 derniers bytes du record
+        use crate::parser::mp_types::{MpPolyline, MpRoutingAttrs};
+
+        let polylines = vec![MpPolyline {
+            type_code: "0x06".to_string(),
+            label: Some("Zone Restreinte".to_string()),
+            end_level: None,
+            coords: vec![(45.0, 5.0), (45.001, 5.0)],
+            routing: Some(MpRoutingAttrs {
+                road_id: Some("20".to_string()),
+                route_param: Some("4,2,0,0,0,0,0,0,0,0,0,1".to_string()), // denied_truck
+                speed_type: None,
+                dir_indicator: Some(0),
+                roundabout: None,
+                max_height: None,
+                max_weight: None,
+                max_width: None,
+                max_length: None,
+            }),
+            other_fields: HashMap::new(),
+        }];
+
+        let road_defs = vec![RoadDef {
+            road_id: 20,
+            polyline_idx: 0,
+            speed: 4,
+            road_class: 2,
+            one_way: false,
+            toll: false,
+            roundabout: false,
+            access_mask: 0x0040, // denied_truck
+            label: Some("Zone Restreinte".to_string()),
+        }];
+
+        let network = RoadNetwork {
+            nodes: vec![],
+            arcs: vec![],
+            road_defs,
+        };
+
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("Zone Restreinte".to_string(), 1u32);
+        let subdiv_refs = vec![SubdivRoadRef {
+            road_def_idx: 0,
+            subdiv_number: 1,
+            polyline_index: 0,
+        }];
+
+        let result = NetWriter::build(&network, &label_offsets, &subdiv_refs, &polylines);
+
+        assert_eq!(result.nod2_patch_positions.len(), 1);
+        let pos = result.nod2_patch_positions[0];
+
+        // Le placeholder NOD2 doit être à la fin du record (derniers 2 bytes)
+        assert!(pos + 1 < result.data.len(), "position NOD2 dans les limites du binaire");
+        assert_eq!(result.data[pos], 0x00, "placeholder NOD2 byte 0 = 0x00");
+        assert_eq!(result.data[pos + 1], 0x00, "placeholder NOD2 byte 1 = 0x00");
+        assert_eq!(result.data[pos - 1], 0x01, "indicateur 0x01 précède le placeholder");
+
+        // Vérifier que les bytes access sont bien AVANT le placeholder NOD2
+        // Record structure: 3B label + 1B flags(0x64) + 2B access + 3B length + 1B lvl + 3B div + 1B ind + 2B nod2
+        // = 16 bytes total
+        // Flags à offset 3 dans le record, access à offset 4
+        let net1_start = 55usize; // NET_HEADER_SIZE
+        let record_start = net1_start; // first road at offset 0
+        let flags = result.data[record_start + 3];
+        assert_eq!(flags & 0x20, 0x20, "NET_FLAG_ACCESS doit être activé dans le record avec access_mask");
+        let access_val = u16::from_le_bytes([result.data[record_start + 4], result.data[record_start + 5]]);
+        assert_eq!(access_val, 0x0040, "access_mask 0x0040 dans le record NET1");
     }
 }
