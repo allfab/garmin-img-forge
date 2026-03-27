@@ -8,6 +8,7 @@ pub mod routing;
 
 pub use error::ImgError;
 pub use img::assembler::{AssemblyStats, BuildConfig, GmapsuppAssembler};
+pub use img::tdb::{TdbConfig, TdbWriter, TileInfo};
 pub use img::writer::ImgWriter;
 
 use std::path::Path;
@@ -35,6 +36,7 @@ pub fn build(input_dir: &Path, output: &Path, config: BuildConfig) -> anyhow::Re
         tiles = stats.tile_count,
         subfiles = stats.subfile_count,
         bytes = stats.total_bytes,
+        tdb = %stats.tdb_path.display(),
         "gmapsupp.img assemblé"
     );
     Ok(())

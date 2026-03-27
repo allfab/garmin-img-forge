@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 
 use crate::error::ImgError;
 use crate::img::filesystem::ImgFilesystem;
+use crate::img::tdb::{TdbConfig, TdbWriter, TileInfo};
+use crate::img::tre::TreWriter;
 use crate::img::writer::ImgWriter;
 use crate::parser::MpParser;
 
@@ -58,6 +60,8 @@ pub struct AssemblyStats {
     pub subfile_count: usize,
     /// Total size of the gmapsupp.img in bytes.
     pub total_bytes: u64,
+    /// Path of the generated TDB companion file.
+    pub tdb_path: PathBuf,
 }
 
 // ── GmapsuppAssembler ─────────────────────────────────────────────────────────
@@ -91,11 +95,13 @@ impl GmapsuppAssembler {
         outer_fs.product_id = config.product_id;
 
         let mut compiled_tiles: usize = 0;
+        let mut tile_infos: Vec<TileInfo> = Vec::new();
 
         for mp_path in &mp_files {
             match Self::compile_tile(mp_path, config.block_size_exponent, &mut outer_fs) {
-                Ok(()) => {
+                Ok(tile_info) => {
                     compiled_tiles += 1;
+                    tile_infos.push(tile_info);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -122,10 +128,20 @@ impl GmapsuppAssembler {
 
         std::fs::write(output, &bytes)?;
 
+        // Generate companion TDB file.
+        let tdb_path = output.with_extension("tdb");
+        let tdb_config = TdbConfig {
+            family_id: config.family_id,
+            product_id: config.product_id,
+            series_name: config.description.clone(),
+        };
+        TdbWriter::write(&tdb_path, &tdb_config, &tile_infos)?;
+
         tracing::info!(
             tiles = compiled_tiles,
             subfiles = subfile_count,
             total_bytes = total_bytes,
+            tdb = %tdb_path.display(),
             "gmapsupp.img assembled"
         );
 
@@ -133,6 +149,7 @@ impl GmapsuppAssembler {
             tile_count: compiled_tiles,
             subfile_count,
             total_bytes,
+            tdb_path,
         })
     }
 
@@ -156,11 +173,13 @@ impl GmapsuppAssembler {
     }
 
     /// Parse and compile a single `.mp` tile, adding its subfiles to `outer_fs`.
+    ///
+    /// Returns a [`TileInfo`] with the tile's bounding box and map ID for TDB generation.
     fn compile_tile(
         mp_path: &Path,
         block_size_exponent: u8,
         outer_fs: &mut ImgFilesystem,
-    ) -> Result<(), ImgError> {
+    ) -> Result<TileInfo, ImgError> {
         let mp = MpParser::parse_file(mp_path)
             .map_err(|e| ImgError::IoError(std::io::Error::other(e.to_string())))?;
 
@@ -172,13 +191,30 @@ impl GmapsuppAssembler {
             outer_fs.add_subfile(tile_map_id, ext, data.to_vec())?;
         }
 
+        // Collect bounding box for TDB generation.
+        let (min_lat, max_lat, min_lon, max_lon) = TreWriter::compute_bounds(&mp);
+        let map_id_u32 = mp.header.id.parse::<u32>().map_err(|_| {
+            ImgError::IoError(std::io::Error::other(format!(
+                "Invalid map ID '{}': expected decimal u32",
+                mp.header.id
+            )))
+        })?;
+        let tile_info = TileInfo {
+            map_id: map_id_u32,
+            north: max_lat,
+            east: max_lon,
+            south: min_lat,
+            west: min_lon,
+            description: mp.header.name.clone(),
+        };
+
         tracing::debug!(
             map_id = %map_id,
             subfiles = tile_fs.entry_count(),
             "Tile compiled and added to outer filesystem"
         );
 
-        Ok(())
+        Ok(tile_info)
     }
 }
 
@@ -233,12 +269,14 @@ mod tests {
 
     #[test]
     fn test_assembler_single_tile() {
+        let tiles_dir = tempfile::tempdir().unwrap();
+        std::fs::copy(tile_a(), tiles_dir.path().join("tile_a.mp")).unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let output = tmp.path().join("gmapsupp.img");
         let stats =
-            GmapsuppAssembler::build(tile_a().parent().unwrap(), &output, &test_config_512())
+            GmapsuppAssembler::build(tiles_dir.path(), &output, &test_config_512())
                 .unwrap();
-        assert!(stats.tile_count > 0);
+        assert_eq!(stats.tile_count, 1);
         assert!(output.exists());
         let bytes = std::fs::read(&output).unwrap();
         assert!(bytes.len() > 0);

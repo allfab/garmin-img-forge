@@ -8,6 +8,7 @@ pub mod lbl;
 pub mod net;
 pub mod nod;
 pub mod rgn;
+pub mod tdb;
 pub mod tre;
 pub mod writer;
 

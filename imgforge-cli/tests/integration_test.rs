@@ -2191,3 +2191,199 @@ fn test_build_no_regression() {
     let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
     assert_eq!(xor, 0x00, "header XOR must hold after Story 15.1 changes");
 }
+
+// ── Story 15.2 — TDB Integration Tests ───────────────────────────────────────
+
+/// Copie tile_a.mp et tile_b.mp dans un répertoire temporaire.
+fn two_tile_dir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::copy(fixture("tile_a.mp"), dir.path().join("tile_a.mp")).unwrap();
+    std::fs::copy(fixture("tile_b.mp"), dir.path().join("tile_b.mp")).unwrap();
+    dir
+}
+
+fn tdb_build_config() -> BuildConfig {
+    BuildConfig {
+        family_id: 1234,
+        product_id: 1,
+        description: "France BDTOPO 2025".into(),
+        block_size_exponent: 9,
+    }
+}
+
+#[test]
+fn test_build_generates_tdb_file() {
+    // AC1 — gmapsupp.tdb généré à côté du gmapsupp.img
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    let _stats = GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_path = tmp_out.path().join("gmapsupp.tdb");
+    assert!(tdb_path.exists(), "gmapsupp.tdb must exist next to gmapsupp.img");
+    assert!(tdb_path.metadata().unwrap().len() > 0, "gmapsupp.tdb must not be empty");
+}
+
+#[test]
+fn test_build_tdb_has_correct_block_structure() {
+    // AC4 — Structure [0x50][0x44][0x42][0x4C×N][0x54]
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_bytes = std::fs::read(tmp_out.path().join("gmapsupp.tdb")).unwrap();
+
+    // First block must be 0x50
+    assert_eq!(tdb_bytes[0], 0x50, "first block must be Product Header (0x50)");
+
+    // Walk all blocks to verify last is 0x54
+    let mut pos = 0;
+    let mut block_types: Vec<u8> = Vec::new();
+    while pos + 3 <= tdb_bytes.len() {
+        let block_type = tdb_bytes[pos];
+        let len = u16::from_le_bytes([tdb_bytes[pos + 1], tdb_bytes[pos + 2]]) as usize;
+        block_types.push(block_type);
+        pos += 3 + len;
+    }
+    assert_eq!(*block_types.last().unwrap(), 0x54, "last block must be Checksum (0x54)");
+    assert!(block_types.contains(&0x42), "must contain Overview Map block (0x42)");
+    assert!(block_types.contains(&0x44), "must contain Copyright block (0x44)");
+}
+
+#[test]
+fn test_build_tdb_contains_tile_count_detail_blocks() {
+    // AC2 — N tuiles → N blocks 0x4C dans le TDB
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_bytes = std::fs::read(tmp_out.path().join("gmapsupp.tdb")).unwrap();
+
+    let mut pos = 0;
+    let mut detail_count = 0usize;
+    while pos + 3 <= tdb_bytes.len() {
+        if tdb_bytes[pos] == 0x4C {
+            detail_count += 1;
+        }
+        let len = u16::from_le_bytes([tdb_bytes[pos + 1], tdb_bytes[pos + 2]]) as usize;
+        pos += 3 + len;
+    }
+    assert_eq!(detail_count, 2, "2 tuiles → 2 blocks Detail Map (0x4C)");
+}
+
+#[test]
+fn test_build_tdb_family_id_in_product_block() {
+    // AC3 — family_id=1234 → bytes[3..5] du block 0x50 = 1234u16.to_le_bytes()
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_bytes = std::fs::read(tmp_out.path().join("gmapsupp.tdb")).unwrap();
+
+    // Block 0x50: type(1) + length(2) + data; data[2..4] = family_id
+    assert_eq!(tdb_bytes[0], 0x50);
+    let data_offset = 3usize;
+    // data[0..2] = TDB version, data[2..4] = family_id
+    let family_id = u16::from_le_bytes([tdb_bytes[data_offset + 2], tdb_bytes[data_offset + 3]]);
+    assert_eq!(family_id, 1234, "family_id in product block must be 1234");
+}
+
+#[test]
+fn test_build_assembly_stats_has_tdb_path() {
+    // AC1 — AssemblyStats.tdb_path existe et se termine par .tdb
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    let stats = GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    assert!(stats.tdb_path.exists(), "stats.tdb_path must point to an existing file");
+    assert_eq!(
+        stats.tdb_path.extension().and_then(|e| e.to_str()),
+        Some("tdb"),
+        "stats.tdb_path must have .tdb extension"
+    );
+}
+
+#[test]
+fn test_build_tdb_map_ids_in_detail_blocks() {
+    // H1 (code-review) — AC2 : chaque block 0x4C contient le bon map_id
+    // tile_a: ID=01001001 → décimal 1_001_001, tile_b: ID=01001002 → décimal 1_001_002
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_bytes = std::fs::read(tmp_out.path().join("gmapsupp.tdb")).unwrap();
+
+    let mut pos = 0;
+    let mut map_ids: Vec<u32> = Vec::new();
+    while pos + 3 <= tdb_bytes.len() {
+        let block_type = tdb_bytes[pos];
+        let len = u16::from_le_bytes([tdb_bytes[pos + 1], tdb_bytes[pos + 2]]) as usize;
+        if block_type == 0x4C {
+            // payload bytes 0..4 = map_number (u32 LE)
+            let map_id = u32::from_le_bytes([
+                tdb_bytes[pos + 3],
+                tdb_bytes[pos + 4],
+                tdb_bytes[pos + 5],
+                tdb_bytes[pos + 6],
+            ]);
+            map_ids.push(map_id);
+        }
+        pos += 3 + len;
+    }
+
+    map_ids.sort();
+    assert_eq!(
+        map_ids,
+        vec![1_001_001, 1_001_002],
+        "detail blocks must contain correct map IDs (decimal parse of tile IDs)"
+    );
+}
+
+#[test]
+fn test_build_tdb_series_name_in_blocks() {
+    // H2 (code-review) — AC3 : series_name présente dans blocks 0x50 (Product) et 0x42 (Overview)
+    let tiles = two_tile_dir();
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    GmapsuppAssembler::build(tiles.path(), &output, &tdb_build_config()).unwrap();
+
+    let tdb_bytes = std::fs::read(tmp_out.path().join("gmapsupp.tdb")).unwrap();
+    let expected = b"France BDTOPO 2025";
+
+    let mut pos = 0;
+    let mut found_in_product = false;
+    let mut found_in_overview = false;
+    while pos + 3 <= tdb_bytes.len() {
+        let block_type = tdb_bytes[pos];
+        let len = u16::from_le_bytes([tdb_bytes[pos + 1], tdb_bytes[pos + 2]]) as usize;
+        let payload = &tdb_bytes[pos + 3..pos + 3 + len];
+        if block_type == 0x50 {
+            found_in_product = payload.windows(expected.len()).any(|w| w == expected);
+        }
+        if block_type == 0x42 {
+            found_in_overview = payload.windows(expected.len()).any(|w| w == expected);
+        }
+        pos += 3 + len;
+    }
+
+    assert!(
+        found_in_product,
+        "series_name 'France BDTOPO 2025' must be present in block 0x50 (Product Header)"
+    );
+    assert!(
+        found_in_overview,
+        "series_name 'France BDTOPO 2025' must be present in block 0x42 (Overview Map description)"
+    );
+}
