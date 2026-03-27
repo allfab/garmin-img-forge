@@ -36,6 +36,9 @@ pub struct BuildConfig {
     /// Block size exponent: `block_size = 1 << block_size_exponent`.
     /// Use 14 (16 384 bytes) for production, 9 (512 bytes) for tests.
     pub block_size_exponent: u8,
+    /// Optional TYP file to embed in the gmapsupp.img.
+    /// When `Some`, the file is read and added as `{family_id:08}.TYP` subfile.
+    pub typ_file: Option<PathBuf>,
 }
 
 impl Default for BuildConfig {
@@ -45,6 +48,7 @@ impl Default for BuildConfig {
             product_id: 1,
             description: "mpforge map".into(),
             block_size_exponent: 14,
+            typ_file: None,
         }
     }
 }
@@ -62,6 +66,8 @@ pub struct AssemblyStats {
     pub total_bytes: u64,
     /// Path of the generated TDB companion file.
     pub tdb_path: PathBuf,
+    /// Whether a TYP file was embedded in the gmapsupp.img.
+    pub typ_embedded: bool,
 }
 
 // ── GmapsuppAssembler ─────────────────────────────────────────────────────────
@@ -85,6 +91,20 @@ impl GmapsuppAssembler {
         output: &Path,
         config: &BuildConfig,
     ) -> Result<AssemblyStats, ImgError> {
+        // Validate TYP file early — fail before any tile compilation.
+        // Carry (path, bytes) together to avoid a second config.typ_file lookup for logging.
+        let typ_info: Option<(PathBuf, Vec<u8>)> = if let Some(ref typ_path) = config.typ_file {
+            let bytes = std::fs::read(typ_path).map_err(|e| {
+                ImgError::IoError(std::io::Error::new(
+                    e.kind(),
+                    format!("TYP file '{}': {}", typ_path.display(), e),
+                ))
+            })?;
+            Some((typ_path.clone(), bytes))
+        } else {
+            None
+        };
+
         // Scan and sort .mp files deterministically.
         let mp_files = Self::collect_mp_files(input_dir)?;
 
@@ -120,6 +140,21 @@ impl GmapsuppAssembler {
             });
         }
 
+        // Embed TYP file into the outer filesystem before serialisation.
+        let mut typ_embedded = false;
+        if let Some((typ_path, typ_bytes)) = typ_info {
+            let typ_map_id = format!("{:08}", config.family_id);
+            // Collision guard: tile map_ids come from mp.header.id; a collision would require
+            // a tile with an ID numerically equal to family_id (u16, max "00065535").
+            debug_assert!(
+                !outer_fs.entries.iter().any(|e| e.map_id == typ_map_id && e.ext == "TYP"),
+                "TYP subfile collision: a tile already uses map_id={typ_map_id} with ext=TYP"
+            );
+            outer_fs.add_subfile(&typ_map_id, "TYP", typ_bytes)?;
+            typ_embedded = true;
+            tracing::info!(typ = %typ_path.display(), "TYP file embedded");
+        }
+
         let subfile_count = outer_fs.entry_count();
 
         // Serialise and write to disk.
@@ -150,6 +185,7 @@ impl GmapsuppAssembler {
             subfile_count,
             total_bytes,
             tdb_path,
+            typ_embedded,
         })
     }
 
@@ -245,6 +281,7 @@ mod tests {
             product_id: 1,
             description: "Test Assembly".into(),
             block_size_exponent: 9, // 512 bytes — fast for tests
+            typ_file: None,
         }
     }
 
@@ -316,6 +353,7 @@ mod tests {
             product_id: 1,
             description: "Test".into(),
             block_size_exponent: 9,
+            typ_file: None,
         };
         let output = tempfile::NamedTempFile::new().unwrap();
         GmapsuppAssembler::build(tmp_tiles.path(), output.path(), &config).unwrap();

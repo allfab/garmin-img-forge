@@ -20,7 +20,8 @@ use clap::{Parser, Subcommand};
                   imgforge-cli compile map.mp -o map.img\n  \
                   imgforge-cli compile map.mp -o map.img -v\n  \
                   imgforge-cli build --input-dir tiles/ -o gmapsupp.img\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --family-id 6324 --description \"France BDTOPO 2025\""
+                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --family-id 6324 --description \"France BDTOPO 2025\"\n  \
+                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --typ garmin-style.typ"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -78,6 +79,11 @@ pub struct BuildArgs {
     /// Map description visible in BaseCamp
     #[arg(long, default_value = "mpforge map")]
     pub description: String,
+
+    /// Optional TYP file to embed in the gmapsupp.img for custom rendering styles.
+    /// Produced by TYPViewer or similar Garmin style editors.
+    #[arg(long, value_name = "FILE")]
+    pub typ: Option<String>,
 
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -188,5 +194,42 @@ mod tests {
         assert_eq!(args.family_id, 1234);
         assert_eq!(args.product_id, 2);
         assert_eq!(args.description, "France BDTOPO 2025");
+    }
+
+    #[test]
+    fn test_cli_build_typ_flag_is_optional() {
+        // AC1 — sans --typ, typ = None
+        let cli = Cli::try_parse_from([
+            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert!(args.typ.is_none(), "--typ doit être None quand non fourni");
+    }
+
+    #[test]
+    fn test_cli_build_typ_flag_parsed() {
+        // AC2 (prérequis CLI) — --typ garmin-style.typ → args.typ == Some("garmin-style.typ")
+        let cli = Cli::try_parse_from([
+            "imgforge-cli",
+            "build",
+            "--input-dir",
+            "tiles/",
+            "-o",
+            "out.img",
+            "--typ",
+            "garmin-style.typ",
+        ]);
+        assert!(cli.is_ok());
+        let Commands::Build(args) = cli.unwrap().command else {
+            panic!("expected Build command");
+        };
+        assert_eq!(
+            args.typ.as_deref(),
+            Some("garmin-style.typ"),
+            "--typ doit être parsé correctement"
+        );
     }
 }

@@ -1976,6 +1976,7 @@ fn test_build_config_512() -> BuildConfig {
         product_id: 1,
         description: "Test Assembly".into(),
         block_size_exponent: 9, // 512 bytes — fast for integration tests
+        typ_file: None,
     }
 }
 
@@ -2074,6 +2075,7 @@ fn test_build_gmapsupp_family_id() {
         product_id: 0,
         description: "Test".into(),
         block_size_exponent: 9,
+        typ_file: None,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2091,6 +2093,7 @@ fn test_build_gmapsupp_product_id() {
         product_id: 1,
         description: "Test".into(),
         block_size_exponent: 9,
+        typ_file: None,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2141,6 +2144,7 @@ fn test_build_boundary_nodes_detected() {
         product_id: 0,
         description: "Test".into(),
         block_size_exponent: 9,
+        typ_file: None,
     };
     let output = tempfile::NamedTempFile::new().unwrap();
     let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
@@ -2208,6 +2212,7 @@ fn tdb_build_config() -> BuildConfig {
         product_id: 1,
         description: "France BDTOPO 2025".into(),
         block_size_exponent: 9,
+        typ_file: None,
     }
 }
 
@@ -2385,5 +2390,137 @@ fn test_build_tdb_series_name_in_blocks() {
     assert!(
         found_in_overview,
         "series_name 'France BDTOPO 2025' must be present in block 0x42 (Overview Map description)"
+    );
+}
+
+// ── Story 15.3 — TYP File Integration Tests ──────────────────────────────────
+
+/// Construit un gmapsupp.img avec un fichier TYP minimal et retourne les bytes + stats.
+fn build_with_typ(
+    typ_content: &[u8],
+    family_id: u16,
+) -> (Vec<u8>, imgforge_cli::img::assembler::AssemblyStats, tempfile::TempDir) {
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let tmp_out = tempfile::tempdir().unwrap();
+    let output = tmp_out.path().join("gmapsupp.img");
+
+    let typ_file = tmp_out.path().join("style.typ");
+    std::fs::write(&typ_file, typ_content).unwrap();
+
+    let config = BuildConfig {
+        family_id,
+        product_id: 1,
+        description: "Test TYP".into(),
+        block_size_exponent: 9,
+        typ_file: Some(typ_file),
+    };
+    let stats = GmapsuppAssembler::build(tiles.path(), &output, &config).unwrap();
+    let bytes = std::fs::read(&output).unwrap();
+    // Return tmp_out to keep the TempDir alive in the caller — prevents tdb_path from dangling.
+    (bytes, stats, tmp_out)
+}
+
+#[test]
+fn test_build_with_typ_file_embeds_subfile() {
+    // AC2 — build avec --typ → subfile TYP présent dans le FAT directory
+    let (bytes, stats, _tmp) = build_with_typ(b"TYP MARKER", 6324);
+
+    let block_size = 512usize;
+    let dir_start = block_size; // block 1
+
+    let mut found_typ = false;
+    for i in 0..stats.subfile_count {
+        let offset = dir_start + i * 32;
+        let ext = &bytes[offset + 0x08..offset + 0x0B];
+        if ext == b"TYP" {
+            found_typ = true;
+            // Vérifier le map_id = "00006324"
+            let name = &bytes[offset..offset + 8];
+            assert_eq!(name, b"00006324", "map_id du TYP doit être '00006324' (family_id=6324)");
+            break;
+        }
+    }
+    assert!(found_typ, "un Dirent avec ext=TYP doit être présent dans le FAT");
+    assert!(stats.typ_embedded, "stats.typ_embedded doit être true");
+}
+
+#[test]
+fn test_build_with_typ_file_content_matches() {
+    // AC2 — les bytes du subfile TYP dans le gmapsupp.img correspondent au fichier source
+    let typ_content: &[u8] = b"GARMIN TYP CONTENT 01234567890ABCDEF";
+    let (bytes, stats, _tmp) = build_with_typ(typ_content, 6324);
+
+    let block_size = 512usize;
+    let dir_start = block_size;
+
+    let mut typ_block_start: Option<usize> = None;
+    let mut typ_size: Option<usize> = None;
+    for i in 0..stats.subfile_count {
+        let offset = dir_start + i * 32;
+        let ext = &bytes[offset + 0x08..offset + 0x0B];
+        if ext == b"TYP" {
+            typ_block_start = Some(
+                u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize,
+            );
+            typ_size = Some(u32::from_le_bytes([
+                bytes[offset + 0x12],
+                bytes[offset + 0x13],
+                bytes[offset + 0x14],
+                bytes[offset + 0x15],
+            ]) as usize);
+            break;
+        }
+    }
+
+    let block_start = typ_block_start.expect("Dirent TYP doit exister");
+    let size = typ_size.expect("size_used du TYP doit être non-nul");
+    assert_eq!(size, typ_content.len(), "size_used du TYP doit correspondre aux bytes source");
+
+    let data_start = block_start * block_size;
+    let embedded = &bytes[data_start..data_start + size];
+    assert_eq!(embedded, typ_content, "contenu du subfile TYP doit correspondre exactement au fichier source");
+}
+
+#[test]
+fn test_build_without_typ_no_typ_subfile() {
+    // AC1 — sans --typ, aucun Dirent avec ext=TYP dans le FAT
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let block_size = 512usize;
+    let dir_start = block_size;
+
+    let has_typ = (0..stats.subfile_count).any(|i| {
+        let offset = dir_start + i * 32;
+        &bytes[offset + 0x08..offset + 0x0B] == b"TYP"
+    });
+    assert!(!has_typ, "sans --typ, aucun Dirent TYP ne doit être présent");
+    assert!(!stats.typ_embedded, "stats.typ_embedded doit être false sans --typ");
+}
+
+#[test]
+fn test_build_typ_missing_file_returns_error() {
+    // AC4 — chemin TYP inexistant → erreur avant compilation des tuiles
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+
+    let config = BuildConfig {
+        family_id: 6324,
+        product_id: 1,
+        description: "Test TYP Missing".into(),
+        block_size_exponent: 9,
+        typ_file: Some(std::path::PathBuf::from("/nonexistent/path/style.typ")),
+    };
+    let result = GmapsuppAssembler::build(tiles.path(), output.path(), &config);
+    assert!(result.is_err(), "fichier TYP inexistant doit retourner une erreur");
+    let err = result.unwrap_err();
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("/nonexistent/path/style.typ"),
+        "le message d'erreur doit indiquer le chemin du fichier introuvable, got: {}",
+        err_msg
     );
 }

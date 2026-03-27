@@ -1,5 +1,7 @@
 //! imgforge-cli: Polish Map (.mp) to Garmin IMG compiler
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use imgforge_cli::cli::{Cli, Commands};
 use imgforge_cli::BuildConfig;
@@ -58,6 +60,7 @@ fn main() -> anyhow::Result<()> {
                 product_id: args.product_id,
                 description: args.description.clone(),
                 block_size_exponent: 14, // production default (16 384 bytes)
+                typ_file: args.typ.as_deref().map(PathBuf::from),
             };
 
             imgforge_cli::build(input_dir, output, config)?;
