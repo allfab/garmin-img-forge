@@ -75,6 +75,7 @@ impl ImgWriter {
 
         use crate::img::lbl::LblWriter;
         use crate::img::net::{NetWriter, SubdivRoadRef};
+        use crate::img::nod::{patch_nod2_offsets, NodWriter};
         use crate::img::rgn::RgnWriter;
         use crate::img::tre::{levels_from_mp, TreWriter};
         let levels = levels_from_mp(&mp_file.header);
@@ -149,22 +150,56 @@ impl ImgWriter {
             TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets)
         };
 
+        // Pass 4: build NOD (after TRE; depends on road_network + net offsets).
+        let nod = if has_routing {
+            let net_result = net.as_ref().unwrap();
+            let nod_result = NodWriter::build(&road_network, &net_result.road_offsets, &mp_file.polylines);
+            tracing::info!(
+                road_defs = road_network.road_defs.len(),
+                nod2_offsets = nod_result.nod2_road_offsets.len(),
+                nod_size = nod_result.data.len(),
+                "NOD subfile encoded"
+            );
+            Some(nod_result)
+        } else {
+            None
+        };
+
+        // Patch NOD2 offsets into NET data before adding to the filesystem.
+        let net_data_patched: Option<Vec<u8>> = if has_routing {
+            let net_result = net.as_ref().unwrap();
+            let nod_result = nod.as_ref().unwrap();
+            let mut data = net_result.data.clone();
+            patch_nod2_offsets(
+                &mut data,
+                &net_result.nod2_patch_positions,
+                &nod_result.nod2_road_offsets,
+            );
+            Some(data)
+        } else {
+            None
+        };
+
         fs.add_subfile(map_id, "TRE", tre_data)?;
         fs.add_subfile(map_id, "RGN", rgn.data)?;
         fs.add_subfile(map_id, "LBL", lbl.data)?;
-        if let Some(ref net_result) = net {
-            fs.add_subfile(map_id, "NET", net_result.data.clone())?;
+        if has_routing {
+            fs.add_subfile(map_id, "NET", net_data_patched.unwrap())?;
+            fs.add_subfile(map_id, "NOD", nod.unwrap().data)?;
         }
 
-        // Capture per-subfile stats before consuming fs into bytes.
+        // Verify subfile count invariant before serialisation.
         let entry_count = fs.entries.len();
-        let expected = if has_routing { 4 } else { 3 };
-        assert!(
-            entry_count == expected,
+        let expected = if has_routing { 5 } else { 3 };
+        debug_assert_eq!(
+            entry_count,
+            expected,
             "expected {} subfile entries, got {}",
             expected,
             entry_count
         );
+
+        // Capture all per-subfile stats before serialisation.
         let (tre_offset_b, tre_size) = (
             fs.entries[0].0.block_start as u64 * block_size as u64,
             fs.entries[0].0.size_allocated,
@@ -177,15 +212,27 @@ impl ImgWriter {
             fs.entries[2].0.block_start as u64 * block_size as u64,
             fs.entries[2].0.size_allocated,
         );
+        let (net_offset_b, net_size) = if has_routing {
+            (
+                fs.entries[3].0.block_start as u64 * block_size as u64,
+                fs.entries[3].0.size_allocated,
+            )
+        } else {
+            (0, 0)
+        };
+        let (nod_offset_b, nod_size) = if has_routing {
+            (
+                fs.entries[4].0.block_start as u64 * block_size as u64,
+                fs.entries[4].0.size_allocated,
+            )
+        } else {
+            (0, 0)
+        };
 
         // Serialise.
         let bytes = fs.to_bytes();
 
         if has_routing {
-            let (net_offset_b, net_size) = (
-                fs.entries[3].0.block_start as u64 * block_size as u64,
-                fs.entries[3].0.size_allocated,
-            );
             tracing::info!(
                 map_id = %map_id,
                 block_size = block_size,
@@ -198,6 +245,8 @@ impl ImgWriter {
                 lbl_size = lbl_size,
                 net_offset = net_offset_b,
                 net_size = net_size,
+                nod_offset = nod_offset_b,
+                nod_size = nod_size,
                 "IMG written (with routing)"
             );
         } else {

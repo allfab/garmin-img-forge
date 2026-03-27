@@ -59,6 +59,10 @@ pub struct NetBuildResult {
     /// relative to the start of the NET1 section (not the file start).
     /// Used by RGN to embed NET1 cross-references in routable polylines.
     pub road_offsets: Vec<u32>,
+    /// `nod2_patch_positions[i]` = absolute byte offset within `data` of the first
+    /// byte of the 2-byte NOD2 placeholder for the i-th RoadDef.
+    /// Allows the NOD writer to patch offsets without re-parsing the NET1 binary.
+    pub nod2_patch_positions: Vec<usize>,
 }
 
 // ── NET Header ───────────────────────────────────────────────────────────────
@@ -269,6 +273,7 @@ impl NetWriter {
     ) -> NetBuildResult {
         let mut net1_data: Vec<u8> = Vec::new();
         let mut road_offsets: Vec<u32> = Vec::with_capacity(road_network.road_defs.len());
+        let mut nod2_patch_positions: Vec<usize> = Vec::with_capacity(road_network.road_defs.len());
 
         // Encode each road definition as a NET1 record
         for (rd_idx, rd) in road_network.road_defs.iter().enumerate() {
@@ -283,6 +288,9 @@ impl NetWriter {
             };
 
             let record = encode_road_def(rd_idx, rd, label_offsets, subdiv_road_refs, coords);
+            // Capture position of 2-byte NOD2 placeholder (last 2 bytes of record)
+            // in the final `data` (= NET_HEADER_SIZE + offset_in_net1 + record.len() - 2)
+            nod2_patch_positions.push(NET_HEADER_SIZE as usize + offset as usize + record.len() - 2);
             net1_data.extend_from_slice(&record);
         }
 
@@ -312,7 +320,7 @@ impl NetWriter {
             "NET subfile built"
         );
 
-        NetBuildResult { data, road_offsets }
+        NetBuildResult { data, road_offsets, nod2_patch_positions }
     }
 }
 
@@ -619,6 +627,60 @@ mod tests {
         assert_eq!(net3_len, 3, "1 labeled road → 1 NET3 record = 3 bytes");
     }
 
+    // ── Task 3: nod2_patch_positions ────────────────────────────────────────
+
+    #[test]
+    fn test_nod2_patch_positions_single_road() {
+        let (network, polylines) = make_simple_road_network();
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("D1075".to_string(), 1u32);
+        let subdiv_refs = vec![SubdivRoadRef {
+            road_def_idx: 0,
+            subdiv_number: 1,
+            polyline_index: 0,
+        }];
+
+        let result = NetWriter::build(&network, &label_offsets, &subdiv_refs, &polylines);
+
+        // Must have exactly 1 patch position
+        assert_eq!(result.nod2_patch_positions.len(), 1);
+        let pos = result.nod2_patch_positions[0];
+
+        // Bytes at pos must be the 0x0000 placeholder
+        assert!(pos + 1 < result.data.len(), "patch position must be within data");
+        assert_eq!(result.data[pos], 0x00, "NOD2 placeholder byte 0 must be 0x00");
+        assert_eq!(result.data[pos + 1], 0x00, "NOD2 placeholder byte 1 must be 0x00");
+
+        // Byte before the placeholder must be the 0x01 indicator
+        assert!(pos >= 1, "indicator byte must precede placeholder");
+        assert_eq!(result.data[pos - 1], 0x01, "indicator byte before placeholder must be 0x01");
+    }
+
+    #[test]
+    fn test_nod2_patch_positions_after_patch() {
+        let (network, polylines) = make_simple_road_network();
+        let mut label_offsets = HashMap::new();
+        label_offsets.insert("D1075".to_string(), 1u32);
+        let subdiv_refs = vec![SubdivRoadRef {
+            road_def_idx: 0,
+            subdiv_number: 1,
+            polyline_index: 0,
+        }];
+
+        let result = NetWriter::build(&network, &label_offsets, &subdiv_refs, &polylines);
+        let pos = result.nod2_patch_positions[0];
+
+        // Simulate a patch: write offset 0x1234 at pos
+        let mut data = result.data.clone();
+        data[pos] = 0x34;
+        data[pos + 1] = 0x12;
+
+        let patched = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        assert_eq!(patched, 0x1234, "patched LE16 must read back as 0x1234");
+        // Indicator byte must be unchanged
+        assert_eq!(data[pos - 1], 0x01, "indicator byte must still be 0x01 after patch");
+    }
+
     #[test]
     fn test_net_build_empty_network() {
         let network = RoadNetwork {
@@ -630,6 +692,7 @@ mod tests {
 
         assert_eq!(result.data.len(), 55, "empty network → header only (55 bytes)");
         assert_eq!(result.road_offsets.len(), 0);
+        assert_eq!(result.nod2_patch_positions.len(), 0, "empty network → no patch positions");
 
         // NET1 length = 0
         let net1_len =

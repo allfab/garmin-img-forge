@@ -5,6 +5,7 @@ pub mod filesystem;
 pub mod header;
 pub mod lbl;
 pub mod net;
+pub mod nod;
 pub mod rgn;
 pub mod tre;
 pub mod writer;

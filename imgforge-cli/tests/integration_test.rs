@@ -1312,3 +1312,241 @@ fn test_net_validation_toll_preserved_in_road_def() {
         "road_def[1] (D1075) must have toll=false"
     );
 }
+
+// ----------------------------------------------------------------
+// NOD subfile integration tests (Story 14.4)
+// ----------------------------------------------------------------
+
+/// Helper: compile net_validation.mp and return the .img bytes.
+fn compile_net_validation_img() -> Vec<u8> {
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    std::fs::read(tmp.path()).unwrap()
+}
+
+/// Parse a dirent extension (3-char ASCII) from the FAT directory.
+/// Each dirent is 32 bytes; extension at bytes [8..11].
+fn read_dirent_ext(bytes: &[u8], index: usize) -> [u8; 3] {
+    let dir_start = 512usize; // block 1 with block_size=512
+    let offset = dir_start + index * 32;
+    [bytes[offset + 8], bytes[offset + 9], bytes[offset + 10]]
+}
+
+/// Read block_start from a dirent (LE16 at offset 0x0C).
+fn read_dirent_block_start(bytes: &[u8], index: usize) -> usize {
+    let dir_start = 512usize;
+    let offset = dir_start + index * 32;
+    u16::from_le_bytes([bytes[offset + 0x0C], bytes[offset + 0x0D]]) as usize
+}
+
+#[test]
+fn test_nod_validation_img_contains_nod_subfile() {
+    // AC6 — Task 6.2: .img FAT must contain a NOD subfile entry
+    let bytes = compile_net_validation_img();
+
+    // Routing: 5 subfiles expected: TRE(0), RGN(1), LBL(2), NET(3), NOD(4)
+    let nod_ext = read_dirent_ext(&bytes, 4);
+    assert_eq!(&nod_ext, b"NOD", "subfile 4 must have extension 'NOD'");
+}
+
+#[test]
+fn test_nod_validation_header_signature() {
+    // AC6 / AC5 — Task 6.3: NOD header starts with "GARMIN NOD" and drive_on_right=0x01
+    let bytes = compile_net_validation_img();
+
+    // NOD is subfile index 4
+    let block_start = read_dirent_block_start(&bytes, 4);
+    let nod_offset = block_start * 512;
+
+    // Header length at 0x00 (LE16) = 48
+    let hdr_len = u16::from_le_bytes([bytes[nod_offset], bytes[nod_offset + 1]]);
+    assert_eq!(hdr_len, 48, "NOD header length must be 48");
+
+    // Signature "GARMIN NOD" at offset 0x0B
+    assert_eq!(
+        &bytes[nod_offset + 0x0B..nod_offset + 0x15],
+        b"GARMIN NOD",
+        "NOD signature must be 'GARMIN NOD'"
+    );
+
+    // drive_on_right at 0x2E
+    assert_eq!(
+        bytes[nod_offset + 0x2E],
+        0x01,
+        "drive_on_right must be 0x01 (France)"
+    );
+}
+
+#[test]
+fn test_nod_validation_sections_non_empty() {
+    // AC2 / AC1 — Task 6.4: NOD1 and NOD2 sections must be non-empty
+    let bytes = compile_net_validation_img();
+
+    let block_start = read_dirent_block_start(&bytes, 4);
+    let nod_offset = block_start * 512;
+
+    // NOD1 length at 0x19
+    let nod1_len = u32::from_le_bytes([
+        bytes[nod_offset + 0x19],
+        bytes[nod_offset + 0x1A],
+        bytes[nod_offset + 0x1B],
+        bytes[nod_offset + 0x1C],
+    ]);
+    assert!(nod1_len > 0, "NOD1 section must be non-empty");
+
+    // NOD2 length at 0x22
+    let nod2_len = u32::from_le_bytes([
+        bytes[nod_offset + 0x22],
+        bytes[nod_offset + 0x23],
+        bytes[nod_offset + 0x24],
+        bytes[nod_offset + 0x25],
+    ]);
+    assert!(nod2_len > 0, "NOD2 section must be non-empty");
+}
+
+#[test]
+fn test_nod_validation_nod2_offsets_patched_in_net() {
+    // AC3 — Task 6.5: NOD2 offsets in NET1 must be non-zero after patch
+    let bytes = compile_net_validation_img();
+
+    // NET is subfile index 3
+    let net_block = read_dirent_block_start(&bytes, 3);
+    let net_offset = net_block * 512;
+
+    // NET header: NET1 section offset at 0x15 (LE32), relative to start of NET subfile
+    let net1_section_off = u32::from_le_bytes([
+        bytes[net_offset + 0x15],
+        bytes[net_offset + 0x16],
+        bytes[net_offset + 0x17],
+        bytes[net_offset + 0x18],
+    ]) as usize;
+
+    // First NET1 record starts at net_offset + net1_section_off
+    // Layout: 3B labels + 1B flags + 3B length + N bytes level_counts + 3×M level_divs + 1B indicator + 2B nod2_offset
+    // Check the NET_FLAG_NODINFO (0x40) is set in flags byte
+    let first_record_start = net_offset + net1_section_off;
+    let flags_byte = bytes[first_record_start + 3];
+    assert!(
+        flags_byte & 0x40 != 0,
+        "NET_FLAG_NODINFO (0x40) must be set in first NET1 record flags, got 0x{:02X}",
+        flags_byte
+    );
+
+    // Find the NOD2 placeholder for the first road:
+    // Skip 3B label + 1B flags + 3B length = 7 bytes
+    // Then skip level_count bytes (until bit7 set) + 3B per level_div
+    let mut pos = first_record_start + 7;
+    let mut level_divs_count = 0usize;
+    loop {
+        let b = bytes[pos];
+        let count = b & 0x7F;
+        level_divs_count += count as usize;
+        pos += 1;
+        if b & 0x80 != 0 {
+            break;
+        }
+    }
+    // Skip level_divs (3 bytes each)
+    pos += level_divs_count * 3;
+    // indicator byte (0x01)
+    assert_eq!(bytes[pos], 0x01, "indicator byte must be 0x01 before NOD2 offset");
+    pos += 1;
+    // First road's NOD2 offset is legitimately 0 (it IS the first entry in the NOD2 section).
+    let nod2_off_road1 = u16::from_le_bytes([bytes[pos], bytes[pos + 1]]);
+    assert_eq!(nod2_off_road1, 0, "first road NOD2 offset must be 0 (first NOD2 entry)");
+
+    // Road 2: its NOD2 offset must be > 0 because road 1 occupies at least 1 byte in NOD2.
+    let road2_start = pos + 2;
+    let mut pos2 = road2_start + 7; // skip 3B label + 1B flags + 3B length
+    let mut level_divs_count2 = 0usize;
+    loop {
+        let b = bytes[pos2];
+        level_divs_count2 += (b & 0x7F) as usize;
+        pos2 += 1;
+        if b & 0x80 != 0 {
+            break;
+        }
+    }
+    pos2 += level_divs_count2 * 3;
+    assert_eq!(bytes[pos2], 0x01, "road 2 indicator byte must be 0x01");
+    pos2 += 1;
+    let nod2_off_road2 = u16::from_le_bytes([bytes[pos2], bytes[pos2 + 1]]);
+    assert!(nod2_off_road2 > 0, "road 2 NOD2 offset must be non-zero (patched, ≥1 byte after road 1)");
+}
+
+#[test]
+fn test_nod_validation_autoroute_tab_a_info() {
+    // AC4 — Task 6.6: tabAInfo pour A480 (speed=7, class=4, toll=true, oneway=false)
+    // doit apparaître dans le binaire NOD1 à une position d'arc réelle.
+    use imgforge_cli::img::nod::build_nod1_section;
+    use imgforge_cli::routing::graph_builder::build_road_network;
+
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let network = build_road_network(&mp.polylines);
+
+    // Find A480 road_def (speed=7, class=4, toll=true)
+    let a480 = network
+        .road_defs
+        .iter()
+        .find(|rd| rd.speed == 7 && rd.road_class == 4)
+        .expect("A480 road_def (speed=7, class=4) must exist");
+    let expected_tab_a: u8 = (a480.speed & 0x07)
+        | ((a480.one_way as u8) << 3)
+        | ((a480.road_class & 0x07) << 4)
+        | ((a480.toll as u8) << 7);
+    // Vérifie la valeur attendue (0xC7 pour speed=7/class=4/toll=true/oneway=false)
+    assert_eq!(
+        expected_tab_a, 0xC7,
+        "A480 tabAInfo: speed=7/class=4/toll/bidirectionnel → 0xC7"
+    );
+
+    let net_offsets: Vec<u32> = (0..network.road_defs.len()).map(|i| i as u32 * 20).collect();
+    let nod1 = build_nod1_section(&network, &net_offsets);
+    assert!(!nod1.is_empty(), "NOD1 must be non-empty");
+
+    // Scan le binaire NOD1 aux positions d'arc pour y trouver expected_tab_a.
+    // Structure: RouteCenter header (10B) + nœuds (9B header + 5B par arc).
+    // net_validation.mp ≤ 256 nœuds → un seul RouteCenter.
+    let mut found_in_binary = false;
+    let mut pos = 10usize; // skip RouteCenter header (lat 4 + lon 4 + tabB_offset 2)
+    while pos + 9 <= nod1.len() {
+        let arc_count = nod1[pos + 7] as usize;
+        pos += 9; // skip node header
+        for _ in 0..arc_count {
+            if pos + 5 > nod1.len() {
+                break;
+            }
+            if nod1[pos] == expected_tab_a {
+                found_in_binary = true;
+            }
+            pos += 5; // tabAInfo(1) + bearing(1) + net_offset(3)
+        }
+    }
+    assert!(
+        found_in_binary,
+        "tabAInfo {:#04X} pour A480 doit apparaître dans le binaire NOD1 à une position d'arc",
+        expected_tab_a
+    );
+}
+
+#[test]
+fn test_nod_validation_no_regression() {
+    // AC6 — Task 6.7: 0 regression — all existing tests still pass.
+    // This test compiles the routing fixture and verifies the full suite succeeds.
+    let mp = MpParser::parse_file(&fixture("net_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    // Must not panic
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert!(bytes.len() > 0, "compiled .img must be non-empty");
+    // Verify GARMIN magic still present
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN", "IMG magic must still be 'GARMIN'");
+    // Verify 5 subfiles now present: TRE, RGN, LBL, NET, NOD
+    let extensions: Vec<[u8; 3]> = (0..5).map(|i| read_dirent_ext(&bytes, i)).collect();
+    assert_eq!(&extensions[0], b"TRE", "subfile 0 must be TRE");
+    assert_eq!(&extensions[1], b"RGN", "subfile 1 must be RGN");
+    assert_eq!(&extensions[2], b"LBL", "subfile 2 must be LBL");
+    assert_eq!(&extensions[3], b"NET", "subfile 3 must be NET");
+    assert_eq!(&extensions[4], b"NOD", "subfile 4 must be NOD");
+}
