@@ -29,7 +29,7 @@ IMGFORGE_REPORT_FILE=""     # calculé après parse_args
 JOBS=8
 DRY_RUN=false
 CONFIG_FILE=""              # si vide : génération automatique depuis DATA_ROOT
-RULES_FILE=""               # si vide : auto-découverte de bdtopo-garmin-rules.yaml
+RULES_FILE="${RULES_FILE:-}" # si vide : auto-découverte de bdtopo-garmin-rules.yaml
 FAMILY_ID=6324              # remplace MKGMAP_FAMILY_ID
 DESCRIPTION="BDTOPO Garmin" # remplace MKGMAP_FAMILY_NAME
 TYP_FILE=""                 # fichier TYP styles (optionnel)
@@ -412,6 +412,7 @@ prepare_config() {
             local tmp_expanded
             tmp_expanded=$(mktemp /tmp/mpforge-config-expanded-XXXXXX.yaml)
             _TMP_CONFIG="$tmp_expanded"
+            export DATA_ROOT OUTPUT_DIR RULES_FILE
             envsubst < "$CONFIG_FILE" > "$tmp_expanded"
             if grep -qE '\$\{[A-Z_]+\}' "$tmp_expanded" 2>/dev/null; then
                 log_warn "Des placeholders non résolus subsistent — vérifiez vos variables d'environnement (DATA_ROOT, OUTPUT_DIR…)"
