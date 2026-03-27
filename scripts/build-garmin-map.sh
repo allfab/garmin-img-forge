@@ -1,55 +1,60 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build-garmin-map.sh — Pipeline mpforge-cli → mkgmap → gmapsupp.img
+# build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli → gmapsupp.img
 # =============================================================================
 #
-# Enchaîne mpforge-cli build et mkgmap pour produire une carte Garmin :
+# Enchaîne mpforge-cli build et imgforge-cli build pour produire une carte Garmin :
 #
 #   1. Prépare la config YAML (fournie ou générée depuis DATA_ROOT)
 #   2. Lance mpforge-cli build (génère les tuiles .mp)
 #   3. Vérifie le code de sortie et le rapport JSON
-#   4. Lance mkgmap (compile .mp → gmapsupp.img)
+#   4. Lance imgforge-cli build (compile .mp → gmapsupp.img)
 #   5. Affiche le résumé final (tuiles, temps, taille)
 #
 # Pipeline : download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
-#            (version mkgmap — sera remplacé par imgforge-cli — Epic 16)
 #
-# Prérequis : mpforge-cli (ou cargo), java, mkgmap.jar
+# Prérequis : mpforge-cli (ou cargo), imgforge-cli (ou cargo build --release)
 # =============================================================================
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Configuration par défaut (Task 1.2)
+# Configuration par défaut
 # ---------------------------------------------------------------------------
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="2.0.0"
 DATA_ROOT="./data/bdtopo"
 OUTPUT_DIR="./output"
 REPORT_FILE=""              # calculé après parse_args (dépend de OUTPUT_DIR)
+IMGFORGE_REPORT_FILE=""     # calculé après parse_args
 JOBS=8
 DRY_RUN=false
 CONFIG_FILE=""              # si vide : génération automatique depuis DATA_ROOT
 RULES_FILE=""               # si vide : auto-découverte de bdtopo-garmin-rules.yaml
-MKGMAP_JAR=""               # si vide : auto-découverte
-MKGMAP_STYLE=""             # fichier TYP/style (optionnel)
-MKGMAP_DEM=""               # répertoire MNT pour relief ombré (optionnel)
-MKGMAP_FAMILY_ID=1
-MKGMAP_FAMILY_NAME="BDTOPO Garmin"
-MKGMAP_SERIES_NAME="France BDTOPO"
-MKGMAP_LEVELS="0:24,1:22,2:21,3:19,4:17,5:15,6:13,7:11"
+FAMILY_ID=6324              # remplace MKGMAP_FAMILY_ID
+DESCRIPTION="BDTOPO Garmin" # remplace MKGMAP_FAMILY_NAME
+TYP_FILE=""                 # fichier TYP styles (optionnel)
 SKIP_EXISTING=false
 VERBOSE_COUNT=0             # 0=warn, 1=-v, 2=-vv
 
-# Binaire mpforge-cli résolu
+# Binaires résolus
 _MPFORGE_CLI=""
+_IMGFORGE_CLI=""            # binaire imgforge-cli résolu
 
-# Métriques collectées depuis le rapport JSON
+# Métriques mpforge-cli
 BUILD_START_TIME=0
 TILES_TOTAL=0
 TILES_SUCCESS=0
 TILES_FAILED=0
 MPFORGE_DURATION=0
 FEATURES_PROCESSED=0
+
+# Métriques imgforge-cli
+IMGFORGE_TILES_COMPILED=0
+IMGFORGE_TILES_FAILED=0
+IMGFORGE_DURATION=0
+IMGFORGE_IMG_SIZE=0
+IMGFORGE_ROUTING_NODES=0
+IMGFORGE_ROUTING_ARCS=0
 
 # Fichier config temporaire généré automatiquement
 _TMP_CONFIG=""
@@ -61,12 +66,14 @@ PARTIAL_FAILURE=false
 # Nettoyage — supprime le config temporaire si interruption (SIGINT/SIGTERM/EXIT)
 # ---------------------------------------------------------------------------
 cleanup_trap() {
-    [[ -n "$_TMP_CONFIG" && -f "$_TMP_CONFIG" ]] && rm -f "$_TMP_CONFIG" || true
+    if [[ -n "$_TMP_CONFIG" && -f "$_TMP_CONFIG" ]]; then
+        rm -f "$_TMP_CONFIG"
+    fi
 }
 trap cleanup_trap INT TERM EXIT
 
 # ---------------------------------------------------------------------------
-# Couleurs (Task 1.1)
+# Couleurs
 # ---------------------------------------------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -78,33 +85,30 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 log_step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
 
 # ---------------------------------------------------------------------------
-# Aide (Task 1.1)
+# Aide
 # ---------------------------------------------------------------------------
 show_help() {
     cat << 'EOF'
-build-garmin-map.sh — Pipeline mpforge-cli → mkgmap → gmapsupp.img
+build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli → gmapsupp.img
 
 USAGE :
     ./scripts/build-garmin-map.sh [OPTIONS]
 
 OPTIONS :
-    --config FILE       Config YAML mpforge-cli (défaut: génération auto depuis --data-root)
-    --rules FILE        Fichier de règles YAML (défaut: auto-découverte bdtopo-garmin-rules.yaml)
-    --jobs N            Parallélisation mpforge-cli (défaut: 8)
-    --output DIR        Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./output)
-    --mkgmap-jar FILE   Chemin vers mkgmap.jar (défaut: auto-découverte)
-    --mkgmap-levels L       Niveaux de zoom mkgmap (défaut: 0:24,1:22,2:21,3:19,4:17,5:15,6:13,7:11)
-    --mkgmap-style FILE     Fichier TYP/style mkgmap (optionnel)
-    --mkgmap-dem DIR        Répertoire MNT pour relief ombré mkgmap (optionnel)
-    --mkgmap-family-id N    Family ID Garmin (défaut: 1)
-    --mkgmap-family-name N  Family name Garmin (défaut: "BDTOPO Garmin")
-    --mkgmap-series-name N  Series name Garmin (défaut: "France BDTOPO")
-    --data-root DIR     Racine des données BDTOPO (défaut: ./data/bdtopo)
-    --skip-existing     Passer les tuiles déjà présentes (idempotence)
-    --dry-run           Simuler sans exécuter les commandes
-    -v, --verbose       Mode verbeux (-vv pour très verbeux)
-    --version           Version du script
-    -h, --help          Aide
+    --config FILE           Config YAML mpforge-cli (défaut: génération auto depuis --data-root)
+    --rules FILE            Fichier de règles YAML (défaut: auto-découverte bdtopo-garmin-rules.yaml)
+    --jobs N                Parallélisation (défaut: 8)
+    --output DIR            Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./output)
+    --imgforge-cli FILE     Chemin binaire imgforge-cli (défaut: auto-découverte)
+    --family-id N           Family ID Garmin (défaut: 6324)
+    --description STR       Description de la carte (défaut: "BDTOPO Garmin")
+    --typ FILE              Fichier TYP styles personnalisés (optionnel)
+    --data-root DIR         Racine des données BDTOPO (défaut: ./data/bdtopo)
+    --skip-existing         Passer les tuiles déjà présentes (idempotence)
+    --dry-run               Simuler sans exécuter les commandes
+    -v, --verbose           Mode verbeux (-vv pour très verbeux)
+    --version               Version du script
+    -h, --help              Aide
 
 EXEMPLES :
     ./scripts/build-garmin-map.sh                                     # Auto-découverte de tout
@@ -114,21 +118,21 @@ EXEMPLES :
     ./scripts/build-garmin-map.sh --skip-existing --jobs 4           # Reprise partielle
 
 PRÉREQUIS :
-    mpforge-cli (ou cargo build --release dans mpforge-cli/)
-    java (apt install default-jre-headless)
-    mkgmap.jar  (https://www.mkgmap.org.uk/download/mkgmap.html)
+    mpforge-cli   (ou cargo build --release dans mpforge-cli/)
+    imgforge-cli  (ou cargo build --release dans imgforge-cli/)
 
 STRUCTURE DE SORTIE :
     ./output/
     ├── tiles/              ← tuiles .mp générées par mpforge-cli
-    ├── gmapsupp.img        ← carte Garmin finale générée par mkgmap
-    └── mpforge-report.json ← rapport d'exécution mpforge-cli
+    ├── gmapsupp.img        ← carte Garmin finale générée par imgforge-cli
+    ├── mpforge-report.json ← rapport mpforge-cli
+    └── imgforge-report.json ← rapport imgforge-cli
 EOF
     exit 0
 }
 
 # ---------------------------------------------------------------------------
-# Parse args (Task 1.3)
+# Parse args
 # ---------------------------------------------------------------------------
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -137,18 +141,15 @@ parse_args() {
             --rules)         RULES_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
             --output)        OUTPUT_DIR="$2"; shift 2 ;;
-            --mkgmap-jar)    MKGMAP_JAR="$2"; shift 2 ;;
-            --mkgmap-levels)      MKGMAP_LEVELS="$2"; shift 2 ;;
-            --mkgmap-style)       MKGMAP_STYLE="$2"; shift 2 ;;
-            --mkgmap-dem)         MKGMAP_DEM="$2"; shift 2 ;;
-            --mkgmap-family-id)   MKGMAP_FAMILY_ID="$2"; shift 2 ;;
-            --mkgmap-family-name) MKGMAP_FAMILY_NAME="$2"; shift 2 ;;
-            --mkgmap-series-name) MKGMAP_SERIES_NAME="$2"; shift 2 ;;
-            --data-root)          DATA_ROOT="$2"; shift 2 ;;
-            --skip-existing)      SKIP_EXISTING=true; shift ;;
-            --dry-run)            DRY_RUN=true; shift ;;
-            -v|--verbose)         VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
-            -vv)                  VERBOSE_COUNT=2; shift ;;
+            --imgforge-cli)  _IMGFORGE_CLI="$2"; shift 2 ;;
+            --family-id)     FAMILY_ID="$2"; shift 2 ;;
+            --description)   DESCRIPTION="$2"; shift 2 ;;
+            --typ)           TYP_FILE="$2"; shift 2 ;;
+            --data-root)     DATA_ROOT="$2"; shift 2 ;;
+            --skip-existing) SKIP_EXISTING=true; shift ;;
+            --dry-run)       DRY_RUN=true; shift ;;
+            -v|--verbose)    VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
+            -vv)             VERBOSE_COUNT=2; shift ;;
             --version)       echo "build-garmin-map.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)       show_help ;;
             *)               log_error "Option inconnue : $1"; exit 1 ;;
@@ -156,10 +157,11 @@ parse_args() {
     done
 
     REPORT_FILE="${OUTPUT_DIR}/mpforge-report.json"
+    IMGFORGE_REPORT_FILE="${OUTPUT_DIR}/imgforge-report.json"
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte binaire mpforge-cli (Task 1.4)
+# Auto-découverte binaire mpforge-cli
 # ---------------------------------------------------------------------------
 find_mpforge_cli() {
     local candidates=(
@@ -180,27 +182,28 @@ find_mpforge_cli() {
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte mkgmap.jar (Task 1.4)
-# Pattern inspiré de ogr-polishmap/test/test_mkgmap_compilation.sh
+# Auto-découverte binaire imgforge-cli
 # ---------------------------------------------------------------------------
-find_mkgmap_jar() {
+find_imgforge_cli() {
     local candidates=(
-        "${HOME}/mkgmap/mkgmap.jar"
-        "/opt/mkgmap/mkgmap.jar"
-        "./mkgmap/mkgmap.jar"
+        "./imgforge-cli/target/release/imgforge-cli"
+        "../imgforge-cli/target/release/imgforge-cli"
     )
     for c in "${candidates[@]}"; do
-        if [[ -f "$c" ]]; then
+        if [[ -x "$c" ]]; then
             echo "$c"
             return 0
         fi
     done
-    # Chercher dans les sous-dossiers proches (max 3 niveaux)
-    find . -maxdepth 3 -name "mkgmap.jar" -type f 2>/dev/null | head -1 || true
+    if command -v imgforge-cli &>/dev/null; then
+        command -v imgforge-cli
+        return 0
+    fi
+    echo ""
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte fichier de règles (Task 1.4)
+# Auto-découverte fichier de règles
 # ---------------------------------------------------------------------------
 find_rules_file() {
     local candidates=(
@@ -219,7 +222,7 @@ find_rules_file() {
 }
 
 # ---------------------------------------------------------------------------
-# Vérification prérequis (Task 1.4)
+# Vérification prérequis
 # ---------------------------------------------------------------------------
 check_prerequisites() {
     log_step "Vérification des prérequis"
@@ -242,28 +245,23 @@ check_prerequisites() {
         log_ok "mpforge-cli : $_MPFORGE_CLI"
     fi
 
-    # --- java ---
-    command -v java &>/dev/null || {
-        log_error "java requis pour mkgmap (apt install default-jre-headless)"
-        exit 1
-    }
-    local java_ver
-    java_ver=$(java -version 2>&1 | head -1)
-    log_ok "java : $java_ver"
-
-    # --- mkgmap.jar ---
-    if [[ -z "$MKGMAP_JAR" ]]; then
-        MKGMAP_JAR=$(find_mkgmap_jar)
+    # --- imgforge-cli ---
+    if [[ -z "$_IMGFORGE_CLI" ]]; then
+        _IMGFORGE_CLI=$(find_imgforge_cli)
     fi
 
-    if [[ -z "$MKGMAP_JAR" || ! -f "$MKGMAP_JAR" ]]; then
-        log_error "mkgmap.jar introuvable"
-        log_error "  → Téléchargez : https://www.mkgmap.org.uk/download/mkgmap.html"
-        log_error "  → Placez dans  : \$HOME/mkgmap/mkgmap.jar ou /opt/mkgmap/mkgmap.jar"
-        log_error "  → Ou utilisez  : --mkgmap-jar /chemin/vers/mkgmap.jar"
-        exit 1
+    if [[ -z "$_IMGFORGE_CLI" ]]; then
+        if command -v cargo &>/dev/null; then
+            log_warn "imgforge-cli non trouvé comme binaire — fallback 'cargo run --release'"
+            _IMGFORGE_CLI="__CARGO_RUN_IMGFORGE__"
+        else
+            log_error "imgforge-cli introuvable"
+            log_error "  → Compilez avec : cd imgforge-cli && cargo build --release"
+            exit 1
+        fi
+    else
+        log_ok "imgforge-cli : $_IMGFORGE_CLI"
     fi
-    log_ok "mkgmap.jar : $MKGMAP_JAR"
 
     # --- Validation fichier config (si fourni explicitement) ---
     if [[ -n "$CONFIG_FILE" && ! -f "$CONFIG_FILE" ]]; then
@@ -290,19 +288,29 @@ json_extract_int() {
 }
 
 # ---------------------------------------------------------------------------
-# Affichage des erreurs depuis le rapport JSON mpforge-cli (AC2)
+# Affichage des erreurs depuis le rapport JSON (AC2)
 # ---------------------------------------------------------------------------
 show_report_errors() {
     local report="$1"
     [[ -f "$report" ]] || return 0
 
     log_error "── Erreurs du rapport JSON ──────────────────────────────"
-    # Extraire les messages d'erreur (format : "message":"...")
-    grep -o '"message":"[^"]*"' "$report" 2>/dev/null \
-        | sed 's/"message":"//;s/"$//' \
-        | while IFS= read -r msg; do
-            [[ -n "$msg" ]] && log_error "  • $msg"
-        done || true
+    # Extraire les messages d'erreur avec contexte tuile si disponible
+    if grep -q '"tile":' "$report" 2>/dev/null; then
+        # Format imgforge-cli : errors[{tile, error}] — afficher avec contexte tuile
+        grep -o '"tile":"[^"]*","error":"[^"]*"' "$report" 2>/dev/null \
+            | sed 's/"tile":"//;s/","error":"/ : /;s/"$//' \
+            | while IFS= read -r msg; do
+                [[ -n "$msg" ]] && log_error "  • tuile $msg"
+            done || true
+    else
+        # Format mpforge-cli : "message":"..."
+        grep -o '"message":"[^"]*"\|"error":"[^"]*"' "$report" 2>/dev/null \
+            | sed 's/"message":"//;s/"error":"//;s/"$//' \
+            | while IFS= read -r msg; do
+                [[ -n "$msg" ]] && log_error "  • $msg"
+            done || true
+    fi
 
     local failed
     failed=$(json_extract_int "$report" "tiles_failed" 0)
@@ -464,7 +472,7 @@ prepare_config() {
 }
 
 # ---------------------------------------------------------------------------
-# Étape 1/2 — Lancement mpforge-cli build (AC1, AC2 — Task 1.5)
+# Étape 1/2 — Lancement mpforge-cli build
 # ---------------------------------------------------------------------------
 run_mpforge_cli() {
     log_step "Étape 1/2 — mpforge-cli build"
@@ -511,17 +519,17 @@ run_mpforge_cli() {
     local exit_code=0
     "${cmd[@]}" || exit_code=$?
 
-    # AC2 : arrêt immédiat sur échec mpforge-cli
+    # Arrêt immédiat sur échec mpforge-cli
     if [[ "$exit_code" -ne 0 ]]; then
         log_error "mpforge-cli a échoué (exit code : $exit_code)"
         show_report_errors "$REPORT_FILE"
-        log_error "Pipeline arrêté — mkgmap NON lancé"
+        log_error "Pipeline arrêté — imgforge-cli NON lancé"
         exit "$exit_code"
     fi
 
     log_ok "mpforge-cli terminé avec succès"
 
-    # Lecture des métriques depuis le rapport JSON (pour AC3)
+    # Lecture des métriques depuis le rapport JSON
     if [[ -f "$REPORT_FILE" ]]; then
         TILES_TOTAL=$(json_extract_int "$REPORT_FILE" "tiles_total" 0)
         TILES_SUCCESS=$(json_extract_int "$REPORT_FILE" "tiles_success" 0)
@@ -530,7 +538,7 @@ run_mpforge_cli() {
         FEATURES_PROCESSED=$(json_extract_int "$REPORT_FILE" "features_processed" 0)
         log_info "  Tuiles   : ${TILES_SUCCESS}/${TILES_TOTAL} (${TILES_FAILED} échec(s))"
         [[ "$FEATURES_PROCESSED" -gt 0 ]] && log_info "  Features : ${FEATURES_PROCESSED}"
-        # H2 : tuiles en échec avec error_handling=continue → carte incomplète sans exit non-zéro
+        # Tuiles en échec avec error_handling=continue → carte incomplète sans exit non-zéro
         if [[ "$TILES_FAILED" -gt 0 ]]; then
             log_warn "${TILES_FAILED} tuile(s) en échec — le gmapsupp.img sera incomplet"
             PARTIAL_FAILURE=true
@@ -539,38 +547,51 @@ run_mpforge_cli() {
 }
 
 # ---------------------------------------------------------------------------
-# Étape 2/2 — Lancement mkgmap (AC1 — Task 1.6)
+# Étape 2/2 — Lancement imgforge-cli build
 # ---------------------------------------------------------------------------
-run_mkgmap() {
-    log_step "Étape 2/2 — mkgmap compilation"
+run_imgforge_cli_build() {
+    log_step "Étape 2/2 — imgforge-cli build"
 
     local tiles_dir="${OUTPUT_DIR}/tiles"
 
-    # Construction de la commande mkgmap
-    local -a cmd=(java -jar "${MKGMAP_JAR}"
-        "--family-id=${MKGMAP_FAMILY_ID}"
-        "--product-id=1"
-        "--family-name=${MKGMAP_FAMILY_NAME}"
-        "--series-name=${MKGMAP_SERIES_NAME}"
-        "--levels=${MKGMAP_LEVELS}"
-        "--code-page=1252"
-        "--latin1"
-        "--gmapsupp"
-        "--output-dir=${OUTPUT_DIR}")
+    # Construction de la commande
+    local -a cmd=()
 
-    [[ -n "$MKGMAP_STYLE" ]] && cmd+=("--style-file=${MKGMAP_STYLE}")
-    [[ -n "$MKGMAP_DEM"   ]] && cmd+=("--dem=${MKGMAP_DEM}")
+    if [[ "$_IMGFORGE_CLI" == "__CARGO_RUN_IMGFORGE__" ]]; then
+        # Fallback cargo run (mode dev)
+        local imgforge_dir
+        imgforge_dir=$(find . -maxdepth 2 -name "Cargo.toml" \
+                       -exec grep -l 'name.*=.*"imgforge-cli"' {} \; 2>/dev/null \
+                       | head -1 | xargs dirname 2>/dev/null || echo "")
+        if [[ -z "$imgforge_dir" ]]; then
+            imgforge_dir="./imgforge-cli"
+        fi
+        cmd=(cargo run --manifest-path "${imgforge_dir}/Cargo.toml" --release --)
+    else
+        cmd=("$_IMGFORGE_CLI")
+    fi
+
+    cmd+=(build
+          --input-dir "${tiles_dir}"
+          -o "${OUTPUT_DIR}/gmapsupp.img"
+          --family-id "${FAMILY_ID}"
+          --description "${DESCRIPTION}"
+          --jobs "${JOBS}"
+          --report "${IMGFORGE_REPORT_FILE}")
+
+    [[ -n "$TYP_FILE" ]] && cmd+=(--typ "${TYP_FILE}")
+    [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
+    [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
+
+    log_info "Commande : ${cmd[*]}"
 
     if [[ "$DRY_RUN" == true ]]; then
-        echo -e "  ${YELLOW}[DRY-RUN]${NC} java -jar ${MKGMAP_JAR} \\"
-        echo -e "               --family-id=${MKGMAP_FAMILY_ID} --gmapsupp \\"
-        echo -e "               --output-dir=${OUTPUT_DIR} \\"
-        echo -e "               ${tiles_dir}/*.mp"
-        log_ok "Dry-run : commande mkgmap affichée (non exécutée)"
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} ${cmd[*]}"
+        log_ok "Dry-run : commande imgforge-cli affichée (non exécutée)"
         return 0
     fi
 
-    # Vérifier la présence de tuiles .mp avant de lancer mkgmap
+    # Vérifier la présence de tuiles .mp (après dry-run check)
     local mp_count
     mp_count=$(find "$tiles_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
     if [[ "$mp_count" -eq 0 ]]; then
@@ -579,30 +600,41 @@ run_mkgmap() {
     fi
     log_info "  $mp_count tuile(s) .mp à compiler"
 
-    # Ajouter les .mp à la commande (expansion glob sécurisée)
-    while IFS= read -r mp_file; do
-        cmd+=("$mp_file")
-    done < <(find "$tiles_dir" -name "*.mp" -type f 2>/dev/null | sort)
-
     local exit_code=0
     "${cmd[@]}" || exit_code=$?
 
     if [[ "$exit_code" -ne 0 ]]; then
-        log_error "mkgmap a échoué (exit code : $exit_code)"
+        log_error "imgforge-cli a échoué (exit code : $exit_code)"
+        show_report_errors "$IMGFORGE_REPORT_FILE"
+        log_error "Pipeline arrêté"
         exit "$exit_code"
     fi
 
-    # Vérification que gmapsupp.img a bien été produit (AC1)
-    if [[ ! -f "${OUTPUT_DIR}/gmapsupp.img" ]]; then
+    [[ ! -f "${OUTPUT_DIR}/gmapsupp.img" ]] && {
         log_error "gmapsupp.img non produit dans : $OUTPUT_DIR"
         exit 1
-    fi
+    }
 
     log_ok "gmapsupp.img produit : ${OUTPUT_DIR}/gmapsupp.img"
+
+    # Lecture métriques rapport imgforge-cli
+    if [[ -f "$IMGFORGE_REPORT_FILE" ]]; then
+        IMGFORGE_TILES_COMPILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_compiled" 0)
+        IMGFORGE_TILES_FAILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_failed" 0)
+        IMGFORGE_DURATION=$(json_extract_int "$IMGFORGE_REPORT_FILE" "duration_seconds" 0)
+        IMGFORGE_IMG_SIZE=$(json_extract_int "$IMGFORGE_REPORT_FILE" "img_size_bytes" 0)
+        IMGFORGE_ROUTING_NODES=$(json_extract_int "$IMGFORGE_REPORT_FILE" "routing_nodes" 0)
+        IMGFORGE_ROUTING_ARCS=$(json_extract_int "$IMGFORGE_REPORT_FILE" "routing_arcs" 0)
+        log_info "  Tuiles compilées : ${IMGFORGE_TILES_COMPILED} (${IMGFORGE_TILES_FAILED} échec(s))"
+        [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]] && {
+            log_warn "${IMGFORGE_TILES_FAILED} tuile(s) en échec — carte incomplète"
+            PARTIAL_FAILURE=true
+        }
+    fi
 }
 
 # ---------------------------------------------------------------------------
-# Résumé final (AC3 — Task 1.7)
+# Résumé final
 # ---------------------------------------------------------------------------
 show_summary() {
     log_step "Résumé"
@@ -610,16 +642,32 @@ show_summary() {
     local total_duration=$(( SECONDS - BUILD_START_TIME ))
 
     if [[ "$DRY_RUN" == false ]]; then
-        echo -e "  ${BOLD}Tuiles générées :${NC}  ${TILES_SUCCESS}/${TILES_TOTAL}"
+        echo -e "  ${BOLD}[Phase 1 — mpforge-cli]${NC}"
+        echo -e "  Tuiles générées    : ${TILES_SUCCESS}/${TILES_TOTAL}"
         if [[ "$TILES_FAILED" -gt 0 ]]; then
-            echo -e "  ${YELLOW}${BOLD}Tuiles en échec :${NC}  ${TILES_FAILED}"
+            echo -e "  ${YELLOW}${BOLD}Tuiles en échec  :${NC}  ${TILES_FAILED}"
         fi
         [[ "$FEATURES_PROCESSED" -gt 0 ]] && \
-            echo -e "  ${BOLD}Features        :${NC}  ${FEATURES_PROCESSED}"
+            echo -e "  Features           : ${FEATURES_PROCESSED}"
         if [[ "$MPFORGE_DURATION" -gt 0 ]]; then
             local m=$(( MPFORGE_DURATION / 60 )) s=$(( MPFORGE_DURATION % 60 ))
-            echo -e "  ${BOLD}mpforge-cli     :${NC}  ${m}m${s}s"
+            echo -e "  mpforge-cli        : ${m}m${s}s"
         fi
+
+        echo ""
+        echo -e "  ${BOLD}[Phase 2 — imgforge-cli]${NC}"
+        echo -e "  Tuiles compilées   : ${IMGFORGE_TILES_COMPILED}"
+        [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]] && \
+            echo -e "  ${YELLOW}Tuiles en échec  : ${IMGFORGE_TILES_FAILED}${NC}"
+        [[ "$IMGFORGE_ROUTING_NODES" -gt 0 ]] && \
+            echo -e "  Nœuds routage      : ${IMGFORGE_ROUTING_NODES}"
+        [[ "$IMGFORGE_ROUTING_ARCS" -gt 0 ]] && \
+            echo -e "  Arcs routage       : ${IMGFORGE_ROUTING_ARCS}"
+        if [[ "$IMGFORGE_DURATION" -gt 0 ]]; then
+            local im=$(( IMGFORGE_DURATION / 60 )) is=$(( IMGFORGE_DURATION % 60 ))
+            echo -e "  imgforge-cli       : ${im}m${is}s"
+        fi
+        echo ""
     fi
 
     local total_m=$(( total_duration / 60 )) total_s=$(( total_duration % 60 ))
@@ -627,7 +675,11 @@ show_summary() {
 
     if [[ -f "${OUTPUT_DIR}/gmapsupp.img" ]]; then
         local size_bytes
-        size_bytes=$(stat -c%s "${OUTPUT_DIR}/gmapsupp.img" 2>/dev/null || echo 0)
+        if [[ "$IMGFORGE_IMG_SIZE" -gt 0 ]]; then
+            size_bytes="$IMGFORGE_IMG_SIZE"
+        else
+            size_bytes=$(stat -c%s "${OUTPUT_DIR}/gmapsupp.img" 2>/dev/null || echo 0)
+        fi
         local size_hr
         size_hr=$(numfmt --to=iec-i --suffix=B "$size_bytes" 2>/dev/null \
                   || echo "${size_bytes} octets")
@@ -647,8 +699,8 @@ show_summary() {
 main() {
     echo -e "${BOLD}${CYAN}"
     echo "  ┌─────────────────────────────────────────────────────────────────┐"
-    echo "  │  build-garmin-map.sh — Pipeline mpforge-cli → mkgmap           │"
-    echo "  │  BDTOPO → tuiles .mp → gmapsupp.img · v${SCRIPT_VERSION}               │"
+    echo "  │  build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli      │"
+    echo "  │  BDTOPO → tuiles .mp → gmapsupp.img · v${SCRIPT_VERSION}                │"
     echo "  └─────────────────────────────────────────────────────────────────┘"
     echo -e "${NC}"
 
@@ -658,7 +710,7 @@ main() {
     check_prerequisites
     prepare_config
     run_mpforge_cli
-    run_mkgmap
+    run_imgforge_cli_build
     show_summary
 
     if [[ "$PARTIAL_FAILURE" == true ]]; then
