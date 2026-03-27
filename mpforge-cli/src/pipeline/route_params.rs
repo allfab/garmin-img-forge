@@ -237,19 +237,10 @@ pub fn compute_route_attrs(
         }
     }
 
-    // Story 14.2: POS_SOL → Level (for graph builder level isolation)
-    // POS_SOL: 0=ground, 1=bridge, -1=tunnel, etc.
-    let pos_sol: i32 = source_attrs
-        .get("POS_SOL")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    result.insert("Level".to_string(), pos_sol.to_string());
-
     debug!(
         route_param = %result.get("RouteParam").unwrap(),
         road_id = road_id,
         dir_indicator = dir_indicator,
-        level = pos_sol,
         "Computed routing attributes"
     );
 
@@ -721,11 +712,13 @@ mod tests {
     }
 
     // =========================================================================
-    // Task 0.4 (Story 14.2): POS_SOL → Level
+    // POS_SOL — Level field no longer injected (driver ogr-polishmap does not
+    // support "Level", only "EndLevel"). graph_builder.rs reads Level from the
+    // parsed .mp other_fields but it was never written, so always defaults to 0.
     // =========================================================================
 
     #[test]
-    fn test_compute_pos_sol_bridge() {
+    fn test_compute_pos_sol_not_injected() {
         let source = HashMap::from([
             ("VIT_MOY_VL".into(), "50".into()),
             ("NATURE".into(), "Route à 1 chaussée".into()),
@@ -733,30 +726,7 @@ mod tests {
         ]);
         let mut counter = RoadIdCounter::new();
         let result = compute_route_attrs(&source, &mut counter);
-        assert_eq!(result.get("Level").unwrap(), "1");
-    }
-
-    #[test]
-    fn test_compute_pos_sol_tunnel() {
-        let source = HashMap::from([
-            ("VIT_MOY_VL".into(), "50".into()),
-            ("NATURE".into(), "Route à 1 chaussée".into()),
-            ("POS_SOL".into(), "-1".into()),
-        ]);
-        let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
-        assert_eq!(result.get("Level").unwrap(), "-1");
-    }
-
-    #[test]
-    fn test_compute_pos_sol_default_ground() {
-        let source = HashMap::from([
-            ("VIT_MOY_VL".into(), "50".into()),
-            ("NATURE".into(), "Route à 1 chaussée".into()),
-        ]);
-        let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
-        assert_eq!(result.get("Level").unwrap(), "0");
+        assert!(result.get("Level").is_none(), "Level should no longer be injected");
     }
 
     /// Test MaxWidth and MaxLength

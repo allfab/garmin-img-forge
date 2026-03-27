@@ -147,12 +147,8 @@ impl ImgWriter {
             &net_offsets,
         );
 
-        // Pass 3: build TRE with RGN subdivision offsets and routing flag.
-        let tre_data = if has_routing {
-            TreWriter::build_with_rgn_offsets_and_routing(mp_file, &rgn.subdivision_offsets)
-        } else {
-            TreWriter::build_with_rgn_offsets(mp_file, &rgn.subdivision_offsets)
-        };
+        // Pass 3: build TRE with RGN result (propagates extended type flags + routing).
+        let tre_data = TreWriter::build_with_rgn_result(mp_file, &rgn, has_routing);
 
         // Pass 4: build NOD (after TRE; depends on road_network + net offsets).
         let nod = if has_routing {

@@ -532,9 +532,9 @@ run_mpforge_cli() {
 
     # Lecture des métriques depuis le rapport JSON
     if [[ -f "$REPORT_FILE" ]]; then
-        TILES_TOTAL=$(json_extract_int "$REPORT_FILE" "tiles_total" 0)
-        TILES_SUCCESS=$(json_extract_int "$REPORT_FILE" "tiles_success" 0)
+        TILES_TOTAL=$(json_extract_int "$REPORT_FILE" "tiles_generated" 0)
         TILES_FAILED=$(json_extract_int "$REPORT_FILE" "tiles_failed" 0)
+        TILES_SUCCESS=$(( TILES_TOTAL - TILES_FAILED ))
         MPFORGE_DURATION=$(json_extract_int "$REPORT_FILE" "duration_seconds" 0)
         FEATURES_PROCESSED=$(json_extract_int "$REPORT_FILE" "features_processed" 0)
         log_info "  Tuiles   : ${TILES_SUCCESS}/${TILES_TOTAL} (${TILES_FAILED} échec(s))"

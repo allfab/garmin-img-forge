@@ -2853,3 +2853,107 @@ fn test_build_no_report_creates_no_json_file() {
         "aucun fichier .json ne doit être créé sans --report"
     );
 }
+
+// ----------------------------------------------------------------
+// Extended types tests
+// ----------------------------------------------------------------
+
+#[test]
+fn test_compile_extended_types_fixture() {
+    // AC-6: compile extended_types.mp → valid .img without "not supported" warnings.
+    let mp = MpParser::parse_file(&fixture("extended_types.mp")).unwrap();
+    assert_eq!(mp.points.len(), 2, "should have 2 POIs (1 standard + 1 extended)");
+    assert_eq!(mp.polylines.len(), 2, "should have 2 polylines (1 standard + 1 extended)");
+    assert_eq!(mp.polygons.len(), 2, "should have 2 polygons (1 standard + 1 extended)");
+
+    let output = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, output.path()).unwrap();
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    assert!(!bytes.is_empty(), "output .img must not be empty");
+}
+
+#[test]
+fn test_extended_types_in_rgn_data() {
+    // AC-2, AC-3, AC-4: verify extended type bytes in RGN data.
+    use imgforge_cli::img::rgn::RgnWriter;
+    use imgforge_cli::img::tre::levels_from_mp;
+
+    let mp = MpParser::parse_file(&fixture("extended_types.mp")).unwrap();
+    let levels = levels_from_mp(&mp.header);
+    let rgn = RgnWriter::build(&mp, &levels);
+
+    // The RGN data starts after the 29-byte header.
+    let data = &rgn.data[29..];
+    assert!(!data.is_empty(), "RGN feature data must not be empty");
+
+    // Verify extended flags are set.
+    assert!(rgn.subdiv_has_extended_points[0], "should have extended points at level 0");
+    assert!(rgn.subdiv_has_extended_polylines[0], "should have extended polylines at level 0");
+    assert!(rgn.subdiv_has_extended_polygons[0], "should have extended polygons at level 0");
+}
+
+#[test]
+fn test_extended_types_tre_flags() {
+    // AC-5: verify TRE data_flags include extended bits.
+    use imgforge_cli::img::rgn::RgnWriter;
+    use imgforge_cli::img::tre::{levels_from_mp, TreWriter};
+
+    let mp = MpParser::parse_file(&fixture("extended_types.mp")).unwrap();
+    let levels = levels_from_mp(&mp.header);
+    let rgn = RgnWriter::build(&mp, &levels);
+    let tre = TreWriter::build_with_rgn_result(&mp, &rgn, false);
+
+    // TRE layout: 148 (header) + n_levels * 4 (level records) + n_levels * 16 (subdivisions)
+    let n_levels = levels.len();
+    let subdiv_start = 148 + n_levels * 4;
+
+    // First subdivision data_flags at offset subdiv_start + 3
+    let data_flags = tre[subdiv_start + 3];
+
+    // Should have standard points (0x01) + polylines (0x04) + polygons (0x08)
+    // + extended points (0x10) + extended polylines (0x20) + extended polygons (0x40)
+    assert!(data_flags & 0x01 != 0, "should have standard points flag");
+    assert!(data_flags & 0x04 != 0, "should have standard polylines flag");
+    assert!(data_flags & 0x08 != 0, "should have standard polygons flag");
+    assert!(data_flags & 0x10 != 0, "should have extended points flag");
+    assert!(data_flags & 0x20 != 0, "should have extended polylines flag");
+    assert!(data_flags & 0x40 != 0, "should have extended polygons flag");
+}
+
+#[test]
+fn test_extended_types_label_offsets_nonzero() {
+    // F7: verify that extended records with labels get non-zero LBL offsets.
+    use imgforge_cli::img::lbl::LblWriter;
+    use imgforge_cli::img::rgn::RgnWriter;
+    use imgforge_cli::img::tre::levels_from_mp;
+
+    let mp = MpParser::parse_file(&fixture("extended_types.mp")).unwrap();
+    let levels = levels_from_mp(&mp.header);
+    let lbl = LblWriter::build(&mp);
+    let rgn = RgnWriter::build_with_lbl_offsets(&mp, &levels, &lbl.label_offsets);
+
+    // The fixture has labelled extended features (Antenne, Voie Ferrée, Bâtiment).
+    // With real LBL offsets, extended records should contain non-zero label offsets.
+    // Scan the RGN data for the extended POI record (base_type=0x15 for 0x11503).
+    let data = &rgn.data[29..];
+    let mut found_ext_poi_label = false;
+    for (pos, &byte) in data.iter().enumerate() {
+        if byte == 0x15 && pos + 1 < data.len() {
+            let sub_flags = data[pos + 1];
+            // Check has_label flag (bit 5)
+            if sub_flags & 0x20 != 0 {
+                // Label offset is at pos+6..pos+9 (after type_byte + sub_flags + delta_lon(2) + delta_lat(2))
+                if pos + 8 < data.len() {
+                    let lbl_off = data[pos + 6] as u32
+                        | ((data[pos + 7] as u32) << 8)
+                        | ((data[pos + 8] as u32) << 16);
+                    assert!(lbl_off > 0, "extended POI label offset must be non-zero with real LBL");
+                    found_ext_poi_label = true;
+                    break;
+                }
+            }
+        }
+    }
+    assert!(found_ext_poi_label, "should find an extended POI with non-zero label offset");
+}

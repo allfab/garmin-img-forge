@@ -206,6 +206,12 @@ pub struct Subdivision {
     pub has_polylines: bool,
     /// True if this subdivision contains polygons.
     pub has_polygons: bool,
+    /// True if this subdivision contains extended POI types (>0xFFFF).
+    pub has_extended_points: bool,
+    /// True if this subdivision contains extended polyline types (>0xFFFF).
+    pub has_extended_polylines: bool,
+    /// True if this subdivision contains extended polygon types (>0xFFFF).
+    pub has_extended_polygons: bool,
     /// Longitude of the subdivision centre in Garmin 24-bit units.
     pub lon_center: i32,
     /// Latitude of the subdivision centre in Garmin 24-bit units.
@@ -239,7 +245,10 @@ impl Subdivision {
         buf[3] = (self.has_points as u8)
             | ((self.has_indexed_lines as u8) << 1)
             | ((self.has_polylines as u8) << 2)
-            | ((self.has_polygons as u8) << 3);
+            | ((self.has_polygons as u8) << 3)
+            | ((self.has_extended_points as u8) << 4)
+            | ((self.has_extended_polylines as u8) << 5)
+            | ((self.has_extended_polygons as u8) << 6);
 
         // 0x04–0x05: lon_center stored as bits 8–23 of the 24-bit value (LE16s)
         let lon_stored = (self.lon_center >> 8) as i16;
@@ -308,6 +317,9 @@ impl Subdivision {
             has_indexed_lines: false,
             has_polylines,
             has_polygons,
+            has_extended_points: false,
+            has_extended_polylines: false,
+            has_extended_polygons: false,
             lon_center,
             lat_center,
             half_width,
@@ -394,7 +406,7 @@ impl TreWriter {
     ///
     /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
     pub fn build_with_rgn_offsets(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
-        Self::build_tre_inner(mp, rgn_offsets, false)
+        Self::build_tre_inner(mp, rgn_offsets, false, None)
     }
 
     /// Build the TRE subfile with routing flag (bit 1 = has_indexed_lines) active.
@@ -403,11 +415,34 @@ impl TreWriter {
     /// on subdivisions that contain routable polylines. This tells the GPS that
     /// NET cross-references are present in the RGN data.
     pub fn build_with_rgn_offsets_and_routing(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
-        Self::build_tre_inner(mp, rgn_offsets, true)
+        Self::build_tre_inner(mp, rgn_offsets, true, None)
     }
 
-    /// Shared implementation for TRE building with optional routing support.
-    fn build_tre_inner(mp: &MpFile, rgn_offsets: &[u32], routing: bool) -> Vec<u8> {
+    /// Build the TRE subfile from a complete `RgnBuildResult`, propagating
+    /// extended type flags (bits 4-6 in subdivision data_flags).
+    ///
+    /// `routing`: whether the map has routing data (NET/NOD subfiles). This must match
+    /// the caller's `has_routing` flag — do not infer from `subdiv_road_refs` alone.
+    pub fn build_with_rgn_result(
+        mp: &MpFile,
+        rgn_result: &crate::img::rgn::RgnBuildResult,
+        routing: bool,
+    ) -> Vec<u8> {
+        Self::build_tre_inner(
+            mp,
+            &rgn_result.subdivision_offsets,
+            routing,
+            Some(rgn_result),
+        )
+    }
+
+    /// Shared implementation for TRE building with optional routing and extended type support.
+    fn build_tre_inner(
+        mp: &MpFile,
+        rgn_offsets: &[u32],
+        routing: bool,
+        rgn_result: Option<&crate::img::rgn::RgnBuildResult>,
+    ) -> Vec<u8> {
         // Step 1: bounding box in degrees
         let (min_lat, max_lat, min_lon, max_lon) = Self::compute_bounds(mp);
 
@@ -470,6 +505,17 @@ impl TreWriter {
                     next_idx,
                 );
                 s.has_indexed_lines = has_indexed_lines;
+                if let Some(rr) = rgn_result {
+                    if i < rr.subdiv_has_extended_points.len() {
+                        s.has_extended_points = rr.subdiv_has_extended_points[i];
+                    }
+                    if i < rr.subdiv_has_extended_polylines.len() {
+                        s.has_extended_polylines = rr.subdiv_has_extended_polylines[i];
+                    }
+                    if i < rr.subdiv_has_extended_polygons.len() {
+                        s.has_extended_polygons = rr.subdiv_has_extended_polygons[i];
+                    }
+                }
                 if i < rgn_offsets.len() {
                     s.rgn_offset = rgn_offsets[i];
                 }
@@ -893,5 +939,40 @@ mod tests {
         assert!((max_lat - 46.0).abs() < 1e-9, "max_lat from polyline");
         assert!((min_lon - 5.0).abs() < 1e-9, "min_lon from polyline");
         assert!((max_lon - 7.0).abs() < 1e-9, "max_lon from polyline");
+    }
+
+    // ── Extended data_flags tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_subdivision_extended_data_flags() {
+        let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, false, true, false, 0);
+        s.has_extended_points = true;
+        s.has_extended_polylines = false;
+        s.has_extended_polygons = true;
+        let bytes = s.to_bytes();
+        // Standard: points(0x01) | polygons(0x08) = 0x09
+        // Extended: ext_points(0x10) | ext_polygons(0x40) = 0x50
+        // Combined: 0x59
+        assert_eq!(
+            bytes[0x03], 0x59,
+            "data_flags: points + polygons + ext_points + ext_polygons = 0x59"
+        );
+    }
+
+    #[test]
+    fn test_subdivision_mixed_flags() {
+        let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, true, true, false, 0);
+        s.has_indexed_lines = true;
+        s.has_extended_points = true;
+        s.has_extended_polylines = true;
+        s.has_extended_polygons = true;
+        let bytes = s.to_bytes();
+        // All standard: 0x01 | 0x02 | 0x04 | 0x08 = 0x0F
+        // All extended: 0x10 | 0x20 | 0x40 = 0x70
+        // Combined: 0x7F
+        assert_eq!(
+            bytes[0x03], 0x7F,
+            "data_flags: all standard + all extended = 0x7F"
+        );
     }
 }

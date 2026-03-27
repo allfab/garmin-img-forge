@@ -27,7 +27,8 @@ pub struct RgnTypeCode {
 /// Parsing rules:
 /// - `"0x06"` → `{ base_type: 0x06, sub_type: 0x00, extended: false }`
 /// - `"0x2C00"` → `{ base_type: 0x2C, sub_type: 0x00, extended: false }`
-/// - `"0x10001"` → `{ base_type: 0x00, sub_type: 0x00, extended: true }` + warn
+/// - `"0x10001"` → `{ base_type: 0x00, sub_type: 0x01, extended: true }`
+/// - `"0x1101c"` → `{ base_type: 0x10, sub_type: 0x1c, extended: true }`
 /// - any invalid string → `{ base_type: 0x00, sub_type: 0x00, extended: false }` + warn
 pub fn parse_type_code(s: &str) -> RgnTypeCode {
     let trimmed = s.trim();
@@ -38,13 +39,21 @@ pub fn parse_type_code(s: &str) -> RgnTypeCode {
 
     match u32::from_str_radix(hex_str, 16) {
         Ok(v) if v > 0xFFFF => {
-            tracing::warn!(
-                "Extended type code '{}': not supported until Epic 14+, using 0x00",
-                s
-            );
+            if v < 0x10000 || v > 0x1FFFF {
+                tracing::warn!(
+                    "Type code '{}' (0x{:X}) is outside the extended range 0x10000-0x1FFFF, using 0x00",
+                    s, v
+                );
+                return RgnTypeCode {
+                    base_type: 0x00,
+                    sub_type: 0x00,
+                    extended: true,
+                };
+            }
+            let residue = v & 0xFFFF;
             RgnTypeCode {
-                base_type: 0x00,
-                sub_type: 0x00,
+                base_type: ((residue >> 8) & 0xFF) as u8,
+                sub_type: (residue & 0xFF) as u8,
                 extended: true,
             }
         }
@@ -312,6 +321,199 @@ fn encode_polygon_record(
     )
 }
 
+// ── Extended record encoders ──────────────────────────────────────────────────
+
+/// Encode an extended POI record.
+///
+/// Layout:
+/// ```text
+/// byte 0      : type_byte (base_type)
+/// byte 1      : sub_type (bits 0-4) | flags (bits 5-7)
+///               bit 5 = has_label (0x20), bit 7 = last_in_group (0x80)
+/// bytes 2-3   : delta_lon (LE16) from subdivision centre
+/// bytes 4-5   : delta_lat (LE16) from subdivision centre
+/// [if has_label]: 3 bytes label_offset (LE24)
+/// ```
+fn encode_extended_point_record(
+    poi: &MpPoint,
+    center_lat_g: i32,
+    center_lon_g: i32,
+    bits_per_coord: u8,
+    last_in_group: bool,
+    label_offset: u32,
+) -> Vec<u8> {
+    let tc = parse_type_code(&poi.type_code);
+    let lat_g = to_garmin_units(poi.lat);
+    let lon_g = to_garmin_units(poi.lon);
+    let d_lon = encode_delta(lon_g, center_lon_g, bits_per_coord);
+    let d_lat = encode_delta(lat_g, center_lat_g, bits_per_coord);
+    let has_label = poi.label.is_some();
+
+    if tc.sub_type > 0x1F {
+        tracing::warn!(
+            "Extended POI sub_type 0x{:02X} exceeds 5-bit limit, truncating to 0x{:02X}",
+            tc.sub_type,
+            tc.sub_type & 0x1F
+        );
+    }
+    let mut sub_flags: u8 = tc.sub_type & 0x1F;
+    if has_label {
+        sub_flags |= 0x20;
+    }
+    if last_in_group {
+        sub_flags |= 0x80;
+    }
+
+    let mut buf = Vec::with_capacity(9);
+    buf.push(tc.base_type);
+    buf.push(sub_flags);
+    buf.extend_from_slice(&d_lon.to_le_bytes());
+    buf.extend_from_slice(&d_lat.to_le_bytes());
+    if has_label {
+        let le = label_offset.to_le_bytes();
+        buf.push(le[0]);
+        buf.push(le[1]);
+        buf.push(le[2]);
+    }
+    buf
+}
+
+/// Shared encoding for extended polyline and polygon records.
+///
+/// Layout:
+/// ```text
+/// byte 0      : type_byte (base_type)
+/// byte 1      : sub_type
+/// byte 2      : flags — bit 3 = has_label (0x08), bit 7 = last_in_group (0x80),
+///               bits 0-2 = extra_bytes count (0)
+/// bytes 3-4   : delta_lon (LE16) from subdivision centre
+/// bytes 5-6   : delta_lat (LE16) from subdivision centre
+/// bytes 7-8   : coord_stream_length (LE16) — byte count of all subsequent coordinate deltas
+/// bytes 9+    : coordinate deltas (pairs of LE16)
+/// [if has_label]: 3 bytes label_offset (LE24)
+/// ```
+fn encode_extended_poly_record_inner(
+    type_code: &str,
+    label: &Option<String>,
+    coords: &[(f64, f64)],
+    center_lat_g: i32,
+    center_lon_g: i32,
+    bits_per_coord: u8,
+    last_in_group: bool,
+    label_offset: u32,
+) -> Vec<u8> {
+    let tc = parse_type_code(type_code);
+    let has_label = label.is_some();
+
+    let mut flags: u8 = 0; // extra_bytes = 0
+    if has_label {
+        flags |= 0x08;
+    }
+    if last_in_group {
+        flags |= 0x80;
+    }
+
+    let mut buf = Vec::new();
+    buf.push(tc.base_type);
+    buf.push(tc.sub_type);
+    buf.push(flags);
+
+    if coords.is_empty() {
+        // Empty: delta from centre = 0, stream length = 0
+        buf.extend_from_slice(&0i16.to_le_bytes()); // delta_lon
+        buf.extend_from_slice(&0i16.to_le_bytes()); // delta_lat
+        buf.extend_from_slice(&0u16.to_le_bytes()); // coord_stream_length
+        if has_label {
+            let le = label_offset.to_le_bytes();
+            buf.push(le[0]);
+            buf.push(le[1]);
+            buf.push(le[2]);
+        }
+        return buf;
+    }
+
+    // First point: delta from subdivision centre
+    let (lat0, lon0) = coords[0];
+    let lat0_g = to_garmin_units(lat0);
+    let lon0_g = to_garmin_units(lon0);
+    buf.extend_from_slice(&encode_delta(lon0_g, center_lon_g, bits_per_coord).to_le_bytes());
+    buf.extend_from_slice(&encode_delta(lat0_g, center_lat_g, bits_per_coord).to_le_bytes());
+
+    // Build coordinate stream (subsequent points: delta from previous)
+    let mut coord_stream = Vec::new();
+    let mut prev_lat_g = lat0_g;
+    let mut prev_lon_g = lon0_g;
+    for &(lat, lon) in &coords[1..] {
+        let lat_g = to_garmin_units(lat);
+        let lon_g = to_garmin_units(lon);
+        coord_stream.extend_from_slice(&encode_delta(lon_g, prev_lon_g, bits_per_coord).to_le_bytes());
+        coord_stream.extend_from_slice(&encode_delta(lat_g, prev_lat_g, bits_per_coord).to_le_bytes());
+        prev_lat_g = lat_g;
+        prev_lon_g = lon_g;
+    }
+
+    if coord_stream.len() > u16::MAX as usize {
+        tracing::warn!(
+            "Extended record coord stream ({} bytes) exceeds u16::MAX, truncating to {}",
+            coord_stream.len(),
+            u16::MAX
+        );
+    }
+    let stream_len = coord_stream.len().min(u16::MAX as usize) as u16;
+    buf.extend_from_slice(&stream_len.to_le_bytes());
+    buf.extend_from_slice(&coord_stream[..stream_len as usize]);
+
+    if has_label {
+        let le = label_offset.to_le_bytes();
+        buf.push(le[0]);
+        buf.push(le[1]);
+        buf.push(le[2]);
+    }
+    buf
+}
+
+/// Encode an extended polyline record.
+fn encode_extended_polyline_record(
+    line: &MpPolyline,
+    center_lat_g: i32,
+    center_lon_g: i32,
+    bits_per_coord: u8,
+    last_in_group: bool,
+    label_offset: u32,
+) -> Vec<u8> {
+    encode_extended_poly_record_inner(
+        &line.type_code,
+        &line.label,
+        &line.coords,
+        center_lat_g,
+        center_lon_g,
+        bits_per_coord,
+        last_in_group,
+        label_offset,
+    )
+}
+
+/// Encode an extended polygon record.
+fn encode_extended_polygon_record(
+    poly: &MpPolygon,
+    center_lat_g: i32,
+    center_lon_g: i32,
+    bits_per_coord: u8,
+    last_in_group: bool,
+    label_offset: u32,
+) -> Vec<u8> {
+    encode_extended_poly_record_inner(
+        &poly.type_code,
+        &poly.label,
+        &poly.coords,
+        center_lat_g,
+        center_lon_g,
+        bits_per_coord,
+        last_in_group,
+        label_offset,
+    )
+}
+
 // ── RgnWriter ──────────────────────────────────────────────────────────────────
 
 /// Result of `RgnWriter::build`: the complete RGN binary and per-level data offsets.
@@ -326,6 +528,12 @@ pub struct RgnBuildResult {
     /// Cross-references from RGN polylines to NET road definitions.
     /// Populated only when `build_with_net_offsets` is used.
     pub subdiv_road_refs: Vec<crate::img::net::SubdivRoadRef>,
+    /// Per-subdivision flag: true if extended POIs are present.
+    pub subdiv_has_extended_points: Vec<bool>,
+    /// Per-subdivision flag: true if extended polylines are present.
+    pub subdiv_has_extended_polylines: Vec<bool>,
+    /// Per-subdivision flag: true if extended polygons are present.
+    pub subdiv_has_extended_polygons: Vec<bool>,
 }
 
 /// Builds the RGN subfile binary from a parsed Polish Map.
@@ -407,9 +615,17 @@ impl RgnWriter {
             }
         }
 
+        // Pre-compute extended flag per feature to avoid redundant parse_type_code calls.
+        let point_extended: Vec<bool> = mp.points.iter().map(|p| parse_type_code(&p.type_code).extended).collect();
+        let polyline_extended: Vec<bool> = mp.polylines.iter().map(|p| parse_type_code(&p.type_code).extended).collect();
+        let polygon_extended: Vec<bool> = mp.polygons.iter().map(|p| parse_type_code(&p.type_code).extended).collect();
+
         let mut feature_data: Vec<u8> = Vec::new();
         let mut subdivision_offsets = Vec::with_capacity(n);
         let mut subdiv_road_refs: Vec<crate::img::net::SubdivRoadRef> = Vec::new();
+        let mut subdiv_has_extended_points = Vec::with_capacity(n);
+        let mut subdiv_has_extended_polylines = Vec::with_capacity(n);
+        let mut subdiv_has_extended_polygons = Vec::with_capacity(n);
 
         for (i, level) in levels.iter().enumerate() {
             // Record the offset into the feature data for this level.
@@ -418,28 +634,42 @@ impl RgnWriter {
             let bits = level.bits_per_coord;
             let subdiv_number = (i + 1) as u16; // 1-based
 
-            // Filter features: include if end_level >= level_index, or if end_level is unset.
-            let points: Vec<_> = mp
+            // Filter features by end_level and partition standard/extended using pre-computed flags.
+            let (std_points, ext_points): (Vec<_>, Vec<_>) = mp
                 .points
                 .iter()
-                .filter(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8)
-                .collect();
+                .enumerate()
+                .filter(|(_, f)| f.end_level.unwrap_or(u8::MAX) >= i as u8)
+                .partition(|(idx, _)| !point_extended[*idx]);
+            let std_points: Vec<_> = std_points.into_iter().map(|(_, p)| p).collect();
+            let ext_points: Vec<_> = ext_points.into_iter().map(|(_, p)| p).collect();
+
             // Keep original index for polylines (needed for NET cross-reference).
-            let polylines: Vec<(usize, &MpPolyline)> = mp
+            let (std_polylines, ext_polylines): (Vec<_>, Vec<_>) = mp
                 .polylines
                 .iter()
                 .enumerate()
                 .filter(|(_, f)| f.end_level.unwrap_or(u8::MAX) >= i as u8)
-                .collect();
-            let polygons: Vec<_> = mp
+                .partition(|(idx, _)| !polyline_extended[*idx]);
+
+            let (std_polygons, ext_polygons): (Vec<_>, Vec<_>) = mp
                 .polygons
                 .iter()
-                .filter(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8)
-                .collect();
+                .enumerate()
+                .filter(|(_, f)| f.end_level.unwrap_or(u8::MAX) >= i as u8)
+                .partition(|(idx, _)| !polygon_extended[*idx]);
+            let std_polygons: Vec<_> = std_polygons.into_iter().map(|(_, p)| p).collect();
+            let ext_polygons: Vec<_> = ext_polygons.into_iter().map(|(_, p)| p).collect();
 
-            // Write POI records (last_in_group on the final one).
-            let poi_count = points.len();
-            for (j, poi) in points.iter().enumerate() {
+            subdiv_has_extended_points.push(!ext_points.is_empty());
+            subdiv_has_extended_polylines.push(!ext_polylines.is_empty());
+            subdiv_has_extended_polygons.push(!ext_polygons.is_empty());
+
+            // ── Standard sections ─────────────────────────────────────────
+
+            // Write standard POI records.
+            let poi_count = std_points.len();
+            for (j, poi) in std_points.iter().enumerate() {
                 let last = j + 1 == poi_count;
                 let lbl_offset = poi
                     .label
@@ -451,10 +681,10 @@ impl RgnWriter {
                 feature_data.extend_from_slice(&record);
             }
 
-            // Write polyline records with optional NET1 cross-references.
-            let line_count = polylines.len();
+            // Write standard polyline records with optional NET1 cross-references.
+            let line_count = std_polylines.len();
             let mut polyline_index_in_subdiv: u8 = 0;
-            for (j, (orig_idx, line)) in polylines.iter().enumerate() {
+            for (j, (orig_idx, line)) in std_polylines.iter().enumerate() {
                 let last = j + 1 == line_count;
                 let lbl_offset = line
                     .label
@@ -481,9 +711,9 @@ impl RgnWriter {
                 polyline_index_in_subdiv = polyline_index_in_subdiv.saturating_add(1);
             }
 
-            // Write polygon records.
-            let poly_count = polygons.len();
-            for (j, poly) in polygons.iter().enumerate() {
+            // Write standard polygon records.
+            let poly_count = std_polygons.len();
+            for (j, poly) in std_polygons.iter().enumerate() {
                 let last = j + 1 == poly_count;
                 let lbl_offset = poly
                     .label
@@ -492,6 +722,53 @@ impl RgnWriter {
                     .unwrap_or(0);
                 let record =
                     encode_polygon_record(poly, center_lat_g, center_lon_g, bits, last, lbl_offset);
+                feature_data.extend_from_slice(&record);
+            }
+
+            // ── Extended sections ─────────────────────────────────────────
+
+            // Write extended POI records.
+            let ext_poi_count = ext_points.len();
+            for (j, poi) in ext_points.iter().enumerate() {
+                let last = j + 1 == ext_poi_count;
+                let lbl_offset = poi
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
+                let record = encode_extended_point_record(
+                    poi, center_lat_g, center_lon_g, bits, last, lbl_offset,
+                );
+                feature_data.extend_from_slice(&record);
+            }
+
+            // Write extended polyline records (no NET cross-references for extended types).
+            let ext_line_count = ext_polylines.len();
+            for (j, (_orig_idx, line)) in ext_polylines.iter().enumerate() {
+                let last = j + 1 == ext_line_count;
+                let lbl_offset = line
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
+                let record = encode_extended_polyline_record(
+                    line, center_lat_g, center_lon_g, bits, last, lbl_offset,
+                );
+                feature_data.extend_from_slice(&record);
+            }
+
+            // Write extended polygon records.
+            let ext_poly_count = ext_polygons.len();
+            for (j, poly) in ext_polygons.iter().enumerate() {
+                let last = j + 1 == ext_poly_count;
+                let lbl_offset = poly
+                    .label
+                    .as_ref()
+                    .and_then(|l| label_offsets.get(l.as_str()).copied())
+                    .unwrap_or(0);
+                let record = encode_extended_polygon_record(
+                    poly, center_lat_g, center_lon_g, bits, last, lbl_offset,
+                );
                 feature_data.extend_from_slice(&record);
             }
         }
@@ -507,6 +784,9 @@ impl RgnWriter {
             data,
             subdivision_offsets,
             subdiv_road_refs,
+            subdiv_has_extended_points,
+            subdiv_has_extended_polylines,
+            subdiv_has_extended_polygons,
         }
     }
 }
@@ -543,6 +823,23 @@ mod tests {
         let tc = parse_type_code("0x10001");
         assert!(tc.extended);
         assert_eq!(tc.base_type, 0x00);
+        assert_eq!(tc.sub_type, 0x01);
+    }
+
+    #[test]
+    fn test_parse_type_code_extended_building() {
+        let tc = parse_type_code("0x1101c");
+        assert!(tc.extended);
+        assert_eq!(tc.base_type, 0x10);
+        assert_eq!(tc.sub_type, 0x1c);
+    }
+
+    #[test]
+    fn test_parse_type_code_extended_wall() {
+        let tc = parse_type_code("0x13308");
+        assert!(tc.extended);
+        assert_eq!(tc.base_type, 0x33);
+        assert_eq!(tc.sub_type, 0x08);
     }
 
     #[test]
@@ -913,5 +1210,133 @@ mod tests {
             result.subdivision_offsets[2] > result.subdivision_offsets[1],
             "offsets must be strictly increasing"
         );
+    }
+
+    // ── Extended type encoding tests ──────────────────────────────────────────
+
+    fn make_ext_poi(type_code: &str, label: Option<&str>) -> MpPoint {
+        MpPoint {
+            type_code: type_code.to_string(),
+            label: label.map(|s| s.to_string()),
+            end_level: None,
+            lat: 45.0,
+            lon: 5.0,
+            other_fields: HashMap::new(),
+        }
+    }
+
+    fn make_ext_polyline(type_code: &str, n_coords: usize, label: Option<&str>) -> MpPolyline {
+        let coords = (0..n_coords).map(|i| (45.0 + i as f64 * 0.001, 5.0)).collect();
+        MpPolyline {
+            type_code: type_code.to_string(),
+            label: label.map(|s| s.to_string()),
+            end_level: None,
+            coords,
+            routing: None,
+            other_fields: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_encode_extended_point_record_size() {
+        let center = to_garmin_units(45.0);
+        // Extended POI without label: type_byte(1) + sub_flags(1) + delta_lon(2) + delta_lat(2) = 6 bytes
+        let poi = make_ext_poi("0x11503", None);
+        let rec = encode_extended_point_record(&poi, center, center, 24, false, 0);
+        assert_eq!(rec.len(), 6, "extended POI without label must be 6 bytes");
+        assert_eq!(rec[0], 0x15, "base_type for 0x11503 should be 0x15");
+        assert_eq!(rec[1] & 0x1F, 0x03, "sub_type for 0x11503 should be 0x03");
+
+        // With label: + 3 bytes label_offset = 9 bytes
+        let poi_l = make_ext_poi("0x11503", Some("Antenne"));
+        let rec_l = encode_extended_point_record(&poi_l, center, center, 24, false, 0);
+        assert_eq!(rec_l.len(), 9, "extended POI with label must be 9 bytes");
+        assert!(rec_l[1] & 0x20 != 0, "has_label flag (bit 5) must be set");
+    }
+
+    #[test]
+    fn test_encode_extended_point_record_last_in_group() {
+        let center = to_garmin_units(45.0);
+        let poi = make_ext_poi("0x11503", None);
+        let rec = encode_extended_point_record(&poi, center, center, 24, true, 0);
+        assert!(rec[1] & 0x80 != 0, "last_in_group flag (bit 7) must be set");
+    }
+
+    #[test]
+    fn test_encode_extended_polyline_record_header() {
+        let center = to_garmin_units(45.0);
+        let line = make_ext_polyline("0x10c00", 3, None);
+        let rec = encode_extended_polyline_record(&line, center, center, 24, false, 0);
+        // byte 0 = base_type = 0x0c
+        assert_eq!(rec[0], 0x0c, "base_type for 0x10c00 should be 0x0c");
+        // byte 1 = sub_type = 0x00
+        assert_eq!(rec[1], 0x00, "sub_type for 0x10c00 should be 0x00");
+        // byte 2 = flags (no label, not last, extra_bytes=0)
+        assert_eq!(rec[2], 0x00, "flags should be 0x00 (no label, not last)");
+    }
+
+    #[test]
+    fn test_encode_extended_polyline_record_with_label() {
+        let center = to_garmin_units(45.0);
+        let line = make_ext_polyline("0x10c00", 2, Some("Voie Ferrée"));
+        let rec = encode_extended_polyline_record(&line, center, center, 24, true, 42);
+        // flags: has_label (0x08) | last_in_group (0x80) = 0x88
+        assert_eq!(rec[2], 0x88, "flags: has_label | last_in_group");
+        // Last 3 bytes = label_offset = 42 as LE24
+        let len = rec.len();
+        assert_eq!(rec[len - 3], 42, "label_offset low byte");
+        assert_eq!(rec[len - 2], 0, "label_offset mid byte");
+        assert_eq!(rec[len - 1], 0, "label_offset high byte");
+    }
+
+    #[test]
+    fn test_encode_extended_polygon_record_basic() {
+        let center = to_garmin_units(45.0);
+        use crate::parser::mp_types::MpPolygon;
+        let poly = MpPolygon {
+            type_code: "0x1101c".to_string(),
+            label: None,
+            end_level: None,
+            coords: vec![(45.0, 5.0), (45.1, 5.0), (45.1, 5.1), (45.0, 5.1), (45.0, 5.0)],
+            holes: vec![],
+            other_fields: HashMap::new(),
+        };
+        let rec = encode_extended_polygon_record(&poly, center, center, 24, true, 0);
+        assert_eq!(rec[0], 0x10, "base_type for 0x1101c should be 0x10");
+        assert_eq!(rec[1], 0x1c, "sub_type for 0x1101c should be 0x1c");
+        // flags: last_in_group (0x80) | no label | extra_bytes=0
+        assert_eq!(rec[2], 0x80, "flags: last_in_group only");
+    }
+
+    #[test]
+    fn test_build_with_extended_types_has_flags() {
+        use crate::parser::mp_types::MpPolygon;
+        let mp = MpFile {
+            header: MpHeader {
+                name: "Extended Test".to_string(),
+                id: "63240099".to_string(),
+                level_defs: vec![24],
+                ..Default::default()
+            },
+            points: vec![
+                make_ext_poi("0x2C00", Some("Standard")),
+                make_ext_poi("0x11503", Some("Extended")),
+            ],
+            polylines: vec![],
+            polygons: vec![MpPolygon {
+                type_code: "0x1101c".to_string(),
+                label: None,
+                end_level: None,
+                coords: vec![(45.0, 5.0), (45.1, 5.0), (45.1, 5.1), (45.0, 5.0)],
+                holes: vec![],
+                other_fields: HashMap::new(),
+            }],
+        };
+        let levels = levels_from_mp(&mp.header);
+        let result = RgnWriter::build(&mp, &levels);
+
+        assert!(result.subdiv_has_extended_points[0], "should have extended points");
+        assert!(!result.subdiv_has_extended_polylines[0], "should not have extended polylines");
+        assert!(result.subdiv_has_extended_polygons[0], "should have extended polygons");
     }
 }

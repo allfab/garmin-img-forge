@@ -264,7 +264,7 @@ rulesets:
   # ==========================================================================
   # ADMINISTRATIF — Communes (POLYGON)
   # Source FME : 01-COMMUNE-ZONEURBA.fmw
-  # 1 regle wildcard avec attributs speciaux Country, CityName, Zip
+  # 1 regle wildcard avec attributs speciaux CountryName, CityName, Zip
   # ==========================================================================
   - name: "Communes"
     source_layer: "COMMUNE"
@@ -276,7 +276,7 @@ rulesets:
           Type: "0x54"
           EndLevel: "7"
           Label: "${NOM}"
-          Country: "France~[0x1d]FRA"
+          CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
           Zip: "${CODE_POST}"
 
