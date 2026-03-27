@@ -35,10 +35,19 @@ pub struct Dirent {
 impl Dirent {
     /// Create a new directory entry.
     ///
+    /// - `size_allocated`: total bytes allocated (block-aligned).
+    /// - `size_used`: actual content bytes (≤ `size_allocated`).
+    ///
     /// # Errors
     /// Returns [`ImgError::InvalidMapId`] if `map_id` is empty, non-ASCII-digit, or
     /// longer than 8 characters.
-    pub fn new(map_id: &str, ext: &str, block_start: u16, size: u32) -> Result<Self, ImgError> {
+    pub fn new(
+        map_id: &str,
+        ext: &str,
+        block_start: u16,
+        size_allocated: u32,
+        size_used: u32,
+    ) -> Result<Self, ImgError> {
         // Validate map_id: non-empty, all ASCII digits, max 8 chars.
         if map_id.is_empty() || !map_id.chars().all(|c| c.is_ascii_digit()) || map_id.len() > 8 {
             return Err(ImgError::InvalidMapId {
@@ -62,8 +71,8 @@ impl Dirent {
             ext: ext_buf,
             flag: 0x03,
             block_start,
-            size_allocated: size,
-            size_used: size,
+            size_allocated,
+            size_used,
         })
     }
 
@@ -93,25 +102,25 @@ mod tests {
 
     #[test]
     fn test_dirent_name_padding() {
-        let d = Dirent::new("12345", "TRE", 2, 512).unwrap();
+        let d = Dirent::new("12345", "TRE", 2, 512, 512).unwrap();
         assert_eq!(d.name, [b'1', b'2', b'3', b'4', b'5', 0x20, 0x20, 0x20]);
     }
 
     #[test]
     fn test_dirent_name_no_padding_8chars() {
-        let d = Dirent::new("63240001", "TRE", 2, 512).unwrap();
+        let d = Dirent::new("63240001", "TRE", 2, 512, 512).unwrap();
         assert_eq!(d.name, *b"63240001");
     }
 
     #[test]
     fn test_dirent_size_32_bytes() {
-        let d = Dirent::new("63240001", "TRE", 2, 512).unwrap();
+        let d = Dirent::new("63240001", "TRE", 2, 512, 512).unwrap();
         assert_eq!(d.to_bytes().len(), 32);
     }
 
     #[test]
     fn test_dirent_offsets_le() {
-        let d = Dirent::new("63240001", "TRE", 0x0102, 0x0304_0506).unwrap();
+        let d = Dirent::new("63240001", "TRE", 0x0102, 0x0304_0506, 0x0304_0506).unwrap();
         let bytes = d.to_bytes();
         // block_start at 0x0C–0x0D (le16)
         assert_eq!(u16::from_le_bytes([bytes[0x0C], bytes[0x0D]]), 0x0102);
@@ -124,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_dirent_extension() {
-        let d = Dirent::new("63240001", "LBL", 4, 512).unwrap();
+        let d = Dirent::new("63240001", "LBL", 4, 512, 512).unwrap();
         assert_eq!(&d.ext, b"LBL");
         let bytes = d.to_bytes();
         assert_eq!(&bytes[0x08..0x0B], b"LBL");
@@ -132,26 +141,26 @@ mod tests {
 
     #[test]
     fn test_dirent_flag() {
-        let d = Dirent::new("63240001", "TRE", 2, 512).unwrap();
+        let d = Dirent::new("63240001", "TRE", 2, 512, 512).unwrap();
         assert_eq!(d.flag, 0x03);
         assert_eq!(d.to_bytes()[0x0B], 0x03);
     }
 
     #[test]
     fn test_dirent_invalid_map_id_empty() {
-        let err = Dirent::new("", "TRE", 0, 0).unwrap_err();
+        let err = Dirent::new("", "TRE", 0, 0, 0).unwrap_err();
         assert!(matches!(err, ImgError::InvalidMapId { .. }));
     }
 
     #[test]
     fn test_dirent_invalid_map_id_non_digit() {
-        let err = Dirent::new("NOTDIGIT", "TRE", 0, 0).unwrap_err();
+        let err = Dirent::new("NOTDIGIT", "TRE", 0, 0, 0).unwrap_err();
         assert!(matches!(err, ImgError::InvalidMapId { .. }));
     }
 
     #[test]
     fn test_dirent_invalid_map_id_too_long() {
-        let err = Dirent::new("123456789", "TRE", 0, 0).unwrap_err();
+        let err = Dirent::new("123456789", "TRE", 0, 0, 0).unwrap_err();
         assert!(matches!(err, ImgError::InvalidMapId { .. }));
     }
 }

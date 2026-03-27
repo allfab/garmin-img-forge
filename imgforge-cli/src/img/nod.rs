@@ -27,12 +27,14 @@ const MAX_NODES_PER_CENTER: usize = 256;
 
 /// Result of `NodWriter::build`.
 pub struct NodBuildResult {
-    /// Complete NOD subfile binary: `[header || NOD1 || NOD2]`.
+    /// Complete NOD subfile binary: `[header || NOD1 || NOD2 || NOD3]`.
     pub data: Vec<u8>,
     /// `nod2_road_offsets[i]` = byte offset of the i-th road_def's NOD2 entry,
     /// relative to the start of the NOD2 section.
     /// Used to patch the 2-byte NOD2 placeholder in NET1 records.
     pub nod2_road_offsets: Vec<u32>,
+    /// Number of boundary nodes detected (nodes within BOUNDARY_THRESHOLD of the tile bbox).
+    pub boundary_node_count: usize,
 }
 
 // ── Coordinate conversion ─────────────────────────────────────────────────────
@@ -61,11 +63,12 @@ fn wgs84_to_garmin(deg: f64) -> i32 {
 /// 0x1E  LE32  NOD2 section offset (= 48 + nod1_len)
 /// 0x22  LE32  NOD2 section length
 /// 0x26  LE32  NOD3 section offset (= NOD2 offset + NOD2 len)
-/// 0x2A  LE32  NOD3 section length = 0 (single-tile)
+/// 0x2A  LE32  NOD3 section length (0 when no boundary nodes)
 /// 0x2E  u8    Drive-on-right = 0x01 (France, circulation à droite)
 /// 0x2F  u8    Flags = 0x00
 /// ```
-fn write_nod_header(buf: &mut Vec<u8>, nod1_len: u32, nod2_len: u32) {
+fn write_nod_header(buf: &mut Vec<u8>, nod1_len: u32, nod2_len: u32, nod3_len: u32) {
+    let start_len = buf.len();
     // 0x00: header_length = 0x0030 (LE16)
     buf.extend_from_slice(&(NOD_HEADER_SIZE as u16).to_le_bytes());
     // 0x02: type indicator (u8)
@@ -93,15 +96,20 @@ fn write_nod_header(buf: &mut Vec<u8>, nod1_len: u32, nod2_len: u32) {
     // 0x26: NOD3 section offset (LE32) = nod2_offset + nod2_len
     let nod3_offset = nod2_offset + nod2_len;
     buf.extend_from_slice(&nod3_offset.to_le_bytes());
-    // 0x2A: NOD3 section length = 0 (LE32, single-tile)
-    buf.extend_from_slice(&0u32.to_le_bytes());
+    // 0x2A: NOD3 section length (LE32)
+    buf.extend_from_slice(&nod3_len.to_le_bytes());
 
     // 0x2E: drive_on_right = 0x01 (France)
     buf.push(0x01);
     // 0x2F: flags = 0x00
     buf.push(0x00);
 
-    debug_assert_eq!(buf.len(), NOD_HEADER_SIZE);
+    debug_assert_eq!(
+        buf.len() - start_len,
+        NOD_HEADER_SIZE,
+        "write_nod_header must append exactly {} bytes",
+        NOD_HEADER_SIZE
+    );
 }
 
 // ── NOD2 — Bitstream Road-to-Node Links ───────────────────────────────────────
@@ -307,6 +315,98 @@ pub fn build_nod1_section(
     encode_nod1_from_centers(road_network, &centers, net_road_offsets)
 }
 
+// ── NOD3 — Boundary Node Detection ───────────────────────────────────────────
+
+/// Distance threshold (degrees) for boundary node detection.
+const BOUNDARY_THRESHOLD: f64 = 1e-4;
+
+/// Bounding box derived from polyline coordinates.
+struct BoundingBox {
+    min_lat: f64,
+    max_lat: f64,
+    min_lon: f64,
+    max_lon: f64,
+}
+
+/// Compute bounding box from polyline coordinates.
+/// Returns `None` if no coordinates are present.
+fn compute_bbox(polylines: &[MpPolyline]) -> Option<BoundingBox> {
+    let mut min_lat = f64::MAX;
+    let mut max_lat = f64::MIN;
+    let mut min_lon = f64::MAX;
+    let mut max_lon = f64::MIN;
+    let mut has_coords = false;
+    for pl in polylines {
+        for &(lat, lon) in &pl.coords {
+            if lat < min_lat {
+                min_lat = lat;
+            }
+            if lat > max_lat {
+                max_lat = lat;
+            }
+            if lon < min_lon {
+                min_lon = lon;
+            }
+            if lon > max_lon {
+                max_lon = lon;
+            }
+            has_coords = true;
+        }
+    }
+    if has_coords {
+        Some(BoundingBox { min_lat, max_lat, min_lon, max_lon })
+    } else {
+        None
+    }
+}
+
+/// Detect RouteNode indices that lie within `BOUNDARY_THRESHOLD` degrees of the tile bbox.
+fn detect_boundary_nodes(
+    nodes: &[crate::routing::RouteNode],
+    bbox: &BoundingBox,
+) -> Vec<usize> {
+    nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| {
+            let (lat, lon) = n.coord;
+            (lat - bbox.max_lat).abs() < BOUNDARY_THRESHOLD
+                || (lat - bbox.min_lat).abs() < BOUNDARY_THRESHOLD
+                || (lon - bbox.max_lon).abs() < BOUNDARY_THRESHOLD
+                || (lon - bbox.min_lon).abs() < BOUNDARY_THRESHOLD
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Build the NOD3 section: 6 bytes per boundary node.
+///
+/// Format per entry (wiki.openstreetmap.org/wiki/OSM_Map_On_Garmin/NOD_Subfile_Format#NOD3):
+/// ```text
+/// +0  3 bytes  Garmin lat semicircle (24-bit LE)
+/// +3  3 bytes  Garmin lon semicircle (24-bit LE)
+/// ```
+fn build_nod3_section(
+    nodes: &[crate::routing::RouteNode],
+    boundary_indices: &[usize],
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity(boundary_indices.len() * 6);
+    for &ni in boundary_indices {
+        let (lat, lon) = nodes[ni].coord;
+        let garmin_lat = wgs84_to_garmin(lat);
+        let garmin_lon = wgs84_to_garmin(lon);
+        // 3 bytes lat (24-bit LE)
+        data.push((garmin_lat & 0xFF) as u8);
+        data.push(((garmin_lat >> 8) & 0xFF) as u8);
+        data.push(((garmin_lat >> 16) & 0xFF) as u8);
+        // 3 bytes lon (24-bit LE)
+        data.push((garmin_lon & 0xFF) as u8);
+        data.push(((garmin_lon >> 8) & 0xFF) as u8);
+        data.push(((garmin_lon >> 16) & 0xFF) as u8);
+    }
+    data
+}
+
 // ── NOD2 Patch Function ───────────────────────────────────────────────────────
 
 /// Patch the 2-byte NOD2 placeholder offsets in the NET data buffer.
@@ -359,13 +459,26 @@ impl NodWriter {
     /// # Arguments
     /// - `road_network`: The road network graph (from graph builder)
     /// - `net_road_offsets`: NET1-relative offsets for each road_def (from NetBuildResult)
-    /// - `polylines`: Original polyline features (for vertex count in NOD2)
+    /// - `polylines`: Original polyline features (for vertex count in NOD2 and bbox computation)
+    ///
+    /// Boundary nodes are detected geometrically: RouteNodes within `BOUNDARY_THRESHOLD`
+    /// (1e-4 degrees) of the tile bounding box are written to NOD3.
     pub fn build(
         road_network: &RoadNetwork,
         net_road_offsets: &[u32],
         polylines: &[MpPolyline],
     ) -> NodBuildResult {
         let (nod2_data, nod2_road_offsets) = build_nod2_section(road_network, polylines);
+
+        // Detect boundary nodes from the polyline bounding box.
+        let boundary_indices = if let Some(bbox) = compute_bbox(polylines) {
+            detect_boundary_nodes(&road_network.nodes, &bbox)
+        } else {
+            Vec::new()
+        };
+        let nod3_data = build_nod3_section(&road_network.nodes, &boundary_indices);
+        let boundary_node_count = boundary_indices.len();
+
         // Compute centers once — used for both NOD1 encoding and logging.
         let (n_centers, nod1_data) = if road_network.nodes.is_empty() {
             (0, Vec::new())
@@ -377,12 +490,14 @@ impl NodWriter {
 
         let nod1_len = nod1_data.len() as u32;
         let nod2_len = nod2_data.len() as u32;
+        let nod3_len = nod3_data.len() as u32;
 
-        let total = NOD_HEADER_SIZE + nod1_data.len() + nod2_data.len();
+        let total = NOD_HEADER_SIZE + nod1_data.len() + nod2_data.len() + nod3_data.len();
         let mut data = Vec::with_capacity(total);
-        write_nod_header(&mut data, nod1_len, nod2_len);
+        write_nod_header(&mut data, nod1_len, nod2_len, nod3_len);
         data.extend_from_slice(&nod1_data);
         data.extend_from_slice(&nod2_data);
+        data.extend_from_slice(&nod3_data);
 
         let total_arcs: usize = road_network.nodes.iter().map(|n| n.arcs.len()).sum();
 
@@ -393,6 +508,8 @@ impl NodWriter {
             road_defs = road_network.road_defs.len(),
             nod1_size = nod1_len,
             nod2_size = nod2_len,
+            nod3_size = nod3_len,
+            boundary_nodes = boundary_node_count,
             total_size = data.len(),
             "NOD subfile built"
         );
@@ -400,6 +517,7 @@ impl NodWriter {
         NodBuildResult {
             data,
             nod2_road_offsets,
+            boundary_node_count,
         }
     }
 }
@@ -416,14 +534,14 @@ mod tests {
     #[test]
     fn test_nod_header_size() {
         let mut buf = Vec::new();
-        write_nod_header(&mut buf, 0, 0);
+        write_nod_header(&mut buf, 0, 0, 0);
         assert_eq!(buf.len(), 48, "NOD header must be exactly 48 bytes");
     }
 
     #[test]
     fn test_nod_header_signature() {
         let mut buf = Vec::new();
-        write_nod_header(&mut buf, 100, 50);
+        write_nod_header(&mut buf, 100, 50, 0);
         // Signature "GARMIN NOD" at offset 0x0B (11)
         assert_eq!(&buf[0x0B..0x15], b"GARMIN NOD");
     }
@@ -431,7 +549,7 @@ mod tests {
     #[test]
     fn test_nod_header_drive_on_right() {
         let mut buf = Vec::new();
-        write_nod_header(&mut buf, 100, 50);
+        write_nod_header(&mut buf, 100, 50, 0);
         // drive_on_right at offset 0x2E
         assert_eq!(buf[0x2E], 0x01, "drive_on_right must be 0x01 (France)");
     }
@@ -440,8 +558,9 @@ mod tests {
     fn test_nod_header_offsets() {
         let nod1_len = 200u32;
         let nod2_len = 80u32;
+        let nod3_len = 12u32;
         let mut buf = Vec::new();
-        write_nod_header(&mut buf, nod1_len, nod2_len);
+        write_nod_header(&mut buf, nod1_len, nod2_len, nod3_len);
 
         // NOD1 offset at 0x15 = 48
         let nod1_off = u32::from_le_bytes([buf[0x15], buf[0x16], buf[0x17], buf[0x18]]);
@@ -466,9 +585,9 @@ mod tests {
         let nod3_off = u32::from_le_bytes([buf[0x26], buf[0x27], buf[0x28], buf[0x29]]);
         assert_eq!(nod3_off, 248 + 80, "NOD3 offset = NOD2 offset + NOD2 len");
 
-        // NOD3 length at 0x2A = 0
-        let nod3_len = u32::from_le_bytes([buf[0x2A], buf[0x2B], buf[0x2C], buf[0x2D]]);
-        assert_eq!(nod3_len, 0, "NOD3 length must be 0 (single-tile)");
+        // NOD3 length at 0x2A
+        let nod3_len_r = u32::from_le_bytes([buf[0x2A], buf[0x2B], buf[0x2C], buf[0x2D]]);
+        assert_eq!(nod3_len_r, 12, "NOD3 length reflects boundary node data");
     }
 
     // ── Task 2: NOD2 bitstream ──────────────────────────────────────────────
@@ -712,6 +831,8 @@ mod tests {
         use crate::parser::mp_types::{MpPolyline, MpRoutingAttrs};
         use std::collections::HashMap;
         let network = make_two_node_network();
+        // Nodes at (45.0, 5.0) and (45.001, 5.001) — both at corners of bbox
+        // → both are boundary nodes → NOD3 = 2 × 6 = 12 bytes
         let polylines = vec![MpPolyline {
             type_code: "0x02".to_string(),
             label: Some("D1075".to_string()),
@@ -733,10 +854,11 @@ mod tests {
 
         let result = NodWriter::build(&network, &[0u32], &polylines);
 
-        // Header = 48 bytes, NOD1 = 33 bytes, NOD2 = 1 byte
-        assert_eq!(result.data.len(), 48 + 33 + 1, "total size = 82 bytes");
+        // Header = 48, NOD1 = 33, NOD2 = 1, NOD3 = 12 (2 boundary nodes × 6 bytes)
+        assert_eq!(result.data.len(), 48 + 33 + 1 + 12, "total size = 94 bytes");
         assert_eq!(result.nod2_road_offsets.len(), 1);
         assert_eq!(result.nod2_road_offsets[0], 0, "road 0 NOD2 offset = 0");
+        assert_eq!(result.boundary_node_count, 2, "both nodes are boundary nodes");
 
         // Verify NOD1 offset in header
         let nod1_off = u32::from_le_bytes([
@@ -749,6 +871,99 @@ mod tests {
             result.data[0x1E], result.data[0x1F], result.data[0x20], result.data[0x21],
         ]);
         assert_eq!(nod2_off, 48 + 33, "NOD2 offset = 48 + nod1_len");
+
+        // Verify NOD3 offset in header = NOD2 offset + NOD2 len
+        let nod3_off = u32::from_le_bytes([
+            result.data[0x26], result.data[0x27], result.data[0x28], result.data[0x29],
+        ]);
+        assert_eq!(nod3_off, 48 + 33 + 1, "NOD3 offset = header + NOD1 + NOD2");
+
+        // Verify NOD3 length in header
+        let nod3_len = u32::from_le_bytes([
+            result.data[0x2A], result.data[0x2B], result.data[0x2C], result.data[0x2D],
+        ]);
+        assert_eq!(nod3_len, 12, "NOD3 length = 2 boundary nodes × 6 bytes");
+    }
+
+    // ── Task 5: NOD3 boundary nodes ─────────────────────────────────────────
+
+    #[test]
+    fn test_nod3_empty_for_no_boundary_nodes() {
+        use crate::parser::mp_types::{MpPolyline, MpRoutingAttrs};
+        use std::collections::HashMap;
+        // Large tile: bbox is [45.0, 46.0] × [5.0, 6.0]
+        // Node at (45.5, 5.5) — well inside, no boundary detection
+        let network = RoadNetwork {
+            nodes: vec![
+                RouteNode { id: 0, coord: (45.5, 5.5), level: 0, arcs: vec![] },
+            ],
+            arcs: vec![],
+            road_defs: vec![],
+        };
+        let polylines = vec![MpPolyline {
+            type_code: "0x02".to_string(),
+            label: None,
+            end_level: None,
+            coords: vec![(45.0, 5.0), (46.0, 6.0)],
+            routing: Some(MpRoutingAttrs {
+                road_id: Some("1".to_string()),
+                route_param: Some("5,2,0,0,0,0,0,0,0,0,0,0".to_string()),
+                speed_type: None,
+                dir_indicator: None,
+                roundabout: None,
+                max_height: None,
+                max_weight: None,
+                max_width: None,
+                max_length: None,
+            }),
+            other_fields: HashMap::new(),
+        }];
+        let result = NodWriter::build(&network, &[], &polylines);
+        assert_eq!(result.boundary_node_count, 0, "interior node → no boundary nodes");
+        // NOD3 length in header should be 0
+        let nod3_len = u32::from_le_bytes([
+            result.data[0x2A], result.data[0x2B], result.data[0x2C], result.data[0x2D],
+        ]);
+        assert_eq!(nod3_len, 0, "NOD3 length must be 0 for no boundary nodes");
+    }
+
+    #[test]
+    fn test_nod3_non_empty_for_boundary_node() {
+        use crate::parser::mp_types::{MpPolyline, MpRoutingAttrs};
+        use std::collections::HashMap;
+        // Node at (45.01, 5.5) — bbox max_lat = 45.01, distance = 0 < 1e-4 → boundary
+        let network = RoadNetwork {
+            nodes: vec![
+                RouteNode { id: 0, coord: (45.01, 5.5), level: 0, arcs: vec![] },
+            ],
+            arcs: vec![],
+            road_defs: vec![],
+        };
+        let polylines = vec![MpPolyline {
+            type_code: "0x02".to_string(),
+            label: None,
+            end_level: None,
+            coords: vec![(45.0, 5.0), (45.01, 6.0)],
+            routing: Some(MpRoutingAttrs {
+                road_id: Some("1".to_string()),
+                route_param: Some("5,2,0,0,0,0,0,0,0,0,0,0".to_string()),
+                speed_type: None,
+                dir_indicator: None,
+                roundabout: None,
+                max_height: None,
+                max_weight: None,
+                max_width: None,
+                max_length: None,
+            }),
+            other_fields: HashMap::new(),
+        }];
+        let result = NodWriter::build(&network, &[], &polylines);
+        assert_eq!(result.boundary_node_count, 1, "node at max_lat → boundary node detected");
+        // NOD3 length in header should be 6 (1 node × 6 bytes)
+        let nod3_len = u32::from_le_bytes([
+            result.data[0x2A], result.data[0x2B], result.data[0x2C], result.data[0x2D],
+        ]);
+        assert_eq!(nod3_len, 6, "NOD3 length = 1 boundary node × 6 bytes");
     }
 
     // ── Task 3: patch_nod2_offsets ──────────────────────────────────────────

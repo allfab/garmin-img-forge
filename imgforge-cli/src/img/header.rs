@@ -78,6 +78,10 @@ pub struct ImgHeader {
     pub creation_date: ImgDate,
     /// Total number of blocks in the file (set by `ImgFilesystem` before serialisation).
     pub total_blocks: u32,
+    /// Garmin family ID (LE16 at offset 0x054) — identifies the map family in BaseCamp.
+    pub family_id: u16,
+    /// Garmin product ID (LE16 at offset 0x056) — identifies the product in BaseCamp.
+    pub product_id: u16,
 }
 
 impl ImgHeader {
@@ -144,7 +148,11 @@ impl ImgHeader {
         // 0x050–0x053 — total blocks in file (le32)
         buf[0x050..0x054].copy_from_slice(&self.total_blocks.to_le_bytes());
 
-        // 0x054–0x1FD — reserved (already 0x00).
+        // 0x054–0x055 — family_id (LE16)
+        buf[0x054..0x056].copy_from_slice(&self.family_id.to_le_bytes());
+        // 0x056–0x057 — product_id (LE16)
+        buf[0x056..0x058].copy_from_slice(&self.product_id.to_le_bytes());
+        // 0x058–0x1FD — reserved (already 0x00).
 
         // 0x1FE–0x1FF — DOS partition signature
         buf[0x1FE] = 0x55;
@@ -175,6 +183,8 @@ mod tests {
                 second: 0,
             },
             total_blocks: 5,
+            family_id: 0,
+            product_id: 0,
         }
     }
 
@@ -249,6 +259,8 @@ mod tests {
                 second: 0,
             },
             total_blocks: 2,
+            family_id: 0,
+            product_id: 0,
         };
         let bytes = h.to_bytes();
         // The 49-byte field must never contain a partial codepoint.
@@ -267,6 +279,51 @@ mod tests {
         // XOR invariant must still hold.
         let xor = bytes.iter().fold(0u8, |acc, &b| acc ^ b);
         assert_eq!(xor, 0x00);
+    }
+
+    #[test]
+    fn test_header_family_id_offset() {
+        let h = ImgHeader {
+            description: "Test".to_string(),
+            block_size_exponent: 9,
+            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+            total_blocks: 2,
+            family_id: 6324,
+            product_id: 0,
+        };
+        let bytes = h.to_bytes();
+        let fid = u16::from_le_bytes([bytes[0x054], bytes[0x055]]);
+        assert_eq!(fid, 6324, "family_id must be at offset 0x054 (LE16)");
+    }
+
+    #[test]
+    fn test_header_product_id_offset() {
+        let h = ImgHeader {
+            description: "Test".to_string(),
+            block_size_exponent: 9,
+            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+            total_blocks: 2,
+            family_id: 0,
+            product_id: 1,
+        };
+        let bytes = h.to_bytes();
+        assert_eq!(bytes[0x056], 0x01, "product_id low byte at 0x056");
+        assert_eq!(bytes[0x057], 0x00, "product_id high byte at 0x057");
+    }
+
+    #[test]
+    fn test_header_xor_with_family_product() {
+        let h = ImgHeader {
+            description: "Test".to_string(),
+            block_size_exponent: 9,
+            creation_date: ImgDate { year_offset: 126, month: 1, day: 1, hour: 0, minute: 0, second: 0 },
+            total_blocks: 5,
+            family_id: 6324,
+            product_id: 1,
+        };
+        let bytes = h.to_bytes();
+        let xor = bytes.iter().fold(0u8, |acc, &b| acc ^ b);
+        assert_eq!(xor, 0x00, "XOR invariant must hold with family_id/product_id set");
     }
 
     #[test]

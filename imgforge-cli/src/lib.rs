@@ -7,6 +7,7 @@ pub mod parser;
 pub mod routing;
 
 pub use error::ImgError;
+pub use img::assembler::{AssemblyStats, BuildConfig, GmapsuppAssembler};
 pub use img::writer::ImgWriter;
 
 use std::path::Path;
@@ -21,5 +22,20 @@ pub fn compile(input: &Path, output: &Path) -> anyhow::Result<()> {
 
     let mp = MpParser::parse_file(input)?;
     ImgWriter::write(&mp, output)?;
+    Ok(())
+}
+
+/// Assemble a directory of Polish Map (.mp) tiles into a single `gmapsupp.img`.
+///
+/// Scans `input_dir` for `.mp` files, compiles each tile in memory, and writes
+/// the resulting multi-tile `gmapsupp.img` to `output`.
+pub fn build(input_dir: &Path, output: &Path, config: BuildConfig) -> anyhow::Result<()> {
+    let stats = GmapsuppAssembler::build(input_dir, output, &config)?;
+    tracing::info!(
+        tiles = stats.tile_count,
+        subfiles = stats.subfile_count,
+        bytes = stats.total_bytes,
+        "gmapsupp.img assemblé"
+    );
     Ok(())
 }

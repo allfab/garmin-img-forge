@@ -1,6 +1,7 @@
 //! Integration tests for imgforge-cli using fixture files.
 
 use imgforge_cli::error::ParseError;
+use imgforge_cli::img::assembler::{BuildConfig, GmapsuppAssembler};
 use imgforge_cli::parser::MpParser;
 use imgforge_cli::ImgWriter;
 use std::path::Path;
@@ -1963,4 +1964,230 @@ fn test_routing_full_validation_fixture_compiles() {
     let bytes = std::fs::read(tmp.path()).unwrap();
     assert!(bytes.len() > 512, "le .img doit faire plus d'un block (512 bytes)");
     assert_eq!(&bytes[0x002..0x008], b"GARMIN", "magic GARMIN toujours présent");
+}
+
+// ================================================================
+// Story 15.1 — Assemblage gmapsupp.img multi-tuiles (AC1–AC5)
+// ================================================================
+
+fn test_build_config_512() -> BuildConfig {
+    BuildConfig {
+        family_id: 6324,
+        product_id: 1,
+        description: "Test Assembly".into(),
+        block_size_exponent: 9, // 512 bytes — fast for integration tests
+    }
+}
+
+fn tiles_dir_with(files: &[&str]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for name in files {
+        let src = fixture(name);
+        std::fs::copy(&src, dir.path().join(name)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn test_build_single_tile() {
+    // AC1 — build d'un seul .mp → gmapsupp.img valide
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+    assert_eq!(stats.tile_count, 1);
+    let bytes = std::fs::read(output.path()).unwrap();
+    // GARMIN header magic
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    // DOS signature
+    assert_eq!(bytes[0x1FE], 0x55);
+    assert_eq!(bytes[0x1FF], 0xAA);
+    // XOR invariant
+    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
+    assert_eq!(xor, 0x00, "header XOR must be 0x00");
+}
+
+#[test]
+fn test_build_two_tiles() {
+    // AC1 — build tile_a + tile_b → 2 map_ids dans le FAT directory
+    let tiles = tiles_dir_with(&["tile_a.mp", "tile_b.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+    assert_eq!(stats.tile_count, 2);
+    // Both map IDs must appear in the directory
+    let bytes = std::fs::read(output.path()).unwrap();
+    assert!(
+        bytes.windows(8).any(|w| w == b"01001001"),
+        "map_id 01001001 must appear in gmapsupp.img"
+    );
+    assert!(
+        bytes.windows(8).any(|w| w == b"01001002"),
+        "map_id 01001002 must appear in gmapsupp.img"
+    );
+}
+
+#[test]
+fn test_build_two_tiles_subfile_count() {
+    // AC1 — 2 tuiles avec routage → ≥ 6 entrées dans le FAT (chaque tuile ≥ 3)
+    let tiles = tiles_dir_with(&["tile_a.mp", "tile_b.mp"]);
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
+        .unwrap();
+    assert!(
+        stats.subfile_count >= 6,
+        "2 tuiles → au moins 6 subfiles (3 par tuile minimum), got {}",
+        stats.subfile_count
+    );
+}
+
+#[test]
+fn test_build_empty_dir_returns_error() {
+    // AC1 — répertoire vide → ImgError::EmptyInputDir
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("out.img");
+    let result = GmapsuppAssembler::build(dir.path(), &output, &test_build_config_512());
+    assert!(
+        matches!(result, Err(imgforge_cli::ImgError::EmptyInputDir { .. })),
+        "empty dir must return EmptyInputDir error"
+    );
+}
+
+#[test]
+fn test_build_dir_not_found_returns_error() {
+    // AC1 — répertoire inexistant → Err
+    let output = std::env::temp_dir().join("imgforge_test_out.img");
+    let result = GmapsuppAssembler::build(
+        Path::new("/does/not/exist/12345"),
+        &output,
+        &test_build_config_512(),
+    );
+    assert!(result.is_err(), "non-existent dir must return error");
+}
+
+#[test]
+fn test_build_gmapsupp_family_id() {
+    // AC3 — --family-id 6324 → bytes[0x054..0x056] = 6324u16.to_le_bytes()
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let config = BuildConfig {
+        family_id: 6324,
+        product_id: 0,
+        description: "Test".into(),
+        block_size_exponent: 9,
+    };
+    let output = tempfile::NamedTempFile::new().unwrap();
+    GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
+    let bytes = std::fs::read(output.path()).unwrap();
+    let fid = u16::from_le_bytes([bytes[0x054], bytes[0x055]]);
+    assert_eq!(fid, 6324, "family_id must be at header offset 0x054");
+}
+
+#[test]
+fn test_build_gmapsupp_product_id() {
+    // AC3 — --product-id 1 → bytes[0x056..0x058] = [0x01, 0x00]
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let config = BuildConfig {
+        family_id: 0,
+        product_id: 1,
+        description: "Test".into(),
+        block_size_exponent: 9,
+    };
+    let output = tempfile::NamedTempFile::new().unwrap();
+    GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
+    let bytes = std::fs::read(output.path()).unwrap();
+    assert_eq!(bytes[0x056], 0x01, "product_id low byte at 0x056");
+    assert_eq!(bytes[0x057], 0x00, "product_id high byte at 0x057");
+}
+
+#[test]
+fn test_build_multi_block_directory() {
+    // AC2 — ≥ 17 entries → dir_blocks > 1 pour block_size=512
+    // 6 tuiles × 3 subfiles = 18 entrées × 32 bytes = 576 > 512 → dir span > 1 block
+    let dir = tempfile::tempdir().unwrap();
+    // Create 6 minimal tiles using different IDs
+    let ids = ["01000001", "01000002", "01000003", "01000004", "01000005", "01000006"];
+    for id in &ids {
+        let content = format!(
+            "[IMG ID]\nName=Tile {id}\nID={id}\nCodePage=1252\nLevels=2\nLevel0=24\nLevel1=18\n[END-IMG ID]\n\n\
+             [POI]\nType=0x2C00\nLabel=TestPOI\nData0=(45.0,5.0)\nEndLevel=4\n[END]\n"
+        );
+        std::fs::write(dir.path().join(format!("{id}.mp")), content).unwrap();
+    }
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(dir.path(), output.path(), &test_build_config_512())
+        .unwrap();
+    assert_eq!(stats.tile_count, 6);
+    // 6 tiles × 3 subfiles = 18 entries → dir_blocks = ceil(18*32/512) = 2
+    assert_eq!(stats.subfile_count, 18, "6 tiles × 3 subfiles (no routing) = 18");
+    let bytes = std::fs::read(output.path()).unwrap();
+    // First subfile should start at block 3 (1 header + 2 dir blocks)
+    let dir_offset = 512usize; // block 1
+    let block_start_first = u16::from_le_bytes([bytes[dir_offset + 0x0C], bytes[dir_offset + 0x0D]]);
+    assert_eq!(
+        block_start_first, 3,
+        "with 18 entries and block_size=512, first subfile starts at block 3"
+    );
+}
+
+#[test]
+fn test_build_boundary_nodes_detected() {
+    // AC4 — tile_a → NOD3 non-vide dans le subfile NOD du gmapsupp.img assemblé.
+    // tile_a a un RoutePolyline avec endpoints à (45.000,5.710) et (45.010,5.710).
+    // bbox lat = [45.000, 45.010] → les deux endpoints sont sur les bords → 2 boundary nodes.
+    // NOD3 length = 2 × 6 bytes = 12.
+    let tiles = tiles_dir_with(&["tile_a.mp"]);
+    let config = BuildConfig {
+        family_id: 0,
+        product_id: 0,
+        description: "Test".into(),
+        block_size_exponent: 9,
+    };
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &config).unwrap();
+    assert_eq!(stats.subfile_count, 5, "tile_a avec routing → 5 subfiles (TRE/RGN/LBL/NET/NOD)");
+
+    let bytes = std::fs::read(output.path()).unwrap();
+    let block_size = 512usize;
+
+    // Trouver le Dirent du subfile NOD dans le répertoire FAT (block 1).
+    let dir_start = block_size;
+    let mut nod_block_start: Option<usize> = None;
+    for i in 0..stats.subfile_count {
+        let dirent_off = dir_start + i * 32;
+        let ext = &bytes[dirent_off + 0x08..dirent_off + 0x0B];
+        if ext == b"NOD" {
+            nod_block_start = Some(
+                u16::from_le_bytes([bytes[dirent_off + 0x0C], bytes[dirent_off + 0x0D]]) as usize,
+            );
+            break;
+        }
+    }
+
+    let nod_start = nod_block_start.expect("subfile NOD doit exister") * block_size;
+    // NOD3 length est à l'offset 0x2A dans le header NOD (LE32).
+    let nod3_len = u32::from_le_bytes([
+        bytes[nod_start + 0x2A],
+        bytes[nod_start + 0x2B],
+        bytes[nod_start + 0x2C],
+        bytes[nod_start + 0x2D],
+    ]);
+    assert!(
+        nod3_len > 0,
+        "tile_a a des boundary nodes → NOD3 doit être non-vide, nod3_len={}",
+        nod3_len
+    );
+}
+
+#[test]
+fn test_build_no_regression() {
+    // AC5 — Vérification que tous les tests existants passent (lancé par cargo test)
+    // Ce test vérifie seulement que la fixture routing_full_validation.mp
+    // compile toujours correctement après les changements de la Story 15.1
+    let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    ImgWriter::write(&mp, tmp.path()).unwrap();
+    let bytes = std::fs::read(tmp.path()).unwrap();
+    assert_eq!(&bytes[0x002..0x008], b"GARMIN");
+    let xor = bytes[..512].iter().fold(0u8, |acc, &b| acc ^ b);
+    assert_eq!(xor, 0x00, "header XOR must hold after Story 15.1 changes");
 }

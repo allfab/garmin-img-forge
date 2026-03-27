@@ -42,8 +42,17 @@ impl ImgWriter {
         writer.write_with_block_size(mp_file, output)
     }
 
-    /// Write an IMG file using this writer's configured block size.
-    pub fn write_with_block_size(&self, mp_file: &MpFile, output: &Path) -> Result<(), ImgError> {
+    /// Compile a `.mp` file into an [`ImgFilesystem`] in memory (without writing to disk).
+    ///
+    /// Returns a fully populated filesystem with TRE/RGN/LBL (and NET/NOD if routing present).
+    /// The returned filesystem can be used directly by [`GmapsuppAssembler`] to extract subfiles.
+    ///
+    /// # Errors
+    /// - [`ImgError::InvalidMapId`] if `mp_file.header.id` is not valid
+    pub fn build_filesystem(
+        mp_file: &MpFile,
+        block_size_exponent: u8,
+    ) -> Result<ImgFilesystem, ImgError> {
         let map_id = &mp_file.header.id;
 
         // Validate map ID early.
@@ -51,10 +60,8 @@ impl ImgWriter {
             return Err(ImgError::InvalidMapId { id: map_id.clone() });
         }
 
-        let block_size = 1u32 << self.block_size_exponent;
-
         // Build filesystem.
-        let mut fs = ImgFilesystem::new(self.block_size_exponent);
+        let mut fs = ImgFilesystem::new(block_size_exponent);
         fs.description = mp_file.header.name.clone();
 
         // Story 14.2: Build road network graph (before subfile generation).
@@ -85,8 +92,6 @@ impl ImgWriter {
         let lbl = LblWriter::build(mp_file);
 
         // Pre-compute subdiv_road_refs for NET level divisions.
-        // Maps each routable polyline to its road_def index and tracks its
-        // sequential position within each subdivision (matching RGN ordering).
         let subdiv_road_refs: Vec<SubdivRoadRef> = if has_routing {
             let mut polyline_road_def: Vec<Option<usize>> = vec![None; mp_file.polylines.len()];
             let mut rd_idx = 0usize;
@@ -119,7 +124,6 @@ impl ImgWriter {
         };
 
         // Pass 1: build NET → road_offsets used by RGN for cross-references.
-        // NET is built before RGN so that NET1 offsets are available for embedding in RGN.
         let net = if has_routing {
             let net_result =
                 NetWriter::build(&road_network, &lbl.label_offsets, &subdiv_road_refs, &mp_file.polylines);
@@ -153,11 +157,16 @@ impl ImgWriter {
         // Pass 4: build NOD (after TRE; depends on road_network + net offsets).
         let nod = if has_routing {
             let net_result = net.as_ref().unwrap();
-            let nod_result = NodWriter::build(&road_network, &net_result.road_offsets, &mp_file.polylines);
+            let nod_result = NodWriter::build(
+                &road_network,
+                &net_result.road_offsets,
+                &mp_file.polylines,
+            );
             tracing::info!(
                 road_defs = road_network.road_defs.len(),
                 nod2_offsets = nod_result.nod2_road_offsets.len(),
                 nod_size = nod_result.data.len(),
+                boundary_nodes = nod_result.boundary_node_count,
                 "NOD subfile encoded"
             );
             Some(nod_result)
@@ -188,8 +197,8 @@ impl ImgWriter {
             fs.add_subfile(map_id, "NOD", nod.unwrap().data)?;
         }
 
-        // Verify subfile count invariant before serialisation.
-        let entry_count = fs.entries.len();
+        // Verify subfile count invariant.
+        let entry_count = fs.entry_count();
         let expected = if has_routing { 5 } else { 3 };
         debug_assert_eq!(
             entry_count,
@@ -199,42 +208,30 @@ impl ImgWriter {
             entry_count
         );
 
-        // Capture all per-subfile stats before serialisation.
-        let (tre_offset_b, tre_size) = (
-            fs.entries[0].0.block_start as u64 * block_size as u64,
-            fs.entries[0].0.size_allocated,
-        );
-        let (rgn_offset_b, rgn_size) = (
-            fs.entries[1].0.block_start as u64 * block_size as u64,
-            fs.entries[1].0.size_allocated,
-        );
-        let (lbl_offset_b, lbl_size) = (
-            fs.entries[2].0.block_start as u64 * block_size as u64,
-            fs.entries[2].0.size_allocated,
-        );
-        let (net_offset_b, net_size) = if has_routing {
-            (
-                fs.entries[3].0.block_start as u64 * block_size as u64,
-                fs.entries[3].0.size_allocated,
-            )
-        } else {
-            (0, 0)
-        };
-        let (nod_offset_b, nod_size) = if has_routing {
-            (
-                fs.entries[4].0.block_start as u64 * block_size as u64,
-                fs.entries[4].0.size_allocated,
-            )
-        } else {
-            (0, 0)
-        };
+        Ok(fs)
+    }
+
+    /// Write an IMG file using this writer's configured block size.
+    pub fn write_with_block_size(&self, mp_file: &MpFile, output: &Path) -> Result<(), ImgError> {
+        let block_size = 1u32 << self.block_size_exponent;
+
+        let fs = Self::build_filesystem(mp_file, self.block_size_exponent)?;
+        let offsets = fs.compute_entry_offsets();
+        let has_routing = fs.entry_count() == 5;
+
+        // Capture per-subfile stats for logging.
+        let (tre_offset_b, tre_size) = offsets[0];
+        let (rgn_offset_b, rgn_size) = offsets[1];
+        let (lbl_offset_b, lbl_size) = offsets[2];
+        let (net_offset_b, net_size) = if has_routing { offsets[3] } else { (0, 0) };
+        let (nod_offset_b, nod_size) = if has_routing { offsets[4] } else { (0, 0) };
 
         // Serialise.
         let bytes = fs.to_bytes();
 
         if has_routing {
             tracing::info!(
-                map_id = %map_id,
+                map_id = %mp_file.header.id,
                 block_size = block_size,
                 total_bytes = bytes.len(),
                 tre_offset = tre_offset_b,
@@ -251,7 +248,7 @@ impl ImgWriter {
             );
         } else {
             tracing::info!(
-                map_id = %map_id,
+                map_id = %mp_file.header.id,
                 block_size = block_size,
                 total_bytes = bytes.len(),
                 tre_offset = tre_offset_b,
@@ -364,5 +361,21 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let err = ImgWriter::write(&mp, tmp.path()).unwrap_err();
         assert!(matches!(err, ImgError::InvalidMapId { .. }));
+    }
+
+    #[test]
+    fn test_build_filesystem_returns_correct_entry_count() {
+        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
+        let fs = ImgWriter::build_filesystem(&mp, 9).unwrap();
+        // minimal_for_img.mp has no routing → 3 subfiles (TRE, RGN, LBL)
+        assert_eq!(fs.entry_count(), 3);
+    }
+
+    #[test]
+    fn test_build_filesystem_routing_has_five_subfiles() {
+        let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
+        let fs = ImgWriter::build_filesystem(&mp, 9).unwrap();
+        // Routing fixture → 5 subfiles (TRE, RGN, LBL, NET, NOD)
+        assert_eq!(fs.entry_count(), 5, "routing map must have TRE/RGN/LBL/NET/NOD");
     }
 }

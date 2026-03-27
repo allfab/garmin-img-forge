@@ -16,6 +16,14 @@ pub enum ImgError {
     /// Block alignment or size calculation error.
     #[error("Block alignment error: {message}")]
     BlockAlignmentError { message: String },
+
+    /// Input directory is empty (no .mp files found) or does not exist.
+    #[error("répertoire d'entrée vide ou introuvable : {path}")]
+    EmptyInputDir { path: String },
+
+    /// All .mp tiles found in the directory failed to compile.
+    #[error("{count} tuile(s) trouvée(s) dans '{path}' mais toutes ont échoué à compiler")]
+    AllTilesFailedToCompile { path: String, count: usize },
 }
 
 #[derive(Error, Debug)]
@@ -52,6 +60,22 @@ mod tests {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
         let err = ImgError::IoError(io_err);
         assert!(err.to_string().contains("I/O error"));
+    }
+
+    #[test]
+    fn test_img_empty_input_dir_display() {
+        let err = ImgError::EmptyInputDir { path: "/no/mp/here".to_string() };
+        assert!(err.to_string().contains("/no/mp/here"));
+    }
+
+    #[test]
+    fn test_img_all_tiles_failed_display() {
+        let err = ImgError::AllTilesFailedToCompile {
+            path: "/tiles".to_string(),
+            count: 3,
+        };
+        assert!(err.to_string().contains("/tiles"));
+        assert!(err.to_string().contains("3"));
     }
 
     #[test]
