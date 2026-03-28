@@ -101,6 +101,7 @@ fn make_config(input: InputSource) -> Config {
             filename_pattern: "{col}_{row}.mp".to_string(),
             field_mapping_path: None,
             overwrite: None,
+            base_id: None,
         },
         filters: None,
         error_handling: "continue".to_string(),

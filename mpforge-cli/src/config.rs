@@ -74,15 +74,24 @@ pub struct OutputConfig {
     /// Story 8.3: None or Some(true) = overwrite, Some(false) = skip existing.
     #[serde(default)]
     pub overwrite: Option<bool>,
+    /// Base ID for auto-generating unique tile IDs.
+    /// Formula: tile_id = base_id * 10000 + seq (1-based).
+    /// When set and header.id is absent or "0", each tile gets a unique 8-digit ID.
+    /// Must be in range 1..=9999 to guarantee 8-digit IDs.
+    #[serde(default)]
+    pub base_id: Option<u32>,
 }
 
 fn default_filename_pattern() -> String {
     "{col}_{row}.mp".to_string()
 }
 
+/// Sentinel value for header.id meaning "auto-generate from base_id".
+pub const AUTO_ID: &str = "0";
+
 /// Header configuration for Polish Map files.
 /// Story 8.1: Allows configuring header options (template, name, levels, etc.) via YAML.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct HeaderConfig {
     /// Optional path to header template file (.mp) for HEADER_TEMPLATE DSCO
     #[serde(default)]
@@ -90,7 +99,8 @@ pub struct HeaderConfig {
     /// Map name (Polish Map: Name)
     #[serde(default)]
     pub name: Option<String>,
-    /// Map ID (Polish Map: ID)
+    /// Map ID (Polish Map: ID).
+    /// Set to "0" (AUTO_ID) to auto-generate unique IDs via output.base_id.
     #[serde(default)]
     pub id: Option<String>,
     /// Copyright notice (Polish Map: Copyright)
@@ -292,6 +302,17 @@ impl Config {
                     target_srs = ?input.target_srs,
                     "InputSource #{}: target_srs without source_srs has no effect (ignored)",
                     i
+                );
+            }
+        }
+
+        // base_id validation: must produce valid 8-digit Garmin IDs
+        if let Some(base_id) = self.output.base_id {
+            if base_id == 0 || base_id > 9999 {
+                anyhow::bail!(
+                    "output.base_id must be in range 1..=9999, got: {}. \
+                     Formula: base_id * 10000 + seq must fit in 8 digits.",
+                    base_id
                 );
             }
         }
@@ -645,6 +666,7 @@ output:
                 filename_pattern: "{col}_{row}.mp".to_string(),
                 field_mapping_path: None,
                 overwrite: None,
+                base_id: None,
             },
             filters: None,
             error_handling: "continue".to_string(),

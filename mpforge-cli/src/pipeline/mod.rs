@@ -10,7 +10,7 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::{Config, ErrorMode, HeaderConfig};
+use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
@@ -397,9 +397,38 @@ fn process_single_tile(
         })?;
     }
 
-    // 7. Export tile (each call creates its own MpWriter → own GDAL dataset)
+    // 7. Auto-generate unique tile ID if base_id is configured
+    let tile_header_config;
+    let effective_header = if let Some(base_id) = ctx.config.output.base_id {
+        let header_id_is_auto = ctx.config.header.as_ref()
+            .and_then(|h| h.id.as_deref())
+            .map_or(true, |id| id == AUTO_ID);
+
+        if header_id_is_auto {
+            if seq > 9999 {
+                return Err(TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!(
+                        "Tile seq {} exceeds 9999: base_id * 10000 + seq would overflow 8-digit ID",
+                        seq
+                    ),
+                });
+            }
+            let auto_tile_id = base_id as u64 * 10000 + seq as u64;
+            let mut header = ctx.config.header.clone().unwrap_or_default();
+            header.id = Some(format!("{:08}", auto_tile_id));
+            tile_header_config = Some(header);
+            tile_header_config.as_ref()
+        } else {
+            ctx.header_config
+        }
+    } else {
+        ctx.header_config
+    };
+
+    // 8. Export tile (each call creates its own MpWriter → own GDAL dataset)
     match (|| -> Result<ExportStats> {
-        let mut writer = MpWriter::new(tile_path, ctx.field_mapping_path, ctx.header_config)?;
+        let mut writer = MpWriter::new(tile_path, ctx.field_mapping_path, effective_header)?;
         let tile_stats = writer.write_features(&clipped_features)?;
         writer.finalize()?;
         Ok(tile_stats)
@@ -647,6 +676,32 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             "Le pattern {{seq}} produit des noms non-déterministes en mode parallèle. \
              Utilisez {{col}}_{{row}} pour des résultats reproductibles."
         );
+    }
+
+    // Warn about non-deterministic tile IDs in parallel mode with base_id
+    if args.jobs > 1 && config.output.base_id.is_some() {
+        warn!(
+            jobs = args.jobs,
+            "base_id auto-generates tile IDs using seq counter, which is non-deterministic \
+             in parallel mode. Tile IDs will vary between runs."
+        );
+    }
+
+    // Warn if all tiles share the same fixed ID (no base_id configured)
+    if config.output.base_id.is_none() {
+        if let Some(ref header) = config.header {
+            if let Some(ref id) = header.id {
+                if id != AUTO_ID && tiles.len() > 1 {
+                    warn!(
+                        id = %id,
+                        tile_count = tiles.len(),
+                        "All tiles share the same fixed ID '{}'. \
+                         Set output.base_id for unique per-tile IDs.",
+                        id
+                    );
+                }
+            }
+        }
     }
 
     // Story 11.1 — Task 3 & 4: Conditional sequential/parallel execution

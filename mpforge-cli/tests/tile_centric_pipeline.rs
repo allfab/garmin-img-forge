@@ -47,6 +47,7 @@ fn make_config(filenames: &[&str]) -> Config {
             filename_pattern: "{x}_{y}.mp".to_string(),
             field_mapping_path: None,
             overwrite: None,
+            base_id: None,
         },
         filters: None,
         error_handling: "continue".to_string(),

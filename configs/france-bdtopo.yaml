@@ -197,6 +197,7 @@ output:
   directory: "${OUTPUT_DIR}/tiles/"
   filename_pattern: "tile_{col:03}_{row:03}.mp"
   overwrite: true
+  base_id: 6324            # Auto-génère des IDs uniques par tuile : 63240001, 63240002, etc.
 
 # Règles de transformation BDTOPO → types Garmin
 # ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)
