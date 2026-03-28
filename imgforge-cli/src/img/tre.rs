@@ -341,73 +341,67 @@ pub struct Subdivision {
 }
 
 impl Subdivision {
-    /// Serialise into 14 bytes (most detailed level) or 16 bytes (overview levels).
+    /// Write subdivision fields (WITHOUT the leading rgn_offset — that's separate).
     ///
-    /// In Garmin format, the most detailed level omits the `next_level_first_subdiv`
-    /// and reserved fields (last 4 bytes). QMapShack requires this distinction.
-    pub fn to_bytes_sized(&self, is_most_detailed_level: bool) -> Vec<u8> {
+    /// mkgmap TREFileReader format:
+    /// ```text
+    /// [flags 1B][lon 3B][lat 3B][width 2B][height 2B] = 11 bytes
+    /// [nextLevel 2B for non-leaf]                      = +2 bytes
+    /// [endRgnOffset 3B]                                = +3 bytes
+    /// ```
+    /// Total: leaf = 14 bytes, non-leaf = 16 bytes.
+    pub fn to_bytes_sized(&self, is_most_detailed_level: bool, end_rgn_offset: u32) -> Vec<u8> {
         let size = if is_most_detailed_level { 14 } else { 16 };
-        let mut buf = vec![0u8; size];
-        self.write_common(&mut buf); // writes 14 bytes (0-13)
-        if !is_most_detailed_level {
-            // 0x0E–0x0F: next_level_first_subdiv (LE16)
-            let nls_bytes = self.next_level_first_subdiv.to_le_bytes();
-            buf[14] = nls_bytes[0];
-            buf[15] = nls_bytes[1];
+        let mut buf = Vec::with_capacity(size);
+
+        // flags (1 byte)
+        buf.push(
+            ((self.has_points as u8) << 4)
+            | ((self.has_indexed_lines as u8) << 5)
+            | ((self.has_polylines as u8) << 6)
+            | ((self.has_polygons as u8) << 7)
+        );
+
+        // lon_center (LE24s, 3 bytes)
+        buf.push((self.lon_center & 0xFF) as u8);
+        buf.push(((self.lon_center >> 8) & 0xFF) as u8);
+        buf.push(((self.lon_center >> 16) & 0xFF) as u8);
+
+        // lat_center (LE24s, 3 bytes)
+        buf.push((self.lat_center & 0xFF) as u8);
+        buf.push(((self.lat_center >> 8) & 0xFF) as u8);
+        buf.push(((self.lat_center >> 16) & 0xFF) as u8);
+
+        // half_width (LE16), bit 15 = last_in_level
+        let mut hw = (self.half_width as u16).min(0x7FFF).max(1);
+        if self.last_in_level {
+            hw |= 0x8000;
         }
+        buf.extend_from_slice(&hw.to_le_bytes());
+
+        // half_height (LE16)
+        let hh = (self.half_height as u16).max(1);
+        buf.extend_from_slice(&hh.to_le_bytes());
+
+        // nextLevel (LE16) for non-leaf levels only
+        if !is_most_detailed_level {
+            buf.extend_from_slice(&self.next_level_first_subdiv.to_le_bytes());
+        }
+
+        // endRgnOffset (LE24, 3 bytes)
+        buf.push((end_rgn_offset & 0xFF) as u8);
+        buf.push(((end_rgn_offset >> 8) & 0xFF) as u8);
+        buf.push(((end_rgn_offset >> 16) & 0xFF) as u8);
+
         buf
     }
 
     /// Serialise into exactly 16 bytes (legacy — used by tests).
     pub fn to_bytes(&self) -> [u8; 16] {
+        let v = self.to_bytes_sized(false, 0);
         let mut buf = [0u8; 16];
-        self.write_common(&mut buf); // writes 14 bytes (0-13)
-        let nls_bytes = self.next_level_first_subdiv.to_le_bytes();
-        buf[14] = nls_bytes[0];
-        buf[15] = nls_bytes[1];
+        buf[..v.len().min(16)].copy_from_slice(&v[..v.len().min(16)]);
         buf
-    }
-
-    /// Write the 14 common bytes of a subdivision record (mkgmap Subdivision.write()).
-    fn write_common(&self, buf: &mut [u8]) {
-        // 0x00–0x02: rgn_offset (LE24, 3 bytes)
-        buf[0] = (self.rgn_offset & 0xFF) as u8;
-        buf[1] = ((self.rgn_offset >> 8) & 0xFF) as u8;
-        buf[2] = ((self.rgn_offset >> 16) & 0xFF) as u8;
-
-        // 0x03: data_flags (mkgmap Subdivision.getType())
-        buf[3] = ((self.has_points as u8) << 4)          // bit 4 = 0x10
-            | ((self.has_indexed_lines as u8) << 5)       // bit 5 = 0x20
-            | ((self.has_polylines as u8) << 6)            // bit 6 = 0x40
-            | ((self.has_polygons as u8) << 7);            // bit 7 = 0x80
-
-        // 0x04–0x06: lon_center (LE24s, 3 bytes — full 24-bit precision!)
-        let lon = self.lon_center;
-        buf[4] = (lon & 0xFF) as u8;
-        buf[5] = ((lon >> 8) & 0xFF) as u8;
-        buf[6] = ((lon >> 16) & 0xFF) as u8;
-
-        // 0x07–0x09: lat_center (LE24s, 3 bytes)
-        let lat = self.lat_center;
-        buf[7] = (lat & 0xFF) as u8;
-        buf[8] = ((lat >> 8) & 0xFF) as u8;
-        buf[9] = ((lat >> 16) & 0xFF) as u8;
-
-        // 0x0A–0x0B: half_width (LE16), bit 15 = last_in_level
-        // Round UP and ensure at least 1 so QMapShack doesn't skip zero-sized subdivisions.
-        let mut hw = (((self.half_width + 255) >> 8) as u16).max(1);
-        if self.last_in_level {
-            hw |= 0x8000;
-        }
-        let hw_bytes = hw.to_le_bytes();
-        buf[10] = hw_bytes[0];
-        buf[11] = hw_bytes[1];
-
-        // 0x0C–0x0D: half_height (LE16) — round up, min 1
-        let hh = (((self.half_height + 255) >> 8) as u16).max(1);
-        let hh_bytes = hh.to_le_bytes();
-        buf[12] = hh_bytes[0];
-        buf[13] = hh_bytes[1];
     }
 
     /// Build a subdivision covering the given bounding box.
@@ -732,7 +726,10 @@ impl TreWriter {
         // are at level 0 (14 bytes) vs others (16 bytes). Use the levels info.
         let level0_count = levels.first().map_or(0, |l| l.subdivision_count as usize);
         let other_count = subdivisions.len().saturating_sub(level0_count);
-        let subdivisions_size = (level0_count as u32 * 14) + (other_count as u32 * 16);
+        // subdivisions_size includes: initial_rgn_offset(3B) + sum of subdiv records
+        // Leaf(14B) = flags(1)+lon(3)+lat(3)+w(2)+h(2)+endRgnOff(3)
+        // Non-leaf(16B) = same + nextLevel(2)
+        let subdivisions_size = 3 + (level0_count as u32 * 14) + (other_count as u32 * 16);
 
         let copyright_offset = subdivisions_offset + subdivisions_size;
         let copyright_size = 0u32;
@@ -778,14 +775,51 @@ impl TreWriter {
         };
 
         // Step 8: serialise header + levels + subdivisions + extTypeOffsets
+        //
+        // Subdivision section layout (mkgmap TREFileReader):
+        //   [initial_rgn_offset 3B]
+        //   [subdiv_0_fields ... endRgnOffset 3B]
+        //   [subdiv_1_fields ... endRgnOffset 3B]
+        //   ...
+        // Each subdivision's endRgnOffset = next subdivision's startRgnPointer.
+        // The last endRgnOffset = total RGN data size.
         let mut out = header.to_bytes();
         for level in &levels {
             out.extend_from_slice(&level.to_bytes());
         }
+
+        // Write initial rgn_offset (3 bytes — first subdivision's start)
+        let first_rgn_off = if subdivisions.is_empty() { 0u32 } else { subdivisions[0].rgn_offset };
+        out.push((first_rgn_off & 0xFF) as u8);
+        out.push(((first_rgn_off >> 8) & 0xFF) as u8);
+        out.push(((first_rgn_off >> 16) & 0xFF) as u8);
+
+        // Compute total RGN standard data size for the last endRgnOffset.
+        // Read data_size from RGN header bytes 0x19-0x1C.
+        let total_rgn_data_size = rgn_result.map_or(
+            // Fallback: use last subdivision_offset from rgn_offsets
+            rgn_offsets.last().copied().unwrap_or(0),
+            |rr| {
+                if rr.data.len() > 0x1C {
+                    u32::from_le_bytes([rr.data[0x19], rr.data[0x1A], rr.data[0x1B], rr.data[0x1C]])
+                } else {
+                    0
+                }
+            },
+        );
+
+        // Write subdivision fields with endRgnOffset
+        let n_subdivs = subdivisions.len();
         let mut level0_written = 0usize;
-        for subdiv in &subdivisions {
+        for (idx, subdiv) in subdivisions.iter().enumerate() {
             let is_most_detailed = level0_written < level0_count;
-            out.extend_from_slice(&subdiv.to_bytes_sized(is_most_detailed));
+            // endRgnOffset = next subdivision's rgn_offset, or total_data_size for last
+            let end_rgn_off = if idx + 1 < n_subdivs {
+                subdivisions[idx + 1].rgn_offset
+            } else {
+                total_rgn_data_size
+            };
+            out.extend_from_slice(&subdiv.to_bytes_sized(is_most_detailed, end_rgn_off));
             if is_most_detailed {
                 level0_written += 1;
             }
@@ -1038,12 +1072,12 @@ mod tests {
 
     #[test]
     fn test_subdivision_data_flags() {
-        // has_points = true, has_polylines = false, has_polygons = true
-        // mkgmap: points=0x10, polygons=0x80 → flags = 0x90
+        // New format: [flags(1B)][lon(3B)][lat(3B)][w(2B)][h(2B)][next(2B)][endRgnOff(3B)]
+        // flags at byte 0 (not byte 3!)
         let s = Subdivision::compute_subdivision((0, 1, 0, 1), true, false, true, false, 0);
         let bytes = s.to_bytes();
         assert_eq!(
-            bytes[0x03], 0x90,
+            bytes[0], 0x90,
             "data_flags: points=0x10, polygons=0x80 → 0x90"
         );
     }
@@ -1052,34 +1086,30 @@ mod tests {
     fn test_subdivision_last_flag() {
         let s = Subdivision::compute_subdivision((0, 100, 0, 100), false, false, false, true, 0);
         let bytes = s.to_bytes();
-        // half_width is now at bytes 10-11 (after 3-byte lon + 3-byte lat)
-        let hw = u16::from_le_bytes([bytes[10], bytes[11]]);
-        assert!(
-            hw & 0x8000 != 0,
-            "last_in_level must set bit 15 of half_width field"
-        );
-    }
-
-    #[test]
-    fn test_subdivision_rgn_zero() {
-        let s = Subdivision::compute_subdivision((0, 100, 0, 100), false, false, false, false, 0);
-        let bytes = s.to_bytes();
-        assert_eq!(&bytes[0..3], &[0, 0, 0], "stub rgn_offset must be zero");
+        // half_width at bytes 7-8 (after flags(1)+lon(3)+lat(3))
+        let hw = u16::from_le_bytes([bytes[7], bytes[8]]);
+        assert!(hw & 0x8000 != 0, "last_in_level must set bit 15");
     }
 
     #[test]
     fn test_subdivision_center_encoded() {
-        // lat range 44°–46° → lat_center ≈ 45° (2_097_152 garmin units)
-        // Now stored as full LE24 at bytes 7-9
+        // New format: lat at bytes 4-6 (after flags(1)+lon(3))
         let lat_lo = to_garmin_units(44.0);
         let lat_hi = to_garmin_units(46.0);
         let s = Subdivision::compute_subdivision((lat_lo, lat_hi, 0, 256), false, false, false, false, 0);
         let bytes = s.to_bytes();
         let lat_center_g = (lat_hi + lat_lo) / 2;
-        let lat_stored = (bytes[7] as i32) | ((bytes[8] as i32) << 8) | ((bytes[9] as i32) << 16);
-        // Sign-extend from 24 bits
+        let lat_stored = (bytes[4] as i32) | ((bytes[5] as i32) << 8) | ((bytes[6] as i32) << 16);
         let lat_stored = if lat_stored & 0x800000 != 0 { lat_stored | !0xFFFFFF } else { lat_stored };
         assert_eq!(lat_stored, lat_center_g, "lat_center must be stored as full LE24");
+    }
+
+    #[test]
+    fn test_subdivision_all_standard_flags() {
+        let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, true, true, false, 0);
+        s.has_indexed_lines = true;
+        let bytes = s.to_bytes();
+        assert_eq!(bytes[0], 0xF0, "all 4 standard types = 0xF0");
     }
 
     // ── Task 5: TreWriter ─────────────────────────────────────────────────────
@@ -1087,10 +1117,10 @@ mod tests {
     #[test]
     fn test_tre_build_minimal() {
         // minimal_for_img.mp: Level0=24, Level1=18 → 2 explicit levels
-        // Size = 188 + 2×4 + (14 + 16) = 226 bytes
+        // Size = 188 + 2×4 + 3(initial) + (14 + 16) = 229 bytes
         let mp = fixture_mp();
         let data = TreWriter::build(&mp);
-        assert_eq!(data.len(), 226, "2-level TRE must be 226 bytes");
+        assert_eq!(data.len(), 229, "2-level TRE must be 229 bytes");
     }
 
     #[test]
@@ -1133,7 +1163,7 @@ mod tests {
         let mp = empty_mp();
         let data = TreWriter::build(&mp);
         // Must not panic; valid TRE: 188 + 3×4 + (14 + 2×16) = 246 bytes
-        assert_eq!(data.len(), 246);
+        assert_eq!(data.len(), 249);
         assert_eq!(&data[0x02..0x0C], b"GARMIN TRE");
     }
 
@@ -1151,7 +1181,7 @@ mod tests {
         };
         let data = TreWriter::build(&mp);
         // 188 + 3×4 + (14 + 2×16) = 246 bytes
-        assert_eq!(data.len(), 246, "default 3-level TRE must be 246 bytes");
+        assert_eq!(data.len(), 249, "default 3-level TRE must be 249 bytes");
     }
 
     // ── Task 3 (M2): clamping bits_per_coord > 24 ────────────────────────────
@@ -1229,17 +1259,5 @@ mod tests {
         assert!((max_lon - 7.0).abs() < 1e-9, "max_lon from polyline");
     }
 
-    // ── Extended data_flags tests ────────────────────────────────────────────
-
-    #[test]
-    fn test_subdivision_all_standard_flags() {
-        // mkgmap: points=0x10, indexed=0x20, polylines=0x40, polygons=0x80
-        let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, true, true, false, 0);
-        s.has_indexed_lines = true;
-        let bytes = s.to_bytes();
-        assert_eq!(
-            bytes[0x03], 0xF0,
-            "data_flags: all 4 standard types = 0x10|0x20|0x40|0x80 = 0xF0"
-        );
-    }
+    // ── Extended data_flags tests (removed — extended types disabled) ────
 }
