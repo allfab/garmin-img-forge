@@ -18,8 +18,8 @@ use crate::routing::RoadNetwork;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// NOD header size in bytes.
-const NOD_HEADER_SIZE: usize = 0x30; // 48
+/// Standard Garmin NOD header size (127 bytes), compatible with QMapShack/BaseCamp.
+const NOD_HEADER_SIZE: usize = 127;
 
 /// Maximum number of RouteNodes per RouteCenter (Table A).
 const MAX_NODES_PER_CENTER: usize = 256;
@@ -92,6 +92,12 @@ fn write_nod_header(buf: &mut Vec<u8>, nod1_len: u32, nod2_len: u32, nod3_len: u
     buf.push(0x01);
     // 0x2F: flags = 0x00
     buf.push(0x00);
+
+    // Pad to NOD_HEADER_SIZE (127 bytes) — extended sections zero-filled
+    let current = buf.len() - start_len;
+    if current < NOD_HEADER_SIZE {
+        buf.resize(start_len + NOD_HEADER_SIZE, 0u8);
+    }
 
     debug_assert_eq!(
         buf.len() - start_len,
@@ -524,7 +530,7 @@ mod tests {
     fn test_nod_header_size() {
         let mut buf = Vec::new();
         write_nod_header(&mut buf, 0, 0, 0);
-        assert_eq!(buf.len(), 48, "NOD header must be exactly 48 bytes");
+        assert_eq!(buf.len(), 127, "NOD header must be exactly NOD_HEADER_SIZE bytes");
     }
 
     #[test]
@@ -551,9 +557,9 @@ mod tests {
         let mut buf = Vec::new();
         write_nod_header(&mut buf, nod1_len, nod2_len, nod3_len);
 
-        // NOD1 offset at 0x15 = 48
+        // NOD1 offset at 0x15 = header size
         let nod1_off = u32::from_le_bytes([buf[0x15], buf[0x16], buf[0x17], buf[0x18]]);
-        assert_eq!(nod1_off, 48, "NOD1 offset must be 48 (= header size)");
+        assert_eq!(nod1_off, NOD_HEADER_SIZE as u32, "NOD1 offset = header size");
 
         // NOD1 length at 0x19
         let nod1_len_r = u32::from_le_bytes([buf[0x19], buf[0x1A], buf[0x1B], buf[0x1C]]);
@@ -562,17 +568,17 @@ mod tests {
         // node_size at 0x1D = 0x09
         assert_eq!(buf[0x1D], 0x09, "node_size must be 0x09");
 
-        // NOD2 offset at 0x1E = 48 + nod1_len = 248
+        // NOD2 offset at 0x1E = header + nod1_len
         let nod2_off = u32::from_le_bytes([buf[0x1E], buf[0x1F], buf[0x20], buf[0x21]]);
-        assert_eq!(nod2_off, 48 + 200, "NOD2 offset = header + NOD1 len");
+        assert_eq!(nod2_off, NOD_HEADER_SIZE as u32 + 200, "NOD2 offset = header + NOD1 len");
 
         // NOD2 length at 0x22
         let nod2_len_r = u32::from_le_bytes([buf[0x22], buf[0x23], buf[0x24], buf[0x25]]);
         assert_eq!(nod2_len_r, 80);
 
-        // NOD3 offset at 0x26 = NOD2 offset + NOD2 len = 328
+        // NOD3 offset at 0x26
         let nod3_off = u32::from_le_bytes([buf[0x26], buf[0x27], buf[0x28], buf[0x29]]);
-        assert_eq!(nod3_off, 248 + 80, "NOD3 offset = NOD2 offset + NOD2 len");
+        assert_eq!(nod3_off, NOD_HEADER_SIZE as u32 + 200 + 80, "NOD3 offset = NOD2 offset + NOD2 len");
 
         // NOD3 length at 0x2A
         let nod3_len_r = u32::from_le_bytes([buf[0x2A], buf[0x2B], buf[0x2C], buf[0x2D]]);
@@ -809,7 +815,7 @@ mod tests {
         let network = RoadNetwork { nodes: vec![], arcs: vec![], road_defs: vec![] };
         let result = NodWriter::build(&network, &[], &[]);
 
-        assert_eq!(result.data.len(), 48, "empty network → header only (48 bytes)");
+        assert_eq!(result.data.len(), 127, "empty network → header only");
         assert_eq!(&result.data[0x02..0x0C], b"GARMIN NOD", "signature must be 'GARMIN NOD'");
         assert_eq!(result.data[0x2E], 0x01, "drive_on_right must be 0x01");
         assert_eq!(result.nod2_road_offsets.len(), 0);
@@ -844,7 +850,7 @@ mod tests {
         let result = NodWriter::build(&network, &[0u32], &polylines);
 
         // Header = 48, NOD1 = 33, NOD2 = 1, NOD3 = 12 (2 boundary nodes × 6 bytes)
-        assert_eq!(result.data.len(), 48 + 33 + 1 + 12, "total size = 94 bytes");
+        assert_eq!(result.data.len(), 127 + 33 + 1 + 12, "total size = 173 bytes");
         assert_eq!(result.nod2_road_offsets.len(), 1);
         assert_eq!(result.nod2_road_offsets[0], 0, "road 0 NOD2 offset = 0");
         assert_eq!(result.boundary_node_count, 2, "both nodes are boundary nodes");
@@ -853,19 +859,19 @@ mod tests {
         let nod1_off = u32::from_le_bytes([
             result.data[0x15], result.data[0x16], result.data[0x17], result.data[0x18],
         ]);
-        assert_eq!(nod1_off, 48, "NOD1 offset = 48");
+        assert_eq!(nod1_off, NOD_HEADER_SIZE as u32, "NOD1 offset = header size");
 
         // Verify NOD2 offset in header
         let nod2_off = u32::from_le_bytes([
             result.data[0x1E], result.data[0x1F], result.data[0x20], result.data[0x21],
         ]);
-        assert_eq!(nod2_off, 48 + 33, "NOD2 offset = 48 + nod1_len");
+        assert_eq!(nod2_off, NOD_HEADER_SIZE as u32 + 33, "NOD2 offset = header + nod1_len");
 
         // Verify NOD3 offset in header = NOD2 offset + NOD2 len
         let nod3_off = u32::from_le_bytes([
             result.data[0x26], result.data[0x27], result.data[0x28], result.data[0x29],
         ]);
-        assert_eq!(nod3_off, 48 + 33 + 1, "NOD3 offset = header + NOD1 + NOD2");
+        assert_eq!(nod3_off, NOD_HEADER_SIZE as u32 + 33 + 1, "NOD3 offset = header + NOD1 + NOD2");
 
         // Verify NOD3 length in header
         let nod3_len = u32::from_le_bytes([

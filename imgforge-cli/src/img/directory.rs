@@ -12,8 +12,9 @@
 //! 0x01    8    Filename, space-padded (ASCII)
 //! 0x09    3    Extension (e.g. "TRE", "RGN", "LBL")
 //! 0x0C    4    File size (LE32) — only in first entry (part 0)
-//! 0x10    1    Part number (0, 1, 2, …)
-//! 0x11    15   Reserved (zeros)
+//! 0x10    1    Subtype: 0x00 = regular file, 0x03 = volume label
+//! 0x11    1    Part number (0 = first entry, 1+ = continuation)
+//! 0x12    14   Reserved (zeros)
 //! 0x20    480  Block allocation table (240 × LE16, 0xFFFF = unused)
 //! ```
 

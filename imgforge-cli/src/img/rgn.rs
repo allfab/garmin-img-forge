@@ -11,10 +11,9 @@ use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
 use crate::img::tre::{to_garmin_units, MapLevel, TreWriter};
 use crate::parser::mp_types::{MpFile, MpPoint, MpPolygon, MpPolyline};
 
-/// Size of the RGN type-specific header (old 29 minus LE16 header_length and LE16 version).
-const RGN_TYPE_SPECIFIC_SIZE: usize = 29 - 4; // 25 bytes
-/// Total RGN header size with common header.
-const RGN_HEADER_SIZE: usize = COMMON_HEADER_SIZE + RGN_TYPE_SPECIFIC_SIZE; // 46 bytes
+/// Standard Garmin RGN header size (125 bytes), compatible with QMapShack/BaseCamp.
+/// Includes pointers for data, point/polyline/polygon overviews, and extended types.
+const RGN_HEADER_SIZE: usize = 125;
 
 // ── RgnTypeCode ────────────────────────────────────────────────────────────────
 
@@ -133,17 +132,16 @@ impl RgnHeader {
         buf.extend_from_slice(&(RGN_HEADER_SIZE as u32).to_le_bytes());
         // 0x19: data_size (LE32)
         buf.extend_from_slice(&self.data_size.to_le_bytes());
-        // 0x1D: point_overview_offset = RGN_HEADER_SIZE + data_size (LE32)
-        let overview_offset = RGN_HEADER_SIZE as u32 + self.data_size;
-        buf.extend_from_slice(&overview_offset.to_le_bytes());
-        // 0x21: point_overview_size = 0 (LE32)
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x25: polyline_overview_offset = same (LE32)
-        buf.extend_from_slice(&overview_offset.to_le_bytes());
-        // 0x29: polyline_overview_size = 0 (LE32)
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x2D: reserved = 0 (u8)
-        buf.push(0u8);
+        // 0x1D–0x7C: section pointers (point/polyline/polygon overviews, extended types)
+        // All empty sections point past the data with size 0.
+        let end_offset = RGN_HEADER_SIZE as u32 + self.data_size;
+        // point_overview, polyline_overview, polygon_overview (3 × offset+size = 24 bytes)
+        for _ in 0..3 {
+            buf.extend_from_slice(&end_offset.to_le_bytes()); // offset
+            buf.extend_from_slice(&0u32.to_le_bytes());       // size = 0
+        }
+        // Zero-pad to reach RGN_HEADER_SIZE (extended type sections, etc.)
+        buf.resize(RGN_HEADER_SIZE, 0u8);
         buf
     }
 }
@@ -669,9 +667,19 @@ impl RgnWriter {
             subdiv_has_extended_polylines.push(!ext_polylines.is_empty());
             subdiv_has_extended_polygons.push(!ext_polygons.is_empty());
 
-            // ── Standard sections ─────────────────────────────────────────
+            // ── Standard sections with subdivision end-offset pointers ────
+            //
+            // Garmin RGN format: each subdivision's data starts with (N-1) LE16
+            // end-offset pointers where N = number of standard feature types present.
+            // These tell the reader where each section ends within the subdivision.
+            //
+            // Layout: [end_offsets...] [points] [polylines] [polygons]
 
-            // Write standard POI records.
+            // Build each section into temporary buffers.
+            let mut buf_points: Vec<u8> = Vec::new();
+            let mut buf_polylines: Vec<u8> = Vec::new();
+            let mut buf_polygons: Vec<u8> = Vec::new();
+
             let poi_count = std_points.len();
             for (j, poi) in std_points.iter().enumerate() {
                 let last = j + 1 == poi_count;
@@ -682,10 +690,9 @@ impl RgnWriter {
                     .unwrap_or(0);
                 let record =
                     encode_point_record(poi, center_lat_g, center_lon_g, bits, last, lbl_offset);
-                feature_data.extend_from_slice(&record);
+                buf_points.extend_from_slice(&record);
             }
 
-            // Write standard polyline records with optional NET1 cross-references.
             let line_count = std_polylines.len();
             let mut polyline_index_in_subdiv: u8 = 0;
             for (j, (orig_idx, line)) in std_polylines.iter().enumerate() {
@@ -697,14 +704,14 @@ impl RgnWriter {
                     .unwrap_or(0);
                 let record =
                     encode_polyline_record(line, center_lat_g, center_lon_g, bits, last, lbl_offset);
-                feature_data.extend_from_slice(&record);
+                buf_polylines.extend_from_slice(&record);
 
                 // Append NET1 offset (3 bytes) for routable polylines.
                 if let Some(&(net1_offset, road_def_idx)) = polyline_net_offset.get(orig_idx) {
                     let net_ref: u32 = net1_offset & 0x003F_FFFF; // bits 0-21
-                    feature_data.push((net_ref & 0xFF) as u8);
-                    feature_data.push(((net_ref >> 8) & 0xFF) as u8);
-                    feature_data.push(((net_ref >> 16) & 0xFF) as u8);
+                    buf_polylines.push((net_ref & 0xFF) as u8);
+                    buf_polylines.push(((net_ref >> 8) & 0xFF) as u8);
+                    buf_polylines.push(((net_ref >> 16) & 0xFF) as u8);
 
                     subdiv_road_refs.push(crate::img::net::SubdivRoadRef {
                         road_def_idx,
@@ -715,7 +722,6 @@ impl RgnWriter {
                 polyline_index_in_subdiv = polyline_index_in_subdiv.saturating_add(1);
             }
 
-            // Write standard polygon records.
             let poly_count = std_polygons.len();
             for (j, poly) in std_polygons.iter().enumerate() {
                 let last = j + 1 == poly_count;
@@ -726,8 +732,42 @@ impl RgnWriter {
                     .unwrap_or(0);
                 let record =
                     encode_polygon_record(poly, center_lat_g, center_lon_g, bits, last, lbl_offset);
-                feature_data.extend_from_slice(&record);
+                buf_polygons.extend_from_slice(&record);
             }
+
+            // Count present standard types and compute end-offset pointers.
+            let has_pts = !buf_points.is_empty();
+            let has_lines = !buf_polylines.is_empty();
+            let has_polys = !buf_polygons.is_empty();
+            let type_count = has_pts as u32 + has_lines as u32 + has_polys as u32;
+            let n_end_offsets = if type_count > 1 { type_count - 1 } else { 0 };
+            let header_bytes = n_end_offsets as usize * 2;
+
+            // Compute cumulative offsets (relative to subdivision data start).
+            let pts_end = header_bytes + buf_points.len();
+            let lines_end = pts_end + buf_polylines.len();
+
+            // Write end-offset pointers, then section data.
+            if type_count > 1 {
+                let mut offsets_written = 0u32;
+                // Write end-of-points if points are present and there's a next section
+                if has_pts && (has_lines || has_polys) {
+                    feature_data.extend_from_slice(&(pts_end as u16).to_le_bytes());
+                    offsets_written += 1;
+                }
+                // Write end-of-polylines if polylines are present and polygons follow
+                if has_lines && has_polys && offsets_written < n_end_offsets {
+                    feature_data.extend_from_slice(&(lines_end as u16).to_le_bytes());
+                }
+                // Edge case: points absent, lines present, polys present
+                if !has_pts && has_lines && has_polys {
+                    let lines_end_no_pts = header_bytes + buf_polylines.len();
+                    feature_data.extend_from_slice(&(lines_end_no_pts as u16).to_le_bytes());
+                }
+            }
+            feature_data.extend_from_slice(&buf_points);
+            feature_data.extend_from_slice(&buf_polylines);
+            feature_data.extend_from_slice(&buf_polygons);
 
             // ── Extended sections ─────────────────────────────────────────
 

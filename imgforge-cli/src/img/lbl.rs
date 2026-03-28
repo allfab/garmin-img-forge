@@ -15,10 +15,11 @@ use std::collections::HashMap;
 use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
 use crate::parser::mp_types::MpFile;
 
-/// Size of the LBL type-specific header (old 28 minus LE16 header_length and LE16 version).
-const LBL_TYPE_SPECIFIC_SIZE: usize = 28 - 4; // 24 bytes
-/// Total LBL header size with common header.
-const LBL_HEADER_SIZE: usize = COMMON_HEADER_SIZE + LBL_TYPE_SPECIFIC_SIZE; // 45 bytes
+/// Standard Garmin LBL header size (196 bytes), compatible with QMapShack/BaseCamp.
+/// Layout: 21-byte common header + 175-byte type-specific (section pointers for
+/// labels, country, region, city, POI index, POI type, ZIP, highway, exit, etc.).
+/// Empty sections use offset = header_size, size = 0.
+const LBL_HEADER_SIZE: usize = 196;
 
 // ── CP1252 encoding ─────────────────────────────────────────────────────────────
 
@@ -126,20 +127,23 @@ pub fn encode_label_cp1252(label: &str) -> Vec<u8> {
 
 // ── LBL Header ──────────────────────────────────────────────────────────────────
 
-/// LBL subfile header — 47 bytes (21-byte common header + 26-byte type-specific).
+/// LBL subfile header — 196 bytes (standard Garmin format).
 ///
-/// Binary layout:
+/// Binary layout (type-specific section starts at 0x15):
 /// ```text
-/// 0x00  21B   Common header "GARMIN LBL"
-/// 0x15  LE16  version = 1
-/// 0x17  LE32  data_offset = 47 (0x2F)
-/// 0x1B  LE32  data_size (total bytes in label data section)
-/// 0x1F  u8    label_encoding = 0x06 (8-bit CP1252)
-/// 0x20  u8    reserved = 0x00
-/// 0x21  LE16  reserved = 0x0000
-/// 0x23  LE32  poi_props_offset = 0 (stub — Epic 14+)
-/// 0x27  LE32  poi_props_size   = 0
-/// 0x2B  LE32  padding          = 0
+/// 0x15  LE32  label_offset (= 196)
+/// 0x19  LE32  label_size
+/// 0x1D  u8    addr_offset_multiplier = 0
+/// 0x1E  u8    label_coding = 9 (8-bit CP1252)
+/// 0x1F  u8    driving_side = 0 (right-hand traffic)
+/// 0x20  LE32  country_def_offset      0x24  LE32  country_def_size
+/// 0x28  LE16  country_def_record_size
+/// 0x2A  LE32  region_def_offset       0x2E  LE32  region_def_size
+/// 0x32  LE16  region_def_record_size
+/// 0x34  LE32  city_def_offset         0x38  LE32  city_def_size
+/// 0x3C  LE16  city_def_record_size
+/// 0x3E  LE32  poi_index_offset        0x42  LE32  poi_index_size
+/// ...   (remaining sections zero-padded to 196 bytes)
 /// ```
 struct LblHeader {
     /// Total byte count of the label data section (including the 0x00 initial byte).
@@ -151,22 +155,28 @@ impl LblHeader {
         let mut buf = Vec::with_capacity(LBL_HEADER_SIZE);
         // 0x00: Common header (21 bytes)
         buf.extend_from_slice(&build_common_header("LBL", LBL_HEADER_SIZE as u16));
-        // 0x15: data_offset = LBL_HEADER_SIZE (LE32)
+        // 0x15: label_offset = LBL_HEADER_SIZE (LE32)
         buf.extend_from_slice(&(LBL_HEADER_SIZE as u32).to_le_bytes());
-        // 0x19: data_size (LE32)
+        // 0x19: label_size (LE32)
         buf.extend_from_slice(&self.data_size.to_le_bytes());
-        // 0x1D: label_encoding = 6 (8-bit CP1252) (u8)
-        buf.push(0x06u8);
-        // 0x1E: reserved (u8)
-        buf.push(0x00u8);
-        // 0x1F: reserved (LE16)
-        buf.extend_from_slice(&0x0000u16.to_le_bytes());
-        // 0x21: poi_props_offset = 0 (LE32)
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x25: poi_props_size = 0 (LE32)
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x29: padding = 0 (LE32)
-        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x1D: addr_offset_multiplier = 0 (u8)
+        buf.push(0x00);
+        // 0x1E: label_coding = 9 (8-bit CP1252) (u8)
+        buf.push(0x09);
+        // 0x1F–0xC3: section pointers (country, region, city, POI index, POI props,
+        //            POI type, ZIP, highway, exit, highway_data).
+        // Each section: offset(LE32) + size(LE32) + record_size(LE16) = 10 bytes.
+        // Empty sections point to end of label data with size=0.
+        // NOTE: No "driving_side" byte — format goes directly from label_coding to
+        // country_def_offset at 0x1F per standard Garmin LBL layout.
+        let empty_off = LBL_HEADER_SIZE as u32 + self.data_size;
+        for _ in 0..10 {
+            buf.extend_from_slice(&empty_off.to_le_bytes()); // offset
+            buf.extend_from_slice(&0u32.to_le_bytes());      // size = 0
+            buf.extend_from_slice(&0u16.to_le_bytes());      // record_size = 0
+        }
+        // Zero-pad to reach LBL_HEADER_SIZE
+        buf.resize(LBL_HEADER_SIZE, 0u8);
         buf
     }
 }
@@ -258,20 +268,19 @@ mod tests {
         // Common header: LE16(45) at 0x00, "GARMIN LBL" at 0x02
         assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), LBL_HEADER_SIZE as u16);
         assert_eq!(&bytes[0x02..0x0C], b"GARMIN LBL");
-        // data_offset = 45 at 0x15 (no version field)
+        // data_offset at 0x15
         assert_eq!(u32::from_le_bytes([bytes[0x15], bytes[0x16], bytes[0x17], bytes[0x18]]),
                    LBL_HEADER_SIZE as u32);
         // data_size = 42 at 0x19
         assert_eq!(u32::from_le_bytes([bytes[0x19], bytes[0x1A], bytes[0x1B], bytes[0x1C]]),
                    42, "data_size must be 42");
-        // label_encoding = 0x06 at 0x1D
-        assert_eq!(bytes[0x1D], 0x06);
-        // poi_props_offset at 0x21 = 0
-        assert_eq!(&bytes[0x21..0x25], &[0x00, 0x00, 0x00, 0x00], "poi_props_offset must be 0");
-        // poi_props_size at 0x25 = 0
-        assert_eq!(&bytes[0x25..0x29], &[0x00, 0x00, 0x00, 0x00], "poi_props_size must be 0");
-        // padding at 0x29 = 0
-        assert_eq!(&bytes[0x29..0x2D], &[0x00, 0x00, 0x00, 0x00], "padding must be zero");
+        // addr_offset_multiplier = 0 at 0x1D
+        assert_eq!(bytes[0x1D], 0x00);
+        // label_coding = 9 (8-bit CP1252) at 0x1E
+        assert_eq!(bytes[0x1E], 0x09);
+        // 0x1F: first section pointer (country_def_offset) — should point to end of label data
+        let country_off = u32::from_le_bytes([bytes[0x1F], bytes[0x20], bytes[0x21], bytes[0x22]]);
+        assert_eq!(country_off, LBL_HEADER_SIZE as u32 + 42, "country_def_offset = end of label data");
     }
 
     // ── Task 2: encode_label_cp1252 ────────────────────────────────────────────
@@ -426,11 +435,11 @@ mod tests {
             result.label_offsets.is_empty(),
             "features with None labels must not add entries to the offset map"
         );
-        // Data section has only the null sentinel byte (1 byte) → total = 47 (header) + 1 = 48
+        // Data section has only the null sentinel byte (1 byte) → total = header + 1
         assert_eq!(
             result.data.len(),
             LBL_HEADER_SIZE + 1,
-            "LBL with no labels must be exactly 48 bytes (47-byte header + 1-byte null sentinel)"
+            "LBL with no labels must be header + 1 null sentinel byte"
         );
         assert_eq!(result.data[LBL_HEADER_SIZE], 0x00, "null sentinel must be present at data section byte 0");
     }
