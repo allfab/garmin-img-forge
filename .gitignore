@@ -5,3 +5,5 @@ rapport-*.json
 __pycache__/
 data/
 output/
+*.mp
+*.img
