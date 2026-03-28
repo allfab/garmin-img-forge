@@ -398,30 +398,57 @@ fn process_single_tile(
     }
 
     // 7. Auto-generate unique tile ID if base_id is configured
+    //    + resolve variable substitution on header.name ({col}, {row}, {seq})
     let tile_header_config;
-    let effective_header = if let Some(base_id) = ctx.config.output.base_id {
-        let header_id_is_auto = ctx.config.header.as_ref()
-            .and_then(|h| h.id.as_deref())
-            .map_or(true, |id| id == AUTO_ID);
+    let needs_name_resolve = ctx.config.header.as_ref()
+        .and_then(|h| h.name.as_deref())
+        .map_or(false, |name| name.contains('{'));
 
-        if header_id_is_auto {
-            if seq > 9999 {
-                return Err(TileExportError {
-                    tile_id: tile_id.clone(),
-                    error_message: format!(
-                        "Tile seq {} exceeds 9999: base_id * 10000 + seq would overflow 8-digit ID",
-                        seq
-                    ),
-                });
+    let needs_clone = needs_name_resolve || {
+        ctx.config.output.base_id.is_some() && ctx.config.header.as_ref()
+            .and_then(|h| h.id.as_deref())
+            .map_or(true, |id| id == AUTO_ID)
+    };
+
+    let effective_header = if needs_clone {
+        let mut header = ctx.config.header.clone().unwrap_or_default();
+
+        // Auto-generate unique tile ID from base_id
+        if let Some(base_id) = ctx.config.output.base_id {
+            let header_id_is_auto = header.id.as_deref().map_or(true, |id| id == AUTO_ID);
+            if header_id_is_auto {
+                if seq > 9999 {
+                    return Err(TileExportError {
+                        tile_id: tile_id.clone(),
+                        error_message: format!(
+                            "Tile seq {} exceeds 9999: base_id * 10000 + seq would overflow 8-digit ID",
+                            seq
+                        ),
+                    });
+                }
+                let auto_tile_id = base_id as u64 * 10000 + seq as u64;
+                header.id = Some(format!("{:08}", auto_tile_id));
             }
-            let auto_tile_id = base_id as u64 * 10000 + seq as u64;
-            let mut header = ctx.config.header.clone().unwrap_or_default();
-            header.id = Some(format!("{:08}", auto_tile_id));
-            tile_header_config = Some(header);
-            tile_header_config.as_ref()
-        } else {
-            ctx.header_config
         }
+
+        // Resolve variable substitution on header.name ({col}, {row}, {seq})
+        if let Some(ref name_pattern) = header.name {
+            if name_pattern.contains('{') {
+                let resolved = resolve_tile_pattern(
+                    name_pattern,
+                    tile_bounds.col,
+                    tile_bounds.row,
+                    seq,
+                ).map_err(|e| TileExportError {
+                    tile_id: tile_id.clone(),
+                    error_message: format!("Failed to resolve header.name pattern: {}", e),
+                })?;
+                header.name = Some(resolved);
+            }
+        }
+
+        tile_header_config = Some(header);
+        tile_header_config.as_ref()
     } else {
         ctx.header_config
     };
@@ -665,6 +692,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
     };
+
+    // Inform user when no header section is configured
+    if config.header.is_none() {
+        info!("Pas de section 'header' dans la config — les tuiles auront des métadonnées par défaut");
+    }
 
     // Story 11.1 — Task 3: Sequential counter for filename patterns (atomic for thread-safety).
     let seq_counter = Arc::new(AtomicUsize::new(0));

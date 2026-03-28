@@ -331,6 +331,88 @@ impl Config {
         // Same rationale as field_mapping: file could be deleted between config load and first tile export.
         // See writer.rs for validation with proper error context at actual usage time.
 
+        // Soft validation of header numeric values (warnings, not errors)
+        if let Some(ref header) = self.header {
+            // Validate header.name pattern if it contains variables (hard error — will fail every tile)
+            if let Some(ref name) = header.name {
+                if name.contains('{') {
+                    tile_naming::validate_tile_pattern(name)
+                        .with_context(|| format!("Invalid header.name pattern: '{}'", name))?;
+                }
+            }
+
+            // Helper: parse and warn if out of range or non-numeric
+            fn warn_range(field_name: &str, value: &Option<String>, min: u32, max: u32) {
+                if let Some(ref v) = value {
+                    match v.parse::<u32>() {
+                        Ok(n) if n < min || n > max => {
+                            tracing::warn!(
+                                field = field_name,
+                                value = n,
+                                min = min,
+                                max = max,
+                                "header.{} = {} hors de la plage recommandée [{}, {}]",
+                                field_name, n, min, max
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                field = field_name,
+                                value = %v,
+                                "header.{} = '{}' n'est pas un entier valide",
+                                field_name, v
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Warn on invalid boolean/enum values (expected: Y/N, T/F)
+            fn warn_yn(field_name: &str, value: &Option<String>) {
+                if let Some(ref v) = value {
+                    if !matches!(v.as_str(), "Y" | "N") {
+                        tracing::warn!(
+                            field = field_name,
+                            value = %v,
+                            "header.{} = '{}' — valeur attendue : Y ou N",
+                            field_name, v
+                        );
+                    }
+                }
+            }
+            fn warn_tf(field_name: &str, value: &Option<String>) {
+                if let Some(ref v) = value {
+                    if !matches!(v.as_str(), "T" | "F") {
+                        tracing::warn!(
+                            field = field_name,
+                            value = %v,
+                            "header.{} = '{}' — valeur attendue : T ou F",
+                            field_name, v
+                        );
+                    }
+                }
+            }
+
+            warn_range("levels", &header.levels, 1, 10);
+            warn_range("level0", &header.level0, 10, 24);
+            warn_range("level1", &header.level1, 10, 24);
+            warn_range("level2", &header.level2, 10, 24);
+            warn_range("level3", &header.level3, 10, 24);
+            warn_range("level4", &header.level4, 10, 24);
+            warn_range("level5", &header.level5, 10, 24);
+            warn_range("level6", &header.level6, 10, 24);
+            warn_range("level7", &header.level7, 10, 24);
+            warn_range("level8", &header.level8, 10, 24);
+            warn_range("level9", &header.level9, 10, 24);
+            warn_range("tree_size", &header.tree_size, 100, 15000);
+            warn_range("rgn_limit", &header.rgn_limit, 50, 1024);
+
+            warn_yn("transparent", &header.transparent);
+            warn_yn("marine", &header.marine);
+            warn_tf("preprocess", &header.preprocess);
+        }
+
         Ok(())
     }
 }
@@ -1232,6 +1314,128 @@ output:
             Some("EPSG:4326".to_string())
         );
         // Should validate OK (warning only, not error)
+        assert!(config.validate().is_ok());
+    }
+
+    // mp-header-config: Header with all BDTOPO fields parses and validates
+    #[test]
+    fn test_config_header_bdtopo_complete() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  name: "BDTOPO {col:03}_{row:03}"
+  copyright: "IGN BDTOPO 2025"
+  levels: "2"
+  level0: "24"
+  level1: "18"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  transparent: "N"
+  marine: "N"
+  preprocess: "F"
+  lbl_coding: "9"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.header.is_some());
+        let header = config.header.as_ref().unwrap();
+        assert_eq!(header.name, Some("BDTOPO {col:03}_{row:03}".to_string()));
+        assert_eq!(header.copyright, Some("IGN BDTOPO 2025".to_string()));
+        assert_eq!(header.levels, Some("2".to_string()));
+        assert_eq!(header.level0, Some("24".to_string()));
+        assert_eq!(header.level1, Some("18".to_string()));
+        assert_eq!(header.tree_size, Some("1000".to_string()));
+        assert_eq!(header.rgn_limit, Some("1024".to_string()));
+        assert_eq!(header.transparent, Some("N".to_string()));
+        assert_eq!(header.marine, Some("N".to_string()));
+        assert_eq!(header.preprocess, Some("F".to_string()));
+        assert_eq!(header.lbl_coding, Some("9".to_string()));
+        // Validation should pass (all values within range)
+        assert!(config.validate().is_ok());
+    }
+
+    // mp-header-config: Header name with variable pattern validates OK
+    #[test]
+    fn test_config_header_name_pattern_valid() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  name: "MyMap {col}_{row}"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    // mp-header-config: Header name with invalid pattern is a hard error (F1 fix)
+    #[test]
+    fn test_config_header_name_invalid_pattern_error() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  name: "MyMap {invalid_var}"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid header.name pattern"));
+    }
+
+    // mp-header-config: base_id without header section creates default header (F3 coverage)
+    #[test]
+    fn test_config_base_id_without_header_section() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+  base_id: 6324
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.header.is_none());
+        assert_eq!(config.output.base_id, Some(6324));
+        assert!(config.validate().is_ok());
+    }
+
+    // mp-header-config: Header values out of range warn but don't error
+    #[test]
+    fn test_config_header_out_of_range_warns_no_error() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+header:
+  levels: "99"
+  level0: "5"
+  tree_size: "50"
+  rgn_limit: "2000"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        // Soft validation: warns but does not fail
         assert!(config.validate().is_ok());
     }
 }

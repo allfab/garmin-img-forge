@@ -199,6 +199,22 @@ output:
   overwrite: true
   base_id: 6324            # Auto-génère des IDs uniques par tuile : 63240001, 63240002, etc.
 
+# Header MP — métadonnées écrites dans chaque tuile .mp
+# Le champ 'name' supporte les variables {col}, {row} (0-based), {seq} (1-based)
+# avec padding optionnel {col:03}
+header:
+  name: "BDTOPO {col:03}_{row:03}"
+  copyright: "IGN BDTOPO 2025"
+  levels: "2"
+  level0: "24"
+  level1: "18"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  transparent: "N"
+  marine: "N"
+  preprocess: "F"
+  lbl_coding: "9"
+
 # Règles de transformation BDTOPO → types Garmin
 # ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)
 # Exemple absolu si usage direct : /home/user/mpforge/mpforge-cli/rules/bdtopo-garmin-rules.yaml
