@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use crate::img::common_header::build_common_header;
 use crate::routing::{polyline_length, RoadDef, RoadNetwork};
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -96,17 +97,8 @@ fn write_net_header(
     net3_offset: u32,
     net3_len: u32,
 ) {
-    // Common header: 21 bytes (Garmin subfile common header format).
-    // 0x00: header_length = 55 (LE16)
-    buf.extend_from_slice(&(NET_HEADER_SIZE as u16).to_le_bytes());
-    // 0x02: type indicator (u8, 0x00)
-    buf.push(0x00u8);
-    // 0x03: locked indicator (u8, 0x00)
-    buf.push(0x00u8);
-    // 0x04: creation date (7 bytes — all zero, same as mkgmap)
-    buf.extend_from_slice(&[0u8; 7]);
-    // 0x0B: signature "GARMIN NET" — exactly 10 bytes (no null terminator)
-    buf.extend_from_slice(b"GARMIN NET");
+    // Common header: 21 bytes (standard Garmin subfile format).
+    buf.extend_from_slice(&build_common_header("NET", NET_HEADER_SIZE as u16));
 
     // 0x15: NET1 section offset (LE32)
     buf.extend_from_slice(&net1_offset.to_le_bytes());
@@ -359,8 +351,8 @@ mod tests {
     fn test_net_header_signature() {
         let mut buf = Vec::new();
         write_net_header(&mut buf, 55, 100, 155, 30);
-        // Signature "GARMIN NET" at offset 0x0B (11)
-        assert_eq!(&buf[0x0B..0x15], b"GARMIN NET");
+        // Signature "GARMIN NET" at offset 0x02 (standard common header)
+        assert_eq!(&buf[0x02..0x0C], b"GARMIN NET");
     }
 
     #[test]
@@ -627,7 +619,7 @@ mod tests {
         // Header = 55 bytes
         assert!(result.data.len() >= 55, "NET data must include 55-byte header");
         // Signature
-        assert_eq!(&result.data[0x0B..0x15], b"GARMIN NET");
+        assert_eq!(&result.data[0x02..0x0C], b"GARMIN NET");
         // road_offsets should have 1 entry
         assert_eq!(result.road_offsets.len(), 1);
         assert_eq!(result.road_offsets[0], 0, "first road starts at offset 0 in NET1");

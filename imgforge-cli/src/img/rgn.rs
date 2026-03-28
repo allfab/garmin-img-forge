@@ -7,8 +7,14 @@
 
 use std::collections::HashMap;
 
+use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
 use crate::img::tre::{to_garmin_units, MapLevel, TreWriter};
 use crate::parser::mp_types::{MpFile, MpPoint, MpPolygon, MpPolyline};
+
+/// Size of the RGN type-specific header (old 29 minus LE16 header_length and LE16 version).
+const RGN_TYPE_SPECIFIC_SIZE: usize = 29 - 4; // 25 bytes
+/// Total RGN header size with common header.
+const RGN_HEADER_SIZE: usize = COMMON_HEADER_SIZE + RGN_TYPE_SPECIFIC_SIZE; // 46 bytes
 
 // ── RgnTypeCode ────────────────────────────────────────────────────────────────
 
@@ -99,19 +105,19 @@ fn encode_delta(coord_g: i32, center_g: i32, bits_per_coord: u8) -> i16 {
 
 // ── RGN Header ─────────────────────────────────────────────────────────────────
 
-/// RGN subfile header — exactly 29 bytes (0x1D).
+/// RGN subfile header — 48 bytes (21-byte common header + 27-byte type-specific).
 ///
-/// Binary layout (matches mkgmap `RGNHeader.java`):
+/// Binary layout:
 /// ```text
-/// 0x00  LE16  header_length = 0x1D (29)
-/// 0x02  LE16  version = 1
-/// 0x04  LE32  data_offset = 0x1D
-/// 0x08  LE32  data_size (total bytes of feature records)
-/// 0x0C  LE32  point_overview_offset = data_offset + data_size
-/// 0x10  LE32  point_overview_size = 0 (overview not required for basic display)
-/// 0x14  LE32  polyline_overview_offset = data_offset + data_size
-/// 0x18  LE32  polyline_overview_size = 0
-/// 0x1C  u8    reserved = 0
+/// 0x00  21B   Common header "GARMIN RGN"
+/// 0x15  LE16  version = 1
+/// 0x17  LE32  data_offset = 48 (0x30)
+/// 0x1B  LE32  data_size (total bytes of feature records)
+/// 0x1F  LE32  point_overview_offset = data_offset + data_size
+/// 0x23  LE32  point_overview_size = 0
+/// 0x27  LE32  polyline_overview_offset = data_offset + data_size
+/// 0x2B  LE32  polyline_overview_size = 0
+/// 0x2F  u8    reserved = 0
 /// ```
 struct RgnHeader {
     /// Total byte count of all feature records following this header.
@@ -120,25 +126,23 @@ struct RgnHeader {
 
 impl RgnHeader {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(29);
-        // 0x00: header_length = 29 (LE16)
-        buf.extend_from_slice(&0x001Du16.to_le_bytes());
-        // 0x02: version = 1 (LE16)
-        buf.extend_from_slice(&1u16.to_le_bytes());
-        // 0x04: data_offset = 29 (LE32)
-        buf.extend_from_slice(&0x001Du32.to_le_bytes());
-        // 0x08: data_size (LE32)
+        let mut buf = Vec::with_capacity(RGN_HEADER_SIZE);
+        // 0x00: Common header (21 bytes)
+        buf.extend_from_slice(&build_common_header("RGN", RGN_HEADER_SIZE as u16));
+        // 0x15: data_offset = RGN_HEADER_SIZE (LE32)
+        buf.extend_from_slice(&(RGN_HEADER_SIZE as u32).to_le_bytes());
+        // 0x19: data_size (LE32)
         buf.extend_from_slice(&self.data_size.to_le_bytes());
-        // 0x0C: point_overview_offset = 29 + data_size (LE32)
-        let overview_offset = 0x1Du32 + self.data_size;
+        // 0x1D: point_overview_offset = RGN_HEADER_SIZE + data_size (LE32)
+        let overview_offset = RGN_HEADER_SIZE as u32 + self.data_size;
         buf.extend_from_slice(&overview_offset.to_le_bytes());
-        // 0x10: point_overview_size = 0 (LE32)
+        // 0x21: point_overview_size = 0 (LE32)
         buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x14: polyline_overview_offset = same (LE32)
+        // 0x25: polyline_overview_offset = same (LE32)
         buf.extend_from_slice(&overview_offset.to_le_bytes());
-        // 0x18: polyline_overview_size = 0 (LE32)
+        // 0x29: polyline_overview_size = 0 (LE32)
         buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x1C: reserved = 0 (u8)
+        // 0x2D: reserved = 0 (u8)
         buf.push(0u8);
         buf
     }
@@ -520,7 +524,7 @@ fn encode_extended_polygon_record(
 pub struct RgnBuildResult {
     /// Complete RGN subfile binary: `[RgnHeader || feature_data]`.
     pub data: Vec<u8>,
-    /// Per-level byte offset into the feature data section (after the 29-byte header).
+    /// Per-level byte offset into the feature data section (after the RGN header).
     ///
     /// `subdivision_offsets[0]` = 0 (first level starts at the beginning of data section).
     /// `subdivision_offsets[i]` = total bytes written for levels 0..i.
@@ -773,7 +777,7 @@ impl RgnWriter {
             }
         }
 
-        // Build the 29-byte header and prepend it.
+        // Build the header and prepend it.
         let header = RgnHeader {
             data_size: feature_data.len() as u32,
         };
@@ -901,15 +905,19 @@ mod tests {
     #[test]
     fn test_rgn_header_size() {
         let h = RgnHeader { data_size: 0 };
-        assert_eq!(h.to_bytes().len(), 29, "RGN header must be exactly 29 bytes");
+        assert_eq!(h.to_bytes().len(), RGN_HEADER_SIZE, "RGN header must be exactly 48 bytes");
     }
 
     #[test]
-    fn test_rgn_header_magic() {
+    fn test_rgn_header_common_header() {
         let h = RgnHeader { data_size: 0 };
         let bytes = h.to_bytes();
-        // header_length=29 (LE16) + version=1 (LE16) → [0x1D, 0x00, 0x01, 0x00]
-        assert_eq!(&bytes[0..4], &[0x1D, 0x00, 0x01, 0x00]);
+        // Common header: LE16(46) at 0x00, "GARMIN RGN" at 0x02
+        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), RGN_HEADER_SIZE as u16);
+        assert_eq!(&bytes[0x02..0x0C], b"GARMIN RGN");
+        // data_offset at 0x15 (no version field)
+        let data_offset = u32::from_le_bytes([bytes[0x15], bytes[0x16], bytes[0x17], bytes[0x18]]);
+        assert_eq!(data_offset, RGN_HEADER_SIZE as u32);
     }
 
     // ── Task 4: Record formats ────────────────────────────────────────────────
@@ -1026,9 +1034,10 @@ mod tests {
         let mp = make_mp_single_poi();
         let levels = levels_from_mp(&mp.header);
         let result = RgnWriter::build(&mp, &levels);
-        // POI record: bytes 29+6 = indices 35, 36, 37 are the label offset
+        // POI record: RGN_HEADER_SIZE + 6 = label offset bytes in first record
+        let lbl_off_start = RGN_HEADER_SIZE + 6;
         assert_eq!(
-            &result.data[35..38],
+            &result.data[lbl_off_start..lbl_off_start + 3],
             &[0x00, 0x00, 0x00],
             "build() without LBL offsets must produce stub 0x000000 in record"
         );
@@ -1073,11 +1082,11 @@ mod tests {
         let levels = levels_from_mp(&mp.header);
         let rgn = RgnWriter::build_with_lbl_offsets(&mp, &levels, &lbl.label_offsets);
 
-        // Feature data starts after the 29-byte RGN header.
+        // Feature data starts after the RGN header.
         // Both POIs have labels → each record is 9 bytes:
         //   byte 0: base_type, bytes 1-4: delta coords (LE16s × 2), byte 5: flags,
         //   bytes 6-8: label_offset (LE24)
-        let data = &rgn.data[29..]; // feature data section
+        let data = &rgn.data[RGN_HEADER_SIZE..]; // feature data section
         let offset0 = u32::from_le_bytes([data[6], data[7], data[8], 0]);
         let offset1 = u32::from_le_bytes([data[15], data[16], data[17], 0]);
 
@@ -1115,14 +1124,15 @@ mod tests {
         let mp = make_mp_single_poi();
         let levels = levels_from_mp(&mp.header);
         let result = RgnWriter::build(&mp, &levels);
-        // Data must be at least 29 (header) + 9 (POI with label) = 38 bytes
+        // Data must be at least RGN_HEADER_SIZE (46) + 9 (POI with label) = 55 bytes
         assert!(
-            result.data.len() >= 38,
-            "RGN with single POI must be at least 38 bytes, got {}",
+            result.data.len() >= RGN_HEADER_SIZE + 9,
+            "RGN with single POI must be at least {} bytes, got {}",
+            RGN_HEADER_SIZE + 9,
             result.data.len()
         );
-        // Starts with RGN header magic
-        assert_eq!(&result.data[0..4], &[0x1D, 0x00, 0x01, 0x00]);
+        // Starts with common header "GARMIN RGN"
+        assert_eq!(&result.data[0x02..0x0C], b"GARMIN RGN");
         // One level → one offset
         assert_eq!(result.subdivision_offsets.len(), 1);
         assert_eq!(result.subdivision_offsets[0], 0);
@@ -1167,7 +1177,7 @@ mod tests {
         // Level 0: 2 POIs. Level 1: 1 POI.
         // Data written for level 0 must be larger than for level 1.
         let level0_size = result.subdivision_offsets[1];
-        let total_feature_data = (result.data.len() as u32) - 29; // 29 = header
+        let total_feature_data = (result.data.len() as u32) - RGN_HEADER_SIZE as u32;
         let level1_size = total_feature_data - level0_size;
         assert!(
             level0_size > level1_size,

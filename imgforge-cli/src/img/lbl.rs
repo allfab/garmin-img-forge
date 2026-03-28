@@ -12,7 +12,13 @@
 
 use std::collections::HashMap;
 
+use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
 use crate::parser::mp_types::MpFile;
+
+/// Size of the LBL type-specific header (old 28 minus LE16 header_length and LE16 version).
+const LBL_TYPE_SPECIFIC_SIZE: usize = 28 - 4; // 24 bytes
+/// Total LBL header size with common header.
+const LBL_HEADER_SIZE: usize = COMMON_HEADER_SIZE + LBL_TYPE_SPECIFIC_SIZE; // 45 bytes
 
 // ── CP1252 encoding ─────────────────────────────────────────────────────────────
 
@@ -120,20 +126,20 @@ pub fn encode_label_cp1252(label: &str) -> Vec<u8> {
 
 // ── LBL Header ──────────────────────────────────────────────────────────────────
 
-/// LBL subfile header — exactly 28 bytes (0x1C).
+/// LBL subfile header — 47 bytes (21-byte common header + 26-byte type-specific).
 ///
-/// Binary layout (matches mkgmap `LBLHeader.java`):
+/// Binary layout:
 /// ```text
-/// 0x00  LE16  header_length = 0x001C (28)
-/// 0x02  LE16  version = 1
-/// 0x04  LE32  data_offset = 0x1C (immediately after header)
-/// 0x08  LE32  data_size (total bytes in label data section)
-/// 0x0C  u8    label_encoding = 0x06 (8-bit CP1252)
-/// 0x0D  u8    reserved = 0x00
-/// 0x0E  LE16  reserved = 0x0000
-/// 0x10  LE32  poi_props_offset = 0 (stub — Epic 14+)
-/// 0x14  LE32  poi_props_size   = 0
-/// 0x18  LE32  padding          = 0
+/// 0x00  21B   Common header "GARMIN LBL"
+/// 0x15  LE16  version = 1
+/// 0x17  LE32  data_offset = 47 (0x2F)
+/// 0x1B  LE32  data_size (total bytes in label data section)
+/// 0x1F  u8    label_encoding = 0x06 (8-bit CP1252)
+/// 0x20  u8    reserved = 0x00
+/// 0x21  LE16  reserved = 0x0000
+/// 0x23  LE32  poi_props_offset = 0 (stub — Epic 14+)
+/// 0x27  LE32  poi_props_size   = 0
+/// 0x2B  LE32  padding          = 0
 /// ```
 struct LblHeader {
     /// Total byte count of the label data section (including the 0x00 initial byte).
@@ -142,26 +148,24 @@ struct LblHeader {
 
 impl LblHeader {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(28);
-        // 0x00: header_length = 28 (LE16)
-        buf.extend_from_slice(&0x001Cu16.to_le_bytes());
-        // 0x02: version = 1 (LE16)
-        buf.extend_from_slice(&1u16.to_le_bytes());
-        // 0x04: data_offset = 28 (LE32)
-        buf.extend_from_slice(&0x001Cu32.to_le_bytes());
-        // 0x08: data_size (LE32)
+        let mut buf = Vec::with_capacity(LBL_HEADER_SIZE);
+        // 0x00: Common header (21 bytes)
+        buf.extend_from_slice(&build_common_header("LBL", LBL_HEADER_SIZE as u16));
+        // 0x15: data_offset = LBL_HEADER_SIZE (LE32)
+        buf.extend_from_slice(&(LBL_HEADER_SIZE as u32).to_le_bytes());
+        // 0x19: data_size (LE32)
         buf.extend_from_slice(&self.data_size.to_le_bytes());
-        // 0x0C: label_encoding = 6 (8-bit CP1252) (u8)
+        // 0x1D: label_encoding = 6 (8-bit CP1252) (u8)
         buf.push(0x06u8);
-        // 0x0D: reserved (u8)
+        // 0x1E: reserved (u8)
         buf.push(0x00u8);
-        // 0x0E: reserved (LE16)
+        // 0x1F: reserved (LE16)
         buf.extend_from_slice(&0x0000u16.to_le_bytes());
-        // 0x10: poi_props_offset = 0 (LE32)
+        // 0x21: poi_props_offset = 0 (LE32)
         buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x14: poi_props_size = 0 (LE32)
+        // 0x25: poi_props_size = 0 (LE32)
         buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x18: padding = 0 (LE32)
+        // 0x29: padding = 0 (LE32)
         buf.extend_from_slice(&0u32.to_le_bytes());
         buf
     }
@@ -173,12 +177,12 @@ impl LblHeader {
 ///
 /// ## Offset semantics
 ///
-/// `label_offsets` values are **data-section-relative** (i.e. relative to `data_offset = 0x1C`).
+/// `label_offsets` values are **data-section-relative** (i.e. relative to `data_offset`).
 /// Byte 0 of the data section is the null sentinel (meaning "no label").
 /// The first real label starts at data-section offset 1.
 ///
-/// In the `data` Vec, the data section starts at byte 28 (the header size):
-/// `data[28]` = 0x00 sentinel, `data[29]` = first byte of the first label, etc.
+/// In the `data` Vec, the data section starts at byte 47 (the header size):
+/// `data[47]` = 0x00 sentinel, `data[48]` = first byte of the first label, etc.
 pub struct LblBuildResult {
     /// Complete LBL subfile binary: `[LblHeader (28 B) || label_data_section]`.
     pub data: Vec<u8>,
@@ -244,29 +248,30 @@ mod tests {
     #[test]
     fn test_lbl_header_size() {
         let h = LblHeader { data_size: 0 };
-        assert_eq!(h.to_bytes().len(), 28, "LBL header must be exactly 28 bytes");
+        assert_eq!(h.to_bytes().len(), LBL_HEADER_SIZE, "LBL header must be exactly 47 bytes");
     }
 
     #[test]
-    fn test_lbl_header_magic() {
+    fn test_lbl_header_common_header() {
         let h = LblHeader { data_size: 42 };
         let bytes = h.to_bytes();
-        // header_length=28 (LE16) + version=1 (LE16) → [0x1C, 0x00, 0x01, 0x00]
-        assert_eq!(&bytes[0..4], &[0x1C, 0x00, 0x01, 0x00]);
-        // data_offset = 28 at bytes 4-7
-        assert_eq!(&bytes[4..8], &[0x1C, 0x00, 0x00, 0x00]);
-        // data_size = 42 at bytes 8-11
-        assert_eq!(&bytes[8..12], &[0x2A, 0x00, 0x00, 0x00], "data_size must be encoded as LE32");
-        // label_encoding = 0x06 at byte 0x0C
-        assert_eq!(bytes[0x0C], 0x06);
-        // reserved bytes 0x0D–0x0F must be zero
-        assert_eq!(&bytes[0x0D..0x10], &[0x00, 0x00, 0x00], "reserved bytes must be zero");
-        // poi_props_offset at 0x10-0x13 = 0 (stub, Epic 14+)
-        assert_eq!(&bytes[0x10..0x14], &[0x00, 0x00, 0x00, 0x00], "poi_props_offset must be 0");
-        // poi_props_size at 0x14-0x17 = 0
-        assert_eq!(&bytes[0x14..0x18], &[0x00, 0x00, 0x00, 0x00], "poi_props_size must be 0");
-        // padding at 0x18-0x1B = 0
-        assert_eq!(&bytes[0x18..0x1C], &[0x00, 0x00, 0x00, 0x00], "padding must be zero");
+        // Common header: LE16(45) at 0x00, "GARMIN LBL" at 0x02
+        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), LBL_HEADER_SIZE as u16);
+        assert_eq!(&bytes[0x02..0x0C], b"GARMIN LBL");
+        // data_offset = 45 at 0x15 (no version field)
+        assert_eq!(u32::from_le_bytes([bytes[0x15], bytes[0x16], bytes[0x17], bytes[0x18]]),
+                   LBL_HEADER_SIZE as u32);
+        // data_size = 42 at 0x19
+        assert_eq!(u32::from_le_bytes([bytes[0x19], bytes[0x1A], bytes[0x1B], bytes[0x1C]]),
+                   42, "data_size must be 42");
+        // label_encoding = 0x06 at 0x1D
+        assert_eq!(bytes[0x1D], 0x06);
+        // poi_props_offset at 0x21 = 0
+        assert_eq!(&bytes[0x21..0x25], &[0x00, 0x00, 0x00, 0x00], "poi_props_offset must be 0");
+        // poi_props_size at 0x25 = 0
+        assert_eq!(&bytes[0x25..0x29], &[0x00, 0x00, 0x00, 0x00], "poi_props_size must be 0");
+        // padding at 0x29 = 0
+        assert_eq!(&bytes[0x29..0x2D], &[0x00, 0x00, 0x00, 0x00], "padding must be zero");
     }
 
     // ── Task 2: encode_label_cp1252 ────────────────────────────────────────────
@@ -347,7 +352,7 @@ mod tests {
         let result = LblWriter::build(&mp);
         // data_section starts at offset 28 (header size)
         assert_eq!(
-            result.data[28],
+            result.data[LBL_HEADER_SIZE],
             0x00,
             "first byte of label data section must be 0x00 (no-label sentinel)"
         );
@@ -421,13 +426,13 @@ mod tests {
             result.label_offsets.is_empty(),
             "features with None labels must not add entries to the offset map"
         );
-        // Data section has only the null sentinel byte (1 byte) → total = 28 (header) + 1 = 29
+        // Data section has only the null sentinel byte (1 byte) → total = 47 (header) + 1 = 48
         assert_eq!(
             result.data.len(),
-            29,
-            "LBL with no labels must be exactly 29 bytes (28-byte header + 1-byte null sentinel)"
+            LBL_HEADER_SIZE + 1,
+            "LBL with no labels must be exactly 48 bytes (47-byte header + 1-byte null sentinel)"
         );
-        assert_eq!(result.data[28], 0x00, "null sentinel must be present at data section byte 0");
+        assert_eq!(result.data[LBL_HEADER_SIZE], 0x00, "null sentinel must be present at data section byte 0");
     }
 
     // ── CP1252 special range ────────────────────────────────────────────────────

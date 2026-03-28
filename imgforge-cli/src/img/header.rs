@@ -162,9 +162,10 @@ impl ImgHeader {
 
         // ── Filesystem parameters (0x061–0x064) ────────────────────────
         // E1 (sector size exponent) and E2 (cluster factor): cluster_size = 2^(E1+E2).
-        // Matches mkgmap reference: E1=9, E2=2 → cluster_size=2048.
+        // E1+E2 must equal block_size_exponent so that gmt/QMapShack compute the
+        // correct cluster_size matching our block allocation granularity.
         let e1: u8 = 9;
-        let e2: u8 = 2;
+        let e2: u8 = self.block_size_exponent.saturating_sub(e1);
         buf[0x061] = e1;
         buf[0x062] = e2;
         // Total clusters (LE16): ceil(total_file_sectors / 2^E2).

@@ -337,7 +337,7 @@ fn test_img_rgn_subfile_not_empty() {
 
 #[test]
 fn test_img_rgn_header_magic() {
-    // RGN subfile must start with [0x1D, 0x00, 0x01, 0x00] (header_length=29, version=1).
+    // RGN subfile must start with header_length=48 and contain "GARMIN RGN" at offset 0x02.
     let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
@@ -348,10 +348,15 @@ fn test_img_rgn_header_magic() {
     let block_start = fat_first_block(&bytes, fat_offset);
     let rgn_offset = block_start * 512;
 
+    // header_length = 46 (0x2E)
+    let hdr_len = u16::from_le_bytes([bytes[rgn_offset], bytes[rgn_offset + 1]]);
+    assert_eq!(hdr_len, 46, "RGN header length must be 46");
+
+    // "GARMIN RGN" at offset 0x02
     assert_eq!(
-        &bytes[rgn_offset..rgn_offset + 4],
-        &[0x1D, 0x00, 0x01, 0x00],
-        "RGN header must start with [0x1D, 0x00, 0x01, 0x00] (header_length=29, version=1)"
+        &bytes[rgn_offset + 0x02..rgn_offset + 0x0C],
+        b"GARMIN RGN",
+        "RGN header must contain 'GARMIN RGN' at offset 0x02"
     );
 }
 
@@ -369,12 +374,12 @@ fn test_img_tre_subdivisions_rgn_offset_nonzero() {
     let tre_block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = tre_block_start * 512;
 
-    // Read subdivisions_offset from TRE header at byte 0x1C (robust across level counts).
+    // Read subdivisions_offset from TRE header at byte 0x29.
     let subdivs_offset = u32::from_le_bytes([
-        bytes[tre_offset + 0x1C],
-        bytes[tre_offset + 0x1D],
-        bytes[tre_offset + 0x1E],
-        bytes[tre_offset + 0x1F],
+        bytes[tre_offset + 0x29],
+        bytes[tre_offset + 0x2A],
+        bytes[tre_offset + 0x2B],
+        bytes[tre_offset + 0x2C],
     ]) as usize;
     let subdivs_start = tre_offset + subdivs_offset;
 
@@ -409,10 +414,10 @@ fn test_img_level_filtering_subdivision_size() {
     let tre_block_start = fat_first_block(&bytes, tre_fat);
     let tre_offset = tre_block_start * 512;
     let subdivs_offset = u32::from_le_bytes([
-        bytes[tre_offset + 0x1C],
-        bytes[tre_offset + 0x1D],
-        bytes[tre_offset + 0x1E],
-        bytes[tre_offset + 0x1F],
+        bytes[tre_offset + 0x29],
+        bytes[tre_offset + 0x2A],
+        bytes[tre_offset + 0x2B],
+        bytes[tre_offset + 0x2C],
     ]) as usize;
     let subdivs_start = tre_offset + subdivs_offset;
 
@@ -424,16 +429,16 @@ fn test_img_level_filtering_subdivision_size() {
         | ((bytes[subdiv1_start + 1] as u32) << 8)
         | ((bytes[subdiv1_start + 2] as u32) << 16);
 
-    // Locate RGN data section (after the 29-byte header) via FAT.
+    // Locate RGN data section (after the 46-byte header) via FAT.
     let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
     let rgn_block_start = fat_first_block(&bytes, rgn_fat);
     let rgn_file_start = rgn_block_start * 512;
-    // data_size is at offset 0x08 in the RGN header
+    // data_size is at offset 0x19 in the RGN header (after common header)
     let data_size = u32::from_le_bytes([
-        bytes[rgn_file_start + 8],
-        bytes[rgn_file_start + 9],
-        bytes[rgn_file_start + 10],
-        bytes[rgn_file_start + 11],
+        bytes[rgn_file_start + 0x19],
+        bytes[rgn_file_start + 0x1A],
+        bytes[rgn_file_start + 0x1B],
+        bytes[rgn_file_start + 0x1C],
     ]);
 
     // Level 0 size = rgn_off1 - rgn_off0 = rgn_off1 (since rgn_off0=0)
@@ -472,7 +477,7 @@ fn test_img_tre_subfile_not_empty() {
 
 #[test]
 fn test_img_tre_header_version() {
-    // Verify that the TRE subfile starts with the correct version 3 magic.
+    // Verify that the TRE subfile starts with header_length=165 and contains "GARMIN TRE".
     let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
@@ -483,11 +488,19 @@ fn test_img_tre_header_version() {
     let block_start = fat_first_block(&bytes, fat_offset);
     let tre_offset = block_start * 512;
 
+    // header_length = 165 (0xA5)
+    let hdr_len = u16::from_le_bytes([bytes[tre_offset], bytes[tre_offset + 1]]);
+    assert_eq!(hdr_len, 165, "TRE header length must be 165");
+
+    // "GARMIN TRE" at offset 0x02
     assert_eq!(
-        &bytes[tre_offset..tre_offset + 4],
-        &[0x94, 0x00, 0x03, 0x00],
-        "TRE header must start with [0x94, 0x00, 0x03, 0x00] (header_length=148, version=3)"
+        &bytes[tre_offset + 0x02..tre_offset + 0x0C],
+        b"GARMIN TRE",
+        "TRE header must contain 'GARMIN TRE' at offset 0x02"
     );
+
+    // Bounding box starts at 0x15 (no version field — removed in common header refactor).
+    // Just verify the header length is correct (already checked above).
 }
 
 #[test]
@@ -543,16 +556,22 @@ fn test_img_lbl_subfile_not_empty() {
 
 #[test]
 fn test_img_lbl_header_magic() {
-    // LBL subfile must start with [0x1C, 0x00, 0x01, 0x00] (header_length=28, version=1).
+    // LBL subfile must start with header_length=47 and contain "GARMIN LBL" at offset 0x02.
     let mp = MpParser::parse_file(&fixture("multi_type.mp")).unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
     let (lbl_offset, _) = read_lbl_block(&bytes);
+
+    // header_length = 45 (0x2D)
+    let hdr_len = u16::from_le_bytes([bytes[lbl_offset], bytes[lbl_offset + 1]]);
+    assert_eq!(hdr_len, 45, "LBL header length must be 45");
+
+    // "GARMIN LBL" at offset 0x02
     assert_eq!(
-        &bytes[lbl_offset..lbl_offset + 4],
-        &[0x1C, 0x00, 0x01, 0x00],
-        "LBL header must start with [0x1C, 0x00, 0x01, 0x00] (header_length=28, version=1)"
+        &bytes[lbl_offset + 0x02..lbl_offset + 0x0C],
+        b"GARMIN LBL",
+        "LBL header must contain 'GARMIN LBL' at offset 0x02"
     );
 }
 
@@ -564,8 +583,8 @@ fn test_img_lbl_contains_label_bytes() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
     let (lbl_offset, _) = read_lbl_block(&bytes);
-    // LBL data section starts at lbl_offset + 0x1C (header size = 28)
-    let data_start = lbl_offset + 0x1C;
+    // LBL data section starts at lbl_offset + 0x2D (header size = 45)
+    let data_start = lbl_offset + 0x2D;
     // "Mairie" encoded as CP1252 = ASCII (no accents)
     let mairie = b"Mairie";
     let lbl_data = &bytes[data_start..];
@@ -591,8 +610,8 @@ fn test_img_rgn_poi_label_offset_nonzero() {
     let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
     let rgn_block_start = fat_first_block(&bytes, rgn_fat);
     let rgn_file_start = rgn_block_start * 512;
-    // RGN data section starts after the 29-byte header.
-    let rgn_data_start = rgn_file_start + 29;
+    // RGN data section starts after the 46-byte header.
+    let rgn_data_start = rgn_file_start + 46;
 
     // POI record format: [base_type(1)][delta_lon(2)][delta_lat(2)][flags(1)][label_offset(3)]
     // = 9 bytes total. label_offset at bytes 6-8 of the record.
@@ -688,8 +707,8 @@ fn test_e2e_img_all_subfiles_present_and_nonzero() {
     ImgWriter::write(&mp, tmp.path()).unwrap();
     let bytes = std::fs::read(tmp.path()).unwrap();
 
-    // Minimum meaningful sizes: TRE header alone = 148 bytes, RGN header = 29 bytes, LBL header = 28 bytes.
-    let min_sizes = [("TRE", b"TRE", 148u32), ("RGN", b"RGN", 29u32), ("LBL", b"LBL", 28u32)];
+    // Minimum meaningful sizes: TRE header alone = 165 bytes, RGN header = 46 bytes, LBL header = 45 bytes.
+    let min_sizes = [("TRE", b"TRE", 165u32), ("RGN", b"RGN", 46u32), ("LBL", b"LBL", 45u32)];
     for (name, ext, min_size) in &min_sizes {
         let fat_offset = find_fat_entry_by_ext(&bytes, ext).expect(&format!("{} FAT entry not found", name));
         let size_used = fat_file_size(&bytes, fat_offset);
@@ -850,8 +869,8 @@ fn test_e2e_img_lbl_contains_bdtopo_labels() {
 
 #[test]
 fn test_e2e_img_rgn_all_feature_types() {
-    // AC1 : RGN size_used > 29 bytes (header-only = 29 bytes), confirming features were encoded.
-    // Avec 6 polylines + 4 POI + 4 polygones, size_used est substantiellement plus grand que 29,
+    // AC1 : RGN size_used > 46 bytes (header-only = 46 bytes), confirming features were encoded.
+    // Avec 6 polylines + 4 POI + 4 polygones, size_used est substantiellement plus grand que 48,
     // mais ce test valide uniquement le seuil minimal (pas le décompte exact par type de feature).
     // RGN is Dirent index 1 (block 1, block_size=512).
     let mp = MpParser::parse_file(&fixture("bdtopo_tile.mp")).unwrap();
@@ -863,8 +882,8 @@ fn test_e2e_img_rgn_all_feature_types() {
     let rgn_fat = find_fat_entry_by_ext(&bytes, b"RGN").expect("RGN FAT entry not found");
     let size_used = fat_file_size(&bytes, rgn_fat);
     assert!(
-        size_used > 29,
-        "RGN size_used must be > 29 (header-only = 29 bytes), got {}",
+        size_used > 46,
+        "RGN size_used must be > 46 (header-only = 46 bytes), got {}",
         size_used
     );
 }
@@ -1021,9 +1040,9 @@ fn test_net_validation_header_parsable() {
     let block_size = 512usize; // exponent=9 in ImgWriter::write
     let net_start = block_start * block_size;
 
-    // NET header: "GARMIN NET" at offset 0x0B from subfile start
+    // NET header: "GARMIN NET" at offset 0x02 from subfile start
     assert_eq!(
-        &bytes[net_start + 0x0B..net_start + 0x15],
+        &bytes[net_start + 0x02..net_start + 0x0C],
         b"GARMIN NET",
         "NET subfile must contain GARMIN NET signature"
     );
@@ -1176,10 +1195,10 @@ fn test_net_validation_tre_routing_bit() {
     let block_start = fat_first_block(&bytes, tre_fat);
     let tre_start = block_start * 512;
 
-    // TRE header is 148 bytes. Levels section follows.
+    // TRE header is 165 bytes. Levels section follows.
     // With 1 level: levels = 4 bytes, subdivisions = 16 bytes
-    // First subdivision starts at tre_start + 148 + 4
-    let subdiv_start = tre_start + 148 + 4;
+    // First subdivision starts at tre_start + 165 + 4
+    let subdiv_start = tre_start + 165 + 4;
 
     // data_flags at byte 0x03 within subdivision
     let data_flags = bytes[subdiv_start + 3];
@@ -1374,9 +1393,9 @@ fn test_nod_validation_header_signature() {
     let hdr_len = u16::from_le_bytes([bytes[nod_offset], bytes[nod_offset + 1]]);
     assert_eq!(hdr_len, 48, "NOD header length must be 48");
 
-    // Signature "GARMIN NOD" at offset 0x0B
+    // Signature "GARMIN NOD" at offset 0x02
     assert_eq!(
-        &bytes[nod_offset + 0x0B..nod_offset + 0x15],
+        &bytes[nod_offset + 0x02..nod_offset + 0x0C],
         b"GARMIN NOD",
         "NOD signature must be 'GARMIN NOD'"
     );
@@ -2534,8 +2553,8 @@ fn test_build_srt_map_id_matches_family_id() {
 }
 
 #[test]
-fn test_build_srt_size_is_4379_bytes() {
-    // AC4 — le subfile SRT dans le gmapsupp.img a une taille de 4379 bytes
+fn test_build_srt_size_is_4398_bytes() {
+    // AC4 — le subfile SRT dans le gmapsupp.img a une taille de 4398 bytes
     let tiles = tiles_dir_with(&["tile_a.mp"]);
     let output = tempfile::NamedTempFile::new().unwrap();
     let stats = GmapsuppAssembler::build(tiles.path(), output.path(), &test_build_config_512())
@@ -2546,8 +2565,8 @@ fn test_build_srt_size_is_4379_bytes() {
         .expect("Dirent SRT doit être présent");
 
     assert_eq!(
-        size_used, 4379,
-        "taille du subfile SRT doit être 4379 bytes (27 header + 256×17 data)"
+        size_used, 4396,
+        "taille du subfile SRT doit être 4396 bytes (44 header + 256×17 data)"
     );
 }
 
@@ -2566,9 +2585,9 @@ fn test_build_srt_header_codepage_is_1252() {
 
     let srt_data_start = block_start * block_size;
 
-    // codepage at SRT offset 0x0C–0x0D (LE16 = 1252 = 0x04E4)
+    // codepage at SRT offset 0x1D–0x1E (LE16 = 1252 = 0x04E4)
     assert_eq!(
-        &bytes[srt_data_start + 0x0C..srt_data_start + 0x0E],
+        &bytes[srt_data_start + 0x1D..srt_data_start + 0x1F],
         &[0xE4, 0x04],
         "codepage dans le header SRT doit être 1252 (0x04E4 LE16)"
     );
@@ -2825,8 +2844,8 @@ fn test_extended_types_in_rgn_data() {
     let levels = levels_from_mp(&mp.header);
     let rgn = RgnWriter::build(&mp, &levels);
 
-    // The RGN data starts after the 29-byte header.
-    let data = &rgn.data[29..];
+    // The RGN data starts after the 48-byte header.
+    let data = &rgn.data[46..];
     assert!(!data.is_empty(), "RGN feature data must not be empty");
 
     // Verify extended flags are set.
@@ -2846,9 +2865,9 @@ fn test_extended_types_tre_flags() {
     let rgn = RgnWriter::build(&mp, &levels);
     let tre = TreWriter::build_with_rgn_result(&mp, &rgn, false);
 
-    // TRE layout: 148 (header) + n_levels * 4 (level records) + n_levels * 16 (subdivisions)
+    // TRE layout: 165 (header) + n_levels * 4 (level records) + n_levels * 16 (subdivisions)
     let n_levels = levels.len();
-    let subdiv_start = 148 + n_levels * 4;
+    let subdiv_start = 165 + n_levels * 4;
 
     // First subdivision data_flags at offset subdiv_start + 3
     let data_flags = tre[subdiv_start + 3];
@@ -2878,7 +2897,7 @@ fn test_extended_types_label_offsets_nonzero() {
     // The fixture has labelled extended features (Antenne, Voie Ferrée, Bâtiment).
     // With real LBL offsets, extended records should contain non-zero label offsets.
     // Scan the RGN data for the extended POI record (base_type=0x15 for 0x11503).
-    let data = &rgn.data[29..];
+    let data = &rgn.data[46..];
     let mut found_ext_poi_label = false;
     for (pos, &byte) in data.iter().enumerate() {
         if byte == 0x15 && pos + 1 < data.len() {

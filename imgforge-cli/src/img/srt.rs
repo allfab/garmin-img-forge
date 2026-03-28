@@ -7,17 +7,23 @@
 //!
 //! # Binary layout
 //! ```text
-//! [Header — 27 bytes]
-//!   0x00  LE16  header_length  = 27
-//!   0x02  LE16  unknown        = 0
-//!   0x04  LE32  data_offset    = 27
-//!   0x08  LE32  data_length    = 4352 (256 × 17)
-//!   0x0C  LE16  codepage       = 1252
-//!   0x0E  LE16  record_size    = 17
-//!   0x10  LE16  record_count   = 256
-//!   0x12  LE32  unknown        = 0
-//!   0x16  LE32  unknown        = 0
-//!   0x1A  u8    unknown        = 0
+//! [Common header — 21 bytes]
+//!   0x00  LE16  header_length  = 46
+//!   0x02  10×u8 "GARMIN SRT"
+//!   0x0C  u8    version        = 1
+//!   0x0D  u8    lock           = 0
+//!   0x0E  7×u8  date           (creation timestamp)
+//!
+//! [Type-specific header — 25 bytes]
+//!   0x15  LE16  unknown        = 0
+//!   0x17  LE32  data_offset    = 46
+//!   0x1B  LE32  data_length    = 4352 (256 × 17)
+//!   0x1F  LE16  codepage       = 1252
+//!   0x21  LE16  record_size    = 17
+//!   0x23  LE16  record_count   = 256
+//!   0x25  LE32  unknown        = 0
+//!   0x29  LE32  unknown        = 0
+//!   0x2D  u8    unknown        = 0
 //!
 //! [Data — 256 × 17 bytes]
 //!   Per CP1252 byte (0x00..=0xFF):
@@ -27,7 +33,14 @@
 //!     bytes 3..16 : 0x00 padding
 //! ```
 //!
-//! Total subfile size: 27 + 4352 = **4379 bytes**.
+//! Total subfile size: 46 + 4352 = **4398 bytes**.
+
+use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
+
+/// Size of the SRT type-specific header (old 27 minus LE16 header_length and LE16 unknown).
+const SRT_TYPE_SPECIFIC_SIZE: usize = 27 - 4; // 23 bytes
+/// Total SRT header size with common header.
+const SRT_HEADER_SIZE: usize = COMMON_HEADER_SIZE + SRT_TYPE_SPECIFIC_SIZE; // 44 bytes
 
 /// Writer for SRT (Sort Routines) subfiles in Garmin IMG format.
 pub struct SrtWriter;
@@ -35,30 +48,28 @@ pub struct SrtWriter;
 impl SrtWriter {
     /// Builds the complete binary SRT subfile for French CP1252 collation.
     ///
-    /// Returns a [`Vec<u8>`] of exactly **4379 bytes** ready to embed in a
+    /// Returns a [`Vec<u8>`] of exactly **4398 bytes** ready to embed in a
     /// `gmapsupp.img` as a `{family_id:08}.SRT` subfile.
     pub fn build_french_cp1252() -> Vec<u8> {
-        const HEADER_LEN: u16 = 27;
         const DATA_LEN: u32 = 256 * 17; // 4352
         const CODEPAGE: u16 = 1252;
         const RECORD_SIZE: u16 = 17;
         const RECORD_COUNT: u16 = 256;
 
-        let mut out = Vec::with_capacity((HEADER_LEN as usize) + (DATA_LEN as usize));
+        let mut out = Vec::with_capacity(SRT_HEADER_SIZE + (DATA_LEN as usize));
 
-        // ── Header (27 bytes) ─────────────────────────────────────────────────
-        out.extend_from_slice(&HEADER_LEN.to_le_bytes()); // 0x00 header_length
-        out.extend_from_slice(&0u16.to_le_bytes()); // 0x02 unknown
-        out.extend_from_slice(&(HEADER_LEN as u32).to_le_bytes()); // 0x04 data_offset
-        out.extend_from_slice(&DATA_LEN.to_le_bytes()); // 0x08 data_length
-        out.extend_from_slice(&CODEPAGE.to_le_bytes()); // 0x0C codepage = 1252
-        out.extend_from_slice(&RECORD_SIZE.to_le_bytes()); // 0x0E record_size = 17
-        out.extend_from_slice(&RECORD_COUNT.to_le_bytes()); // 0x10 record_count = 256
-        out.extend_from_slice(&0u32.to_le_bytes()); // 0x12 unknown
-        out.extend_from_slice(&0u32.to_le_bytes()); // 0x16 unknown
-        out.push(0u8); // 0x1A unknown
+        // ── Common header (21 bytes) + type-specific header (23 bytes) = 44 bytes
+        out.extend_from_slice(&build_common_header("SRT", SRT_HEADER_SIZE as u16));
+        out.extend_from_slice(&(SRT_HEADER_SIZE as u32).to_le_bytes()); // 0x15 data_offset
+        out.extend_from_slice(&DATA_LEN.to_le_bytes()); // 0x19 data_length
+        out.extend_from_slice(&CODEPAGE.to_le_bytes()); // 0x1D codepage = 1252
+        out.extend_from_slice(&RECORD_SIZE.to_le_bytes()); // 0x1F record_size = 17
+        out.extend_from_slice(&RECORD_COUNT.to_le_bytes()); // 0x21 record_count = 256
+        out.extend_from_slice(&0u32.to_le_bytes()); // 0x23 unknown
+        out.extend_from_slice(&0u32.to_le_bytes()); // 0x27 unknown
+        out.push(0u8); // 0x2B unknown
 
-        debug_assert_eq!(out.len(), 27, "SRT header must be exactly 27 bytes");
+        debug_assert_eq!(out.len(), SRT_HEADER_SIZE, "SRT header must be exactly 44 bytes");
 
         // ── Data section (256 × 17 bytes) ────────────────────────────────────
         let table = Self::french_cp1252_table();
@@ -69,7 +80,7 @@ impl SrtWriter {
             out.extend_from_slice(&[0u8; 14]); // padding
         }
 
-        debug_assert_eq!(out.len(), 4379, "SRT total must be 4379 bytes");
+        debug_assert_eq!(out.len(), SRT_HEADER_SIZE + DATA_LEN as usize, "SRT total must be 4396 bytes");
         out
     }
 
@@ -170,46 +181,47 @@ mod tests {
 
     /// Helper: get (primary, secondary, tertiary) for a CP1252 byte from data section.
     fn entry(srt: &[u8], byte: u8) -> (u8, u8, u8) {
-        let off = 27 + (byte as usize) * 17;
+        let off = SRT_HEADER_SIZE + (byte as usize) * 17;
         (srt[off], srt[off + 1], srt[off + 2])
     }
 
     #[test]
     fn test_srt_header_bytes() {
         let srt = SrtWriter::build_french_cp1252();
-        assert_eq!(srt.len(), 4379, "total SRT size must be 4379 bytes");
+        assert_eq!(srt.len(), SRT_HEADER_SIZE + 4352, "total SRT size must be 4398 bytes");
 
-        // header_length = 27 (LE16)
-        assert_eq!(&srt[0x00..0x02], &[0x1B, 0x00], "header_length LE16 = 27");
-        // data_offset = 27 (LE32)
+        // Common header: LE16(44) at 0x00, "GARMIN SRT" at 0x02
+        assert_eq!(u16::from_le_bytes([srt[0], srt[1]]), SRT_HEADER_SIZE as u16);
+        assert_eq!(&srt[0x02..0x0C], b"GARMIN SRT");
+        // data_offset = 44 (LE32) at 0x15
         assert_eq!(
-            &srt[0x04..0x08],
-            &[0x1B, 0x00, 0x00, 0x00],
-            "data_offset LE32 = 27"
+            u32::from_le_bytes([srt[0x15], srt[0x16], srt[0x17], srt[0x18]]),
+            SRT_HEADER_SIZE as u32,
+            "data_offset = 44"
         );
-        // data_length = 4352 = 0x1100 (LE32)
+        // data_length = 4352 = 0x1100 (LE32) at 0x19
         assert_eq!(
-            &srt[0x08..0x0C],
-            &[0x00, 0x11, 0x00, 0x00],
-            "data_length LE32 = 4352"
+            u32::from_le_bytes([srt[0x19], srt[0x1A], srt[0x1B], srt[0x1C]]),
+            4352,
+            "data_length = 4352"
         );
-        // codepage = 1252 = 0x04E4 (LE16)
+        // codepage = 1252 = 0x04E4 (LE16) at 0x1D
         assert_eq!(
-            &srt[0x0C..0x0E],
-            &[0xE4, 0x04],
-            "codepage LE16 = 1252 (0x04E4)"
+            u16::from_le_bytes([srt[0x1D], srt[0x1E]]),
+            1252,
+            "codepage = 1252"
         );
-        // record_size = 17 = 0x0011 (LE16)
+        // record_size = 17 (LE16) at 0x1F
         assert_eq!(
-            &srt[0x0E..0x10],
-            &[0x11, 0x00],
-            "record_size LE16 = 17"
+            u16::from_le_bytes([srt[0x1F], srt[0x20]]),
+            17,
+            "record_size = 17"
         );
-        // record_count = 256 = 0x0100 (LE16)
+        // record_count = 256 (LE16) at 0x21
         assert_eq!(
-            &srt[0x10..0x12],
-            &[0x00, 0x01],
-            "record_count LE16 = 256"
+            u16::from_le_bytes([srt[0x21], srt[0x22]]),
+            256,
+            "record_count = 256"
         );
     }
 

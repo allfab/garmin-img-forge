@@ -12,6 +12,7 @@
 //! - mkgmap: `NodFile.java`, `RouteCenter.java`, `RouteNode.java`, `RoadDef.java`
 //! - wiki.openstreetmap.org/wiki/OSM_Map_On_Garmin/NOD_Subfile_Format
 
+use crate::img::common_header::build_common_header;
 use crate::parser::mp_types::MpPolyline;
 use crate::routing::RoadNetwork;
 
@@ -50,35 +51,23 @@ fn wgs84_to_garmin(deg: f64) -> i32 {
 
 /// Write the 48-byte NOD header into `buf`.
 ///
-/// Binary layout:
+/// Binary layout (standard common header format):
 /// ```text
-/// 0x00  LE16  Header length = 0x0030 (48)
-/// 0x02  u8    Type indicator = 0x00
-/// 0x03  u8    Locked indicator = 0x00
-/// 0x04  7B    Creation date (zeros)
-/// 0x0B  10B   Signature "GARMIN NOD" (no null terminator)
+/// 0x00  21B   Common header "GARMIN NOD" (LE16 header_length + signature + version + lock + date)
 /// 0x15  LE32  NOD1 section offset (= 48)
 /// 0x19  LE32  NOD1 section length
-/// 0x1D  u8    Node record size = 0x09 (informational)
-/// 0x1E  LE32  NOD2 section offset (= 48 + nod1_len)
+/// 0x1D  u8    Node record size = 0x09
+/// 0x1E  LE32  NOD2 section offset
 /// 0x22  LE32  NOD2 section length
-/// 0x26  LE32  NOD3 section offset (= NOD2 offset + NOD2 len)
-/// 0x2A  LE32  NOD3 section length (0 when no boundary nodes)
-/// 0x2E  u8    Drive-on-right = 0x01 (France, circulation à droite)
+/// 0x26  LE32  NOD3 section offset
+/// 0x2A  LE32  NOD3 section length
+/// 0x2E  u8    Drive-on-right = 0x01
 /// 0x2F  u8    Flags = 0x00
 /// ```
 fn write_nod_header(buf: &mut Vec<u8>, nod1_len: u32, nod2_len: u32, nod3_len: u32) {
     let start_len = buf.len();
-    // 0x00: header_length = 0x0030 (LE16)
-    buf.extend_from_slice(&(NOD_HEADER_SIZE as u16).to_le_bytes());
-    // 0x02: type indicator (u8)
-    buf.push(0x00);
-    // 0x03: locked indicator (u8)
-    buf.push(0x00);
-    // 0x04: creation date (7 bytes, all zero)
-    buf.extend_from_slice(&[0u8; 7]);
-    // 0x0B: signature "GARMIN NOD" — exactly 10 bytes (no null terminator)
-    buf.extend_from_slice(b"GARMIN NOD");
+    // Common header: 21 bytes (standard Garmin subfile format).
+    buf.extend_from_slice(&build_common_header("NOD", NOD_HEADER_SIZE as u16));
 
     // 0x15: NOD1 section offset (LE32) = header length
     buf.extend_from_slice(&(NOD_HEADER_SIZE as u32).to_le_bytes());
@@ -542,8 +531,8 @@ mod tests {
     fn test_nod_header_signature() {
         let mut buf = Vec::new();
         write_nod_header(&mut buf, 100, 50, 0);
-        // Signature "GARMIN NOD" at offset 0x0B (11)
-        assert_eq!(&buf[0x0B..0x15], b"GARMIN NOD");
+        // Signature "GARMIN NOD" at offset 0x02 (standard common header)
+        assert_eq!(&buf[0x02..0x0C], b"GARMIN NOD");
     }
 
     #[test]
@@ -821,7 +810,7 @@ mod tests {
         let result = NodWriter::build(&network, &[], &[]);
 
         assert_eq!(result.data.len(), 48, "empty network → header only (48 bytes)");
-        assert_eq!(&result.data[0x0B..0x15], b"GARMIN NOD", "signature must be 'GARMIN NOD'");
+        assert_eq!(&result.data[0x02..0x0C], b"GARMIN NOD", "signature must be 'GARMIN NOD'");
         assert_eq!(result.data[0x2E], 0x01, "drive_on_right must be 0x01");
         assert_eq!(result.nod2_road_offsets.len(), 0);
     }

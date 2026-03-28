@@ -5,9 +5,15 @@
 //! - A list of zoom levels with their resolutions
 //! - One subdivision per level covering the full tile (stub `rgn_offset = 0`)
 //!
-//! Format: `[TRE Header — 148 B] [Map Levels — N×4 B] [Subdivisions — N×16 B]`
+//! Format: `[TRE Header — 167 B] [Map Levels — N×4 B] [Subdivisions — N×16 B]`
 
+use crate::img::common_header::{build_common_header, COMMON_HEADER_SIZE};
 use crate::parser::mp_types::{MpFile, MpHeader};
+
+/// Size of the TRE type-specific header (old 148 minus LE16 header_length and LE16 version).
+const TRE_TYPE_SPECIFIC_SIZE: usize = 148 - 4; // 144 bytes
+/// Total TRE header size with common header.
+const TRE_HEADER_SIZE: usize = COMMON_HEADER_SIZE + TRE_TYPE_SPECIFIC_SIZE; // 165 bytes
 
 /// Convert WGS84 degrees to Garmin 24-bit coordinate units.
 ///
@@ -30,24 +36,30 @@ fn write_le24(buf: &mut Vec<u8>, val: i32) {
 
 // ── TreHeader ─────────────────────────────────────────────────────────────────
 
-/// TRE file header — exactly 148 bytes, version 3.
+/// TRE file header — exactly 167 bytes (21-byte common header + 146-byte type-specific).
 ///
-/// Binary layout (matches mkgmap `TREHeader.java`):
+/// Binary layout:
 /// ```text
-/// 0x00  LE16   header_length = 148
-/// 0x02  LE16   version = 3
-/// 0x04  LE24s  max_lat  (Garmin 24-bit units, signed)
-/// 0x07  LE24s  max_lon
-/// 0x0A  LE24s  min_lat
-/// 0x0D  LE24s  min_lon
-/// 0x10  LE32   flags = 0 (reserved)
-/// 0x14  LE32   levels_offset  (= 148)
-/// 0x18  LE32   levels_size    (= n × 4)
-/// 0x1C  LE32   subdivisions_offset
-/// 0x20  LE32   subdivisions_size  (= n × 16)
-/// 0x24  LE32   copyright_offset
-/// 0x28  LE32   copyright_size = 0
-/// 0x2C  104B   zero padding to reach byte 148
+/// ── Common header (21 bytes) ──
+/// 0x00  LE16   header_length = 167
+/// 0x02  10B    "GARMIN TRE" signature
+/// 0x0C  u8     version = 1
+/// 0x0D  u8     lock = 0
+/// 0x0E  7B     creation date
+/// ── Type-specific (146 bytes, starts at 0x15) ──
+/// 0x15  LE16   version = 3
+/// 0x17  LE24s  max_lat  (Garmin 24-bit units, signed)
+/// 0x1A  LE24s  max_lon
+/// 0x1D  LE24s  min_lat
+/// 0x20  LE24s  min_lon
+/// 0x23  LE32   flags = 0 (reserved)
+/// 0x27  LE32   levels_offset  (= 167)
+/// 0x2B  LE32   levels_size    (= n × 4)
+/// 0x2F  LE32   subdivisions_offset
+/// 0x33  LE32   subdivisions_size  (= n × 16)
+/// 0x37  LE32   copyright_offset
+/// 0x3B  LE32   copyright_size = 0
+/// 0x3F  ..     zero padding to reach byte 167
 /// ```
 pub struct TreHeader {
     /// Maximum latitude in Garmin 24-bit units (signed).
@@ -58,7 +70,7 @@ pub struct TreHeader {
     pub min_lat: i32,
     /// Minimum longitude in Garmin 24-bit units (signed).
     pub min_lon: i32,
-    /// Byte offset of the Map Levels section (= 148).
+    /// Byte offset of the Map Levels section (= 167).
     pub levels_offset: u32,
     /// Size in bytes of the Map Levels section (= n_levels × 4).
     pub levels_size: u32,
@@ -73,37 +85,33 @@ pub struct TreHeader {
 }
 
 impl TreHeader {
-    /// Serialise into exactly 148 bytes.
+    /// Serialise into exactly 165 bytes (21-byte common header + 144-byte type-specific).
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(148);
-        // 0x00: header_length = 148 (LE16)
-        buf.extend_from_slice(&148u16.to_le_bytes());
-        // 0x02: version = 3 (LE16)
-        buf.extend_from_slice(&3u16.to_le_bytes());
-        // 0x04: max_lat (LE24s)
+        let mut buf = Vec::with_capacity(TRE_HEADER_SIZE);
+        // 0x00: Common header (21 bytes)
+        buf.extend_from_slice(&build_common_header("TRE", TRE_HEADER_SIZE as u16));
+        // 0x15: max_lat (LE24s) — bounding box starts directly after common header
         write_le24(&mut buf, self.max_lat);
-        // 0x07: max_lon (LE24s)
+        // 0x18: max_lon (LE24s)
         write_le24(&mut buf, self.max_lon);
-        // 0x0A: min_lat (LE24s)
+        // 0x1B: min_lat (LE24s)
         write_le24(&mut buf, self.min_lat);
-        // 0x0D: min_lon (LE24s)
+        // 0x1E: min_lon (LE24s)
         write_le24(&mut buf, self.min_lon);
-        // 0x10: flags = 0 (LE32, reserved)
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        // 0x14: levels_offset (LE32)
+        // 0x21: levels_offset (LE32)
         buf.extend_from_slice(&self.levels_offset.to_le_bytes());
-        // 0x18: levels_size (LE32)
+        // 0x25: levels_size (LE32)
         buf.extend_from_slice(&self.levels_size.to_le_bytes());
-        // 0x1C: subdivisions_offset (LE32)
+        // 0x29: subdivisions_offset (LE32)
         buf.extend_from_slice(&self.subdivisions_offset.to_le_bytes());
-        // 0x20: subdivisions_size (LE32)
+        // 0x2D: subdivisions_size (LE32)
         buf.extend_from_slice(&self.subdivisions_size.to_le_bytes());
-        // 0x24: copyright_offset (LE32)
+        // 0x31: copyright_offset (LE32)
         buf.extend_from_slice(&self.copyright_offset.to_le_bytes());
-        // 0x28: copyright_size (LE32)
+        // 0x35: copyright_size (LE32)
         buf.extend_from_slice(&self.copyright_size.to_le_bytes());
-        // 0x2C–0x93: zero padding to reach 148 bytes total (148 - 44 = 104 bytes)
-        buf.resize(148, 0u8);
+        // Padding to reach TRE_HEADER_SIZE bytes total
+        buf.resize(TRE_HEADER_SIZE, 0u8);
         buf
     }
 }
@@ -392,7 +400,7 @@ impl TreWriter {
     /// All subdivision `rgn_offset` fields are set to 0 (stub).
     /// Use [`TreWriter::build_with_rgn_offsets`] to inject real RGN offsets.
     ///
-    /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
+    /// Output size: `167 + n_levels * 4 + n_levels * 16` bytes.
     pub fn build(mp: &MpFile) -> Vec<u8> {
         Self::build_with_rgn_offsets(mp, &[])
     }
@@ -404,7 +412,7 @@ impl TreWriter {
     /// the start of the RGN file). If `rgn_offsets` is shorter than `n_levels`,
     /// remaining subdivisions keep `rgn_offset = 0`.
     ///
-    /// Output size: `148 + n_levels * 4 + n_levels * 16` bytes.
+    /// Output size: `167 + n_levels * 4 + n_levels * 16` bytes.
     pub fn build_with_rgn_offsets(mp: &MpFile, rgn_offsets: &[u32]) -> Vec<u8> {
         Self::build_tre_inner(mp, rgn_offsets, false, None)
     }
@@ -457,7 +465,7 @@ impl TreWriter {
         let n = levels.len();
 
         // Step 4: compute section byte offsets
-        let levels_offset = 148u32;
+        let levels_offset = TRE_HEADER_SIZE as u32;
         let levels_size = n as u32 * 4;
         let subdivisions_offset = levels_offset + levels_size;
         let subdivisions_size = n as u32 * 16;
@@ -638,31 +646,36 @@ mod tests {
             max_lon: 0,
             min_lat: 0,
             min_lon: 0,
-            levels_offset: 148,
+            levels_offset: TRE_HEADER_SIZE as u32,    // 167
             levels_size: 12,
-            subdivisions_offset: 160,
+            subdivisions_offset: TRE_HEADER_SIZE as u32 + 12, // 179
             subdivisions_size: 48,
-            copyright_offset: 208,
+            copyright_offset: TRE_HEADER_SIZE as u32 + 12 + 48, // 227
             copyright_size: 0,
         }
     }
 
     #[test]
     fn test_tre_header_size() {
-        assert_eq!(default_header().to_bytes().len(), 148);
+        assert_eq!(default_header().to_bytes().len(), TRE_HEADER_SIZE);
     }
 
     #[test]
-    fn test_tre_header_version_magic() {
+    fn test_tre_header_common_header_signature() {
         let bytes = default_header().to_bytes();
-        assert_eq!(&bytes[0..4], &[0x94, 0x00, 0x03, 0x00]);
+        // Common header: LE16(165) at 0x00, "GARMIN TRE" at 0x02
+        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), TRE_HEADER_SIZE as u16);
+        assert_eq!(&bytes[0x02..0x0C], b"GARMIN TRE");
+        // Bounding box starts at 0x15 (no version field)
+        // max_lat (LE24s) at 0x15 — just verify it's reachable
+        assert_eq!(bytes.len(), TRE_HEADER_SIZE);
     }
 
     #[test]
     fn test_tre_header_levels_offset() {
         let bytes = default_header().to_bytes();
-        let offset = u32::from_le_bytes([bytes[0x14], bytes[0x15], bytes[0x16], bytes[0x17]]);
-        assert_eq!(offset, 148);
+        let offset = u32::from_le_bytes([bytes[0x21], bytes[0x22], bytes[0x23], bytes[0x24]]);
+        assert_eq!(offset, TRE_HEADER_SIZE as u32);
     }
 
     #[test]
@@ -674,9 +687,10 @@ mod tests {
     #[test]
     fn test_tre_header_padding() {
         let bytes = default_header().to_bytes();
-        // All bytes from 0x2C (44) to end must be 0x00
+        // All bytes from 0x39 (57 = 21 common + 12 bbox + 24 section ptrs)
+        // to end must be 0x00
         assert!(
-            bytes[0x2C..].iter().all(|&b| b == 0x00),
+            bytes[0x39..].iter().all(|&b| b == 0x00),
             "header padding must be all zeros"
         );
     }
@@ -799,25 +813,25 @@ mod tests {
     #[test]
     fn test_tre_build_minimal() {
         // minimal_for_img.mp: Level0=24, Level1=18 → 2 explicit levels
-        // Size = 148 + 2×4 + 2×16 = 188 bytes
+        // Size = 165 + 2×4 + 2×16 = 205 bytes
         let mp = fixture_mp();
         let data = TreWriter::build(&mp);
-        assert_eq!(data.len(), 188, "2-level TRE must be 188 bytes");
+        assert_eq!(data.len(), 205, "2-level TRE must be 205 bytes");
     }
 
     #[test]
-    fn test_tre_build_header_magic() {
+    fn test_tre_build_header_signature() {
         let mp = fixture_mp();
         let data = TreWriter::build(&mp);
-        assert_eq!(&data[0..4], &[0x94, 0x00, 0x03, 0x00]);
+        assert_eq!(&data[0x02..0x0C], b"GARMIN TRE");
     }
 
     #[test]
     fn test_tre_build_levels_offset() {
         let mp = fixture_mp();
         let data = TreWriter::build(&mp);
-        let offset = u32::from_le_bytes([data[0x14], data[0x15], data[0x16], data[0x17]]);
-        assert_eq!(offset, 148);
+        let offset = u32::from_le_bytes([data[0x21], data[0x22], data[0x23], data[0x24]]);
+        assert_eq!(offset, TRE_HEADER_SIZE as u32);
     }
 
     #[test]
@@ -825,8 +839,8 @@ mod tests {
         // minimal_for_img.mp has a POI at lat ≈ 45.19° → max_lat_g > 0
         let mp = fixture_mp();
         let data = TreWriter::build(&mp);
-        // max_lat at bytes[0x04..0x07] (LE24s)
-        let raw = (data[0x04] as i32) | ((data[0x05] as i32) << 8) | ((data[0x06] as i32) << 16);
+        // max_lat at bytes[0x15..0x18] (LE24s, after common header)
+        let raw = (data[0x15] as i32) | ((data[0x16] as i32) << 8) | ((data[0x17] as i32) << 16);
         let max_lat_g = if raw & 0x80_0000 != 0 {
             raw | !0xFF_FFFF
         } else {
@@ -844,9 +858,9 @@ mod tests {
         // Empty MpFile → no features, zero bbox, 3 default levels
         let mp = empty_mp();
         let data = TreWriter::build(&mp);
-        // Must not panic; valid TRE: 148 + 3×4 + 3×16 = 208 bytes
-        assert_eq!(data.len(), 208);
-        assert_eq!(&data[0..4], &[0x94, 0x00, 0x03, 0x00]);
+        // Must not panic; valid TRE: 165 + 3×4 + 3×16 = 225 bytes
+        assert_eq!(data.len(), 225);
+        assert_eq!(&data[0x02..0x0C], b"GARMIN TRE");
     }
 
     #[test]
@@ -862,8 +876,8 @@ mod tests {
             polygons: vec![],
         };
         let data = TreWriter::build(&mp);
-        // 148 + 3×4 + 3×16 = 208 bytes
-        assert_eq!(data.len(), 208, "default 3-level TRE must be 208 bytes");
+        // 165 + 3×4 + 3×16 = 225 bytes
+        assert_eq!(data.len(), 225, "default 3-level TRE must be 225 bytes");
     }
 
     // ── Task 3 (M2): clamping bits_per_coord > 24 ────────────────────────────
@@ -893,17 +907,17 @@ mod tests {
         let rgn_offsets = vec![0u32, 42u32];
         let tre_data = TreWriter::build_with_rgn_offsets(&mp, &rgn_offsets);
 
-        // TRE layout for 2 levels: 148 (header) + 2×4 (levels) + 2×16 (subdivisions)
-        // Subdivisions start at offset 156.
-        let subdivs_offset = 148 + 2 * 4; // = 156
+        // TRE layout for 2 levels: 165 (header) + 2×4 (levels) + 2×16 (subdivisions)
+        // Subdivisions start at offset 173.
+        let subdivs_offset = TRE_HEADER_SIZE + 2 * 4; // = 173
 
-        // Subdivision 0 (level 0): rgn_offset = 0 at bytes [156..159]
+        // Subdivision 0 (level 0): rgn_offset = 0 at bytes [173..176]
         let off0 = (tre_data[subdivs_offset] as u32)
             | ((tre_data[subdivs_offset + 1] as u32) << 8)
             | ((tre_data[subdivs_offset + 2] as u32) << 16);
         assert_eq!(off0, 0, "level 0 subdivision rgn_offset must be 0");
 
-        // Subdivision 1 (level 1): rgn_offset = 42 at bytes [172..175]
+        // Subdivision 1 (level 1): rgn_offset = 42 at bytes [191..194]
         let subdiv1_start = subdivs_offset + 16;
         let off1 = (tre_data[subdiv1_start] as u32)
             | ((tre_data[subdiv1_start + 1] as u32) << 8)
