@@ -41,8 +41,8 @@ fn try_ci_tag() -> Option<String> {
     // Woodpecker CI / GitLab CI (même variable)
     if let Ok(tag) = env::var("CI_COMMIT_TAG") {
         if !tag.is_empty() {
-            // "mpforge-v1.0.0" → "v1.0.0" ; "v1.0.0" → "v1.0.0"
-            let clean = tag.strip_prefix("mpforge-").unwrap_or(&tag).to_string();
+            // "mpforge-v1.0.0" → "v1.0.0" ; "imgforge-v1.0.0" → "v1.0.0"
+            let clean = strip_known_prefixes(&tag).to_string();
             return Some(clean);
         }
     }
@@ -51,7 +51,7 @@ fn try_ci_tag() -> Option<String> {
     if let Ok(ref_name) = env::var("GITHUB_REF") {
         if ref_name.starts_with("refs/tags/") {
             let tag = ref_name.trim_start_matches("refs/tags/");
-            let clean = tag.strip_prefix("mpforge-").unwrap_or(tag).to_string();
+            let clean = strip_known_prefixes(tag).to_string();
             return Some(clean);
         }
     }
@@ -73,8 +73,8 @@ fn try_git_describe() -> Option<String> {
         .ok()
         .map(|s| {
             let trimmed = s.trim();
-            // "mpforge-v1.0.0-3-gabcdef" → "v1.0.0-3-gabcdef"
-            trimmed.strip_prefix("mpforge-").unwrap_or(trimmed).to_string()
+            // "mpforge-v1.0.0-3-gabcdef" ou "imgforge-v1.0.0-3-gabcdef" → "v1.0.0-3-gabcdef"
+            strip_known_prefixes(trimmed).to_string()
         })
 }
 
@@ -91,4 +91,14 @@ fn try_git_hash() -> Option<String> {
     String::from_utf8(output.stdout)
         .ok()
         .map(|s| s.trim().to_string())
+}
+
+fn strip_known_prefixes(tag: &str) -> &str {
+    const PREFIXES: &[&str] = &["mpforge-", "imgforge-"];
+    for prefix in PREFIXES {
+        if let Some(stripped) = tag.strip_prefix(prefix) {
+            return stripped;
+        }
+    }
+    tag
 }
