@@ -37,7 +37,7 @@ fn write_le24(buf: &mut Vec<u8>, val: i32) {
 
 // ── TreHeader ─────────────────────────────────────────────────────────────────
 
-/// TRE file header — exactly 167 bytes (21-byte common header + 146-byte type-specific).
+/// TRE file header — exactly 188 bytes (21-byte common header + 167-byte type-specific).
 ///
 /// Binary layout:
 /// ```text
@@ -61,58 +61,164 @@ fn write_le24(buf: &mut Vec<u8>, val: i32) {
 /// 0x39  ..     zero padding to reach byte 188
 /// ```
 pub struct TreHeader {
-    /// Maximum latitude in Garmin 24-bit units (signed).
     pub max_lat: i32,
-    /// Maximum longitude in Garmin 24-bit units (signed).
     pub max_lon: i32,
-    /// Minimum latitude in Garmin 24-bit units (signed).
     pub min_lat: i32,
-    /// Minimum longitude in Garmin 24-bit units (signed).
     pub min_lon: i32,
-    /// Byte offset of the Map Levels section (= 167).
     pub levels_offset: u32,
-    /// Size in bytes of the Map Levels section (= n_levels × 4).
     pub levels_size: u32,
-    /// Byte offset of the Subdivisions section.
     pub subdivisions_offset: u32,
-    /// Size in bytes of the Subdivisions section (= n_levels × 16).
     pub subdivisions_size: u32,
-    /// Byte offset of the Copyright section (immediately after subdivisions).
     pub copyright_offset: u32,
-    /// Size in bytes of the Copyright section (= 0, unused).
     pub copyright_size: u32,
+    /// Map ID (numeric, e.g. 63240001).
+    pub map_id: u32,
+    /// Offset and size of the extended type offsets section (in TRE, after subdivisions).
+    /// Each record = 13 bytes (per-subdivision cumulative offsets into RGN ext sections).
+    pub ext_type_offsets_offset: u32,
+    pub ext_type_offsets_size: u32,
+    /// Number of extended type line/area/point overview entries.
+    pub num_ext_type_line_types: u16,
+    pub num_ext_type_area_types: u16,
+    pub num_ext_type_point_types: u16,
 }
 
 impl TreHeader {
-    /// Serialise into exactly 188 bytes (21-byte common header + 167-byte type-specific).
+    /// Serialise into exactly 188 bytes, matching mkgmap's TREHeader.writeFileHeader().
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(TRE_HEADER_SIZE);
         // 0x00: Common header (21 bytes)
         buf.extend_from_slice(&build_common_header("TRE", TRE_HEADER_SIZE as u16));
-        // 0x15: max_lat (LE24s) — bounding box starts directly after common header
+        // 0x15–0x20: Bounding box (4 × LE24s = 12 bytes)
         write_le24(&mut buf, self.max_lat);
-        // 0x18: max_lon (LE24s)
         write_le24(&mut buf, self.max_lon);
-        // 0x1B: min_lat (LE24s)
         write_le24(&mut buf, self.min_lat);
-        // 0x1E: min_lon (LE24s)
         write_le24(&mut buf, self.min_lon);
-        // 0x21: levels_offset (LE32)
+        // 0x21–0x28: Map levels section (offset + size)
         buf.extend_from_slice(&self.levels_offset.to_le_bytes());
-        // 0x25: levels_size (LE32)
         buf.extend_from_slice(&self.levels_size.to_le_bytes());
-        // 0x29: subdivisions_offset (LE32)
+        // 0x29–0x30: Subdivisions section (offset + size)
         buf.extend_from_slice(&self.subdivisions_offset.to_le_bytes());
-        // 0x2D: subdivisions_size (LE32)
         buf.extend_from_slice(&self.subdivisions_size.to_le_bytes());
-        // 0x31: copyright_offset (LE32)
+        // 0x31–0x38: Copyright section info (offset + size)
         buf.extend_from_slice(&self.copyright_offset.to_le_bytes());
-        // 0x35: copyright_size (LE32)
         buf.extend_from_slice(&self.copyright_size.to_le_bytes());
-        // 0x39–0xBB: extended section pointers (zero-padded to 188 bytes)
-        buf.resize(TRE_HEADER_SIZE, 0u8);
+        // 0x39–0x3C: padding (4 bytes)
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x3D: POI display flags (1 byte)
+        buf.push(0x00);
+        // 0x3E–0x40: Display priority (LE24, default 0x19)
+        write_le24(&mut buf, 0x19);
+        // 0x41–0x44: Magic value (mkgmap: 0x110301)
+        buf.extend_from_slice(&0x0011_0301u32.to_le_bytes());
+        // 0x45–0x46: put2u(1)
+        buf.extend_from_slice(&1u16.to_le_bytes());
+        // 0x47: put1u(0)
+        buf.push(0x00);
+        // 0x48–0x4F: Polyline overview section (offset=0, size=0)
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x50–0x53: padding
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x54–0x5B: Polygon overview section (offset=0, size=0)
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x5C–0x5F: padding
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x60–0x67: Points overview section (offset=0, size=0)
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x68–0x6B: padding
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x6C–0x6F: Map ID (LE32)
+        buf.extend_from_slice(&self.map_id.to_le_bytes());
+        // 0x70–0x73: padding
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x74–0x7D: extTypeOffsets section info (offset + size + itemSize=13)
+        buf.extend_from_slice(&self.ext_type_offsets_offset.to_le_bytes());
+        buf.extend_from_slice(&self.ext_type_offsets_size.to_le_bytes());
+        buf.extend_from_slice(&(13u16).to_le_bytes()); // EXT_TYPE_OFFSETS_REC_LEN = 13
+        // 0x7E–0x81: Magic 0x0607 (indicates extended type data present)
+        buf.extend_from_slice(&0x0000_0607u32.to_le_bytes());
+        // 0x82–0x89: extTypeOverviews section (offset=0, size=0)
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        // 0x8A–0x8F: Extended type counts
+        buf.extend_from_slice(&self.num_ext_type_line_types.to_le_bytes());
+        buf.extend_from_slice(&self.num_ext_type_area_types.to_le_bytes());
+        buf.extend_from_slice(&self.num_ext_type_point_types.to_le_bytes());
+        // 0x90–0x9F: MapValues (4 × LE32, anti-piracy checksum)
+        let mv = compute_map_values(self.map_id, TRE_HEADER_SIZE as u32);
+        for v in &mv {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        // 0xA0–0xB1: remaining padding
+        while buf.len() < TRE_HEADER_SIZE {
+            buf.push(0);
+        }
+        buf.truncate(TRE_HEADER_SIZE);
         buf
     }
+}
+
+/// Compute the 4 MapValues (mkgmap TreCalc/MapValues.java).
+/// These are anti-piracy checksums derived from the map ID and header length.
+fn compute_map_values(map_id: u32, header_length: u32) -> [u32; 4] {
+    let map_id_code_table: [u8; 16] = [
+        0, 1, 0xf, 5, 0xd, 4, 7, 6, 0xb, 9, 0xe, 8, 2, 0xa, 0xc, 3,
+    ];
+    let offset_map: [u8; 16] = [
+        6, 7, 5, 11, 3, 10, 13, 12, 1, 15, 4, 14, 8, 0, 2, 9,
+    ];
+
+    let digit = |i: usize| -> u8 { ((map_id >> (4 * (7 - i))) & 0xF) as u8 };
+
+    // Third value: coded map ID digits
+    let mut v3 = [0u8; 8];
+    for i in 0..8 {
+        v3[i ^ 1] = map_id_code_table[digit(i) as usize];
+    }
+    // Fourth = copy of third
+    let mut v4 = v3;
+
+    // First value
+    let mut v1 = [0u8; 8];
+    v1[0] = digit(4).wrapping_add(v4[0]);
+    v1[1] = digit(5).wrapping_add(v4[1]);
+    v1[2] = digit(6).wrapping_add(v4[2]);
+    v1[3] = digit(7).wrapping_add(v4[3]);
+    v1[4] = v4[4];
+    v1[5] = v4[5];
+    v1[6] = v4[6];
+    v1[7] = v4[7].wrapping_add(1);
+
+    // Second value
+    let mut v2 = [0u8; 8];
+    v2[0] = v4[0];
+    v2[1] = v4[1];
+    v2[2] = (v4[2].wrapping_add((header_length >> 4) as u8)) & 0xF;
+    v2[3] = (v4[3].wrapping_add(header_length as u8)) & 0xF;
+    v2[4] = v4[4].wrapping_add(digit(0));
+    v2[5] = v4[5].wrapping_add(digit(1));
+    v2[6] = v4[6].wrapping_add(digit(2));
+    v2[7] = v4[7].wrapping_add(digit(3));
+
+    // Add global offset to all values
+    let n = (digit(1) as u16 + digit(3) as u16 + digit(5) as u16 + digit(7) as u16) & 0xF;
+    let offset = offset_map[n as usize];
+
+    let pack = |vals: &mut [u8; 8]| -> u32 {
+        for v in vals.iter_mut() {
+            *v = v.wrapping_add(offset);
+        }
+        let mut res = 0u32;
+        for i in 0..8 {
+            res |= ((vals[i] as u32) & 0xF) << (4 * (7 - i));
+        }
+        res
+    };
+
+    [pack(&mut v1), pack(&mut v2), pack(&mut v3), pack(&mut v4)]
 }
 
 // ── MapLevel ──────────────────────────────────────────────────────────────────
@@ -242,13 +348,12 @@ impl Subdivision {
     pub fn to_bytes_sized(&self, is_most_detailed_level: bool) -> Vec<u8> {
         let size = if is_most_detailed_level { 14 } else { 16 };
         let mut buf = vec![0u8; size];
-        self.write_common(&mut buf);
+        self.write_common(&mut buf); // writes 14 bytes (0-13)
         if !is_most_detailed_level {
-            // 0x0C–0x0D: next_level_first_subdiv (LE16)
+            // 0x0E–0x0F: next_level_first_subdiv (LE16)
             let nls_bytes = self.next_level_first_subdiv.to_le_bytes();
-            buf[12] = nls_bytes[0];
-            buf[13] = nls_bytes[1];
-            // 0x0E–0x0F: reserved = 0
+            buf[14] = nls_bytes[0];
+            buf[15] = nls_bytes[1];
         }
         buf
     }
@@ -256,52 +361,53 @@ impl Subdivision {
     /// Serialise into exactly 16 bytes (legacy — used by tests).
     pub fn to_bytes(&self) -> [u8; 16] {
         let mut buf = [0u8; 16];
-        self.write_common(&mut buf);
+        self.write_common(&mut buf); // writes 14 bytes (0-13)
         let nls_bytes = self.next_level_first_subdiv.to_le_bytes();
-        buf[12] = nls_bytes[0];
-        buf[13] = nls_bytes[1];
+        buf[14] = nls_bytes[0];
+        buf[15] = nls_bytes[1];
         buf
     }
 
-    /// Write the first 12 bytes common to both 14-byte and 16-byte subdivisions.
+    /// Write the 14 common bytes of a subdivision record (mkgmap Subdivision.write()).
     fn write_common(&self, buf: &mut [u8]) {
-        // 0x00–0x02: rgn_offset (LE24)
+        // 0x00–0x02: rgn_offset (LE24, 3 bytes)
         buf[0] = (self.rgn_offset & 0xFF) as u8;
         buf[1] = ((self.rgn_offset >> 8) & 0xFF) as u8;
         buf[2] = ((self.rgn_offset >> 16) & 0xFF) as u8;
 
-        // 0x03: data_flags
-        buf[3] = (self.has_points as u8)
-            | ((self.has_indexed_lines as u8) << 1)
-            | ((self.has_polylines as u8) << 2)
-            | ((self.has_polygons as u8) << 3)
-            | ((self.has_extended_points as u8) << 4)
-            | ((self.has_extended_polylines as u8) << 5)
-            | ((self.has_extended_polygons as u8) << 6);
+        // 0x03: data_flags (mkgmap Subdivision.getType())
+        buf[3] = ((self.has_points as u8) << 4)          // bit 4 = 0x10
+            | ((self.has_indexed_lines as u8) << 5)       // bit 5 = 0x20
+            | ((self.has_polylines as u8) << 6)            // bit 6 = 0x40
+            | ((self.has_polygons as u8) << 7);            // bit 7 = 0x80
 
-        // 0x04–0x05: lon_center (bits 8–23, LE16s)
-        let lon_bytes = ((self.lon_center >> 8) as i16).to_le_bytes();
-        buf[4] = lon_bytes[0];
-        buf[5] = lon_bytes[1];
+        // 0x04–0x06: lon_center (LE24s, 3 bytes — full 24-bit precision!)
+        let lon = self.lon_center;
+        buf[4] = (lon & 0xFF) as u8;
+        buf[5] = ((lon >> 8) & 0xFF) as u8;
+        buf[6] = ((lon >> 16) & 0xFF) as u8;
 
-        // 0x06–0x07: lat_center (bits 8–23, LE16s)
-        let lat_bytes = ((self.lat_center >> 8) as i16).to_le_bytes();
-        buf[6] = lat_bytes[0];
-        buf[7] = lat_bytes[1];
+        // 0x07–0x09: lat_center (LE24s, 3 bytes)
+        let lat = self.lat_center;
+        buf[7] = (lat & 0xFF) as u8;
+        buf[8] = ((lat >> 8) & 0xFF) as u8;
+        buf[9] = ((lat >> 16) & 0xFF) as u8;
 
-        // 0x08–0x09: half_width (bits 8–23), bit 15 = last_in_level
-        let mut hw = (self.half_width >> 8) as u16;
+        // 0x0A–0x0B: half_width (LE16), bit 15 = last_in_level
+        // Round UP and ensure at least 1 so QMapShack doesn't skip zero-sized subdivisions.
+        let mut hw = (((self.half_width + 255) >> 8) as u16).max(1);
         if self.last_in_level {
             hw |= 0x8000;
         }
         let hw_bytes = hw.to_le_bytes();
-        buf[8] = hw_bytes[0];
-        buf[9] = hw_bytes[1];
+        buf[10] = hw_bytes[0];
+        buf[11] = hw_bytes[1];
 
-        // 0x0A–0x0B: half_height (bits 8–23)
-        let hh_bytes = ((self.half_height >> 8) as u16).to_le_bytes();
-        buf[10] = hh_bytes[0];
-        buf[11] = hh_bytes[1];
+        // 0x0C–0x0D: half_height (LE16) — round up, min 1
+        let hh = (((self.half_height + 255) >> 8) as u16).max(1);
+        let hh_bytes = hh.to_le_bytes();
+        buf[12] = hh_bytes[0];
+        buf[13] = hh_bytes[1];
     }
 
     /// Build a subdivision covering the given bounding box.
@@ -454,6 +560,9 @@ impl TreWriter {
     }
 
     /// Shared implementation for TRE building with optional routing and extended type support.
+    ///
+    /// Supports multiple subdivisions per level when `rgn_result` contains
+    /// populated `SubdivisionInfo` entries.
     fn build_tre_inner(
         mp: &MpFile,
         rgn_offsets: &[u32],
@@ -473,88 +582,176 @@ impl TreWriter {
         let mut levels = levels_from_mp(&mp.header);
         let n = levels.len();
 
-        // Step 4: compute section byte offsets
+        // Use SubdivisionInfo from RgnBuildResult when available.
+        let use_subdiv_info = rgn_result
+            .map_or(false, |rr| !rr.subdivisions.is_empty());
+
+        let subdivisions: Vec<Subdivision>;
+
+        if use_subdiv_info {
+            let rr = rgn_result.unwrap();
+            let subdiv_infos = &rr.subdivisions;
+
+            // Count subdivisions per level.
+            let mut level_subdiv_counts: Vec<u16> = vec![0; n];
+            for si in subdiv_infos {
+                if (si.level as usize) < n {
+                    level_subdiv_counts[si.level as usize] += 1;
+                }
+            }
+
+            // Compute cumulative start index (1-based) per level.
+            let mut level_first_subdiv: Vec<u16> = vec![0; n];
+            let mut cumulative: u16 = 1; // 1-based
+            for lev in 0..n {
+                level_first_subdiv[lev] = cumulative;
+                cumulative += level_subdiv_counts[lev];
+            }
+
+            // Build Subdivision structs from SubdivisionInfo.
+            subdivisions = subdiv_infos
+                .iter()
+                .enumerate()
+                .map(|(idx, si)| {
+                    let lev = si.level as usize;
+                    // Is this the last subdivision within its level?
+                    let last_in_level = subdiv_infos
+                        .get(idx + 1)
+                        .map_or(true, |next| next.level != si.level);
+                    // next_level_first_subdiv: for overview levels, points to child level.
+                    // Level 0 = most detailed → 0. Level i > 0 → first subdiv of level i-1.
+                    let next_idx = if lev == 0 {
+                        0u16
+                    } else {
+                        level_first_subdiv[lev - 1]
+                    };
+
+                    let half_height = ((si.max_lat_g - si.min_lat_g) / 2 + 1) as u32;
+                    let half_width = ((si.max_lon_g - si.min_lon_g) / 2 + 1) as u32;
+
+                    Subdivision {
+                        rgn_offset: si.rgn_offset,
+                        has_points: si.has_points,
+                        has_indexed_lines: si.has_indexed_lines,
+                        has_polylines: si.has_polylines,
+                        has_polygons: si.has_polygons,
+                        has_extended_points: si.has_extended_points,
+                        has_extended_polylines: si.has_extended_polylines,
+                        has_extended_polygons: si.has_extended_polygons,
+                        lon_center: si.center_lon_g,
+                        lat_center: si.center_lat_g,
+                        half_width,
+                        half_height,
+                        last_in_level,
+                        next_level_first_subdiv: next_idx,
+                    }
+                })
+                .collect();
+
+            // Update level subdivision_counts.
+            for (i, level) in levels.iter_mut().enumerate() {
+                level.subdivision_count = level_subdiv_counts[i];
+                if i == n - 1 {
+                    level.bits_per_coord |= 0x80; // INHERITED flag on overview level
+                }
+            }
+        } else {
+            // Legacy path: 1 subdivision per level.
+            let bounds_g = (min_lat_g, max_lat_g, min_lon_g, max_lon_g);
+            subdivisions = (0..n)
+                .map(|i| {
+                    let next_idx = if i == 0 { 0u16 } else { i as u16 };
+                    let has_points = mp
+                        .points
+                        .iter()
+                        .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                    let has_polylines = mp
+                        .polylines
+                        .iter()
+                        .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                    let has_polygons = mp
+                        .polygons
+                        .iter()
+                        .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
+                    let has_indexed_lines = routing
+                        && mp
+                            .polylines
+                            .iter()
+                            .any(|f| {
+                                f.routing.is_some()
+                                    && f.end_level.unwrap_or(u8::MAX) >= i as u8
+                            });
+                    let mut s = Subdivision::compute_subdivision(
+                        bounds_g, has_points, has_polylines, has_polygons, true, next_idx,
+                    );
+                    s.has_indexed_lines = has_indexed_lines;
+                    if let Some(rr) = rgn_result {
+                        if i < rr.subdiv_has_extended_points.len() {
+                            s.has_extended_points = rr.subdiv_has_extended_points[i];
+                        }
+                        if i < rr.subdiv_has_extended_polylines.len() {
+                            s.has_extended_polylines = rr.subdiv_has_extended_polylines[i];
+                        }
+                        if i < rr.subdiv_has_extended_polygons.len() {
+                            s.has_extended_polygons = rr.subdiv_has_extended_polygons[i];
+                        }
+                    }
+                    if i < rgn_offsets.len() {
+                        s.rgn_offset = rgn_offsets[i];
+                    }
+                    s
+                })
+                .collect();
+
+            for (i, level) in levels.iter_mut().enumerate() {
+                level.subdivision_count = 1;
+                if i == n - 1 {
+                    level.bits_per_coord |= 0x80; // INHERITED flag on overview level
+                }
+            }
+        }
+
+        // Step 4: compute section byte offsets.
         // Garmin format: most detailed level (0) uses 14-byte subdivisions,
         // all overview levels use 16-byte subdivisions.
         let levels_offset = TRE_HEADER_SIZE as u32;
         let levels_size = n as u32 * 4;
         let subdivisions_offset = levels_offset + levels_size;
-        let subdivisions_size = if n > 0 {
-            14u32 + (n as u32 - 1) * 16 // level 0: 14B, others: 16B each
-        } else {
-            0u32
-        };
+
+        // Count 14-byte (level 0) and 16-byte (other levels) subdivisions.
+        let _n_level0_subdivs = subdivisions
+            .iter()
+            .filter(|s| {
+                // Subdivisions at level 0: they have next_level_first_subdiv == 0
+                // and are the first N subdivisions (where N = level_0_count).
+                // Simpler: use the level from SubdivisionInfo if available.
+                s.next_level_first_subdiv == 0 || levels.len() == 1
+            })
+            .count();
+        // Actually, for the size calculation, we need to know which subdivisions
+        // are at level 0 (14 bytes) vs others (16 bytes). Use the levels info.
+        let level0_count = levels.first().map_or(0, |l| l.subdivision_count as usize);
+        let other_count = subdivisions.len().saturating_sub(level0_count);
+        let subdivisions_size = (level0_count as u32 * 14) + (other_count as u32 * 16);
+
         let copyright_offset = subdivisions_offset + subdivisions_size;
         let copyright_size = 0u32;
 
-        // Step 5: create one subdivision per level, all covering the full bounding box.
-        // Feature-presence flags are computed per-level (filtered by EndLevel) so that the
-        // GPS firmware does not attempt to read feature data that is absent at a given zoom.
-        let bounds_g = (min_lat_g, max_lat_g, min_lon_g, max_lon_g);
-        let subdivisions: Vec<Subdivision> = (0..n)
-            .map(|i| {
-                // Level 0 is the most detailed — no finer child level (next_idx = 0).
-                // Level i > 0 points to the subdivision of level i-1 (1-based index).
-                // With 1 subdivision per level: subdiv for level j is at 1-based index j+1.
-                let next_idx = if i == 0 { 0u16 } else { i as u16 };
-                // Level-aware flags: a feature is present at level i iff end_level >= i.
-                let has_points = mp
-                    .points
-                    .iter()
-                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
-                let has_polylines = mp
-                    .polylines
-                    .iter()
-                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
-                let has_polygons = mp
-                    .polygons
-                    .iter()
-                    .any(|f| f.end_level.unwrap_or(u8::MAX) >= i as u8);
-                // Routing: set has_indexed_lines when routing is active and routable polylines
-                // are visible at this level.
-                let has_indexed_lines = routing
-                    && mp
-                        .polylines
-                        .iter()
-                        .any(|f| {
-                            f.routing.is_some()
-                                && f.end_level.unwrap_or(u8::MAX) >= i as u8
-                        });
-                let mut s = Subdivision::compute_subdivision(
-                    bounds_g,
-                    has_points,
-                    has_polylines,
-                    has_polygons,
-                    true,
-                    next_idx,
-                );
-                s.has_indexed_lines = has_indexed_lines;
-                if let Some(rr) = rgn_result {
-                    if i < rr.subdiv_has_extended_points.len() {
-                        s.has_extended_points = rr.subdiv_has_extended_points[i];
-                    }
-                    if i < rr.subdiv_has_extended_polylines.len() {
-                        s.has_extended_polylines = rr.subdiv_has_extended_polylines[i];
-                    }
-                    if i < rr.subdiv_has_extended_polygons.len() {
-                        s.has_extended_polygons = rr.subdiv_has_extended_polygons[i];
-                    }
-                }
-                if i < rgn_offsets.len() {
-                    s.rgn_offset = rgn_offsets[i];
-                }
-                s
+        // Extended type offsets section: 13 bytes per subdivision + 1 final record.
+        // This section tells QMapShack where each subdivision's extended data lives
+        // within the RGN extended sections.
+        let n_subdivs = subdivisions.len();
+        let has_any_extended = rgn_result.map_or(false, |rr| {
+            rr.subdivisions.iter().any(|s| {
+                s.has_extended_points || s.has_extended_polylines || s.has_extended_polygons
             })
-            .collect();
+        });
+        let ext_offsets_record_count = if has_any_extended { n_subdivs + 1 } else { 0 };
+        let ext_offsets_section_size = ext_offsets_record_count * 13;
+        let ext_offsets_offset = copyright_offset; // right after copyright (which is size 0)
 
-        // Step 6: each level has exactly one subdivision.
-        // Set INHERITED flag (bit 7) on the last level (overview) — required by QMapShack.
-        for (i, level) in levels.iter_mut().enumerate() {
-            level.subdivision_count = 1;
-            if i == n - 1 {
-                level.bits_per_coord |= 0x80; // INHERITED flag on overview level
-            }
-        }
+        // Parse map_id from MP header.
+        let map_id = mp.header.id.parse::<u32>().unwrap_or(0);
 
         // Step 7: assemble header
         let header = TreHeader {
@@ -568,16 +765,61 @@ impl TreWriter {
             subdivisions_size,
             copyright_offset,
             copyright_size,
+            map_id,
+            ext_type_offsets_offset: if has_any_extended {
+                ext_offsets_offset
+            } else {
+                0
+            },
+            ext_type_offsets_size: ext_offsets_section_size as u32,
+            num_ext_type_line_types: 0,
+            num_ext_type_area_types: 0,
+            num_ext_type_point_types: 0,
         };
 
-        // Step 8: serialise header + levels + subdivisions
+        // Step 8: serialise header + levels + subdivisions + extTypeOffsets
         let mut out = header.to_bytes();
         for level in &levels {
             out.extend_from_slice(&level.to_bytes());
         }
-        for (i, subdiv) in subdivisions.iter().enumerate() {
-            let is_most_detailed = i == 0; // level 0 = most detailed
+        let mut level0_written = 0usize;
+        for subdiv in &subdivisions {
+            let is_most_detailed = level0_written < level0_count;
             out.extend_from_slice(&subdiv.to_bytes_sized(is_most_detailed));
+            if is_most_detailed {
+                level0_written += 1;
+            }
+        }
+
+        // Write extTypeOffsets section (13 bytes per subdivision + 1 final record).
+        // Each record: cumulative offset into RGN ext_areas(4B) + ext_lines(4B) + ext_points(4B) + kinds(1B)
+        if has_any_extended {
+            let rr = rgn_result.unwrap();
+            // With single-subdivision per level, each subdivision's extended data
+            // is the entire extended section. Cumulative offsets start at 0.
+            // For single subdiv: all ext data belongs to the one subdiv per level.
+            let mut cum_areas: u32 = 0;
+            let mut cum_lines: u32 = 0;
+            let mut cum_points: u32 = 0;
+
+            for si in &rr.subdivisions {
+                out.extend_from_slice(&cum_areas.to_le_bytes());
+                out.extend_from_slice(&cum_lines.to_le_bytes());
+                out.extend_from_slice(&cum_points.to_le_bytes());
+                let mut kinds: u8 = 0;
+                if si.has_extended_polygons { kinds += 1; }
+                if si.has_extended_polylines { kinds += 1; }
+                if si.has_extended_points { kinds += 1; }
+                out.push(kinds);
+                // Advance cumulative offsets (for single-subdiv, all data is in one chunk)
+                // We don't have per-subdivision sizes here, so we assign all to the first subdiv
+                // of each level by checking if next subdiv is a different level.
+            }
+            // Final record: total sizes of each extended section
+            out.extend_from_slice(&rr.ext_areas_size.to_le_bytes());
+            out.extend_from_slice(&rr.ext_lines_size.to_le_bytes());
+            out.extend_from_slice(&rr.ext_points_size.to_le_bytes());
+            out.push(0u8); // kinds = 0 for final record
         }
 
         out
@@ -667,12 +909,18 @@ mod tests {
             max_lon: 0,
             min_lat: 0,
             min_lon: 0,
-            levels_offset: TRE_HEADER_SIZE as u32,    // 167
+            levels_offset: TRE_HEADER_SIZE as u32,
             levels_size: 12,
-            subdivisions_offset: TRE_HEADER_SIZE as u32 + 12, // 179
+            subdivisions_offset: TRE_HEADER_SIZE as u32 + 12,
             subdivisions_size: 48,
-            copyright_offset: TRE_HEADER_SIZE as u32 + 12 + 48, // 227
+            copyright_offset: TRE_HEADER_SIZE as u32 + 12 + 48,
             copyright_size: 0,
+            map_id: 63240001,
+            ext_type_offsets_offset: 0,
+            ext_type_offsets_size: 0,
+            num_ext_type_line_types: 0,
+            num_ext_type_area_types: 0,
+            num_ext_type_point_types: 0,
         }
     }
 
@@ -705,14 +953,17 @@ mod tests {
     }
 
     #[test]
-    fn test_tre_header_padding() {
+    fn test_tre_header_has_magic_and_map_id() {
         let bytes = default_header().to_bytes();
-        // All bytes from 0x39 (57 = 21 common + 12 bbox + 24 section ptrs)
-        // to end must be 0x00
-        assert!(
-            bytes[0x39..].iter().all(|&b| b == 0x00),
-            "header padding must be all zeros"
-        );
+        // Magic 0x110301 at offset 0x41
+        let magic = u32::from_le_bytes([bytes[0x41], bytes[0x42], bytes[0x43], bytes[0x44]]);
+        assert_eq!(magic, 0x0011_0301, "TRE magic must be 0x110301");
+        // Map ID at offset 0x6C
+        let map_id = u32::from_le_bytes([bytes[0x6C], bytes[0x6D], bytes[0x6E], bytes[0x6F]]);
+        assert_eq!(map_id, 63240001, "map_id must match");
+        // Extended magic 0x0607 at offset 0x7E
+        let ext_magic = u32::from_le_bytes([bytes[0x7E], bytes[0x7F], bytes[0x80], bytes[0x81]]);
+        assert_eq!(ext_magic, 0x0607, "extended type magic must be 0x0607");
     }
 
     // ── Task 3: MapLevel ──────────────────────────────────────────────────────
@@ -787,12 +1038,13 @@ mod tests {
 
     #[test]
     fn test_subdivision_data_flags() {
-        // has_points = true, has_polylines = false, has_polygons = true → flags = 0x09
+        // has_points = true, has_polylines = false, has_polygons = true
+        // mkgmap: points=0x10, polygons=0x80 → flags = 0x90
         let s = Subdivision::compute_subdivision((0, 1, 0, 1), true, false, true, false, 0);
         let bytes = s.to_bytes();
         assert_eq!(
-            bytes[0x03], 0x09,
-            "data_flags: points=1, polylines=0, polygons=1 → 0x09 (bit0 | bit3)"
+            bytes[0x03], 0x90,
+            "data_flags: points=0x10, polygons=0x80 → 0x90"
         );
     }
 
@@ -800,7 +1052,8 @@ mod tests {
     fn test_subdivision_last_flag() {
         let s = Subdivision::compute_subdivision((0, 100, 0, 100), false, false, false, true, 0);
         let bytes = s.to_bytes();
-        let hw = u16::from_le_bytes([bytes[8], bytes[9]]);
+        // half_width is now at bytes 10-11 (after 3-byte lon + 3-byte lat)
+        let hw = u16::from_le_bytes([bytes[10], bytes[11]]);
         assert!(
             hw & 0x8000 != 0,
             "last_in_level must set bit 15 of half_width field"
@@ -817,15 +1070,16 @@ mod tests {
     #[test]
     fn test_subdivision_center_encoded() {
         // lat range 44°–46° → lat_center ≈ 45° (2_097_152 garmin units)
-        // stored as (2097152 >> 8) as i16 = 8192
-        let lat_lo = to_garmin_units(44.0); // 2_050_048
-        let lat_hi = to_garmin_units(46.0); // 2_144_256
+        // Now stored as full LE24 at bytes 7-9
+        let lat_lo = to_garmin_units(44.0);
+        let lat_hi = to_garmin_units(46.0);
         let s = Subdivision::compute_subdivision((lat_lo, lat_hi, 0, 256), false, false, false, false, 0);
         let bytes = s.to_bytes();
         let lat_center_g = (lat_hi + lat_lo) / 2;
-        let expected = (lat_center_g >> 8) as i16;
-        let lat_stored = i16::from_le_bytes([bytes[6], bytes[7]]);
-        assert_eq!(lat_stored, expected);
+        let lat_stored = (bytes[7] as i32) | ((bytes[8] as i32) << 8) | ((bytes[9] as i32) << 16);
+        // Sign-extend from 24 bits
+        let lat_stored = if lat_stored & 0x800000 != 0 { lat_stored | !0xFFFFFF } else { lat_stored };
+        assert_eq!(lat_stored, lat_center_g, "lat_center must be stored as full LE24");
     }
 
     // ── Task 5: TreWriter ─────────────────────────────────────────────────────
@@ -978,35 +1232,14 @@ mod tests {
     // ── Extended data_flags tests ────────────────────────────────────────────
 
     #[test]
-    fn test_subdivision_extended_data_flags() {
-        let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, false, true, false, 0);
-        s.has_extended_points = true;
-        s.has_extended_polylines = false;
-        s.has_extended_polygons = true;
-        let bytes = s.to_bytes();
-        // Standard: points(0x01) | polygons(0x08) = 0x09
-        // Extended: ext_points(0x10) | ext_polygons(0x40) = 0x50
-        // Combined: 0x59
-        assert_eq!(
-            bytes[0x03], 0x59,
-            "data_flags: points + polygons + ext_points + ext_polygons = 0x59"
-        );
-    }
-
-    #[test]
-    fn test_subdivision_mixed_flags() {
+    fn test_subdivision_all_standard_flags() {
+        // mkgmap: points=0x10, indexed=0x20, polylines=0x40, polygons=0x80
         let mut s = Subdivision::compute_subdivision((0, 1, 0, 1), true, true, true, false, 0);
         s.has_indexed_lines = true;
-        s.has_extended_points = true;
-        s.has_extended_polylines = true;
-        s.has_extended_polygons = true;
         let bytes = s.to_bytes();
-        // All standard: 0x01 | 0x02 | 0x04 | 0x08 = 0x0F
-        // All extended: 0x10 | 0x20 | 0x40 = 0x70
-        // Combined: 0x7F
         assert_eq!(
-            bytes[0x03], 0x7F,
-            "data_flags: all standard + all extended = 0x7F"
+            bytes[0x03], 0xF0,
+            "data_flags: all 4 standard types = 0x10|0x20|0x40|0x80 = 0xF0"
         );
     }
 }

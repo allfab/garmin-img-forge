@@ -1,6 +1,7 @@
 //! IMG Garmin filesystem writer — header, directory (FAT-like) and subfile assembly.
 
 pub mod assembler;
+pub mod bitstream;
 pub mod common_header;
 pub mod directory;
 pub mod filesystem;
