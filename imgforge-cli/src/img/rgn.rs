@@ -50,7 +50,6 @@ impl RgnWriter {
 
         // Calculate offsets for each section (relative to subdivision start in RGN data)
         let mut current = pointers_size;
-        let points_off = current;
         current += points_data.len();
         let ind_points_off = current;
         current += ind_points_data.len();

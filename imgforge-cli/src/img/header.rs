@@ -6,7 +6,6 @@ const HEADER_SIZE: usize = 512;
 const OFF_XOR: usize = 0x00;
 const OFF_UPDATE_MONTH: usize = 0x0A;
 const OFF_UPDATE_YEAR: usize = 0x0B;
-const OFF_SUPP: usize = 0x0E;
 const OFF_CHECKSUM: usize = 0x0F;
 const OFF_SIGNATURE: usize = 0x10; // "DSKIMG\0"
 const OFF_UNK_1: usize = 0x17;

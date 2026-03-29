@@ -132,9 +132,10 @@ impl NetWriter {
         common_header::write_section(&mut buf, net1_offset, net1_size);
 
         let net2_offset = net1_offset + net1_size;
-        common_header::write_section(&mut buf, net2_offset, 0);
+        let net2_size = 0u32; // NET2 is empty for now
+        common_header::write_section(&mut buf, net2_offset, net2_size);
 
-        let net3_offset = net2_offset;
+        let net3_offset = net2_offset + net2_size;
         let net3_size = net3_data.len() as u32;
         common_header::write_section(&mut buf, net3_offset, net3_size);
 

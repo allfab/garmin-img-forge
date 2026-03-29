@@ -303,12 +303,39 @@ fn test_routing_has_tre_rgn_lbl() {
 }
 
 #[test]
+fn test_routing_has_net_subfile() {
+    let img = compile_fixture("routing.mp");
+    let net = find_subfile(&img, "NET");
+    assert!(net.is_some(), "Routing IMG must contain NET subfile");
+    let (offset, size) = net.unwrap();
+    assert!(size >= 55, "NET subfile too small for header (got {} bytes)", size);
+    // Verify NET header
+    let net_data = &img[offset..offset + size];
+    let hlen = read_u16(net_data, 0);
+    assert_eq!(hlen, 55, "NET header length should be 55");
+    assert_eq!(&net_data[2..12], b"GARMIN NET", "NET type string mismatch");
+}
+
+#[test]
+fn test_routing_has_nod_subfile() {
+    let img = compile_fixture("routing.mp");
+    let nod = find_subfile(&img, "NOD");
+    assert!(nod.is_some(), "Routing IMG must contain NOD subfile");
+    let (offset, size) = nod.unwrap();
+    assert!(size >= 127, "NOD subfile too small for header (got {} bytes)", size);
+    // Verify NOD header
+    let nod_data = &img[offset..offset + size];
+    let hlen = read_u16(nod_data, 0);
+    assert_eq!(hlen, 127, "NOD header length should be 127");
+    assert_eq!(&nod_data[2..12], b"GARMIN NOD", "NOD type string mismatch");
+}
+
+#[test]
 fn test_routing_polylines_in_rgn() {
     let img = compile_fixture("routing.mp");
     if let Some((offset, size)) = find_subfile(&img, "RGN") {
         let rgn = &img[offset..offset + size];
         let data_size = read_u32(rgn, 25);
-        // 3 polylines + 1 POI = should have substantial RGN data
         assert!(data_size > 10, "RGN data too small for routing features: {}", data_size);
     }
 }

@@ -69,7 +69,7 @@ fn main() -> Result<()> {
             println!("{}", report.to_json());
         }
 
-        Commands::Build { input, output, jobs, family_id: _, product_id: _, series_name: _, family_name: _ } => {
+        Commands::Build { input, output, jobs, family_id, product_id, series_name, family_name } => {
             // Configure rayon thread pool if --jobs specified
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
@@ -121,8 +121,35 @@ fn main() -> Result<()> {
             }
 
             // Assemble gmapsupp from pre-built tile IMGs
-            let gmapsupp = imgforge_cli::img::assembler::build_gmapsupp_from_imgs(&tiles, "Map")?;
+            let map_desc = family_name.as_deref().unwrap_or("Map");
+            let gmapsupp = imgforge_cli::img::assembler::build_gmapsupp_from_imgs(&tiles, map_desc)?;
             std::fs::write(&output, &gmapsupp)?;
+
+            // Generate TDB companion file
+            {
+                use imgforge_cli::img::tdb::{TdbWriter, TdbTile};
+                let fid = family_id.unwrap_or(1);
+                let pid = product_id.unwrap_or(1);
+                let mut tdb = TdbWriter::new(fid, pid);
+                tdb.series_name = series_name.unwrap_or_else(|| "imgforge".to_string());
+                tdb.family_name = family_name.unwrap_or_else(|| "Map".to_string());
+
+                for (name, _) in &tiles {
+                    let map_num: u32 = name.parse().unwrap_or(0);
+                    tdb.add_tile(TdbTile {
+                        map_number: map_num,
+                        description: name.clone(),
+                        north: 0,
+                        south: 0,
+                        east: 0,
+                        west: 0,
+                    });
+                }
+
+                let tdb_path = Path::new(&output).with_extension("tdb");
+                std::fs::write(&tdb_path, tdb.build())
+                    .with_context(|| format!("Failed to write {}", tdb_path.display()))?;
+            }
 
             report.output_file = output;
             report.output_size_bytes = gmapsupp.len() as u64;

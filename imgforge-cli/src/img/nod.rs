@@ -82,6 +82,22 @@ impl NodWriter {
         }
     }
 
+    /// Set NOD2 bitstream data (1 bit per polyline vertex: 1=RouteNode, 0=geometry)
+    pub fn set_nod2_data(&mut self, data: Vec<u8>) {
+        self.nod2_data = data;
+    }
+
+    /// Patch NET1 offsets into Table A arcs after NET subfile is built.
+    /// `net1_offsets` maps road_def_index → NET1 byte offset.
+    pub fn patch_net1_offsets(&mut self, _net1_offsets: &[u32]) {
+        // TODO: Implement NET1 offset backpatching into serialized NOD1 data.
+        // This requires tracking the byte positions of each Table A arc's NET1 offset
+        // field during build_nod1(), then overwriting them with the correct values
+        // from NetWriter after NET is built.
+        // For now, arcs reference NET1 offset 0 which points to the first road.
+        tracing::debug!("NOD NET1 offset patching: not yet implemented (arcs default to offset 0)");
+    }
+
     fn make_center(&self, node_indices: &[usize]) -> RouteCenter {
         let mut sum_lat: i64 = 0;
         let mut sum_lon: i64 = 0;
