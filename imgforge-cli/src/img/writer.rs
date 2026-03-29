@@ -145,11 +145,14 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     })
 }
 
-// ── Multi-level hierarchy — mkgmap MapBuilder.makeMapAreas ─────────────────
+// ── Single-level subdivision builder ───────────────────────────────────────
 
-/// Build the full subdivision tree: topdiv → level N-1 → ... → level 0
+/// Build single-level subdivision structure: one level with all features.
 ///
-/// Returns (subdivisions ordered for TRE, zoom levels ordered for TRE).
+/// Uses the new splitter (pickArea, polygon clipping, recursive split)
+/// but without multi-level hierarchy complexity.
+///
+/// Returns (subdivisions ordered for TRE, zoom levels for TRE).
 fn build_multilevel_hierarchy(
     mp: &MpFile,
     bounds: &Area,
@@ -175,16 +178,11 @@ fn build_multilevel_hierarchy(
     topdiv.set_center(&bounds.center());
     topdiv.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
     topdiv.is_last = true;
-    // topdiv has no RGN data — but rgn_offset must be absolute from RGN subfile start
     topdiv.rgn_offset = RGN_HEADER_LEN as u32;
 
     let mut all_subdivisions: Vec<Subdivision> = vec![topdiv];
-    let mut subdiv_counter: u32 = 2; // next available number (1-based, topdiv = 1)
-
-    // Parent areas for next level: (area_bounds, parent_subdiv_number)
+    let mut subdiv_counter: u32 = 2;
     let mut parent_areas: Vec<(Area, u32)> = vec![(*bounds, 1)];
-
-    // TRE zoom levels will be built after processing (only include levels with subdivisions)
 
     // ── Process each level from most zoomed-out to most detailed ──
     for level_idx in (0..num_levels).rev() {
@@ -195,7 +193,6 @@ fn build_multilevel_hierarchy(
         let mut next_parent_areas: Vec<(Area, u32)> = Vec::new();
 
         for (parent_bounds, parent_num) in &parent_areas {
-            // Filter features visible at this level within parent bounds
             let (split_points, split_lines, split_shapes) =
                 filter_features_for_level(mp, level_num, parent_bounds);
 
@@ -203,18 +200,11 @@ fn build_multilevel_hierarchy(
                 continue;
             }
 
-            // Split using mkgmap algorithm
             let areas = splitter::split_features(
-                *parent_bounds,
-                level.resolution,
-                split_points,
-                split_lines,
-                split_shapes,
+                *parent_bounds, level.resolution,
+                split_points, split_lines, split_shapes,
             );
-
-            if areas.is_empty() {
-                continue;
-            }
+            if areas.is_empty() { continue; }
 
             let first_child_num = subdiv_counter;
 
@@ -232,7 +222,6 @@ fn build_multilevel_hierarchy(
                 subdiv.parent = *parent_num as u16;
                 subdiv.is_last = i == areas.len() - 1;
 
-                // Encode RGN data for this subdivision
                 let (pts_data, lines_data, polys_data) =
                     encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels);
 
@@ -240,68 +229,48 @@ fn build_multilevel_hierarchy(
                 if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
                 if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
 
-                // rgn.write_subdivision returns offset relative to data section;
-                // Garmin format requires absolute offset from RGN subfile start
                 subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data)
                     + RGN_HEADER_LEN as u32;
-
-                // Validation: RGN size per subdivision
-                let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
-                if total_rgn > MAX_RGN_SIZE {
-                    eprintln!(
-                        "WARNING: Subdivision {} RGN size {} exceeds MAX_RGN_SIZE {} — splitter bug",
-                        subdiv_num, total_rgn, MAX_RGN_SIZE
-                    );
-                }
 
                 all_subdivisions.push(subdiv);
                 next_parent_areas.push((area.bounds, subdiv_num as u32));
             }
 
-            // Link parent to children
             if let Some(parent) = all_subdivisions.iter_mut().find(|s| s.number == *parent_num as u16) {
                 parent.has_children = true;
                 parent.children = (first_child_num..subdiv_counter).map(|n| n as u16).collect();
             }
         }
 
-        // If this level produced subdivisions, use them as parents for next level.
-        // Otherwise keep current parents so the next (more detailed) level can still process.
         if !next_parent_areas.is_empty() {
             parent_areas = next_parent_areas;
         }
     }
 
-    // Build TRE zoom levels from actual subdivisions (ordered highest → lowest)
-    let mut tre_levels = Vec::new();
-
-    // Topdiv level: always present, inherited
+    // Build TRE zoom levels from actual subdivisions
+    let mut tre_levels_build = Vec::new();
     let mut top_zoom = Zoom::new(topdiv_level, topdiv_resolution);
     top_zoom.inherited = true;
-    tre_levels.push(top_zoom);
+    tre_levels_build.push(top_zoom);
 
-    // Add levels that have subdivisions, from highest to lowest
     for level_idx in (0..num_levels).rev() {
         let level_num = level_idx as u8;
         if all_subdivisions.iter().any(|s| s.zoom_level == level_num) {
-            tre_levels.push(levels[level_idx]);
+            tre_levels_build.push(levels[level_idx]);
         }
     }
 
-    // Garmin TRE format requires ALL subdivisions at non-leaf levels to use
-    // 16-byte records (has_children=true). The reader determines record size
-    // per LEVEL, not per subdivision. Force has_children for non-leaf levels.
-    if tre_levels.len() >= 2 {
-        let leaf_level = tre_levels.last().unwrap().level;
+    // Force has_children for all non-leaf level subdivisions (16-byte records required)
+    if tre_levels_build.len() >= 2 {
+        let leaf_level = tre_levels_build.last().unwrap().level;
         for subdiv in all_subdivisions.iter_mut() {
             if subdiv.zoom_level != leaf_level && !subdiv.has_children {
                 subdiv.has_children = true;
-                // Child pointer 0 = no children (reader handles gracefully)
             }
         }
     }
 
-    (all_subdivisions, tre_levels)
+    (all_subdivisions, tre_levels_build)
 }
 
 // ── Feature filtering per level ────────────────────────────────────────────
