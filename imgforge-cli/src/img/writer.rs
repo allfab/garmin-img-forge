@@ -145,12 +145,12 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     })
 }
 
-// ── Single-level subdivision builder ───────────────────────────────────────
+// ── Multi-level hierarchy — mkgmap MapBuilder.makeMapAreas ─────────────────
 
-/// Build single-level subdivision structure: one level with all features.
+/// Build multi-level subdivision tree: topdiv → level N → ... → level 0.
 ///
-/// Uses the new splitter (pickArea, polygon clipping, recursive split)
-/// but without multi-level hierarchy complexity.
+/// Uses pickArea distribution, Sutherland-Hodgman polygon clipping,
+/// recursive split (addAreasToList), and per-level feature filtering by EndLevel.
 ///
 /// Returns (subdivisions ordered for TRE, zoom levels for TRE).
 fn build_multilevel_hierarchy(
@@ -231,6 +231,14 @@ fn build_multilevel_hierarchy(
 
                 subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data)
                     + RGN_HEADER_LEN as u32;
+
+                let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
+                if total_rgn > MAX_RGN_SIZE {
+                    eprintln!(
+                        "WARNING: Subdivision {} RGN size {} exceeds MAX_RGN_SIZE {}",
+                        subdiv_num, total_rgn, MAX_RGN_SIZE
+                    );
+                }
 
                 all_subdivisions.push(subdiv);
                 next_parent_areas.push((area.bounds, subdiv_num as u32));

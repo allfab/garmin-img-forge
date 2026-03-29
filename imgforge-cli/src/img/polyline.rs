@@ -69,10 +69,10 @@ impl Polyline {
         buf.push(lb[1]);
         buf.push(lb[2]);
 
-        // First point delta from subdivision center
+        // First point delta from subdivision center (clamped to i16 range)
         let first = &self.points[0];
-        let dx = ((first.longitude() - subdiv_center_lon) >> shift) as i16;
-        let dy = ((first.latitude() - subdiv_center_lat) >> shift) as i16;
+        let dx = ((first.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
+        let dy = ((first.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 

@@ -211,6 +211,15 @@ impl MapArea {
                 continue;
             }
             let shape_bbox = Area::from_coords(&shape.points);
+
+            // Large object: if shape bounds exceed cell dimensions, create dedicated area
+            if shape_bbox.width() > max_cell_w || shape_bbox.height() > max_cell_h {
+                let mut dedicated = MapArea::new(shape_bbox, self.resolution);
+                dedicated.add_shape(shape.clone());
+                sub_areas.push(dedicated);
+                continue;
+            }
+
             let first = &shape.points[0];
             let target = pick_area(
                 first.longitude() as i64,
