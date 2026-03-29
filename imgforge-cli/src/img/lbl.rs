@@ -1,23 +1,13 @@
 // LBLFile — labels subfile, faithful to mkgmap LBLFile.java + LBLHeader.java
 
 use std::collections::HashMap;
-use super::common_header::CommonHeader;
+use super::common_header::{self, CommonHeader};
 use super::labelenc::{self, LabelEncoding};
 
 pub const LBL_HEADER_LEN: u16 = 196;
-
-/// Section descriptor: offset + size (used throughout LBL header)
-struct Section {
-    offset: u32,
-    size: u32,
-}
-
-impl Section {
-    fn write(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.offset.to_le_bytes());
-        buf.extend_from_slice(&self.size.to_le_bytes());
-    }
-}
+const OFF_CODEPAGE: usize = 190;
+const OFF_SORT_ID1: usize = 192;
+const OFF_SORT_ID2: usize = 194;
 
 pub struct LblWriter {
     encoding: LabelEncoding,
@@ -88,37 +78,30 @@ impl LblWriter {
         let label_data_offset = LBL_HEADER_LEN as u32;
         let label_data_size = self.labels.len() as u32;
 
-        // Label section offset + size (at offset 21 in the header)
-        let label_section = Section {
-            offset: label_data_offset,
-            size: label_data_size,
-        };
-        label_section.write(&mut buf);
+        // Label section offset + size (at offset 21)
+        common_header::write_section(&mut buf, label_data_offset, label_data_size);
 
-        // Label offset multiplier (1 byte) — usually 0 (no shift)
+        // Label offset multiplier (1 byte)
         buf.push(0x00);
 
         // Encoding format (1 byte)
         buf.push(self.encoding.format_id());
 
-        // Remaining header sections (placeholder zeros for country, region, city, etc.)
-        // We need to reach 196 bytes total
-        while buf.len() < (LBL_HEADER_LEN as usize - 4) {
-            buf.push(0x00);
-        }
+        // Pad to full header, then place codepage and sort IDs at fixed offsets
+        common_header::pad_to(&mut buf, LBL_HEADER_LEN as usize);
 
-        // Codepage (u16 LE) near end of header
-        buf.extend_from_slice(&self.codepage.to_le_bytes());
+        // Codepage at fixed offset
+        let cp = self.codepage.to_le_bytes();
+        buf[OFF_CODEPAGE] = cp[0];
+        buf[OFF_CODEPAGE + 1] = cp[1];
 
-        // Sort ID 1 and Sort ID 2
-        buf.extend_from_slice(&self.sort_id1.to_le_bytes());
-        buf.extend_from_slice(&self.sort_id2.to_le_bytes());
-
-        // Ensure exactly 196 bytes for header
-        while buf.len() < LBL_HEADER_LEN as usize {
-            buf.push(0x00);
-        }
-        buf.truncate(LBL_HEADER_LEN as usize);
+        // Sort IDs at fixed offsets
+        let s1 = self.sort_id1.to_le_bytes();
+        buf[OFF_SORT_ID1] = s1[0];
+        buf[OFF_SORT_ID1 + 1] = s1[1];
+        let s2 = self.sort_id2.to_le_bytes();
+        buf[OFF_SORT_ID2] = s2[0];
+        buf[OFF_SORT_ID2 + 1] = s2[1];
 
         // Label data
         buf.extend_from_slice(&self.labels);

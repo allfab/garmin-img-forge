@@ -92,11 +92,8 @@ impl ImgFilesystem {
 
         // File entries
         for file in &self.files {
-            let blocks_needed = (file.data.len() as u32 + block_size - 1) / block_size;
             let mut entry = Dirent::new(&file.name, &file.ext);
             entry.size = file.data.len() as u32;
-            // Blocks will be assigned below
-            let _ = blocks_needed; // used below
             directory.add_entry(entry);
         }
 

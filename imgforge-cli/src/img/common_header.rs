@@ -73,6 +73,33 @@ pub fn write_creation_time_fixed(buf: &mut Vec<u8>, year: u16, month: u8, day: u
     buf.push(sec);
 }
 
+/// Write a section descriptor (offset u32 LE + size u32 LE) — shared across all subfile builders
+pub fn write_section(buf: &mut Vec<u8>, offset: u32, size: u32) {
+    buf.extend_from_slice(&offset.to_le_bytes());
+    buf.extend_from_slice(&size.to_le_bytes());
+}
+
+/// Write a 24-bit unsigned LE value (3 bytes)
+pub fn write_u24(buf: &mut Vec<u8>, val: u32) {
+    let b = val.to_le_bytes();
+    buf.push(b[0]);
+    buf.push(b[1]);
+    buf.push(b[2]);
+}
+
+/// Write a 24-bit signed LE value (3 bytes)
+pub fn write_i24(buf: &mut Vec<u8>, val: i32) {
+    let b = val.to_le_bytes();
+    buf.push(b[0]);
+    buf.push(b[1]);
+    buf.push(b[2]);
+}
+
+/// Pad buffer to target length with zeros, or truncate if longer
+pub fn pad_to(buf: &mut Vec<u8>, target: usize) {
+    buf.resize(target, 0x00);
+}
+
 pub fn unix_to_calendar(secs: u64) -> (i32, i32, i32, i32, i32, i32) {
     let sec = (secs % 60) as i32;
     let min = ((secs / 60) % 60) as i32;

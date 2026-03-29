@@ -1,6 +1,6 @@
 // NETFile + RoadDef, faithful to mkgmap NETFile.java, NETHeader.java, RoadDef.java
 
-use super::common_header::CommonHeader;
+use super::common_header::{self, CommonHeader};
 
 pub const NET_HEADER_LEN: u16 = 55;
 
@@ -115,37 +115,30 @@ impl NetWriter {
         let common = CommonHeader::new(NET_HEADER_LEN, "GARMIN NET");
         common.write(&mut buf);
 
-        // Build NET1 data
+        // Build NET1 data + precompute per-road offsets for NET3
         let mut net1_data = Vec::new();
+        let mut net1_offsets = Vec::with_capacity(self.roads.len());
         for road in &self.roads {
+            net1_offsets.push(net1_data.len() as u32);
             net1_data.extend_from_slice(&road.write_net1());
         }
 
-        // Build NET3 sorted index
-        let net3_data = self.build_net3();
+        // Build NET3 sorted index using precomputed offsets
+        let net3_data = self.build_net3(&net1_offsets);
 
-        // NET1 section: offset + size
+        // Section descriptors
         let net1_offset = NET_HEADER_LEN as u32;
         let net1_size = net1_data.len() as u32;
-        buf.extend_from_slice(&net1_offset.to_le_bytes());
-        buf.extend_from_slice(&net1_size.to_le_bytes());
+        common_header::write_section(&mut buf, net1_offset, net1_size);
 
-        // NET2 section: empty
         let net2_offset = net1_offset + net1_size;
-        buf.extend_from_slice(&net2_offset.to_le_bytes());
-        buf.extend_from_slice(&0u32.to_le_bytes());
+        common_header::write_section(&mut buf, net2_offset, 0);
 
-        // NET3 section
         let net3_offset = net2_offset;
         let net3_size = net3_data.len() as u32;
-        buf.extend_from_slice(&net3_offset.to_le_bytes());
-        buf.extend_from_slice(&net3_size.to_le_bytes());
+        common_header::write_section(&mut buf, net3_offset, net3_size);
 
-        // Pad to header length
-        while buf.len() < NET_HEADER_LEN as usize {
-            buf.push(0x00);
-        }
-        buf.truncate(NET_HEADER_LEN as usize);
+        common_header::pad_to(&mut buf, NET_HEADER_LEN as usize);
 
         // Section data
         buf.extend_from_slice(&net1_data);
@@ -155,23 +148,19 @@ impl NetWriter {
     }
 
     /// Build NET3 sorted index — 3B per road = NET1 offset, sorted by label
-    fn build_net3(&self) -> Vec<u8> {
-        let mut entries: Vec<(u32, u32)> = Vec::new(); // (label_offset_for_sort, net1_offset)
-        let mut offset = 0u32;
-        for road in &self.roads {
-            let label = road.label_offsets.first().copied().unwrap_or(0);
-            entries.push((label, offset));
-            offset += road.write_net1().len() as u32;
-        }
+    fn build_net3(&self, net1_offsets: &[u32]) -> Vec<u8> {
+        let mut entries: Vec<(u32, u32)> = self.roads.iter()
+            .zip(net1_offsets.iter())
+            .map(|(road, &off)| {
+                let label = road.label_offsets.first().copied().unwrap_or(0);
+                (label, off)
+            })
+            .collect();
         entries.sort_by_key(|&(label, _)| label);
 
-        let mut data = Vec::new();
+        let mut data = Vec::with_capacity(entries.len() * 3);
         for (_label, net1_off) in entries {
-            // NET3 record: 3 bytes = NET1 offset (sorted by label name)
-            let b = net1_off.to_le_bytes();
-            data.push(b[0]);
-            data.push(b[1]);
-            data.push(b[2]);
+            common_header::write_u24(&mut data, net1_off);
         }
         data
     }

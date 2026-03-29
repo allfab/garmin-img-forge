@@ -93,10 +93,9 @@ impl ImgHeader {
         // Description: split into 20 + 30 chars, space-padded
         write_description(&mut buf, &self.description);
 
-        // gmapsupp flag
-        if self.is_gmapsupp {
-            buf[OFF_SUPP] = 0x00;
-        }
+        // gmapsupp flag — mkgmap sets 0 or 1 depending on hide-on-PC option
+        // For now, always 0 (visible on PC)
+
 
         // Checksum
         buf[OFF_CHECKSUM] = 0x00;
@@ -172,13 +171,8 @@ fn find_chs_geometry(end_sector: u32) -> (u32, u32, u32) {
 }
 
 fn block_size_exponent(block_size: u32) -> u32 {
-    let mut bs = block_size;
-    let mut exp = 0;
-    while bs > 1 {
-        bs >>= 1;
-        exp += 1;
-    }
-    exp
+    debug_assert!(block_size.is_power_of_two(), "block_size must be a power of two");
+    block_size.trailing_zeros()
 }
 
 fn write_description(buf: &mut [u8], desc: &str) {

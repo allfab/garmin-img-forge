@@ -8,7 +8,14 @@ pub struct BitWriter {
 impl BitWriter {
     pub fn new() -> Self {
         Self {
-            buf: vec![0u8; 20],
+            buf: vec![0u8; 32],
+            bit_offset: 0,
+        }
+    }
+
+    pub fn with_capacity(bytes: usize) -> Self {
+        Self {
+            buf: vec![0u8; bytes.max(8)],
             bit_offset: 0,
         }
     }
@@ -77,7 +84,8 @@ impl BitWriter {
     fn ensure_size(&mut self, new_bit_len: usize) {
         let needed_bytes = (new_bit_len + 7) / 8;
         if needed_bytes >= self.buf.len() {
-            self.buf.resize(self.buf.len() + 50, 0);
+            let new_len = (self.buf.len() * 2).max(needed_bytes + 1);
+            self.buf.resize(new_len, 0);
         }
     }
 }

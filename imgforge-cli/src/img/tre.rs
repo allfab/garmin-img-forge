@@ -1,6 +1,6 @@
 // TREFile — TRE subfile, faithful to mkgmap TREFile.java + TREHeader.java
 
-use super::common_header::CommonHeader;
+use super::common_header::{self, CommonHeader};
 use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
 use super::subdivision::Subdivision;
 use super::zoom::Zoom;
@@ -69,62 +69,49 @@ impl TreWriter {
         common.write(&mut buf);
 
         // Bounds: north(3) + east(3) + south(3) + west(3) = 12 bytes at offset 21
-        write_i24(&mut buf, self.north);
-        write_i24(&mut buf, self.east);
-        write_i24(&mut buf, self.south);
-        write_i24(&mut buf, self.west);
+        common_header::write_i24(&mut buf, self.north);
+        common_header::write_i24(&mut buf, self.east);
+        common_header::write_i24(&mut buf, self.south);
+        common_header::write_i24(&mut buf, self.west);
 
         // Map levels section: offset(4) + size(4) at offset 33
         let mut current_offset = TRE_HEADER_LEN as u32;
-        write_section(&mut buf, current_offset, map_levels_data.len() as u32);
+        common_header::write_section(&mut buf, current_offset, map_levels_data.len() as u32);
         current_offset += map_levels_data.len() as u32;
 
-        // Subdivisions section: offset(4) + size(4) at offset 41
-        write_section(&mut buf, current_offset, subdivisions_data.len() as u32);
+        // Subdivisions section at offset 41
+        common_header::write_section(&mut buf, current_offset, subdivisions_data.len() as u32);
         current_offset += subdivisions_data.len() as u32;
 
-        // Copyright section: offset(4) + size(4) at offset 49
-        write_section(&mut buf, current_offset, copyright_data.len() as u32);
+        // Copyright section at offset 49
+        common_header::write_section(&mut buf, current_offset, copyright_data.len() as u32);
         current_offset += copyright_data.len() as u32;
 
-        // Padding/flags to reach POI display flags area
-        // TRE header has many fields — fill rest with zeros until 188
-        // POI display flags at ~offset 57
-        buf.push(0x00); // POI display flags
+        // POI display flags
+        buf.push(0x00);
 
-        // Display priority at offset 58 (4 bytes)
+        // Display priority (4 bytes)
         buf.extend_from_slice(&self.display_priority.to_le_bytes());
 
-        // Pad with zeros for remaining fields up to overview sections
-        // Polyline overview section offset at ~offset 0x4A (74)
-        while buf.len() < 74 {
-            buf.push(0x00);
-        }
-        write_section(&mut buf, current_offset, polyline_ov_data.len() as u32);
-        buf.extend_from_slice(&2u16.to_le_bytes()); // record size
+        // Polyline overview section at offset 74
+        common_header::pad_to(&mut buf, 74);
+        common_header::write_section(&mut buf, current_offset, polyline_ov_data.len() as u32);
+        buf.extend_from_slice(&2u16.to_le_bytes());
         current_offset += polyline_ov_data.len() as u32;
 
-        // Polygon overview section
-        while buf.len() < 84 {
-            buf.push(0x00);
-        }
-        write_section(&mut buf, current_offset, polygon_ov_data.len() as u32);
-        buf.extend_from_slice(&2u16.to_le_bytes()); // record size
+        // Polygon overview section at offset 84
+        common_header::pad_to(&mut buf, 84);
+        common_header::write_section(&mut buf, current_offset, polygon_ov_data.len() as u32);
+        buf.extend_from_slice(&2u16.to_le_bytes());
         current_offset += polygon_ov_data.len() as u32;
 
-        // Point overview section
-        while buf.len() < 94 {
-            buf.push(0x00);
-        }
-        write_section(&mut buf, current_offset, point_ov_data.len() as u32);
-        buf.extend_from_slice(&3u16.to_le_bytes()); // record size
+        // Point overview section at offset 94
+        common_header::pad_to(&mut buf, 94);
+        common_header::write_section(&mut buf, current_offset, point_ov_data.len() as u32);
+        buf.extend_from_slice(&3u16.to_le_bytes());
 
-        // MapValues anti-piracy checksum and remaining header fields
         // Pad to exactly TRE_HEADER_LEN
-        while buf.len() < TRE_HEADER_LEN as usize {
-            buf.push(0x00);
-        }
-        buf.truncate(TRE_HEADER_LEN as usize);
+        common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
 
         // --- Section data ---
         buf.extend_from_slice(&map_levels_data);
@@ -188,17 +175,6 @@ impl TreWriter {
     }
 }
 
-fn write_i24(buf: &mut Vec<u8>, val: i32) {
-    let b = val.to_le_bytes();
-    buf.push(b[0]);
-    buf.push(b[1]);
-    buf.push(b[2]);
-}
-
-fn write_section(buf: &mut Vec<u8>, offset: u32, size: u32) {
-    buf.extend_from_slice(&offset.to_le_bytes());
-    buf.extend_from_slice(&size.to_le_bytes());
-}
 
 #[cfg(test)]
 mod tests {

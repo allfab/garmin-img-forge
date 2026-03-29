@@ -1,6 +1,6 @@
 // NODFile + RouteNode/Arc/Center, faithful to mkgmap NODFile.java, NODHeader.java
 
-use super::common_header::CommonHeader;
+use super::common_header::{self, CommonHeader};
 use super::coord;
 
 pub const NOD_HEADER_LEN: u16 = 127;
@@ -117,32 +117,21 @@ impl NodWriter {
         // Build NOD3 data (boundary nodes with correct NOD1 offsets)
         let nod3_data = self.build_nod3(&node_offsets);
 
-        // NOD1 section
+        // Section descriptors
         let nod1_offset = NOD_HEADER_LEN as u32;
         let nod1_size = nod1_data.len() as u32;
-        buf.extend_from_slice(&nod1_offset.to_le_bytes());
-        buf.extend_from_slice(&nod1_size.to_le_bytes());
+        common_header::write_section(&mut buf, nod1_offset, nod1_size);
 
-        // NOD2 section
         let nod2_offset = nod1_offset + nod1_size;
-        let nod2_size = nod2_data.len() as u32;
-        buf.extend_from_slice(&nod2_offset.to_le_bytes());
-        buf.extend_from_slice(&nod2_size.to_le_bytes());
+        common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32);
 
-        // NOD3 section
-        let nod3_offset = nod2_offset + nod2_size;
-        let nod3_size = nod3_data.len() as u32;
-        buf.extend_from_slice(&nod3_offset.to_le_bytes());
-        buf.extend_from_slice(&nod3_size.to_le_bytes());
+        let nod3_offset = nod2_offset + nod2_data.len() as u32;
+        common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32);
 
-        // Drive on left flag + class boundaries + remaining header
+        // Drive on left flag
         buf.push(if self.drive_on_left { 1 } else { 0 });
 
-        // Pad to header length
-        while buf.len() < NOD_HEADER_LEN as usize {
-            buf.push(0x00);
-        }
-        buf.truncate(NOD_HEADER_LEN as usize);
+        common_header::pad_to(&mut buf, NOD_HEADER_LEN as usize);
 
         // Section data
         buf.extend_from_slice(&nod1_data);

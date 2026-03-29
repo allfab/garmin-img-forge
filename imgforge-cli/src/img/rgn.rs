@@ -1,6 +1,6 @@
 // RGNFile — RGN subfile, faithful to mkgmap RGNFile.java + RGNHeader.java
 
-use super::common_header::CommonHeader;
+use super::common_header::{self, CommonHeader};
 
 pub const RGN_HEADER_LEN: u16 = 125;
 
@@ -96,17 +96,10 @@ impl RgnWriter {
         common.write(&mut buf);
 
         // Data section: offset(4) + size(4)
-        let data_offset = RGN_HEADER_LEN as u32;
-        let data_size = self.data.len() as u32;
-        buf.extend_from_slice(&data_offset.to_le_bytes());
-        buf.extend_from_slice(&data_size.to_le_bytes());
+        common_header::write_section(&mut buf, RGN_HEADER_LEN as u32, self.data.len() as u32);
 
-        // Extended type sections (offsets + sizes, all zero for now)
         // Pad to 125 bytes
-        while buf.len() < RGN_HEADER_LEN as usize {
-            buf.push(0x00);
-        }
-        buf.truncate(RGN_HEADER_LEN as usize);
+        common_header::pad_to(&mut buf, RGN_HEADER_LEN as usize);
 
         // Append RGN data
         buf.extend_from_slice(&self.data);

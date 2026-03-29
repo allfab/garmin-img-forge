@@ -116,7 +116,7 @@ fn make_bit_stream(
     let mut y_bits = base2bits(y_base) as usize;
     if !y_same_sign { y_bits += 1; }
 
-    let mut bw = BitWriter::new();
+    let mut bw = BitWriter::with_capacity(deltas.len() * 4 + 8);
 
     // Header: xBase(4) + yBase(4)
     bw.putn(x_base as u32, 4);
@@ -185,13 +185,8 @@ fn make_bit_stream(
 
 /// Number of bits needed to hold |val| — mkgmap LinePreparer.bitsNeeded
 pub fn bits_needed(val: i32) -> i32 {
-    let mut n = val.unsigned_abs();
-    let mut count = 0;
-    while n != 0 {
-        n >>= 1;
-        count += 1;
-    }
-    count
+    let n = val.unsigned_abs();
+    if n == 0 { 0 } else { (32 - n.leading_zeros()) as i32 }
 }
 
 /// Convert base to actual bits — mkgmap LinePreparer.base2Bits

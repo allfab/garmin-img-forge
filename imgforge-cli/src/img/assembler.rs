@@ -72,6 +72,11 @@ fn extract_subfiles(img_data: &[u8], map_number: &str) -> Result<TileSubfiles, I
 
     let block_exp1 = img_data[0x61] as u32;
     let block_exp2 = img_data[0x62] as u32;
+    if block_exp1 + block_exp2 > 24 {
+        return Err(ImgError::InvalidFormat(format!(
+            "Invalid block size exponents: {} + {} > 24", block_exp1, block_exp2
+        )));
+    }
     let block_size = 1u32 << (block_exp1 + block_exp2);
     let dir_start = 2 * 512; // directory always starts at 512-byte block 2
 
@@ -123,8 +128,9 @@ fn extract_subfiles(img_data: &[u8], map_number: &str) -> Result<TileSubfiles, I
         }
         file_data.truncate(size);
 
-        // Skip the special header entry
-        if name.is_empty() || name.chars().all(|c| c == ' ' || c == '0') && ext.trim().is_empty() {
+        // Skip the special header entry (flag byte 0x03 at offset 0x10)
+        let flag = entry[0x10];
+        if flag == 0x03 || (name.is_empty() || (name.chars().all(|c| c == ' ' || c == '0') && ext.trim().is_empty())) {
             pos += 512;
             continue;
         }

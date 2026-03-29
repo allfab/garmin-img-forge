@@ -92,24 +92,32 @@ fn main() -> Result<()> {
                 anyhow::bail!("No .mp files found in {}", input);
             }
 
-            // Compile each tile
-            let mut tiles = Vec::new();
-            for entry in &mp_files {
+            // Compile each tile in parallel
+            use rayon::prelude::*;
+
+            let compiled: Result<Vec<_>, anyhow::Error> = mp_files.par_iter().map(|entry| {
                 let path = entry.path();
-                let content = std::fs::read_to_string(&path)?;
-                let mp = parser::parse_mp(&content)?;
-
-                report.total_points += mp.points.len();
-                report.total_polylines += mp.polylines.len();
-                report.total_polygons += mp.polygons.len();
-
-                let img_data = writer::build_img(&mp)?;
+                let content = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read {}", path.display()))?;
+                let mp = parser::parse_mp(&content)
+                    .with_context(|| format!("Failed to parse {}", path.display()))?;
+                let img_data = writer::build_img(&mp)
+                    .with_context(|| format!("Failed to build {}", path.display()))?;
                 let name = path.file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("00000000")
                     .to_string();
-                tiles.push((name, img_data));
+                Ok((name, img_data, mp.points.len(), mp.polylines.len(), mp.polygons.len()))
+            }).collect();
+            let compiled = compiled?;
+
+            let mut tiles = Vec::with_capacity(compiled.len());
+            for (name, img_data, pts, lines, polys) in compiled {
+                report.total_points += pts;
+                report.total_polylines += lines;
+                report.total_polygons += polys;
                 report.tiles_compiled += 1;
+                tiles.push((name, img_data));
             }
 
             // Assemble gmapsupp from pre-built tile IMGs

@@ -49,19 +49,14 @@ pub fn decode(data: &[u8]) -> String {
     let total_bits = data.len() * 8;
     let mut i = 0;
 
-    // Pad buffer so get6 can safely read a second byte at boundaries
-    let mut padded = data.to_vec();
-    padded.push(0xFF); // pad with terminator bits
-    padded.push(0xFF);
-
     while i * 6 + 6 <= total_bits + 2 {
-        let v = get6(&padded, i);
+        let v = get6(data, i);
         if v >= 0x3F {
             break; // terminator (0x3F from 0xFF code)
         }
         if v == SYMBOL_SHIFT {
             i += 1;
-            let sym = get6(&padded, i);
+            let sym = get6(data, i);
             if (sym as usize) < SYMBOLS.len() {
                 result.push(SYMBOLS.as_bytes()[sym as usize] as char);
             }
