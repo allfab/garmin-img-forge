@@ -18,7 +18,7 @@ use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
 use super::point::Point;
 use super::polygon::Polygon;
 use super::polyline::Polyline;
-use super::rgn::RgnWriter;
+use super::rgn::{RgnWriter, RGN_HEADER_LEN};
 use super::splitter::{self, MapArea, SplitPoint, SplitLine, SplitShape, MAX_RGN_SIZE};
 use super::subdivision::{self, Subdivision};
 use super::tre::TreWriter;
@@ -175,7 +175,8 @@ fn build_multilevel_hierarchy(
     topdiv.set_center(&bounds.center());
     topdiv.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
     topdiv.is_last = true;
-    // topdiv has no RGN data — offset 0, flags 0x00
+    // topdiv has no RGN data — but rgn_offset must be absolute from RGN subfile start
+    topdiv.rgn_offset = RGN_HEADER_LEN as u32;
 
     let mut all_subdivisions: Vec<Subdivision> = vec![topdiv];
     let mut subdiv_counter: u32 = 2; // next available number (1-based, topdiv = 1)
@@ -239,7 +240,10 @@ fn build_multilevel_hierarchy(
                 if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
                 if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
 
-                subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
+                // rgn.write_subdivision returns offset relative to data section;
+                // Garmin format requires absolute offset from RGN subfile start
+                subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data)
+                    + RGN_HEADER_LEN as u32;
 
                 // Validation: RGN size per subdivision
                 let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
@@ -269,7 +273,6 @@ fn build_multilevel_hierarchy(
     }
 
     // Build TRE zoom levels from actual subdivisions (ordered highest → lowest)
-    // Only include levels that have at least one subdivision (F8 fix)
     let mut tre_levels = Vec::new();
 
     // Topdiv level: always present, inherited
@@ -282,6 +285,19 @@ fn build_multilevel_hierarchy(
         let level_num = level_idx as u8;
         if all_subdivisions.iter().any(|s| s.zoom_level == level_num) {
             tre_levels.push(levels[level_idx]);
+        }
+    }
+
+    // Garmin TRE format requires ALL subdivisions at non-leaf levels to use
+    // 16-byte records (has_children=true). The reader determines record size
+    // per LEVEL, not per subdivision. Force has_children for non-leaf levels.
+    if tre_levels.len() >= 2 {
+        let leaf_level = tre_levels.last().unwrap().level;
+        for subdiv in all_subdivisions.iter_mut() {
+            if subdiv.zoom_level != leaf_level && !subdiv.has_children {
+                subdiv.has_children = true;
+                // Child pointer 0 = no children (reader handles gracefully)
+            }
         }
     }
 

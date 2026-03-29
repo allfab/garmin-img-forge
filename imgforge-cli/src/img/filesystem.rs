@@ -77,47 +77,51 @@ impl ImgFilesystem {
         let total_file_size: usize = self.files.iter().map(|f| f.data.len()).sum();
         let block_size = calc_block_size(total_file_size, self.files.len());
 
-        // Step 2: Build directory entries and calculate block needs
-        let directory_start_entry: u8 = 2;
-        let header_blocks_512 = directory_start_entry as usize; // header takes this many 512-byte blocks
+        // Step 2: Pre-compute blocks per file to get accurate directory part counts
+        let file_blocks: Vec<u32> = self.files.iter()
+            .map(|f| (f.data.len() as u32 + block_size - 1) / block_size)
+            .collect();
 
-        // Build directory with file entries to figure out directory size
+        let directory_start_entry: u8 = 2;
+        let header_blocks_512 = directory_start_entry as usize;
+
+        // Build directory with pre-allocated block counts for correct num_parts
         let mut directory = Directory::new();
 
-        // First: special header entry covering header + directory blocks
         let mut header_entry = Dirent::new("        ", "   ");
         header_entry.special = true;
-        // We'll fill blocks later
         directory.add_entry(header_entry);
 
-        // File entries
-        for file in &self.files {
+        for (idx, file) in self.files.iter().enumerate() {
             let mut entry = Dirent::new(&file.name, &file.ext);
             entry.size = file.data.len() as u32;
+            // Add placeholder blocks so num_parts() is correct for directory sizing
+            for b in 0..file_blocks[idx] {
+                entry.add_block(b as u16);
+            }
             directory.add_entry(entry);
         }
 
-        // Calculate total directory 512-byte blocks
+        // Now directory.total_directory_blocks() accounts for multi-part entries
         let dir_blocks_512 = directory.total_directory_blocks();
         let total_header_512 = header_blocks_512 + dir_blocks_512;
-
-        // How many filesystem blocks does the header+directory occupy?
         let header_fs_blocks = (total_header_512 as u32 * 512 + block_size - 1) / block_size;
 
-        // Step 3: Allocate blocks for all files
+        // Step 3: Allocate real blocks
         let mut block_manager = BlockManager::new(block_size, header_fs_blocks);
 
-        // Assign blocks to special header entry
+        // Header entry covers header + directory blocks
+        directory.entries[0].blocks.clear();
         directory.entries[0].size = (total_header_512 * 512) as u32;
         for i in 0..header_fs_blocks {
             directory.entries[0].add_block(i as u16);
         }
 
-        // Assign blocks to each file
-        for (i, file) in self.files.iter().enumerate() {
-            let blocks_needed = (file.data.len() as u32 + block_size - 1) / block_size;
+        // Replace placeholder blocks with real sequential allocations
+        for (i, _file) in self.files.iter().enumerate() {
             let entry = &mut directory.entries[i + 1];
-            for _ in 0..blocks_needed {
+            entry.blocks.clear();
+            for _ in 0..file_blocks[i] {
                 let blk = block_manager.allocate()?;
                 entry.add_block(blk);
             }
