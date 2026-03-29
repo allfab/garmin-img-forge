@@ -394,6 +394,9 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         "LBLcoding",       // Label encoding (6/9/10)
         "Preprocess",      // Preprocessing mode (G/F/P/N)
         "Levels",          // Number of zoom levels (1-10)
+        // Level definitions (written in order after Levels)
+        "Level0", "Level1", "Level2", "Level3", "Level4",
+        "Level5", "Level6", "Level7", "Level8", "Level9",
         "TreeSize",        // Map tree size (100-15000)
         "RgnLimit",        // Region element limit (50-1024)
         // Important fields (Story 2.2.2)
@@ -401,6 +404,7 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
         "SimplifyLevel",   // Simplification level (0-4)
         "Marine",          // Marine map (Y/N)
         "LeftSideTraffic", // Left-side traffic (Y/N)
+        "Routing",         // Routing enabled (Y/N) — required by mkgmap when RoadID present
         nullptr
     };
 
@@ -413,27 +417,6 @@ bool PolishMapWriter::WriteHeader(const std::map<std::string, std::string>& aoMe
                          "PolishMapWriter::WriteHeader() - failed to write %s",
                          it->first.c_str());
                 return false;
-            }
-        }
-    }
-
-    // Story 2.2.3: Write Level0-N definitions if Levels field is present
-    auto itLevels = aoMergedMetadata.find("Levels");
-    if (itLevels != aoMergedMetadata.end()) {
-        int nLevels = atoi(itLevels->second.c_str());
-        if (nLevels > 0 && nLevels <= 10) {
-            for (int i = 0; i < nLevels; i++) {
-                std::string osLevelKey = FormatString("Level%d", i);
-                auto itLevel = aoMergedMetadata.find(osLevelKey);
-                if (itLevel != aoMergedMetadata.end()) {
-                    if (!BufferedWrite(FormatString("%s=%s\n", osLevelKey.c_str(),
-                                                     itLevel->second.c_str()).c_str())) {
-                        CPLError(CE_Failure, CPLE_FileIO,
-                                 "PolishMapWriter::WriteHeader() - failed to write %s",
-                                 osLevelKey.c_str());
-                        return false;
-                    }
-                }
             }
         }
     }

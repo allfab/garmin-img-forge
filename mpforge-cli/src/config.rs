@@ -163,6 +163,9 @@ pub struct HeaderConfig {
     /// Left-side traffic setting (Polish Map: LeftSideTraffic)
     #[serde(default)]
     pub left_side_traffic: Option<String>,
+    /// Routing enabled (Polish Map: Routing) — required by mkgmap when RoadID present
+    #[serde(default)]
+    pub routing: Option<String>,
     /// Custom arbitrary header fields
     #[serde(default)]
     pub custom: Option<HashMap<String, String>>,

@@ -951,6 +951,72 @@ static bool Test_RoundTrip_UnknownFields() {
 /*                               main()                                  */
 /************************************************************************/
 
+/************************************************************************/
+/*          Test_Header_LevelNoDuplication (regression)                  */
+/*                                                                      */
+/* Verify that Level0-Level9 appear exactly once in the output header   */
+/************************************************************************/
+
+static int CountOccurrences(const std::string& content, const std::string& pattern) {
+    int count = 0;
+    size_t pos = 0;
+    while ((pos = content.find(pattern, pos)) != std::string::npos) {
+        // Ensure we match at start of line (after \n or at position 0)
+        if (pos == 0 || content[pos - 1] == '\n') {
+            count++;
+        }
+        pos += pattern.size();
+    }
+    return count;
+}
+
+static bool Test_Header_LevelNoDuplication() {
+    std::cout << "  Test_Header_LevelNoDuplication... ";
+
+    CPLString osTempFile = GetTempFilePath("test_level_nodup");
+    CleanupTempFile(osTempFile);
+
+    GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName("PolishMap");
+    if (poDriver == nullptr) {
+        std::cout << "FAILED (PolishMap driver not found)" << std::endl;
+        return false;
+    }
+
+    GDALDataset* poDS = poDriver->Create(osTempFile.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
+    if (poDS == nullptr) {
+        std::cout << "FAILED (Create() returned nullptr)" << std::endl;
+        CleanupTempFile(osTempFile);
+        return false;
+    }
+
+    poDS->SetMetadataItem("Name", "Level Dup Test", nullptr);
+    poDS->SetMetadataItem("ID", "99999", nullptr);
+    poDS->SetMetadataItem("Levels", "3", nullptr);
+    poDS->SetMetadataItem("Level0", "24", nullptr);
+    poDS->SetMetadataItem("Level1", "22", nullptr);
+    poDS->SetMetadataItem("Level2", "20", nullptr);
+    poDS->SetMetadataItem("Routing", "Y", nullptr);
+
+    GDALClose(poDS);
+
+    std::string osContent = ReadFileContent(osTempFile.c_str());
+
+    // Each Level field must appear exactly once
+    const char* fields[] = {"Levels=3", "Level0=24", "Level1=22", "Level2=20", "Routing=Y"};
+    for (const char* field : fields) {
+        int count = CountOccurrences(osContent, field);
+        if (count != 1) {
+            std::cout << "FAILED (" << field << " appears " << count << " times, expected 1)" << std::endl;
+            CleanupTempFile(osTempFile);
+            return false;
+        }
+    }
+
+    CleanupTempFile(osTempFile);
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
+
 int main() {
     std::cout << "=== Story 1.2/2.2: Polish Map Header Parser & Writer ===" << std::endl;
     std::cout << std::endl;
@@ -1012,6 +1078,9 @@ int main() {
 
     // Story 2.2.6: Round-trip with unknown/custom fields
     if (Test_RoundTrip_UnknownFields()) nPassed++; else nFailed++;
+
+    // Regression: Level fields must not be duplicated in output
+    if (Test_Header_LevelNoDuplication()) nPassed++; else nFailed++;
 
     std::cout << std::endl;
     std::cout << "=== Test Summary ===" << std::endl;

@@ -214,6 +214,7 @@ header:
   marine: "N"
   preprocess: "F"
   lbl_coding: "9"
+  routing: "Y"
 
 # Règles de transformation BDTOPO → types Garmin
 # ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)

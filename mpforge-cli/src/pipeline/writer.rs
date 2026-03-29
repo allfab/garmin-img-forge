@@ -73,6 +73,7 @@ impl MpWriter {
         set_if_some!(header.lbl_coding, "LBLcoding");
         set_if_some!(header.simplify_level, "SimplifyLevel");
         set_if_some!(header.left_side_traffic, "LeftSideTraffic");
+        set_if_some!(header.routing, "Routing");
 
         // Custom header fields (arbitrary key-value pairs)
         if let Some(ref custom) = header.custom {
