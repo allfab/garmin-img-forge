@@ -9,6 +9,20 @@ use imgforge_cli::img::writer;
 use imgforge_cli::parser;
 use imgforge_cli::report::BuildReport;
 
+/// Read .mp file with UTF-8 first, Latin-1 (ISO-8859-1) fallback for BDTOPO accents
+fn read_mp_file(path: impl AsRef<Path>) -> Result<String> {
+    let bytes = std::fs::read(path.as_ref())
+        .with_context(|| format!("Cannot read file: {}", path.as_ref().display()))?;
+    match String::from_utf8(bytes.clone()) {
+        Ok(s) => Ok(s),
+        Err(_) => {
+            // Latin-1 fallback: each byte maps to its Unicode code point
+            tracing::debug!("File is not UTF-8, using Latin-1 fallback: {}", path.as_ref().display());
+            Ok(bytes.iter().map(|&b| b as char).collect())
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -28,8 +42,8 @@ fn main() -> Result<()> {
             let start = Instant::now();
             let mut report = BuildReport::new();
 
-            // Read input .mp file
-            let content = std::fs::read_to_string(&input)
+            // Read input .mp file (UTF-8 with Latin-1 fallback for BDTOPO accents)
+            let content = read_mp_file(&input)
                 .with_context(|| format!("Failed to read {}", input))?;
 
             // Parse
@@ -97,32 +111,37 @@ fn main() -> Result<()> {
 
             let compiled: Result<Vec<_>, anyhow::Error> = mp_files.par_iter().map(|entry| {
                 let path = entry.path();
-                let content = std::fs::read_to_string(&path)
+                let content = read_mp_file(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 let mp = parser::parse_mp(&content)
                     .with_context(|| format!("Failed to parse {}", path.display()))?;
-                let img_data = writer::build_img(&mp)
+                let tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
-                let name = path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("00000000")
-                    .to_string();
-                Ok((name, img_data, mp.points.len(), mp.polylines.len(), mp.polygons.len()))
+                let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
+                Ok((tile, counts))
             }).collect();
             let compiled = compiled?;
 
-            let mut tiles = Vec::with_capacity(compiled.len());
-            for (name, img_data, pts, lines, polys) in compiled {
+            use imgforge_cli::img::assembler::TileSubfiles;
+            let mut tile_subfiles = Vec::with_capacity(compiled.len());
+            for (tile, (pts, lines, polys)) in compiled {
                 report.total_points += pts;
                 report.total_polylines += lines;
                 report.total_polygons += polys;
                 report.tiles_compiled += 1;
-                tiles.push((name, img_data));
+                tile_subfiles.push(TileSubfiles {
+                    map_number: tile.map_number,
+                    tre: tile.tre,
+                    rgn: tile.rgn,
+                    lbl: tile.lbl,
+                    net: tile.net,
+                    nod: tile.nod,
+                });
             }
 
-            // Assemble gmapsupp from pre-built tile IMGs
+            // Assemble gmapsupp directly from subfiles (no round-trip through IMG extraction)
             let map_desc = family_name.as_deref().unwrap_or("Map");
-            let gmapsupp = imgforge_cli::img::assembler::build_gmapsupp_from_imgs(&tiles, map_desc)?;
+            let gmapsupp = imgforge_cli::img::assembler::build_gmapsupp(&tile_subfiles, map_desc)?;
             std::fs::write(&output, &gmapsupp)?;
 
             // Generate TDB companion file
@@ -131,14 +150,14 @@ fn main() -> Result<()> {
                 let fid = family_id.unwrap_or(1);
                 let pid = product_id.unwrap_or(1);
                 let mut tdb = TdbWriter::new(fid, pid);
-                tdb.series_name = series_name.unwrap_or_else(|| "imgforge".to_string());
-                tdb.family_name = family_name.unwrap_or_else(|| "Map".to_string());
+                tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
+                tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();
 
-                for (name, _) in &tiles {
-                    let map_num: u32 = name.parse().unwrap_or(0);
+                for tile in &tile_subfiles {
+                    let map_num: u32 = tile.map_number.parse().unwrap_or(0);
                     tdb.add_tile(TdbTile {
                         map_number: map_num,
-                        description: name.clone(),
+                        description: tile.map_number.clone(),
                         north: 0,
                         south: 0,
                         east: 0,
