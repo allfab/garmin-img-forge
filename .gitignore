@@ -6,6 +6,7 @@ __pycache__/
 data/
 output/
 *.mp
+!imgforge-cli/tests/fixtures/*.mp
 *.img
 mkgmap/
 _imgforge-cli/
