@@ -32,12 +32,19 @@ impl MapArea {
         }
     }
 
-    /// Check if this area needs to be split
+    /// Check if this area needs to be split — mkgmap MapSplitter limits
     pub fn needs_split(&self) -> bool {
         self.num_points > MAX_NUM_POINTS
             || self.num_lines > MAX_NUM_LINES
+            || self.num_polygons > MAX_NUM_LINES  // polygons share the line limit
             || self.estimated_rgn_size > MAX_RGN_SIZE
             || self.bounds.max_dimension() > WANTED_MAX_AREA_SIZE
+            || self.total_elements() > MAX_NUM_POINTS  // total features limit
+    }
+
+    /// Total number of map elements
+    pub fn total_elements(&self) -> usize {
+        self.num_points + self.num_lines + self.num_polygons
     }
 
     /// Split this area into sub-areas — mkgmap MapSplitter logic

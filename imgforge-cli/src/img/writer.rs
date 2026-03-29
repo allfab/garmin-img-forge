@@ -89,6 +89,10 @@ pub fn build_img(mp: &MpFile) -> Result<Vec<u8>, ImgError> {
     map_area.num_points = mp.points.len();
     map_area.num_lines = mp.polylines.len();
     map_area.num_polygons = mp.polygons.len();
+    // Estimate ~20 bytes per feature for RGN size (8B header + ~12B avg bitstream)
+    map_area.estimated_rgn_size = (mp.points.len() * 8)
+        + (mp.polylines.len() * 20)
+        + (mp.polygons.len() * 20);
 
     let sub_areas = if map_area.needs_split() {
         split_area(&map_area, shift, 8)
@@ -337,6 +341,10 @@ fn build_img_internal(mp: &MpFile) -> Result<TileResult, ImgError> {
     map_area.num_points = mp.points.len();
     map_area.num_lines = mp.polylines.len();
     map_area.num_polygons = mp.polygons.len();
+    // Estimate ~20 bytes per feature for RGN size (8B header + ~12B avg bitstream)
+    map_area.estimated_rgn_size = (mp.points.len() * 8)
+        + (mp.polylines.len() * 20)
+        + (mp.polygons.len() * 20);
 
     let sub_areas = if map_area.needs_split() {
         split_area(&map_area, shift, 8)

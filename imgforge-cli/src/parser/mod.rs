@@ -152,10 +152,35 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
         "previewlat" => header.preview_lat = value.parse().unwrap_or(0.0),
         "previewlon" | "previewlong" => header.preview_lon = value.parse().unwrap_or(0.0),
         "levels" => {
-            header.levels = value
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
+            // "Levels=2" means number of levels, not resolution list
+            // "Levels=24,20,16" is a comma-separated resolution list (imgforge-cli format)
+            if value.contains(',') {
+                header.levels = value
+                    .split(',')
+                    .filter_map(|s| s.trim().parse().ok())
+                    .collect();
+            } else {
+                // Single number = number of levels (cGPSmapper/BDTOPO format)
+                // Actual resolutions come from Level0=, Level1=, etc.
+                let num_levels: usize = value.parse().unwrap_or(1);
+                header.levels.resize(num_levels, 24);
+            }
+        }
+        k if k.starts_with("level") && k.len() > 5 => {
+            // Level0=24, Level1=18, etc. — set resolution for specific level
+            if let Ok(level_idx) = k[5..].parse::<usize>() {
+                if let Ok(resolution) = value.parse::<u8>() {
+                    if level_idx < header.levels.len() {
+                        header.levels[level_idx] = resolution;
+                    } else {
+                        // Extend if needed
+                        while header.levels.len() <= level_idx {
+                            header.levels.push(24);
+                        }
+                        header.levels[level_idx] = resolution;
+                    }
+                }
+            }
         }
         _ => {}
     }
