@@ -219,14 +219,13 @@ impl MapArea {
             );
 
             if sub_areas[target].bounds.contains_area(&shape_bbox) {
-                // Entire shape fits in target area
+                // Entire shape fits in target area — no clipping needed
                 sub_areas[target].add_shape(shape.clone());
             } else {
-                // Shape spans multiple areas — assign full shape to target (mkgmap behavior),
-                // clip fragments for other overlapping areas only
-                sub_areas[target].add_shape(shape.clone());
+                // Shape spans multiple areas — clip to ALL overlapping areas
+                // including target (mkgmap splitIntoAreas behavior)
                 for (i, bounds) in sub_bounds.iter().enumerate() {
-                    if i == target || !bounds.intersects(&shape_bbox) {
+                    if !bounds.intersects(&shape_bbox) {
                         continue;
                     }
                     let clipped = clip_polygon_to_rect(&shape.points, bounds);
