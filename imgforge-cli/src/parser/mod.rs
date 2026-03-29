@@ -162,8 +162,9 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
             } else {
                 // Single number = number of levels (cGPSmapper/BDTOPO format)
                 // Actual resolutions come from Level0=, Level1=, etc.
+                // Clear defaults and initialize with placeholder resolution
                 let num_levels: usize = value.parse().unwrap_or(1);
-                header.levels.resize(num_levels, 24);
+                header.levels = vec![24; num_levels];
             }
         }
         k if k.starts_with("level") && k.len() > 5 => {
@@ -239,7 +240,15 @@ fn parse_polygon_field(pg: &mut MpPolygon, key: &str, value: &str, line_num: usi
 
 fn parse_type(value: &str) -> u16 {
     if value.starts_with("0x") || value.starts_with("0X") {
-        u16::from_str_radix(&value[2..], 16).unwrap_or(0)
+        // Parse as u32 first to detect extended types that overflow u16
+        let val = u32::from_str_radix(&value[2..], 16).unwrap_or(0);
+        if val > u16::MAX as u32 {
+            // Extended type that doesn't fit in u16 — preserve as > 0x100
+            // so the extended-type filter can exclude it
+            0xFFFF
+        } else {
+            val as u16
+        }
     } else {
         value.parse().unwrap_or(0)
     }

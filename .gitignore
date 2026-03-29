@@ -10,3 +10,6 @@ output/
 *.img
 mkgmap/
 _imgforge-cli/
+xI2023100.typ
+resources/img/63240001.img
+resources/img/osmmap.tdb

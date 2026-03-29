@@ -18,7 +18,7 @@ use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
 use super::point::Point;
 use super::polygon::Polygon;
 use super::polyline::Polyline;
-use super::rgn::{RgnWriter, RGN_HEADER_LEN};
+use super::rgn::RgnWriter;
 use super::splitter::{self, MapArea, SplitPoint, SplitLine, SplitShape, MAX_RGN_SIZE};
 use super::subdivision::{self, Subdivision};
 use super::tre::TreWriter;
@@ -105,15 +105,17 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     }
     tre.levels = tre_levels;
     tre.subdivisions = all_subdivisions;
+    // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body
+    tre.last_rgn_pos = rgn.position();
 
-    // Build overviews (deduplicated)
-    for mp_point in &mp.points {
+    // Build overviews (deduplicated, standard types only)
+    for mp_point in mp.points.iter().filter(|p| p.type_code < 0x100) {
         tre.point_overviews.push(PointOverview::new(mp_point.type_code as u8, 0, 0));
     }
-    for mp_line in &mp.polylines {
+    for mp_line in mp.polylines.iter().filter(|l| l.type_code < 0x100) {
         tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
     }
-    for mp_poly in &mp.polygons {
+    for mp_poly in mp.polygons.iter().filter(|p| p.type_code < 0x100) {
         tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
     }
     tre.polyline_overviews.sort();
@@ -168,24 +170,28 @@ fn build_multilevel_hierarchy(
 
     let num_levels = levels.len();
 
-    // ── Create topdiv (empty root) ──
-    let topdiv_level = num_levels as u8;
+    // ── Create topdiv (empty root) at highest configured level ──
+    // mkgmap: topdiv sits at the highest zoom level (inherited), not above it
+    let topdiv_level = (num_levels - 1) as u8;
     let topdiv_resolution = levels.last()
-        .map(|z| z.resolution.saturating_sub(1))
-        .unwrap_or(23);
+        .map(|z| z.resolution)
+        .unwrap_or(24);
 
     let mut topdiv = Subdivision::new(1, topdiv_level, topdiv_resolution);
     topdiv.set_center(&bounds.center());
     topdiv.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
     topdiv.is_last = true;
-    topdiv.rgn_offset = RGN_HEADER_LEN as u32;
+    // mkgmap: startRgnPointer is relative to RGN body (after header), NOT absolute
+    topdiv.rgn_offset = 0;
 
     let mut all_subdivisions: Vec<Subdivision> = vec![topdiv];
     let mut subdiv_counter: u32 = 2;
     let mut parent_areas: Vec<(Area, u32)> = vec![(*bounds, 1)];
 
     // ── Process each level from most zoomed-out to most detailed ──
-    for level_idx in (0..num_levels).rev() {
+    // Skip the highest level (it's the inherited topdiv level)
+    let process_levels = if num_levels > 1 { num_levels - 1 } else { num_levels };
+    for level_idx in (0..process_levels).rev() {
         let level = &levels[level_idx];
         let level_num = level_idx as u8;
         let shift = (24i32 - level.resolution as i32).max(0);
@@ -229,8 +235,8 @@ fn build_multilevel_hierarchy(
                 if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
                 if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
 
-                subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data)
-                    + RGN_HEADER_LEN as u32;
+                // mkgmap: startRgnPointer = position() - HEADER_LEN → relative to RGN body
+                subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
 
                 let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
                 if total_rgn > MAX_RGN_SIZE {
@@ -256,12 +262,13 @@ fn build_multilevel_hierarchy(
     }
 
     // Build TRE zoom levels from actual subdivisions
+    // mkgmap: highest level is inherited (topdiv only), rest are regular
     let mut tre_levels_build = Vec::new();
     let mut top_zoom = Zoom::new(topdiv_level, topdiv_resolution);
     top_zoom.inherited = true;
     tre_levels_build.push(top_zoom);
 
-    for level_idx in (0..num_levels).rev() {
+    for level_idx in (0..process_levels).rev() {
         let level_num = level_idx as u8;
         if all_subdivisions.iter().any(|s| s.zoom_level == level_num) {
             tre_levels_build.push(levels[level_idx]);
@@ -306,19 +313,23 @@ fn filter_features_for_level(
         parent_bounds.max_lon() + 1,
     );
 
+    // Skip extended types (>= 0x100) — they require a separate RGN section not yet implemented
     let points: Vec<SplitPoint> = mp.points.iter().enumerate()
+        .filter(|(_, p)| p.type_code < 0x100)
         .filter(|(_, p)| p.end_level.unwrap_or(0) >= level)
         .filter(|(_, p)| expanded.contains_coord(&p.coord))
         .map(|(i, p)| SplitPoint { mp_index: i, location: p.coord })
         .collect();
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
+        .filter(|(_, l)| l.type_code < 0x100)
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
         .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
         .map(|(i, l)| SplitLine { mp_index: i, points: l.points.clone() })
         .collect();
 
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
+        .filter(|(_, s)| s.type_code < 0x100)
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
         .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
         .map(|(i, s)| SplitShape { mp_index: i, points: s.points.clone() })

@@ -38,8 +38,8 @@ impl Polygon {
         let mut buf = Vec::with_capacity(8 + bitstream.len());
 
         let mut type_byte = (self.type_code & 0xFF) as u8;
-        if bitstream.len() >= 256 {
-            type_byte |= 0x80;
+        if bitstream.len() > 256 {
+            type_byte |= 0x80; // 2-byte length (blen = len-1 >= 256)
         }
         buf.push(type_byte);
 
@@ -54,10 +54,12 @@ impl Polygon {
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 
-        if bitstream.len() >= 256 {
-            buf.extend_from_slice(&(bitstream.len() as u16).to_le_bytes());
+        // Bitstream length — Garmin convention: stored as (actual_bytes - 1)
+        let blen = bitstream.len() - 1;
+        if blen >= 256 {
+            buf.extend_from_slice(&(blen as u16).to_le_bytes());
         } else {
-            buf.push(bitstream.len() as u8);
+            buf.push(blen as u8);
         }
 
         buf.extend_from_slice(bitstream);

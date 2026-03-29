@@ -26,6 +26,8 @@ pub struct TreWriter {
     pub display_priority: u32,
     /// Copyright strings as LBL offsets
     pub copyright_offsets: Vec<u32>,
+    /// Last RGN position (relative to body) — written as 4-byte terminator after subdivisions
+    pub last_rgn_pos: u32,
 }
 
 impl TreWriter {
@@ -42,6 +44,7 @@ impl TreWriter {
             point_overviews: Vec::new(),
             display_priority: 0x19,
             copyright_offsets: Vec::new(),
+            last_rgn_pos: 0,
         }
     }
 
@@ -142,6 +145,8 @@ impl TreWriter {
         for subdiv in &self.subdivisions {
             data.extend_from_slice(&subdiv.write());
         }
+        // mkgmap: 4-byte terminator = lastRgnPos (end of last subdivision's RGN data)
+        data.extend_from_slice(&self.last_rgn_pos.to_le_bytes());
         data
     }
 
