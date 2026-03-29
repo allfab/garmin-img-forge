@@ -1,111 +1,126 @@
-//! imgforge-cli: Polish Map (.mp) to Garmin IMG compiler
-
-use std::path::PathBuf;
-
+use std::path::Path;
+use std::time::Instant;
+use anyhow::{Context, Result};
 use clap::Parser;
-use imgforge_cli::cli::{Cli, Commands};
-use imgforge_cli::BuildConfig;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::EnvFilter;
 
-fn main() -> anyhow::Result<()> {
+use imgforge_cli::cli::{Cli, Commands};
+use imgforge_cli::img::writer;
+use imgforge_cli::parser;
+use imgforge_cli::report::BuildReport;
+
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match &cli.command {
-        Commands::Compile(args) => {
-            let level = match args.verbose {
-                0 => Level::WARN,
-                1 => Level::INFO,
-                2 => Level::DEBUG,
-                _ => Level::TRACE,
-            };
+    // Setup tracing
+    let filter = match cli.verbose {
+        0 => "warn",
+        1 => "info",
+        2 => "debug",
+        _ => "trace",
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(filter))
+        .init();
 
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(level)
-                .with_target(false)
-                .finish();
+    match cli.command {
+        Commands::Compile { input, output, description } => {
+            let start = Instant::now();
+            let mut report = BuildReport::new();
 
-            if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
-                eprintln!("Warning: Failed to set tracing subscriber: {}", e);
+            // Read input .mp file
+            let content = std::fs::read_to_string(&input)
+                .with_context(|| format!("Failed to read {}", input))?;
+
+            // Parse
+            let mut mp = parser::parse_mp(&content)
+                .with_context(|| format!("Failed to parse {}", input))?;
+
+            // Override description from CLI if provided
+            if let Some(ref desc) = description {
+                mp.header.name = desc.clone();
             }
 
-            let input = std::path::Path::new(&args.input);
-            let output = std::path::Path::new(&args.output);
+            report.total_points = mp.points.len();
+            report.total_polylines = mp.polylines.len();
+            report.total_polygons = mp.polygons.len();
 
-            imgforge_cli::compile(input, output)?;
+            // Build IMG
+            let img_data = writer::build_img(&mp)
+                .with_context(|| "Failed to build IMG")?;
+
+            // Determine output path
+            let out_path = output.unwrap_or_else(|| {
+                let stem = Path::new(&input).file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("output");
+                format!("{}.img", stem)
+            });
+
+            // Write output
+            std::fs::write(&out_path, &img_data)
+                .with_context(|| format!("Failed to write {}", out_path))?;
+
+            report.tiles_compiled = 1;
+            report.output_file = out_path.clone();
+            report.output_size_bytes = img_data.len() as u64;
+            report.set_duration(start.elapsed());
+
+            println!("{}", report.to_json());
         }
 
-        Commands::Build(args) => {
-            let level = match args.verbose {
-                0 => Level::WARN,
-                1 => Level::INFO,
-                2 => Level::DEBUG,
-                _ => Level::TRACE,
-            };
+        Commands::Build { input, output, jobs, family_id: _, product_id: _, series_name: _, family_name: _ } => {
+            // Configure rayon thread pool if --jobs specified
+            if let Some(j) = jobs {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(j)
+                    .build_global()
+                    .ok();
+            }
+            let start = Instant::now();
+            let mut report = BuildReport::new();
 
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(level)
-                .with_target(false)
-                .finish();
+            // Find all .mp files in directory
+            let input_path = Path::new(&input);
+            let mp_files: Vec<_> = std::fs::read_dir(input_path)
+                .with_context(|| format!("Failed to read directory {}", input))?
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().map(|ext| ext == "mp").unwrap_or(false))
+                .collect();
 
-            if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
-                eprintln!("Warning: Failed to set tracing subscriber: {}", e);
+            if mp_files.is_empty() {
+                anyhow::bail!("No .mp files found in {}", input);
             }
 
-            let input_dir = std::path::Path::new(&args.input_dir);
-            let output = std::path::Path::new(&args.output);
+            // Compile each tile
+            let mut tiles = Vec::new();
+            for entry in &mp_files {
+                let path = entry.path();
+                let content = std::fs::read_to_string(&path)?;
+                let mp = parser::parse_mp(&content)?;
 
-            let config = BuildConfig {
-                family_id: args.family_id,
-                product_id: args.product_id,
-                description: args.description.clone(),
-                block_size_exponent: 14, // production default (16 384 bytes)
-                typ_file: args.typ.as_deref().map(PathBuf::from),
-                jobs: args.jobs,
-                // Hide progress bar in verbose mode to avoid interleaving with tracing logs.
-                show_progress: args.verbose == 0,
-            };
+                report.total_points += mp.points.len();
+                report.total_polylines += mp.polylines.len();
+                report.total_polygons += mp.polygons.len();
 
-            // Use the public library API (L3: avoid bypassing lib.rs).
-            let stats = imgforge_cli::build(input_dir, output, config)?;
-
-            // Always-visible summary regardless of verbose level (AC5).
-            println!(
-                "Built {} tile(s) → {} subfiles, {} bytes in {:.1}s",
-                stats.tile_count,
-                stats.subfile_count,
-                stats.total_bytes,
-                stats.compilation.duration_seconds,
-            );
-
-            // Optional JSON report.
-            if let Some(ref report_path) = args.report {
-                use imgforge_cli::report::{BuildReport, FeaturesByType, ReportStatus};
-                let report = BuildReport {
-                    status: if stats.compilation.tiles_failed == 0 {
-                        ReportStatus::Success
-                    } else {
-                        ReportStatus::Failure
-                    },
-                    tiles_compiled: stats.tile_count,
-                    tiles_failed: stats.compilation.tiles_failed,
-                    features_by_type: FeaturesByType {
-                        poi: stats.compilation.poi_count,
-                        polyline: stats.compilation.polyline_count,
-                        polygon: stats.compilation.polygon_count,
-                    },
-                    routing_nodes: stats.compilation.routing_nodes,
-                    routing_arcs: stats.compilation.routing_arcs,
-                    img_size_bytes: stats.total_bytes,
-                    duration_seconds: stats.compilation.duration_seconds,
-                    errors: stats.compilation.tile_errors.clone(),
-                };
-                imgforge_cli::report::write_json_report(
-                    &report,
-                    std::path::Path::new(report_path),
-                )?;
-                tracing::info!(path = %report_path, "JSON report written");
+                let img_data = writer::build_img(&mp)?;
+                let name = path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("00000000")
+                    .to_string();
+                tiles.push((name, img_data));
+                report.tiles_compiled += 1;
             }
+
+            // Assemble gmapsupp from pre-built tile IMGs
+            let gmapsupp = imgforge_cli::img::assembler::build_gmapsupp_from_imgs(&tiles, "Map")?;
+            std::fs::write(&output, &gmapsupp)?;
+
+            report.output_file = output;
+            report.output_size_bytes = gmapsupp.len() as u64;
+            report.set_duration(start.elapsed());
+
+            println!("{}", report.to_json());
         }
     }
 

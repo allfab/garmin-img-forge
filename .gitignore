@@ -8,3 +8,4 @@ output/
 *.mp
 *.img
 mkgmap/
+_imgforge-cli/

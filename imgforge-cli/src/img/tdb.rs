@@ -1,433 +1,160 @@
-//! Garmin TDB (Table of Database) writer — format v4.07.
-//!
-//! The TDB file is a companion to `gmapsupp.img` that BaseCamp/MapSource uses
-//! to identify the map family, its geographic coverage, and the list of tiles.
-//!
-//! # Structure of a valid TDB
-//! ```text
-//! [0x50] Product Header
-//! [0x44] Copyright
-//! [0x42] Overview Map  (global bounding box)
-//! [0x4C] × N  Detail Map (one per tile)
-//! [0x54] Checksum  (CRC32 IEEE of all preceding bytes)
-//! ```
-//!
-//! Every block has the format:  `type(u8) | length(u16 LE) | data(N bytes)`.
+// TDB — Table of Database companion file, faithful to mkgmap TdbFile.java
 
-use std::path::Path;
+/// TDB block types
+const BLOCK_PRODUCT: u8 = 0x50;
+const BLOCK_COPYRIGHT: u8 = 0x44;
+const BLOCK_OVERVIEW: u8 = 0x42;
+const BLOCK_DETAIL: u8 = 0x4C;
 
-use crate::error::ImgError;
-
-// ── Public types ──────────────────────────────────────────────────────────────
-
-/// Metadata for a single tile entry inside the TDB.
-#[derive(Debug, Clone)]
-pub struct TileInfo {
-    /// Garmin map ID (from `mp.header.id` parsed as decimal u32).
-    pub map_id: u32,
-    /// North bound in WGS84 degrees.
-    pub north: f64,
-    /// East bound in WGS84 degrees.
-    pub east: f64,
-    /// South bound in WGS84 degrees.
-    pub south: f64,
-    /// West bound in WGS84 degrees.
-    pub west: f64,
-    /// Human-readable tile description (from `mp.header.name`).
-    pub description: String,
-}
-
-/// Global TDB configuration (applies to all tiles in the same map product).
-#[derive(Debug, Clone)]
-pub struct TdbConfig {
-    /// Garmin family ID.
+/// TDB file writer
+pub struct TdbWriter {
     pub family_id: u16,
-    /// Garmin product ID.
     pub product_id: u16,
-    /// Series/map name shown in BaseCamp.
     pub series_name: String,
+    pub family_name: String,
+    pub area_name: String,
+    pub copyright: String,
+    pub overview_map_number: u32,
+    pub tiles: Vec<TdbTile>,
 }
 
-// ── TdbWriter ─────────────────────────────────────────────────────────────────
-
-/// Generates the binary content of a Garmin TDB v4.07 file.
-pub struct TdbWriter;
+/// A tile entry in the TDB
+pub struct TdbTile {
+    pub map_number: u32,
+    pub description: String,
+    pub north: i32,
+    pub south: i32,
+    pub east: i32,
+    pub west: i32,
+}
 
 impl TdbWriter {
-    /// Build the complete TDB binary buffer.
-    ///
-    /// Blocks are assembled in the mandatory order: 0x50, 0x44, 0x42, 0x4C×N, 0x54.
-    pub fn build(config: &TdbConfig, tiles: &[TileInfo]) -> Vec<u8> {
-        let mut buf: Vec<u8> = Vec::new();
+    pub fn new(family_id: u16, product_id: u16) -> Self {
+        Self {
+            family_id,
+            product_id,
+            series_name: String::new(),
+            family_name: String::new(),
+            area_name: String::new(),
+            copyright: String::new(),
+            overview_map_number: 0,
+            tiles: Vec::new(),
+        }
+    }
 
-        // 0x50 — Product Header
-        let product = build_product_block(config);
-        write_block(&mut buf, 0x50, &product);
+    pub fn add_tile(&mut self, tile: TdbTile) {
+        self.tiles.push(tile);
+    }
 
-        // 0x44 — Copyright
-        let copyright = build_copyright_block();
-        write_block(&mut buf, 0x44, &copyright);
+    /// Build the complete TDB file
+    pub fn build(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
 
-        // 0x42 — Overview Map (global bounding box)
-        let overview = build_overview_block(config, tiles);
-        write_block(&mut buf, 0x42, &overview);
+        // Product info block (0x50)
+        self.write_product_block(&mut buf);
 
-        // 0x4C — Detail Map (one per tile)
-        let parent_id = config.family_id as u32;
-        for tile in tiles {
-            let detail = build_detail_block(tile, parent_id);
-            write_block(&mut buf, 0x4C, &detail);
+        // Copyright block (0x44)
+        if !self.copyright.is_empty() {
+            self.write_copyright_block(&mut buf);
         }
 
-        // 0x54 — Checksum (CRC32 over all preceding bytes)
-        let checksum = crc32(&buf).to_le_bytes().to_vec();
-        write_block(&mut buf, 0x54, &checksum);
+        // Overview map block (0x42)
+        self.write_overview_block(&mut buf);
+
+        // Detail map blocks (0x4C)
+        for tile in &self.tiles {
+            self.write_detail_block(&mut buf, tile);
+        }
 
         buf
     }
 
-    /// Build and write the TDB to `output`.
-    pub fn write(output: &Path, config: &TdbConfig, tiles: &[TileInfo]) -> Result<(), ImgError> {
-        let buf = Self::build(config, tiles);
-        std::fs::write(output, &buf)?;
-        Ok(())
+    fn write_product_block(&self, buf: &mut Vec<u8>) {
+        let mut data = Vec::new();
+        data.extend_from_slice(&self.family_id.to_le_bytes());
+        data.extend_from_slice(&self.product_id.to_le_bytes());
+
+        // Series name (null-terminated)
+        data.extend_from_slice(self.series_name.as_bytes());
+        data.push(0);
+
+        // Family name (null-terminated)
+        data.extend_from_slice(self.family_name.as_bytes());
+        data.push(0);
+
+        // Area name (null-terminated)
+        data.extend_from_slice(self.area_name.as_bytes());
+        data.push(0);
+
+        write_block(buf, BLOCK_PRODUCT, &data);
+    }
+
+    fn write_copyright_block(&self, buf: &mut Vec<u8>) {
+        let mut data = Vec::new();
+        data.extend_from_slice(self.copyright.as_bytes());
+        data.push(0);
+        write_block(buf, BLOCK_COPYRIGHT, &data);
+    }
+
+    fn write_overview_block(&self, buf: &mut Vec<u8>) {
+        let mut data = Vec::new();
+        data.extend_from_slice(&self.overview_map_number.to_le_bytes());
+        write_block(buf, BLOCK_OVERVIEW, &data);
+    }
+
+    fn write_detail_block(&self, buf: &mut Vec<u8>, tile: &TdbTile) {
+        let mut data = Vec::new();
+        data.extend_from_slice(&tile.map_number.to_le_bytes());
+
+        // Bounds (4 × i32 LE)
+        data.extend_from_slice(&tile.north.to_le_bytes());
+        data.extend_from_slice(&tile.east.to_le_bytes());
+        data.extend_from_slice(&tile.south.to_le_bytes());
+        data.extend_from_slice(&tile.west.to_le_bytes());
+
+        // Description (null-terminated)
+        data.extend_from_slice(tile.description.as_bytes());
+        data.push(0);
+
+        write_block(buf, BLOCK_DETAIL, &data);
     }
 }
 
-// ── Block builders ────────────────────────────────────────────────────────────
-
-/// Append `type(u8) | length(u16 LE) | data` to `buf`.
 fn write_block(buf: &mut Vec<u8>, block_type: u8, data: &[u8]) {
-    debug_assert!(
-        data.len() <= u16::MAX as usize,
-        "block 0x{block_type:02X} data length {} exceeds u16::MAX — TDB would be corrupted",
-        data.len()
-    );
     buf.push(block_type);
-    buf.extend_from_slice(&(data.len() as u16).to_le_bytes());
+    let len = data.len() as u16;
+    buf.extend_from_slice(&len.to_le_bytes());
     buf.extend_from_slice(data);
 }
-
-/// Build block 0x50 — Product Header.
-fn build_product_block(config: &TdbConfig) -> Vec<u8> {
-    let mut data: Vec<u8> = Vec::new();
-    // TDB version 4.07 → 407
-    data.extend_from_slice(&407u16.to_le_bytes());
-    data.extend_from_slice(&config.family_id.to_le_bytes());
-    data.extend_from_slice(&config.product_id.to_le_bytes());
-    // series_name (null-terminated)
-    data.extend_from_slice(config.series_name.as_bytes());
-    data.push(0x00);
-    // product_version = 100
-    data.extend_from_slice(&100u16.to_le_bytes());
-    // product_description = series_name (null-terminated, for compatibility)
-    data.extend_from_slice(config.series_name.as_bytes());
-    data.push(0x00);
-    // routing_flag = 1
-    data.push(0x01);
-    // dem_flag = 0
-    data.push(0x00);
-    data
-}
-
-/// Build block 0x44 — Copyright.
-fn build_copyright_block() -> Vec<u8> {
-    let mut data: Vec<u8> = Vec::new();
-    // segment_type = 0 (display)
-    data.push(0x00);
-    data.extend_from_slice(b"Generated by imgforge-cli");
-    data.push(0x00);
-    data
-}
-
-/// Build block 0x42 — Overview Map (global bounding box = union of all tiles).
-fn build_overview_block(config: &TdbConfig, tiles: &[TileInfo]) -> Vec<u8> {
-    let map_number = config.family_id as u32;
-
-    let (north, east, south, west) = if tiles.is_empty() {
-        (0.0, 0.0, 0.0, 0.0)
-    } else {
-        let n = tiles.iter().map(|t| t.north).fold(f64::MIN, f64::max);
-        let e = tiles.iter().map(|t| t.east).fold(f64::MIN, f64::max);
-        let s = tiles.iter().map(|t| t.south).fold(f64::MAX, f64::min);
-        let w = tiles.iter().map(|t| t.west).fold(f64::MAX, f64::min);
-        (n, e, s, w)
-    };
-
-    build_map_block(
-        map_number,
-        map_number,
-        north,
-        east,
-        south,
-        west,
-        &config.series_name,
-    )
-}
-
-/// Build block 0x4C — Detail Map (one per tile).
-fn build_detail_block(tile: &TileInfo, parent_id: u32) -> Vec<u8> {
-    build_map_block(
-        tile.map_id,
-        parent_id,
-        tile.north,
-        tile.east,
-        tile.south,
-        tile.west,
-        &tile.description,
-    )
-}
-
-/// Shared structure for 0x42 and 0x4C blocks.
-fn build_map_block(
-    map_number: u32,
-    parent_number: u32,
-    north: f64,
-    east: f64,
-    south: f64,
-    west: f64,
-    description: &str,
-) -> Vec<u8> {
-    let mut data: Vec<u8> = Vec::new();
-    data.extend_from_slice(&map_number.to_le_bytes());
-    data.extend_from_slice(&parent_number.to_le_bytes());
-    data.extend_from_slice(&wgs84_to_tdb(north).to_le_bytes());
-    data.extend_from_slice(&wgs84_to_tdb(east).to_le_bytes());
-    data.extend_from_slice(&wgs84_to_tdb(south).to_le_bytes());
-    data.extend_from_slice(&wgs84_to_tdb(west).to_le_bytes());
-    data.extend_from_slice(description.as_bytes());
-    data.push(0x00);
-    // subfile_count = 0 (simplified overview/detail)
-    data.extend_from_slice(&0u16.to_le_bytes());
-    data
-}
-
-// ── Coordinate conversion ─────────────────────────────────────────────────────
-
-/// Convert WGS84 degrees to Garmin TDB integer units.
-///
-/// Formula: `round(degrees / 360.0 × 2³²)`
-///
-/// Note: Rust's `f64 as i32` cast saturates since Rust 1.45 (no UB, no panic).
-/// At ±180° the result saturates to `i32::MAX` / `i32::MIN` respectively.
-pub(crate) fn wgs84_to_tdb(degrees: f64) -> i32 {
-    (degrees / 360.0 * (1u64 << 32) as f64).round() as i32
-}
-
-// ── CRC32 (pure Rust, IEEE 802.3 polynomial) ──────────────────────────────────
-
-/// Compute CRC32 IEEE over `data` (no external crate dependency).
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xFFFF_FFFF;
-    for &byte in data {
-        crc ^= byte as u32;
-        for _ in 0..8 {
-            if crc & 1 != 0 {
-                crc = (crc >> 1) ^ 0xEDB8_8320;
-            } else {
-                crc >>= 1;
-            }
-        }
-    }
-    !crc
-}
-
-// ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn sample_config() -> TdbConfig {
-        TdbConfig {
-            family_id: 6324,
-            product_id: 1,
-            series_name: "France BDTOPO 2025".to_string(),
-        }
-    }
-
-    fn sample_tile(map_id: u32, north: f64, east: f64, south: f64, west: f64) -> TileInfo {
-        TileInfo {
-            map_id,
-            north,
-            east,
-            south,
-            west,
-            description: format!("Tile {map_id}"),
-        }
-    }
-
-    // ── wgs84_to_tdb tests ────────────────────────────────────────────────────
-
     #[test]
-    fn test_wgs84_to_tdb_north_pole() {
-        assert_eq!(wgs84_to_tdb(90.0), 1_073_741_824);
+    fn test_tdb_basic() {
+        let mut tdb = TdbWriter::new(1, 1);
+        tdb.series_name = "Test".to_string();
+        tdb.family_name = "Test Family".to_string();
+        tdb.add_tile(TdbTile {
+            map_number: 63240001,
+            description: "Tile 1".to_string(),
+            north: 100,
+            south: 0,
+            east: 100,
+            west: 0,
+        });
+        let data = tdb.build();
+        assert!(!data.is_empty());
+        // First block should be product (0x50)
+        assert_eq!(data[0], BLOCK_PRODUCT);
     }
 
     #[test]
-    fn test_wgs84_to_tdb_south_pole() {
-        let v = wgs84_to_tdb(-90.0);
-        assert!(v < 0, "south pole must be negative, got {v}");
-        assert_eq!(v, -1_073_741_824);
-    }
-
-    #[test]
-    fn test_wgs84_to_tdb_zero() {
-        assert_eq!(wgs84_to_tdb(0.0), 0);
-    }
-
-    #[test]
-    fn test_wgs84_to_tdb_france() {
-        // 45.0° → round(45/360 × 2^32) = round(536870912.0) = 536870912
-        assert_eq!(wgs84_to_tdb(45.0), 536_870_912);
-    }
-
-    // ── Product block tests ───────────────────────────────────────────────────
-
-    #[test]
-    fn test_product_block_family_id() {
-        let config = TdbConfig {
-            family_id: 6324,
-            product_id: 1,
-            series_name: "Test".to_string(),
-        };
-        let data = build_product_block(&config);
-        // bytes[0..2] = TDB version (407), bytes[2..4] = family_id
-        let family_id = u16::from_le_bytes([data[2], data[3]]);
-        assert_eq!(family_id, 6324);
-    }
-
-    #[test]
-    fn test_product_block_product_id() {
-        let config = TdbConfig {
-            family_id: 6324,
-            product_id: 1,
-            series_name: "Test".to_string(),
-        };
-        let data = build_product_block(&config);
-        assert_eq!(data[4], 0x01);
-        assert_eq!(data[5], 0x00);
-    }
-
-    // ── Detail block test ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_detail_block_bbox() {
-        let tile = sample_tile(1001001, 46.0, 7.0, 45.0, 5.0);
-        let data = build_detail_block(&tile, 6324);
-        // bytes 8..12 = north in TDB units
-        let north_tdb = i32::from_le_bytes([data[8], data[9], data[10], data[11]]);
-        assert_eq!(north_tdb, wgs84_to_tdb(46.0));
-        // bytes 16..20 = south in TDB units
-        let south_tdb = i32::from_le_bytes([data[16], data[17], data[18], data[19]]);
-        assert_eq!(south_tdb, wgs84_to_tdb(45.0));
-    }
-
-    // ── CRC32 test ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_checksum_block_is_crc32() {
-        // Known CRC32 IEEE of b"123456789" = 0xCBF43926
-        let data = b"123456789";
-        let result = crc32(data);
-        assert_eq!(result, 0xCBF4_3926, "CRC32 of '123456789' must be 0xCBF43926");
-    }
-
-    // ── TdbWriter integration tests ───────────────────────────────────────────
-
-    #[test]
-    fn test_tdb_build_block_order() {
-        let config = sample_config();
-        let tiles = vec![sample_tile(1001001, 45.01, 5.72, 45.00, 5.70)];
-        let buf = TdbWriter::build(&config, &tiles);
-
-        // First byte must be 0x50 (Product Header)
-        assert_eq!(buf[0], 0x50, "first block must be 0x50");
-
-        // Last block before end: find 0x54 (Checksum)
-        // Walk blocks to find the last one
-        let mut pos = 0;
-        let mut last_type = 0u8;
-        while pos < buf.len() {
-            last_type = buf[pos];
-            let len = u16::from_le_bytes([buf[pos + 1], buf[pos + 2]]) as usize;
-            pos += 3 + len;
-        }
-        assert_eq!(last_type, 0x54, "last block must be 0x54");
-    }
-
-    #[test]
-    fn test_tdb_build_detail_block_count() {
-        let config = sample_config();
-        let tiles = vec![
-            sample_tile(1001001, 45.01, 5.72, 45.00, 5.70),
-            sample_tile(1001002, 45.02, 5.72, 45.01, 5.70),
-        ];
-        let buf = TdbWriter::build(&config, &tiles);
-
-        // Count 0x4C blocks
-        let mut pos = 0;
-        let mut detail_count = 0usize;
-        while pos < buf.len() {
-            if buf[pos] == 0x4C {
-                detail_count += 1;
-            }
-            let len = u16::from_le_bytes([buf[pos + 1], buf[pos + 2]]) as usize;
-            pos += 3 + len;
-        }
-        assert_eq!(detail_count, 2, "must have exactly 2 detail blocks for 2 tiles");
-    }
-
-    // ── Product block series_name test (H2) ───────────────────────────────────
-
-    #[test]
-    fn test_product_block_series_name() {
-        let config = TdbConfig {
-            family_id: 6324,
-            product_id: 1,
-            series_name: "France BDTOPO 2025".to_string(),
-        };
-        let data = build_product_block(&config);
-        // payload: version(2) + family_id(2) + product_id(2) = 6 bytes, then series_name \0-terminated
-        let name_start = 6usize;
-        let name_end = data[name_start..].iter().position(|&b| b == 0).unwrap() + name_start;
-        let name = std::str::from_utf8(&data[name_start..name_end]).unwrap();
-        assert_eq!(name, "France BDTOPO 2025");
-    }
-
-    // ── Overview block description test (H2) ─────────────────────────────────
-
-    #[test]
-    fn test_overview_block_description() {
-        let config = sample_config(); // series_name = "France BDTOPO 2025"
-        let tiles = vec![sample_tile(1001001, 46.0, 7.0, 45.0, 5.0)];
-        let data = build_overview_block(&config, &tiles);
-        // payload: map_number(4) + parent(4) + north(4) + east(4) + south(4) + west(4) = 24 bytes, then description
-        let desc_start = 24usize;
-        let desc_end = data[desc_start..].iter().position(|&b| b == 0).unwrap() + desc_start;
-        let desc = std::str::from_utf8(&data[desc_start..desc_end]).unwrap();
-        assert_eq!(desc, "France BDTOPO 2025");
-    }
-
-    // ── TdbWriter::write() unit test (L3) ────────────────────────────────────
-
-    #[test]
-    fn test_tdb_writer_write_file() {
-        let config = sample_config();
-        let tiles = vec![sample_tile(1001001, 46.0, 7.0, 45.0, 5.0)];
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        TdbWriter::write(tmp.path(), &config, &tiles).unwrap();
-        let bytes = std::fs::read(tmp.path()).unwrap();
-        assert!(!bytes.is_empty(), "written TDB must not be empty");
-        assert_eq!(bytes[0], 0x50, "written TDB must start with Product Header block (0x50)");
-    }
-
-    // ── wgs84_to_tdb saturation at ±180° (M2) ────────────────────────────────
-
-    #[test]
-    fn test_wgs84_to_tdb_boundary_180() {
-        // Rust's f64-to-i32 cast saturates since 1.45: exact ±180° saturates to i32::MAX/MIN.
-        assert_eq!(wgs84_to_tdb(180.0), i32::MAX);
-        assert_eq!(wgs84_to_tdb(-180.0), i32::MIN);
+    fn test_tdb_with_copyright() {
+        let mut tdb = TdbWriter::new(1, 1);
+        tdb.copyright = "Copyright Test".to_string();
+        let data = tdb.build();
+        assert!(data.len() > 10);
     }
 }

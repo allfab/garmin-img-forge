@@ -1,322 +1,63 @@
-//! CLI argument parsing using clap derive macros.
+// CLI definitions (clap)
 
 use clap::{Parser, Subcommand};
 
-/// imgforge-cli: Polish Map (.mp) to Garmin IMG compiler
-///
-/// Compiles Polish Map (.mp) files produced by mpforge-cli into Garmin
-/// binary IMG format (.img) suitable for upload to GPS devices.
-#[derive(Parser, Debug)]
-#[command(
-    name = "imgforge-cli",
-    version = env!("GIT_VERSION"),
-    about = "Polish Map (.mp) to Garmin IMG compiler",
-    long_about = "imgforge-cli: Compiles Polish Map (.mp) files into Garmin binary IMG format.\n\n\
-                  Features:\n\
-                  - Pure Rust implementation (no Java/mkgmap dependency)\n\
-                  - Direct .mp parsing with routing attribute support\n\
-                  - Standalone binary with zero external runtime dependencies\n\n\
-                  Examples:\n  \
-                  imgforge-cli compile map.mp -o map.img\n  \
-                  imgforge-cli compile map.mp -o map.img -v\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --family-id 6324 --description \"France BDTOPO 2025\"\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --typ garmin-style.typ\n  \
-                  imgforge-cli build --input-dir tiles/ -o gmapsupp.img --jobs 8 --report build.json"
-)]
+#[derive(Parser)]
+#[command(name = "imgforge-cli")]
+#[command(about = "Garmin IMG map compiler based on mkgmap")]
+#[command(version = env!("GIT_VERSION"))]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    /// Verbosity level (-v, -vv, -vvv)
+    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+    pub verbose: u8,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum Commands {
-    /// Compile a Polish Map (.mp) file to Garmin IMG format
-    ///
-    /// Reads the input .mp file, parses all features (POI, POLYLINE, POLYGON),
-    /// and produces a binary .img file compatible with Garmin GPS devices.
-    Compile(CompileArgs),
+    /// Compile a single .mp file to .img
+    Compile {
+        /// Input .mp file
+        input: String,
 
-    /// Assemble a directory of Polish Map (.mp) tiles into a single gmapsupp.img
-    ///
-    /// Scans the input directory for .mp files, compiles each tile into subfiles
-    /// (TRE/RGN/LBL and NET/NOD if routing is present), and produces a single
-    /// gmapsupp.img suitable for direct copy to a Garmin GPS device.
-    Build(BuildArgs),
-}
+        /// Output .img file
+        #[arg(short, long)]
+        output: Option<String>,
 
-#[derive(Parser, Debug)]
-pub struct CompileArgs {
-    /// Input Polish Map (.mp) file to compile
-    pub input: String,
+        /// Map description
+        #[arg(long)]
+        description: Option<String>,
+    },
 
-    /// Output Garmin IMG file path
-    #[arg(short, long)]
-    pub output: String,
+    /// Build multi-tile gmapsupp.img from a directory of .mp files
+    Build {
+        /// Input directory containing .mp files
+        input: String,
 
-    /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
-}
+        /// Output gmapsupp.img file
+        #[arg(short, long, default_value = "gmapsupp.img")]
+        output: String,
 
-#[derive(Parser, Debug)]
-pub struct BuildArgs {
-    /// Input directory containing .mp tile files
-    #[arg(long)]
-    pub input_dir: String,
+        /// Number of parallel jobs
+        #[arg(short, long)]
+        jobs: Option<usize>,
 
-    /// Output gmapsupp.img file path
-    #[arg(short, long)]
-    pub output: String,
+        /// Family ID
+        #[arg(long)]
+        family_id: Option<u16>,
 
-    /// Garmin family ID — identifies the map family in BaseCamp (LE16 at header offset 0x054)
-    #[arg(long, default_value_t = 6324)]
-    pub family_id: u16,
+        /// Product ID
+        #[arg(long)]
+        product_id: Option<u16>,
 
-    /// Garmin product ID — identifies the product in BaseCamp (LE16 at header offset 0x056)
-    #[arg(long, default_value_t = 1)]
-    pub product_id: u16,
+        /// Series name
+        #[arg(long)]
+        series_name: Option<String>,
 
-    /// Map description visible in BaseCamp
-    #[arg(long, default_value = "mpforge map")]
-    pub description: String,
-
-    /// Optional TYP file to embed in the gmapsupp.img for custom rendering styles.
-    /// Produced by TYPViewer or similar Garmin style editors.
-    #[arg(long, value_name = "FILE")]
-    pub typ: Option<String>,
-
-    /// Number of parallel compilation threads (0 = auto-detect CPU count).
-    /// Default: 0 (all available CPU cores).
-    #[arg(long, default_value_t = 0)]
-    pub jobs: usize,
-
-    /// Write JSON execution report to FILE after build.
-    #[arg(long, value_name = "FILE")]
-    pub report: Option<String>,
-
-    /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::Parser;
-
-    #[test]
-    fn test_cli_compile_required_args() {
-        let cli = Cli::try_parse_from(["imgforge-cli", "compile", "map.mp", "-o", "map.img"]);
-        assert!(cli.is_ok());
-        let Commands::Compile(args) = cli.unwrap().command else { panic!("expected Compile") };
-        assert_eq!(args.input, "map.mp");
-        assert_eq!(args.output, "map.img");
-        assert_eq!(args.verbose, 0);
-    }
-
-    #[test]
-    fn test_cli_compile_missing_output_is_error() {
-        let cli = Cli::try_parse_from(["imgforge-cli", "compile", "map.mp"]);
-        assert!(cli.is_err());
-    }
-
-    #[test]
-    fn test_cli_compile_missing_input_is_error() {
-        let cli = Cli::try_parse_from(["imgforge-cli", "compile"]);
-        assert!(cli.is_err());
-    }
-
-    #[test]
-    fn test_cli_compile_verbose() {
-        let cli =
-            Cli::try_parse_from(["imgforge-cli", "compile", "map.mp", "-o", "map.img", "-vv"]);
-        assert!(cli.is_ok());
-        let Commands::Compile(args) = cli.unwrap().command else { panic!("expected Compile") };
-        assert_eq!(args.verbose, 2);
-    }
-
-    #[test]
-    fn test_cli_no_subcommand_is_error() {
-        let cli = Cli::try_parse_from(["imgforge-cli"]);
-        assert!(cli.is_err());
-    }
-
-    // ── Build subcommand ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_cli_build_missing_output_is_error() {
-        let cli = Cli::try_parse_from(["imgforge-cli", "build", "--input-dir", "tiles/"]);
-        assert!(cli.is_err(), "missing -o/--output must fail");
-    }
-
-    #[test]
-    fn test_cli_build_required_args() {
-        let cli =
-            Cli::try_parse_from(["imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img"]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.input_dir, "tiles/");
-        assert_eq!(args.output, "out.img");
-    }
-
-    #[test]
-    fn test_cli_build_missing_input_dir_is_error() {
-        let cli = Cli::try_parse_from(["imgforge-cli", "build", "-o", "out.img"]);
-        assert!(cli.is_err(), "missing --input-dir must fail");
-    }
-
-    #[test]
-    fn test_cli_build_default_family_id() {
-        let cli =
-            Cli::try_parse_from(["imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img"]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.family_id, 6324, "default family_id must be 6324");
-        assert_eq!(args.product_id, 1, "default product_id must be 1");
-        assert_eq!(args.description, "mpforge map");
-    }
-
-    #[test]
-    fn test_cli_build_explicit_family_id() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli",
-            "build",
-            "--input-dir",
-            "tiles/",
-            "-o",
-            "out.img",
-            "--family-id",
-            "1234",
-            "--product-id",
-            "2",
-            "--description",
-            "France BDTOPO 2025",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.family_id, 1234);
-        assert_eq!(args.product_id, 2);
-        assert_eq!(args.description, "France BDTOPO 2025");
-    }
-
-    #[test]
-    fn test_cli_build_typ_flag_is_optional() {
-        // AC1 — sans --typ, typ = None
-        let cli = Cli::try_parse_from([
-            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert!(args.typ.is_none(), "--typ doit être None quand non fourni");
-    }
-
-    #[test]
-    fn test_cli_build_typ_flag_parsed() {
-        // AC2 (prérequis CLI) — --typ garmin-style.typ → args.typ == Some("garmin-style.typ")
-        let cli = Cli::try_parse_from([
-            "imgforge-cli",
-            "build",
-            "--input-dir",
-            "tiles/",
-            "-o",
-            "out.img",
-            "--typ",
-            "garmin-style.typ",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(
-            args.typ.as_deref(),
-            Some("garmin-style.typ"),
-            "--typ doit être parsé correctement"
-        );
-    }
-
-    #[test]
-    fn test_cli_build_jobs_default() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.jobs, 0, "--jobs doit être 0 (auto) par défaut");
-    }
-
-    #[test]
-    fn test_cli_build_jobs_explicit() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img", "--jobs", "8",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.jobs, 8, "--jobs 8 doit être parsé à 8");
-    }
-
-    #[test]
-    fn test_cli_build_report_absent() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli", "build", "--input-dir", "tiles/", "-o", "out.img",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert!(args.report.is_none(), "--report doit être None quand non fourni");
-    }
-
-    #[test]
-    fn test_cli_build_report_explicit() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli",
-            "build",
-            "--input-dir",
-            "tiles/",
-            "-o",
-            "out.img",
-            "--report",
-            "build.json",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.report.as_deref(), Some("build.json"));
-    }
-
-    #[test]
-    fn test_cli_build_jobs_and_report_combined() {
-        let cli = Cli::try_parse_from([
-            "imgforge-cli",
-            "build",
-            "--input-dir",
-            "tiles/",
-            "-o",
-            "out.img",
-            "--jobs",
-            "4",
-            "--report",
-            "out.json",
-        ]);
-        assert!(cli.is_ok());
-        let Commands::Build(args) = cli.unwrap().command else {
-            panic!("expected Build command");
-        };
-        assert_eq!(args.jobs, 4);
-        assert_eq!(args.report.as_deref(), Some("out.json"));
-    }
+        /// Family name
+        #[arg(long)]
+        family_name: Option<String>,
+    },
 }

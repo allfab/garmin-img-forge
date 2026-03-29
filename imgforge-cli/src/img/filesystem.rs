@@ -1,320 +1,198 @@
-//! IMG Garmin filesystem: header, FAT directory and block-aligned subfile data.
-//!
-//! Layout (standard Garmin IMG format):
-//! ```text
-//! Sector  0     : IMG Header (512 bytes)
-//! Sector  1     : Reserved (512 bytes of zeros)
-//! Sectors 2..N  : FAT entries (512 bytes each) — volume label + file entries
-//! Padding       : Zeros to fill the last header block
-//! Blocks K..    : Subfile data (block-aligned)
-//! ```
-//!
-//! The FAT uses 512-byte entries with block allocation tables. Each entry
-//! can reference up to 240 blocks; larger files span multiple entries.
+// ImgFS + BlockManager — IMG filesystem container
+// Faithful to mkgmap ImgFS.java + BlockManager.java
 
+use super::directory::{Dirent, Directory, ENTRY_SIZE, TABLE_SIZE};
+use super::header::ImgHeader;
 use crate::error::ImgError;
-use crate::img::directory::{FatEntry, BLOCKS_PER_ENTRY};
-use crate::img::header::{ImgDate, ImgHeader};
 
-/// A subfile entry stored in the IMG filesystem.
-pub struct ImgEntry {
-    /// Map identifier (numeric string, ≤ 8 chars — used as FAT filename).
-    pub map_id: String,
-    /// Subfile extension (e.g. "TRE", "RGN", "LBL", "NET", "NOD").
-    pub ext: String,
-    /// Raw subfile data, zero-padded to the next block boundary.
-    pub data: Vec<u8>,
-    /// Real (unpadded) data length in bytes.
-    pub size_used: u32,
+/// Sequential block allocator — mkgmap BlockManager.java
+pub struct BlockManager {
+    block_size: u32,
+    current_block: u32,
+    max_block: u32,
 }
 
-/// The complete IMG filesystem: header + FAT directory + subfile data.
+impl BlockManager {
+    pub fn new(block_size: u32, initial_block: u32) -> Self {
+        Self {
+            block_size,
+            current_block: initial_block,
+            max_block: 0xFFFE,
+        }
+    }
+
+    pub fn allocate(&mut self) -> Result<u16, ImgError> {
+        let n = self.current_block;
+        if n > self.max_block {
+            return Err(ImgError::BlockOverflow(format!(
+                "Block overflow: {} > max {}. Use larger block size.",
+                n, self.max_block
+            )));
+        }
+        self.current_block += 1;
+        Ok(n as u16)
+    }
+
+    pub fn block_size(&self) -> u32 {
+        self.block_size
+    }
+
+    pub fn current_block(&self) -> u32 {
+        self.current_block
+    }
+}
+
+/// A file to be written into the IMG filesystem
+struct ImgFile {
+    name: String,
+    ext: String,
+    data: Vec<u8>,
+}
+
+/// IMG Filesystem — mkgmap ImgFS.java
 pub struct ImgFilesystem {
-    /// Block size in bytes (`1 << block_size_exponent`).
-    pub block_size: u32,
-    /// Block size exponent.
-    block_size_exponent: u8,
-    /// Subfile entries.
-    pub entries: Vec<ImgEntry>,
-    /// Map description (written into the header).
-    pub description: String,
-    /// Creation date (written into the header).
-    creation_date: ImgDate,
-    /// Garmin family ID — used by TDB, not stored in header.
-    pub family_id: u16,
-    /// Garmin product ID — used by TDB, not stored in header.
-    pub product_id: u16,
-}
-
-/// Internal layout computed before serialisation.
-struct FsLayout {
-    /// Number of blocks reserved for header + FAT area.
-    header_blocks: u32,
-    /// Number of 512-byte sectors in the file.
-    total_file_sectors: u32,
-    /// Total number of FAT entries (volume label + all file entries).
-    total_fat_entries: u32,
-    /// Per-file info: (first_block_index, n_blocks, n_fat_entries).
-    file_info: Vec<(u32, u32, u32)>,
+    files: Vec<ImgFile>,
+    description: String,
 }
 
 impl ImgFilesystem {
-    /// Create a new empty filesystem with the given block size exponent.
-    pub fn new(block_size_exponent: u8) -> Self {
+    pub fn new(description: &str) -> Self {
         Self {
-            block_size: 1u32 << block_size_exponent,
-            block_size_exponent,
-            entries: Vec::new(),
-            description: String::new(),
-            creation_date: ImgDate::now(),
-            family_id: 0,
-            product_id: 0,
+            files: Vec::new(),
+            description: description.to_string(),
         }
     }
 
-    /// Add a subfile to the filesystem.
-    ///
-    /// `data` is padded with zero bytes to the next block boundary.
-    ///
-    /// # Errors
-    /// Returns [`ImgError::InvalidMapId`] if `map_id` is not valid.
-    pub fn add_subfile(&mut self, map_id: &str, ext: &str, data: Vec<u8>) -> Result<(), ImgError> {
-        if map_id.is_empty() || !map_id.chars().all(|c| c.is_ascii_digit()) || map_id.len() > 8 {
-            return Err(ImgError::InvalidMapId {
-                id: map_id.to_string(),
-            });
-        }
-
-        let size_used = data.len() as u32;
-        let remainder = size_used % self.block_size;
-        let allocated = if remainder == 0 {
-            if size_used == 0 {
-                self.block_size
-            } else {
-                size_used
-            }
-        } else {
-            size_used + (self.block_size - remainder)
-        };
-
-        let mut padded = data;
-        padded.resize(allocated as usize, 0u8);
-
-        self.entries.push(ImgEntry {
-            map_id: map_id.to_string(),
+    pub fn add_file(&mut self, name: &str, ext: &str, data: Vec<u8>) {
+        self.files.push(ImgFile {
+            name: name.to_string(),
             ext: ext.to_string(),
-            data: padded,
-            size_used,
+            data,
         });
-        Ok(())
     }
 
-    /// Number of subfile entries.
-    pub fn entry_count(&self) -> usize {
-        self.entries.len()
-    }
+    /// Assemble the complete IMG file — mkgmap ImgFS.sync()
+    pub fn sync(&self) -> Result<Vec<u8>, ImgError> {
+        // Step 1: Calculate optimal block size
+        let total_file_size: usize = self.files.iter().map(|f| f.data.len()).sum();
+        let block_size = calc_block_size(total_file_size, self.files.len());
 
-    /// Iterate over subfile entries as `(map_id, ext, data)` triples.
-    ///
-    /// `data` is the **unpadded** content slice (length = `size_used`).
-    pub fn subfiles(&self) -> impl Iterator<Item = (&str, &str, &[u8])> {
-        self.entries.iter().map(|e| {
-            (
-                e.map_id.as_str(),
-                e.ext.as_str(),
-                &e.data[..e.size_used as usize],
-            )
-        })
-    }
+        // Step 2: Build directory entries and calculate block needs
+        let directory_start_entry: u8 = 2;
+        let header_blocks_512 = directory_start_entry as usize; // header takes this many 512-byte blocks
 
-    /// Compute the filesystem layout.
-    ///
-    /// Iteratively determines header_blocks because the volume label entry
-    /// itself occupies FAT space (which may require additional blocks).
-    fn compute_layout(&self) -> FsLayout {
-        let sectors_per_block = (self.block_size / 512).max(1);
+        // Build directory with file entries to figure out directory size
+        let mut directory = Directory::new();
 
-        // Per-file: (n_data_blocks, n_fat_entries)
-        let per_file: Vec<(u32, u32)> = self
-            .entries
-            .iter()
-            .map(|e| {
-                let n_blocks = (e.data.len() as u32).div_ceil(self.block_size);
-                let n_entries = FatEntry::entries_needed(n_blocks);
-                (n_blocks, n_entries)
-            })
-            .collect();
+        // First: special header entry covering header + directory blocks
+        let mut header_entry = Dirent::new("        ", "   ");
+        header_entry.special = true;
+        // We'll fill blocks later
+        directory.add_entry(header_entry);
 
-        let file_fat_entries: u32 = per_file.iter().map(|(_, f)| *f).sum();
-
-        // Iteratively compute header_blocks (volume label may need multiple entries)
-        let mut volume_entries = 1u32;
-        let header_blocks;
-        loop {
-            let total_fat_entries = volume_entries + file_fat_entries;
-            let header_sectors = 2 + total_fat_entries; // header sector + reserved + FAT
-            let hb = header_sectors.div_ceil(sectors_per_block);
-            let new_volume_entries = FatEntry::entries_needed(hb);
-            if new_volume_entries == volume_entries {
-                header_blocks = hb;
-                break;
-            }
-            volume_entries = new_volume_entries;
+        // File entries
+        for file in &self.files {
+            let blocks_needed = (file.data.len() as u32 + block_size - 1) / block_size;
+            let mut entry = Dirent::new(&file.name, &file.ext);
+            entry.size = file.data.len() as u32;
+            // Blocks will be assigned below
+            let _ = blocks_needed; // used below
+            directory.add_entry(entry);
         }
 
-        let total_fat_entries = volume_entries + file_fat_entries;
+        // Calculate total directory 512-byte blocks
+        let dir_blocks_512 = directory.total_directory_blocks();
+        let total_header_512 = header_blocks_512 + dir_blocks_512;
 
-        // Assign block indices to files
-        let mut next_block = header_blocks;
-        let file_info: Vec<(u32, u32, u32)> = per_file
-            .iter()
-            .map(|&(n_blocks, n_entries)| {
-                let first = next_block;
-                next_block += n_blocks;
-                (first, n_blocks, n_entries)
-            })
-            .collect();
+        // How many filesystem blocks does the header+directory occupy?
+        let header_fs_blocks = (total_header_512 as u32 * 512 + block_size - 1) / block_size;
 
-        let total_blocks = next_block;
-        // F7: Verify block indices fit in u16 (FAT allocation table uses LE16).
-        // 0xFFFF is reserved as "unused" marker, so max valid block = 0xFFFE.
-        debug_assert!(
-            total_blocks <= 0xFFFE,
-            "total_blocks {} exceeds u16 FAT limit (max 65534). \
-             Increase block_size_exponent to reduce block count.",
-            total_blocks
-        );
-        let total_file_sectors = total_blocks * sectors_per_block;
+        // Step 3: Allocate blocks for all files
+        let mut block_manager = BlockManager::new(block_size, header_fs_blocks);
 
-        FsLayout {
-            header_blocks,
-            total_file_sectors,
-            total_fat_entries,
-            file_info,
+        // Assign blocks to special header entry
+        directory.entries[0].size = (total_header_512 * 512) as u32;
+        for i in 0..header_fs_blocks {
+            directory.entries[0].add_block(i as u16);
         }
-    }
 
-    /// Compute `(byte_offset, size_allocated)` for each subfile entry.
-    pub fn compute_entry_offsets(&self) -> Vec<(u64, u32)> {
-        let layout = self.compute_layout();
-        self.entries
-            .iter()
-            .zip(layout.file_info.iter())
-            .map(|(entry, &(first_block, _, _))| {
-                let offset = first_block as u64 * self.block_size as u64;
-                let size = entry.data.len() as u32;
-                (offset, size)
-            })
-            .collect()
-    }
-
-    /// Serialise the entire filesystem into a contiguous byte vector.
-    ///
-    /// Layout: header sector | reserved sector | FAT entries | padding | data blocks…
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let layout = self.compute_layout();
-
-        // Build header
-        let header = ImgHeader {
-            description: self.description.clone(),
-            block_size_exponent: self.block_size_exponent,
-            creation_date: self.creation_date.clone(),
-            total_file_sectors: layout.total_file_sectors,
-        };
-
-        let total_bytes = (layout.total_file_sectors as u64 * 512) as usize;
-        let mut out = Vec::with_capacity(total_bytes);
-
-        // ── Sector 0: header ────────────────────────────────────────────
-        out.extend_from_slice(&header.to_bytes());
-
-        // ── Sector 1: reserved (zeros) ──────────────────────────────────
-        out.extend_from_slice(&[0u8; 512]);
-
-        // ── FAT entries ─────────────────────────────────────────────────
-
-        // Volume label entry (allocates header blocks)
-        let header_block_list: Vec<u16> =
-            (0..layout.header_blocks).map(|i| i as u16).collect();
-        let volume_label = FatEntry::new_volume_label(
-            layout.total_fat_entries as u16,
-            header_block_list.clone(),
-        );
-
-        // Write volume label entries (may need multiple for many header blocks)
-        let vol_entries_needed = FatEntry::entries_needed(layout.header_blocks);
-        for part in 0..vol_entries_needed {
-            let start = (part * BLOCKS_PER_ENTRY as u32) as usize;
-            let end = ((part + 1) * BLOCKS_PER_ENTRY as u32) as usize;
-            let chunk: Vec<u16> = header_block_list
-                .iter()
-                .skip(start)
-                .take(end - start)
-                .copied()
-                .collect();
-
-            if part == 0 {
-                let mut entry = volume_label.clone();
-                entry.blocks = chunk;
-                out.extend_from_slice(&entry.to_bytes());
-            } else {
-                let mut entry = FatEntry::new_volume_label(0, chunk);
-                entry.part = 0x03; // keep volume flag
-                entry.file_size = 0;
-                out.extend_from_slice(&entry.to_bytes());
+        // Assign blocks to each file
+        for (i, file) in self.files.iter().enumerate() {
+            let blocks_needed = (file.data.len() as u32 + block_size - 1) / block_size;
+            let entry = &mut directory.entries[i + 1];
+            for _ in 0..blocks_needed {
+                let blk = block_manager.allocate()?;
+                entry.add_block(blk);
             }
         }
 
-        // File FAT entries
-        for (i, entry) in self.entries.iter().enumerate() {
-            let (first_block, n_blocks, n_fat_entries) = layout.file_info[i];
+        let total_blocks = block_manager.current_block();
 
-            for part in 0..n_fat_entries {
-                let block_start = part * BLOCKS_PER_ENTRY as u32;
-                let block_end = ((part + 1) * BLOCKS_PER_ENTRY as u32).min(n_blocks);
-                let blocks: Vec<u16> = (first_block + block_start..first_block + block_end)
-                    .map(|b| b as u16)
-                    .collect();
+        // Step 4: Build the IMG header
+        let mut img_header = ImgHeader::new(block_size, &self.description);
+        img_header.num_blocks = total_blocks;
+        let header_bytes = img_header.write();
 
-                let file_size = if part == 0 {
-                    entry.size_used
-                } else {
-                    0
-                };
+        // Step 5: Assemble final output
+        let total_size = total_blocks as usize * block_size as usize;
+        let mut output = vec![0u8; total_size];
 
-                let fat = FatEntry::new_file(
-                    &entry.map_id,
-                    &entry.ext,
-                    file_size,
-                    part as u8,
-                    blocks,
-                )
-                .expect("map_id already validated in add_subfile");
+        // Write header (512 bytes at position 0)
+        output[..512].copy_from_slice(&header_bytes);
 
-                out.extend_from_slice(&fat.to_bytes());
+        // Write directory after header
+        let dir_bytes = directory.write();
+        let dir_start = header_blocks_512 * 512;
+        let dir_end = dir_start + dir_bytes.len();
+        if dir_end <= output.len() {
+            output[dir_start..dir_end].copy_from_slice(&dir_bytes);
+        }
+
+        // Write file data at their allocated blocks
+        for (i, file) in self.files.iter().enumerate() {
+            let entry = &directory.entries[i + 1];
+            for (blk_idx, &blk_num) in entry.blocks.iter().enumerate() {
+                let file_offset = blk_idx * block_size as usize;
+                let img_offset = blk_num as usize * block_size as usize;
+                let chunk_size = (file.data.len() - file_offset).min(block_size as usize);
+                if file_offset < file.data.len() && img_offset + chunk_size <= output.len() {
+                    output[img_offset..img_offset + chunk_size]
+                        .copy_from_slice(&file.data[file_offset..file_offset + chunk_size]);
+                }
             }
         }
 
-        // ── Pad header area to block boundary ───────────────────────────
-        let header_area_bytes = layout.header_blocks as usize * self.block_size as usize;
-        if out.len() < header_area_bytes {
-            out.resize(header_area_bytes, 0u8);
+        Ok(output)
+    }
+}
+
+/// Calculate optimal block size — mkgmap ImgFS.calcBlockParam
+/// Tries block sizes from 512 upward, picks the one that minimizes total blocks
+/// while keeping header blocks <= 240 and total <= 0xFFFE
+fn calc_block_size(total_file_size: usize, num_files: usize) -> u32 {
+    // Estimate directory entries, accounting for multi-part entries
+    // Files > 240 blocks need extra directory entries
+    // Rough estimate: assume average file uses ~1.2 entries to be safe
+    let dir_entries = (num_files as f64 * 1.5) as usize + 1; // +1 for header entry
+    let dir_size = dir_entries * ENTRY_SIZE;
+    let header_size = 2 * 512; // 2 blocks of 512 for the header proper
+    let overhead = header_size + dir_size;
+    let total = total_file_size + overhead;
+
+    let mut block_size: u32 = 512;
+    loop {
+        let header_blocks = (overhead as u32 + block_size - 1) / block_size;
+        let total_blocks = (total as u32 + block_size - 1) / block_size;
+
+        if header_blocks <= TABLE_SIZE as u32 && total_blocks <= 0xFFFE {
+            return block_size;
         }
 
-        // ── Subfile data blocks ─────────────────────────────────────────
-        for entry in &self.entries {
-            out.extend_from_slice(&entry.data);
+        block_size *= 2;
+        if block_size > 0x1000000 {
+            // 16MB max
+            return block_size / 2;
         }
-
-        debug_assert_eq!(
-            out.len(),
-            total_bytes,
-            "output size mismatch: expected {} bytes, got {}",
-            total_bytes,
-            out.len()
-        );
-
-        out
     }
 }
 
@@ -322,170 +200,73 @@ impl ImgFilesystem {
 mod tests {
     use super::*;
 
-    fn make_fs() -> ImgFilesystem {
-        let mut fs = ImgFilesystem::new(9); // block_size = 512
-        fs.description = "Test".to_string();
-        fs.add_subfile("63240001", "TRE", vec![]).unwrap();
-        fs.add_subfile("63240001", "RGN", vec![]).unwrap();
-        fs.add_subfile("63240001", "LBL", vec![]).unwrap();
-        fs
+    #[test]
+    fn test_block_manager_sequential() {
+        let mut bm = BlockManager::new(512, 5);
+        assert_eq!(bm.allocate().unwrap(), 5);
+        assert_eq!(bm.allocate().unwrap(), 6);
+        assert_eq!(bm.allocate().unwrap(), 7);
     }
 
     #[test]
-    fn test_filesystem_aligned() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        assert_eq!(
-            bytes.len() % fs.block_size as usize,
-            0,
-            "total size must be a multiple of block_size"
-        );
+    fn test_calc_block_size_small() {
+        let bs = calc_block_size(1000, 3);
+        assert_eq!(bs, 512);
     }
 
     #[test]
-    fn test_filesystem_dskimg_signature() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
+    fn test_calc_block_size_large() {
+        // 50 MB of data should need a larger block size
+        let bs = calc_block_size(50_000_000, 50);
+        assert!(bs > 512);
     }
 
     #[test]
-    fn test_filesystem_garmin_signature() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
+    fn test_filesystem_single_file() {
+        let mut fs = ImgFilesystem::new("Test Map");
+        let data = vec![0xAB; 1024];
+        fs.add_file("63240001", "TRE", data);
+        let img = fs.sync().unwrap();
+
+        // Should be at least 512 bytes (header)
+        assert!(img.len() >= 512);
+
+        // Check header signatures
+        assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+        assert_eq!(&img[0x41..0x48], b"GARMIN\0");
+
+        // Check partition sig
+        assert_eq!(img[0x1FE], 0x55);
+        assert_eq!(img[0x1FF], 0xAA);
     }
 
     #[test]
-    fn test_filesystem_boot_signature() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        assert_eq!(bytes[0x1FE], 0x55);
-        assert_eq!(bytes[0x1FF], 0xAA);
+    fn test_filesystem_multiple_files() {
+        let mut fs = ImgFilesystem::new("Multi File Test");
+        fs.add_file("63240001", "TRE", vec![0x01; 500]);
+        fs.add_file("63240001", "RGN", vec![0x02; 2000]);
+        fs.add_file("63240001", "LBL", vec![0x03; 800]);
+
+        let img = fs.sync().unwrap();
+        assert!(img.len() >= 512);
+
+        // Verify directory has entries
+        // Directory starts at block 2 (offset 1024 for block_size=512)
+        let dir_start = 2 * 512;
+        // First entry should be special header entry
+        assert_eq!(img[dir_start], 0x01); // used flag
     }
 
     #[test]
-    fn test_filesystem_fat_entries_at_sector_2() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        // First FAT entry (volume label) starts at offset 0x400 (sector 2)
-        assert_eq!(bytes[0x400], 0x01, "volume label flag must be 0x01");
-        // Name = spaces
-        assert_eq!(&bytes[0x401..0x409], &[0x20; 8]);
-    }
+    fn test_filesystem_data_integrity() {
+        let mut fs = ImgFilesystem::new("Data Test");
+        let data = vec![0xDE; 256];
+        fs.add_file("00000001", "TRE", data.clone());
 
-    #[test]
-    fn test_filesystem_file_fat_entries() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        // With block_size=512, 3 files + volume label = 4 FAT entries
-        // header_sectors = 2 + 4 = 6 → 6 header blocks
-        // Volume label allocates blocks 0-5
-        // File entries start at sector 3 (offset 0x600)
-        let tre_offset = 0x600;
-        assert_eq!(bytes[tre_offset], 0x01); // flag
-        assert_eq!(&bytes[tre_offset + 1..tre_offset + 9], b"63240001");
-        assert_eq!(&bytes[tre_offset + 9..tre_offset + 12], b"TRE");
-    }
+        let img = fs.sync().unwrap();
 
-    #[test]
-    fn test_filesystem_total_size() {
-        let fs = make_fs();
-        let bytes = fs.to_bytes();
-        // With block_size=512:
-        // 4 FAT entries (1 volume + 3 files)
-        // header_sectors = 2 + 4 = 6 → 6 header blocks
-        // 3 data blocks (one per empty stub)
-        // Total = 9 blocks × 512 = 4608 bytes
-        assert_eq!(bytes.len(), 9 * 512);
-    }
-
-    #[test]
-    fn test_filesystem_empty_entries() {
-        let fs = ImgFilesystem::new(9);
-        let bytes = fs.to_bytes();
-        // No subfiles: 1 volume label entry
-        // header_sectors = 2 + 1 = 3 → 3 header blocks
-        // Total = 3 blocks × 512 = 1536 bytes
-        assert_eq!(bytes.len(), 3 * 512);
-    }
-
-    #[test]
-    fn test_filesystem_data_at_correct_offset() {
-        let mut fs = ImgFilesystem::new(9);
-        fs.add_subfile("63240001", "TRE", vec![0xAB; 100]).unwrap();
-        let bytes = fs.to_bytes();
-
-        // 1 volume + 1 file FAT entry → header_sectors = 2 + 2 = 4 → 4 blocks
-        // Data starts at block 4 = offset 2048
-        let data_offset = 4 * 512;
-        assert_eq!(bytes[data_offset], 0xAB);
-        assert_eq!(bytes[data_offset + 99], 0xAB);
-        assert_eq!(bytes[data_offset + 100], 0x00); // padding
-    }
-
-    #[test]
-    fn test_filesystem_block_allocation_in_fat() {
-        let mut fs = ImgFilesystem::new(9);
-        fs.add_subfile("63240001", "TRE", vec![0xAB; 100]).unwrap();
-        let bytes = fs.to_bytes();
-
-        // File FAT entry at sector 3 (volume label at sector 2)
-        let fat_offset = 3 * 512;
-        // Block allocation starts at offset 0x20 within the entry
-        let block_alloc = fat_offset + 0x20;
-        let first_block = u16::from_le_bytes([bytes[block_alloc], bytes[block_alloc + 1]]);
-        // Data starts at block 4
-        assert_eq!(first_block, 4);
-    }
-
-    #[test]
-    fn test_filesystem_entry_count() {
-        let fs = make_fs();
-        assert_eq!(fs.entry_count(), 3);
-    }
-
-    #[test]
-    fn test_filesystem_subfiles_iterator() {
-        let fs = make_fs();
-        let subs: Vec<_> = fs.subfiles().collect();
-        assert_eq!(subs.len(), 3);
-        assert_eq!(subs[0].0, "63240001");
-        assert_eq!(subs[0].1, "TRE");
-        assert_eq!(subs[1].1, "RGN");
-        assert_eq!(subs[2].1, "LBL");
-    }
-
-    #[test]
-    fn test_filesystem_compute_entry_offsets() {
-        let fs = make_fs();
-        let offsets = fs.compute_entry_offsets();
-        assert_eq!(offsets.len(), 3);
-        // header_blocks = 6 (with block_size=512)
-        // TRE at block 6 = offset 3072
-        assert_eq!(offsets[0].0, 6 * 512, "TRE offset = block 6");
-        assert_eq!(offsets[1].0, 7 * 512, "RGN offset = block 7");
-        assert_eq!(offsets[2].0, 8 * 512, "LBL offset = block 8");
-    }
-
-    #[test]
-    fn test_filesystem_large_block_size() {
-        // With block_size=16384 (exp=14), header area fits in 1 block
-        let mut fs = ImgFilesystem::new(14);
-        fs.add_subfile("63240001", "TRE", vec![0x01; 100]).unwrap();
-        fs.add_subfile("63240001", "RGN", vec![0x02; 200]).unwrap();
-        let bytes = fs.to_bytes();
-
-        // 1 volume + 2 file entries → 3 FAT sectors (1536 bytes)
-        // header_sectors = 5, sectors_per_block = 32 → 1 header block
-        // 2 data blocks → total 3 blocks × 16384 = 49152 bytes
-        assert_eq!(bytes.len(), 3 * 16384);
-
-        // DSKIMG and GARMIN signatures
-        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
-        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
-
-        // Data at block 1 (offset 16384)
-        assert_eq!(bytes[16384], 0x01); // TRE data
+        // Find the data in the output — it should be somewhere after the directory
+        let found = img.windows(256).any(|w| w == &data[..]);
+        assert!(found, "File data not found in IMG output");
     }
 }

@@ -1,66 +1,116 @@
-//! Common header shared by all Garmin IMG subfiles (TRE, RGN, LBL, NET, NOD, SRT).
-//!
-//! Every subfile starts with a 21-byte common header:
-//! ```text
-//! 0x00  LE16  total header length (common + type-specific)
-//! 0x02  10B   "GARMIN xxx" signature (space-padded to 10 bytes)
-//! 0x0C  u8    version (0x01)
-//! 0x0D  u8    lock flag (0x00)
-//! 0x0E  LE16  creation year
-//! 0x10  u8    month
-//! 0x11  u8    day
-//! 0x12  u8    hour
-//! 0x13  u8    minute
-//! 0x14  u8    second
-//! ```
+/// CommonHeader — shared 21-byte Garmin subfile header, faithful to mkgmap CommonHeader.java
 
-use crate::img::header::ImgDate;
+pub const COMMON_HEADER_LEN: usize = 21;
+const TYPE_LEN: usize = 10;
 
-/// Size in bytes of the Garmin subfile common header.
-pub const COMMON_HEADER_SIZE: usize = 21;
-
-/// Build the 21-byte common header for a Garmin IMG subfile.
-///
-/// # Arguments
-/// - `subfile_type`: 3-character type string ("TRE", "RGN", "LBL", "NET", "NOD", "SRT")
-/// - `total_header_length`: total header size in bytes (common + type-specific)
-pub fn build_common_header(subfile_type: &str, total_header_length: u16) -> [u8; COMMON_HEADER_SIZE] {
-    debug_assert_eq!(subfile_type.len(), 3, "subfile_type must be exactly 3 characters (e.g. \"TRE\")");
-    let date = ImgDate::now();
-    let mut buf = [0u8; COMMON_HEADER_SIZE];
-
-    // 0x00: total_header_length (LE16)
-    let len_bytes = total_header_length.to_le_bytes();
-    buf[0] = len_bytes[0];
-    buf[1] = len_bytes[1];
-
-    // 0x02: "GARMIN xxx" — 6 chars "GARMIN" + space + 3 chars type = 10 bytes
-    let sig = format!("GARMIN {}", subfile_type);
-    let sig_bytes = sig.as_bytes();
-    let copy_len = sig_bytes.len().min(10);
-    buf[2..2 + copy_len].copy_from_slice(&sig_bytes[..copy_len]);
-
-    // 0x0C: version = 0x01
-    buf[0x0C] = 0x01;
-
-    // 0x0D: lock = 0x00 (already zero)
-
-    // 0x0E: creation year (LE16)
-    let year_bytes = date.year().to_le_bytes();
-    buf[0x0E] = year_bytes[0];
-    buf[0x0F] = year_bytes[1];
-
-    // 0x10–0x14: month, day, hour, minute, second
-    buf[0x10] = date.month;
-    buf[0x11] = date.day;
-    buf[0x12] = date.hour;
-    buf[0x13] = date.minute;
-    buf[0x14] = date.second;
-
-    buf
+pub struct CommonHeader {
+    pub header_length: u16,
+    pub type_str: String,
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+impl CommonHeader {
+    pub fn new(header_length: u16, type_str: &str) -> Self {
+        Self {
+            header_length,
+            type_str: type_str.to_string(),
+        }
+    }
+
+    /// Write exactly 21 bytes to buf — mkgmap CommonHeader.writeHeader
+    /// Layout: header_len(2) + type(10) + unknown(1) + lock(1) + date(7)
+    pub fn write(&self, buf: &mut Vec<u8>) {
+        // header_length as u16 LE
+        buf.extend_from_slice(&self.header_length.to_le_bytes());
+
+        // type string padded to 10 bytes with 0x00
+        let type_bytes = self.type_str.as_bytes();
+        for i in 0..TYPE_LEN {
+            if i < type_bytes.len() {
+                buf.push(type_bytes[i]);
+            } else {
+                buf.push(0x00);
+            }
+        }
+
+        // unknown byte (always 0x01 in mkgmap)
+        buf.push(0x01);
+
+        // lock flag (0x00 = unlocked)
+        buf.push(0x00);
+
+        // creation date — 7 bytes (mkgmap Utils.makeCreationTime)
+        write_creation_time(buf);
+    }
+}
+
+/// Write 7-byte Garmin creation time (current UTC) — mkgmap Utils.fillBufFromTime
+fn write_creation_time(buf: &mut Vec<u8>) {
+    // Use a fixed date for reproducibility; caller can override later
+    // Format: year(u16 LE) + month(u8) + day(u8) + hour(u8) + min(u8) + sec(u8)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+
+    // Simple UTC calendar calculation
+    let (year, month, day, hour, min, sec) = unix_to_calendar(secs);
+
+    buf.extend_from_slice(&(year as u16).to_le_bytes());
+    buf.push(month as u8);
+    buf.push(day as u8);
+    buf.push(hour as u8);
+    buf.push(min as u8);
+    buf.push(sec as u8);
+}
+
+/// Write a specific date as 7-byte Garmin creation time
+pub fn write_creation_time_fixed(buf: &mut Vec<u8>, year: u16, month: u8, day: u8, hour: u8, min: u8, sec: u8) {
+    buf.extend_from_slice(&year.to_le_bytes());
+    buf.push(month);
+    buf.push(day);
+    buf.push(hour);
+    buf.push(min);
+    buf.push(sec);
+}
+
+pub fn unix_to_calendar(secs: u64) -> (i32, i32, i32, i32, i32, i32) {
+    let sec = (secs % 60) as i32;
+    let min = ((secs / 60) % 60) as i32;
+    let hour = ((secs / 3600) % 24) as i32;
+    let mut days = (secs / 86400) as i32;
+
+    // Days since 1970-01-01
+    let mut year = 1970;
+    loop {
+        let days_in_year = if is_leap(year) { 366 } else { 365 };
+        if days < days_in_year {
+            break;
+        }
+        days -= days_in_year;
+        year += 1;
+    }
+
+    let days_in_months: [i32; 12] = if is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+
+    let mut month = 1;
+    for &dim in &days_in_months {
+        if days < dim {
+            break;
+        }
+        days -= dim;
+        month += 1;
+    }
+
+    (year, month, days + 1, hour, min, sec)
+}
+
+fn is_leap(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
 
 #[cfg(test)]
 mod tests {
@@ -68,71 +118,67 @@ mod tests {
 
     #[test]
     fn test_common_header_size() {
-        let header = build_common_header("TRE", 165);
-        assert_eq!(header.len(), 21);
+        let ch = CommonHeader::new(188, "GARMIN TRE");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        assert_eq!(buf.len(), COMMON_HEADER_LEN);
     }
 
     #[test]
-    fn test_common_header_length_field() {
-        let header = build_common_header("TRE", 165);
-        let len = u16::from_le_bytes([header[0], header[1]]);
-        assert_eq!(len, 165);
+    fn test_header_length_le() {
+        let ch = CommonHeader::new(188, "GARMIN TRE");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        assert_eq!(buf[0], 188);
+        assert_eq!(buf[1], 0); // 188 < 256, high byte = 0
     }
 
     #[test]
-    fn test_common_header_signature_tre() {
-        let header = build_common_header("TRE", 165);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN TRE");
+    fn test_type_string() {
+        let ch = CommonHeader::new(188, "GARMIN TRE");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        let type_str = std::str::from_utf8(&buf[2..12]).unwrap();
+        assert_eq!(type_str, "GARMIN TRE");
     }
 
     #[test]
-    fn test_common_header_signature_rgn() {
-        let header = build_common_header("RGN", 46);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN RGN");
+    fn test_type_string_short_padded() {
+        let ch = CommonHeader::new(125, "GARMIN RGN");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        assert_eq!(&buf[2..12], b"GARMIN RGN");
     }
 
     #[test]
-    fn test_common_header_signature_lbl() {
-        let header = build_common_header("LBL", 45);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN LBL");
+    fn test_unknown_and_lock_bytes() {
+        let ch = CommonHeader::new(188, "GARMIN TRE");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        assert_eq!(buf[12], 0x01); // unknown
+        assert_eq!(buf[13], 0x00); // unlocked
     }
 
     #[test]
-    fn test_common_header_signature_net() {
-        let header = build_common_header("NET", 55);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN NET");
+    fn test_date_is_7_bytes() {
+        let ch = CommonHeader::new(188, "GARMIN TRE");
+        let mut buf = Vec::new();
+        ch.write(&mut buf);
+        // Date starts at offset 14, 7 bytes → total = 21
+        assert_eq!(buf.len(), 21);
+        // Year should be reasonable (>= 2024)
+        let year = u16::from_le_bytes([buf[14], buf[15]]);
+        assert!(year >= 2024);
     }
 
     #[test]
-    fn test_common_header_signature_nod() {
-        let header = build_common_header("NOD", 48);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN NOD");
-    }
-
-    #[test]
-    fn test_common_header_signature_srt() {
-        let header = build_common_header("SRT", 44);
-        assert_eq!(&header[0x02..0x0C], b"GARMIN SRT");
-    }
-
-    #[test]
-    fn test_common_header_version() {
-        let header = build_common_header("TRE", 165);
-        assert_eq!(header[0x0C], 0x01, "version must be 0x01");
-    }
-
-    #[test]
-    fn test_common_header_lock() {
-        let header = build_common_header("TRE", 165);
-        assert_eq!(header[0x0D], 0x00, "lock must be 0x00");
-    }
-
-    #[test]
-    fn test_common_header_date_nonzero() {
-        let header = build_common_header("TRE", 165);
-        let year = u16::from_le_bytes([header[0x0E], header[0x0F]]);
-        assert!(year >= 2020, "year must be >= 2020, got {}", year);
-        assert!(header[0x10] >= 1 && header[0x10] <= 12, "month must be 1-12");
-        assert!(header[0x11] >= 1 && header[0x11] <= 31, "day must be 1-31");
+    fn test_fixed_date() {
+        let mut buf = Vec::new();
+        write_creation_time_fixed(&mut buf, 2026, 3, 29, 12, 0, 0);
+        assert_eq!(buf.len(), 7);
+        let year = u16::from_le_bytes([buf[0], buf[1]]);
+        assert_eq!(year, 2026);
+        assert_eq!(buf[2], 3);
+        assert_eq!(buf[3], 29);
     }
 }

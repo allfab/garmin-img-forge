@@ -11,36 +11,25 @@ fn main() {
 }
 
 fn get_git_version() -> String {
-    // Priorité 1: Variables d'environnement CI (Woodpecker, GitHub Actions, GitLab CI)
     if let Some(version) = try_ci_tag() {
         return version;
     }
-
-    // Priorité 2: git describe --tags (développement local)
     if let Some(version) = try_git_describe() {
         return version;
     }
-
-    // Priorité 3: git rev-parse (juste le commit hash)
     if let Some(hash) = try_git_hash() {
         return hash;
     }
-
-    // Fallback final: utiliser la version du Cargo.toml
     env!("CARGO_PKG_VERSION").to_string()
 }
 
 fn try_ci_tag() -> Option<String> {
-    // Woodpecker CI / GitLab CI (même variable)
     if let Ok(tag) = env::var("CI_COMMIT_TAG") {
         if !tag.is_empty() {
-            // "imgforge-v1.0.0" → "v1.0.0" ; "mpforge-v1.0.0" → "v1.0.0"
             let clean = strip_known_prefixes(&tag).to_string();
             return Some(clean);
         }
     }
-
-    // GitHub Actions
     if let Ok(ref_name) = env::var("GITHUB_REF") {
         if ref_name.starts_with("refs/tags/") {
             let tag = ref_name.trim_start_matches("refs/tags/");
@@ -48,7 +37,6 @@ fn try_ci_tag() -> Option<String> {
             return Some(clean);
         }
     }
-
     None
 }
 
@@ -57,18 +45,12 @@ fn try_git_describe() -> Option<String> {
         .args(["describe", "--tags", "--always", "--dirty"])
         .output()
         .ok()?;
-
     if !output.status.success() {
         return None;
     }
-
     String::from_utf8(output.stdout)
         .ok()
-        .map(|s| {
-            let trimmed = s.trim();
-            // "imgforge-v1.0.0-3-gabcdef" ou "mpforge-v1.0.0-3-gabcdef" → "v1.0.0-3-gabcdef"
-            strip_known_prefixes(trimmed).to_string()
-        })
+        .map(|s| strip_known_prefixes(s.trim()).to_string())
 }
 
 fn try_git_hash() -> Option<String> {
@@ -76,11 +58,9 @@ fn try_git_hash() -> Option<String> {
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()?;
-
     if !output.status.success() {
         return None;
     }
-
     String::from_utf8(output.stdout)
         .ok()
         .map(|s| s.trim().to_string())

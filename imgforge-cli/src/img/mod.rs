@@ -1,19 +1,28 @@
-//! IMG Garmin filesystem writer — header, directory (FAT-like) and subfile assembly.
-
-pub mod assembler;
-pub mod bitstream;
+pub mod coord;
+pub mod area;
+pub mod bit_writer;
+pub mod bit_reader;
 pub mod common_header;
+pub mod header;
 pub mod directory;
 pub mod filesystem;
-pub mod header;
+pub mod tre;
+pub mod rgn;
+pub mod subdivision;
+pub mod zoom;
+pub mod map_object;
+pub mod point;
+pub mod polyline;
+pub mod polygon;
+pub mod line_preparer;
+pub mod overview;
 pub mod lbl;
+pub mod places;
+pub mod labelenc;
 pub mod net;
 pub mod nod;
-pub mod rgn;
-pub mod srt;
-pub mod tdb;
-pub mod tre;
 pub mod writer;
-
-pub use assembler::{AssemblyStats, BuildConfig, GmapsuppAssembler};
-pub use writer::ImgWriter;
+pub mod splitter;
+pub mod assembler;
+pub mod tdb;
+pub mod srt;

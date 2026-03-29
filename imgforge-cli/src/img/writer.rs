@@ -1,386 +1,252 @@
-//! High-level IMG file writer: orchestrates header, directory and subfile stubs.
-
-use std::path::Path;
+// MapBuilder — build orchestrator, faithful to mkgmap MapBuilder.java
 
 use crate::error::ImgError;
-use crate::img::filesystem::ImgFilesystem;
 use crate::parser::mp_types::MpFile;
+use super::area::Area;
+use super::coord::Coord;
+use super::filesystem::ImgFilesystem;
+use super::labelenc::LabelEncoding;
+use super::lbl::LblWriter;
+use super::line_preparer;
+use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
+use super::point::Point;
+use super::polygon::Polygon;
+use super::polyline::Polyline;
+use super::rgn::RgnWriter;
+use super::subdivision::Subdivision;
+use super::tre::TreWriter;
+use super::zoom::Zoom;
 
-/// Writes a Garmin IMG file from a parsed Polish Map.
-pub struct ImgWriter {
-    /// Block size exponent (9 = 512 bytes for tests, 14 = 16 384 bytes for production).
-    block_size_exponent: u8,
+/// Build a single-tile IMG file from a parsed .mp file
+pub fn build_img(mp: &MpFile) -> Result<Vec<u8>, ImgError> {
+    let charset = if mp.header.codepage == 0 || mp.header.codepage == 65001 {
+        "utf-8"
+    } else if mp.header.codepage == 1252 {
+        "cp1252"
+    } else {
+        "ascii"
+    };
+    let encoding = LabelEncoding::from_charset(charset);
+
+    // 1. Build LBL — add all labels
+    let mut lbl = LblWriter::new(encoding);
+    let copyright_label = if !mp.header.copyright.is_empty() {
+        lbl.add_label(&mp.header.copyright)
+    } else {
+        0
+    };
+
+    // Collect all features with their labels
+    let point_labels: Vec<u32> = mp.points.iter()
+        .map(|p| lbl.add_label(&p.label))
+        .collect();
+    let line_labels: Vec<u32> = mp.polylines.iter()
+        .map(|pl| lbl.add_label(&pl.label))
+        .collect();
+    let poly_labels: Vec<u32> = mp.polygons.iter()
+        .map(|pg| lbl.add_label(&pg.label))
+        .collect();
+
+    // 2. Build zoom levels from header
+    let levels: Vec<Zoom> = mp.header.levels.iter().enumerate()
+        .map(|(i, &res)| Zoom::new(i as u8, res))
+        .collect();
+
+    // 3. Compute bounds from all features
+    let mut all_coords: Vec<Coord> = Vec::new();
+    for p in &mp.points {
+        all_coords.push(p.coord);
+    }
+    for pl in &mp.polylines {
+        all_coords.extend_from_slice(&pl.points);
+    }
+    for pg in &mp.polygons {
+        all_coords.extend_from_slice(&pg.points);
+    }
+
+    if all_coords.is_empty() {
+        return Err(ImgError::InvalidFormat("No features to compile".into()));
+    }
+
+    let bounds = Area::from_coords(&all_coords);
+
+    // 4. Build a single subdivision at the highest resolution (level 0)
+    let resolution = levels.first().map(|z| z.resolution).unwrap_or(24);
+    let shift = (24 - resolution) as i32;
+
+    let mut subdiv = Subdivision::new(1, 0, resolution);
+    subdiv.set_center(&bounds.center());
+    subdiv.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
+    subdiv.is_last = true;
+
+    // 5. Build RGN data for this subdivision
+    let mut rgn = RgnWriter::new();
+
+    // Encode points
+    let mut points_data = Vec::new();
+    for (i, mp_point) in mp.points.iter().enumerate() {
+        let mut pt = Point::new(mp_point.type_code, mp_point.coord);
+        pt.label_offset = point_labels[i];
+        let encoded = pt.write(subdiv.center_lat, subdiv.center_lon, shift);
+        points_data.extend_from_slice(&encoded);
+    }
+
+    // Encode polylines
+    let mut polylines_data = Vec::new();
+    for (i, mp_line) in mp.polylines.iter().enumerate() {
+        if mp_line.points.len() < 2 { continue; }
+        let mut pl = Polyline::new(mp_line.type_code, mp_line.points.clone());
+        pl.label_offset = line_labels[i];
+        pl.direction = mp_line.direction;
+
+        // Compute deltas for LinePreparer
+        let deltas = compute_deltas(&mp_line.points, &subdiv);
+        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
+            let encoded = pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, false);
+            polylines_data.extend_from_slice(&encoded);
+        }
+    }
+
+    // Encode polygons
+    let mut polygons_data = Vec::new();
+    for (i, mp_poly) in mp.polygons.iter().enumerate() {
+        if mp_poly.points.len() < 3 { continue; }
+        let mut pg = Polygon::new(mp_poly.type_code, mp_poly.points.clone());
+        pg.label_offset = poly_labels[i];
+
+        let deltas = compute_deltas(&mp_poly.points, &subdiv);
+        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
+            let encoded = pg.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream);
+            polygons_data.extend_from_slice(&encoded);
+        }
+    }
+
+    // Set subdivision flags
+    if !points_data.is_empty() { subdiv.flags |= super::subdivision::HAS_POINTS; }
+    if !polylines_data.is_empty() { subdiv.flags |= super::subdivision::HAS_POLYLINES; }
+    if !polygons_data.is_empty() { subdiv.flags |= super::subdivision::HAS_POLYGONS; }
+
+    let rgn_offset = rgn.write_subdivision(&points_data, &[], &polylines_data, &polygons_data);
+    subdiv.rgn_offset = rgn_offset;
+
+    // 6. Build TRE
+    let mut tre = TreWriter::new();
+    tre.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
+    tre.display_priority = mp.header.draw_priority;
+    if copyright_label > 0 {
+        tre.copyright_offsets.push(copyright_label);
+    }
+
+    // Only add level 0 for now — mark it as inherited (last level)
+    if let Some(&z) = levels.first() {
+        let mut level = z;
+        level.inherited = true;
+        tre.levels.push(level);
+    }
+    tre.subdivisions.push(subdiv);
+
+    // Build overviews
+    for mp_point in &mp.points {
+        tre.point_overviews.push(PointOverview::new(mp_point.type_code as u8, 0, 0));
+    }
+    for mp_line in &mp.polylines {
+        tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
+    }
+    for mp_poly in &mp.polygons {
+        tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
+    }
+
+    // Deduplicate overviews
+    tre.polyline_overviews.sort();
+    tre.polyline_overviews.dedup();
+    tre.polygon_overviews.sort();
+    tre.polygon_overviews.dedup();
+    tre.point_overviews.sort();
+    tre.point_overviews.dedup();
+
+    // 7. Assemble into IMG filesystem
+    let map_number = format!("{:08}", mp.header.id);
+    let description = if mp.header.name.is_empty() {
+        format!("Map {}", mp.header.id)
+    } else {
+        mp.header.name.clone()
+    };
+
+    let mut fs = ImgFilesystem::new(&description);
+    fs.add_file(&map_number, "TRE", tre.build());
+    fs.add_file(&map_number, "RGN", rgn.build());
+    fs.add_file(&map_number, "LBL", lbl.build());
+
+    fs.sync()
 }
 
-impl ImgWriter {
-    /// Create a new writer with the given block size exponent.
-    pub fn new(block_size_exponent: u8) -> Self {
-        Self {
-            block_size_exponent,
-        }
+/// Compute coordinate deltas for LinePreparer from a list of points
+fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
+    let mut deltas = Vec::new();
+    if points.len() < 2 { return deltas; }
+
+    let mut last_lat = subdiv.round_lat_to_local_shifted(points[0].latitude()) as i32;
+    let mut last_lon = subdiv.round_lon_to_local_shifted(points[0].longitude()) as i32;
+
+    for point in &points[1..] {
+        let lat = subdiv.round_lat_to_local_shifted(point.latitude()) as i32;
+        let lon = subdiv.round_lon_to_local_shifted(point.longitude()) as i32;
+        deltas.push((lon - last_lon, lat - last_lat));
+        last_lon = lon;
+        last_lat = lat;
     }
 
-    /// Write a Garmin IMG file from a parsed `.mp` file.
-    ///
-    /// The resulting `.img` contains:
-    /// - A valid 512-byte header (magic, date, XOR, DOS signature)
-    /// - A FAT-like directory with entries for TRE, RGN and LBL
-    /// - Real TRE binary content (geographic index) — levels, subdivisions, RGN offsets
-    /// - Real RGN binary content — POI, polyline and polygon records with delta-encoded coordinates
-    /// - Real LBL binary content — CP1252-encoded label strings with deduplication
-    ///
-    /// Uses `block_size_exponent = 9` (512-byte blocks) which is appropriate for
-    /// stub/test output. For production maps with real TRE/RGN/LBL content
-    /// (Stories 13.3–13.5), use [`ImgWriter::write_with_block_size`] with
-    /// exponent 14 (16 384-byte blocks, mkgmap default).
-    ///
-    /// # Errors
-    /// - [`ImgError::InvalidMapId`] if `mp_file.header.id` is not a valid numeric string ≤ 8 chars
-    /// - [`ImgError::IoError`] on I/O failure
-    pub fn write(mp_file: &MpFile, output: &Path) -> Result<(), ImgError> {
-        let writer = Self::new(9); // 512-byte blocks — suitable for test/stub output
-        writer.write_with_block_size(mp_file, output)
-    }
-
-    /// Compile a `.mp` file into an [`ImgFilesystem`] in memory (without writing to disk).
-    ///
-    /// Returns a fully populated filesystem with TRE/RGN/LBL (and NET/NOD if routing present).
-    /// The returned filesystem can be used directly by [`GmapsuppAssembler`] to extract subfiles.
-    ///
-    /// # Errors
-    /// - [`ImgError::InvalidMapId`] if `mp_file.header.id` is not valid
-    pub fn build_filesystem(
-        mp_file: &MpFile,
-        block_size_exponent: u8,
-    ) -> Result<ImgFilesystem, ImgError> {
-        let map_id = &mp_file.header.id;
-
-        // Validate map ID early.
-        if map_id.is_empty() || !map_id.chars().all(|c| c.is_ascii_digit()) || map_id.len() > 8 {
-            return Err(ImgError::InvalidMapId { id: map_id.clone() });
-        }
-
-        // Build filesystem.
-        let mut fs = ImgFilesystem::new(block_size_exponent);
-        fs.description = mp_file.header.name.clone();
-
-        // Story 14.2: Build road network graph (before subfile generation).
-        let road_network = crate::routing::graph_builder::build_road_network(&mp_file.polylines);
-        let routable_count = mp_file.polylines.iter().filter(|p| p.routing.is_some()).count();
-        tracing::info!(
-            nodes = road_network.nodes.len(),
-            arcs = road_network.arcs.len(),
-            road_defs = road_network.road_defs.len(),
-            routable_polylines = routable_count,
-            ratio = if !road_network.nodes.is_empty() {
-                road_network.arcs.len() as f64 / road_network.nodes.len() as f64
-            } else {
-                0.0
-            },
-            "Road network graph built"
-        );
-
-        use crate::img::lbl::LblWriter;
-        use crate::img::net::{NetWriter, SubdivRoadRef};
-        use crate::img::nod::{patch_nod2_offsets, NodWriter};
-        use crate::img::rgn::RgnWriter;
-        use crate::img::tre::{levels_from_mp, TreWriter};
-        let levels = levels_from_mp(&mp_file.header);
-        let has_routing = !road_network.road_defs.is_empty();
-
-        // Pass 0: build LBL → label_offsets used by NET and RGN passes.
-        let lbl = LblWriter::build(mp_file);
-
-        // Pre-compute subdiv_road_refs for NET level divisions.
-        let subdiv_road_refs: Vec<SubdivRoadRef> = if has_routing {
-            let mut polyline_road_def: Vec<Option<usize>> = vec![None; mp_file.polylines.len()];
-            let mut rd_idx = 0usize;
-            for (pi, pl) in mp_file.polylines.iter().enumerate() {
-                if pl.routing.is_some() {
-                    polyline_road_def[pi] = Some(rd_idx);
-                    rd_idx += 1;
-                }
-            }
-            let mut refs = Vec::new();
-            for (i, _) in levels.iter().enumerate() {
-                let subdiv_number = (i + 1) as u16;
-                let mut polyline_index: u8 = 0;
-                for (pi, pl) in mp_file.polylines.iter().enumerate() {
-                    if pl.end_level.unwrap_or(u8::MAX) >= i as u8 {
-                        if let Some(rd_idx) = polyline_road_def[pi] {
-                            refs.push(SubdivRoadRef {
-                                road_def_idx: rd_idx,
-                                subdiv_number,
-                                polyline_index,
-                            });
-                        }
-                        polyline_index = polyline_index.saturating_add(1);
-                    }
-                }
-            }
-            refs
-        } else {
-            Vec::new()
-        };
-
-        // Pass 1: build NET → road_offsets used by RGN for cross-references.
-        let net = if has_routing {
-            let net_result =
-                NetWriter::build(&road_network, &lbl.label_offsets, &subdiv_road_refs, &mp_file.polylines);
-            tracing::info!(
-                road_defs = road_network.road_defs.len(),
-                net1_size = net_result.data.len() - 55,
-                net3_records = road_network.road_defs.iter().filter(|r| r.label.is_some()).count(),
-                "NET subfile encoded"
-            );
-            Some(net_result)
-        } else {
-            None
-        };
-
-        // Pass 2: build RGN with LBL offsets and NET1 cross-references.
-        let net_offsets: Vec<u32> = net.as_ref().map_or_else(Vec::new, |n| n.road_offsets.clone());
-        let rgn = RgnWriter::build_with_net_offsets(
-            mp_file,
-            &levels,
-            &lbl.label_offsets,
-            &net_offsets,
-        );
-
-        // Pass 3: build TRE with RGN result (propagates extended type flags + routing).
-        let tre_data = TreWriter::build_with_rgn_result(mp_file, &rgn, has_routing);
-
-        // Pass 4: build NOD (after TRE; depends on road_network + net offsets).
-        let nod = if has_routing {
-            let net_result = net.as_ref().unwrap();
-            let nod_result = NodWriter::build(
-                &road_network,
-                &net_result.road_offsets,
-                &mp_file.polylines,
-            );
-            tracing::info!(
-                road_defs = road_network.road_defs.len(),
-                nod2_offsets = nod_result.nod2_road_offsets.len(),
-                nod_size = nod_result.data.len(),
-                boundary_nodes = nod_result.boundary_node_count,
-                "NOD subfile encoded"
-            );
-            Some(nod_result)
-        } else {
-            None
-        };
-
-        // Patch NOD2 offsets into NET data before adding to the filesystem.
-        let net_data_patched: Option<Vec<u8>> = if has_routing {
-            let net_result = net.as_ref().unwrap();
-            let nod_result = nod.as_ref().unwrap();
-            let mut data = net_result.data.clone();
-            patch_nod2_offsets(
-                &mut data,
-                &net_result.nod2_patch_positions,
-                &nod_result.nod2_road_offsets,
-            );
-            Some(data)
-        } else {
-            None
-        };
-
-        fs.add_subfile(map_id, "TRE", tre_data)?;
-        fs.add_subfile(map_id, "RGN", rgn.data)?;
-        fs.add_subfile(map_id, "LBL", lbl.data)?;
-        if has_routing {
-            fs.add_subfile(map_id, "NET", net_data_patched.unwrap())?;
-            fs.add_subfile(map_id, "NOD", nod.unwrap().data)?;
-        }
-
-        // Verify subfile count invariant.
-        let entry_count = fs.entry_count();
-        let expected = if has_routing { 5 } else { 3 };
-        debug_assert_eq!(
-            entry_count,
-            expected,
-            "expected {} subfile entries, got {}",
-            expected,
-            entry_count
-        );
-
-        Ok(fs)
-    }
-
-    /// Write an IMG file using this writer's configured block size.
-    pub fn write_with_block_size(&self, mp_file: &MpFile, output: &Path) -> Result<(), ImgError> {
-        let block_size = 1u32 << self.block_size_exponent;
-
-        let fs = Self::build_filesystem(mp_file, self.block_size_exponent)?;
-        let offsets = fs.compute_entry_offsets();
-        let has_routing = fs.entry_count() == 5;
-
-        // Capture per-subfile stats for logging.
-        let (tre_offset_b, tre_size) = offsets[0];
-        let (rgn_offset_b, rgn_size) = offsets[1];
-        let (lbl_offset_b, lbl_size) = offsets[2];
-        let (net_offset_b, net_size) = if has_routing { offsets[3] } else { (0, 0) };
-        let (nod_offset_b, nod_size) = if has_routing { offsets[4] } else { (0, 0) };
-
-        // Serialise.
-        let bytes = fs.to_bytes();
-
-        if has_routing {
-            tracing::info!(
-                map_id = %mp_file.header.id,
-                block_size = block_size,
-                total_bytes = bytes.len(),
-                tre_offset = tre_offset_b,
-                tre_size = tre_size,
-                rgn_offset = rgn_offset_b,
-                rgn_size = rgn_size,
-                lbl_offset = lbl_offset_b,
-                lbl_size = lbl_size,
-                net_offset = net_offset_b,
-                net_size = net_size,
-                nod_offset = nod_offset_b,
-                nod_size = nod_size,
-                "IMG written (with routing)"
-            );
-        } else {
-            tracing::info!(
-                map_id = %mp_file.header.id,
-                block_size = block_size,
-                total_bytes = bytes.len(),
-                tre_offset = tre_offset_b,
-                tre_size = tre_size,
-                rgn_offset = rgn_offset_b,
-                rgn_size = rgn_size,
-                lbl_offset = lbl_offset_b,
-                lbl_size = lbl_size,
-                "IMG written"
-            );
-        }
-
-        std::fs::write(output, &bytes)?;
-        Ok(())
-    }
+    deltas
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::MpParser;
+    use crate::parser;
 
-    fn fixture(name: &str) -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join(name)
+    #[test]
+    fn test_build_minimal_img() {
+        let content = r#"
+[IMG ID]
+ID=63240001
+Name=Test
+Levels=24,20,16
+[END-IMG ID]
+[POI]
+Type=0x2C00
+Label=Test POI
+Data0=(48.5734,7.7521)
+[END]
+[POLYLINE]
+Type=0x01
+Label=Main Street
+Data0=(48.5734,7.7521),(48.5834,7.7621)
+[END]
+[POLYGON]
+Type=0x03
+Label=Forest
+Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        let img = build_img(&mp).unwrap();
+
+        // Verify IMG signatures
+        assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+        assert_eq!(&img[0x41..0x48], b"GARMIN\0");
+        assert_eq!(img[0x1FE], 0x55);
+        assert_eq!(img[0x1FF], 0xAA);
+        assert!(img.len() > 512);
     }
 
     #[test]
-    fn test_writer_creates_file() {
-        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        ImgWriter::write(&mp, tmp.path()).unwrap();
-        let metadata = std::fs::metadata(tmp.path()).unwrap();
-        assert!(metadata.len() > 0, "output file must be non-empty");
-    }
-
-    #[test]
-    fn test_writer_round_trip() {
-        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        ImgWriter::write(&mp, tmp.path()).unwrap();
-        let bytes = std::fs::read(tmp.path()).unwrap();
-        // DSKIMG at 0x010, GARMIN at 0x041 (standard Garmin IMG format)
-        assert_eq!(&bytes[0x010..0x017], b"DSKIMG\0");
-        assert_eq!(&bytes[0x041..0x048], b"GARMIN\0");
-        // Boot signature at 0x1FE
-        assert_eq!(bytes[0x1FE], 0x55);
-        assert_eq!(bytes[0x1FF], 0xAA);
-    }
-
-    #[test]
-    fn test_writer_invalid_id_empty() {
-        use crate::parser::mp_types::{MpFile, MpHeader};
+    fn test_build_empty_fails() {
         let mp = MpFile {
-            header: MpHeader {
-                id: String::new(),
-                ..Default::default()
-            },
-            points: vec![],
-            polylines: vec![],
-            polygons: vec![],
+            header: crate::parser::mp_types::MpHeader::default(),
+            points: Vec::new(),
+            polylines: Vec::new(),
+            polygons: Vec::new(),
         };
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let err = ImgWriter::write(&mp, tmp.path()).unwrap_err();
-        assert!(matches!(err, ImgError::InvalidMapId { .. }));
-    }
-
-    #[test]
-    fn test_writer_lbl_non_empty() {
-        // After Story 13.5, LBL subfile must contain real content when features have labels.
-        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        ImgWriter::write(&mp, tmp.path()).unwrap();
-        let bytes = std::fs::read(tmp.path()).unwrap();
-        // In the FAT format (512-byte entries), find the LBL entry by scanning
-        // FAT sectors starting at offset 0x400 (sector 2).
-        let mut lbl_size_used = 0u32;
-        let mut fat_offset = 0x400usize;
-        while fat_offset + 512 <= bytes.len() {
-            if bytes[fat_offset] != 0x01 {
-                break;
-            }
-            let ext = &bytes[fat_offset + 9..fat_offset + 12];
-            if ext == b"LBL" && bytes[fat_offset + 0x11] == 0 {
-                lbl_size_used = u32::from_le_bytes([
-                    bytes[fat_offset + 0x0C],
-                    bytes[fat_offset + 0x0D],
-                    bytes[fat_offset + 0x0E],
-                    bytes[fat_offset + 0x0F],
-                ]);
-                break;
-            }
-            fat_offset += 512;
-        }
-        // A minimal LBL with no labels is 29 bytes (28-byte header + 1-byte null sentinel).
-        // Any fixture with at least one labeled feature must produce size_used > 29.
-        assert!(
-            lbl_size_used > 29,
-            "LBL subfile size_used must be > 29 (header=28 + sentinel=1 is minimum; \
-             real labels add more). Got {}",
-            lbl_size_used
-        );
-    }
-
-    #[test]
-    fn test_writer_invalid_id_non_numeric() {
-        use crate::parser::mp_types::{MpFile, MpHeader};
-        let mp = MpFile {
-            header: MpHeader {
-                id: "NOTNUM".to_string(),
-                ..Default::default()
-            },
-            points: vec![],
-            polylines: vec![],
-            polygons: vec![],
-        };
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let err = ImgWriter::write(&mp, tmp.path()).unwrap_err();
-        assert!(matches!(err, ImgError::InvalidMapId { .. }));
-    }
-
-    #[test]
-    fn test_build_filesystem_returns_correct_entry_count() {
-        let mp = MpParser::parse_file(&fixture("minimal_for_img.mp")).unwrap();
-        let fs = ImgWriter::build_filesystem(&mp, 9).unwrap();
-        // minimal_for_img.mp has no routing → 3 subfiles (TRE, RGN, LBL)
-        assert_eq!(fs.entry_count(), 3);
-    }
-
-    #[test]
-    fn test_build_filesystem_routing_has_five_subfiles() {
-        let mp = MpParser::parse_file(&fixture("routing_full_validation.mp")).unwrap();
-        let fs = ImgWriter::build_filesystem(&mp, 9).unwrap();
-        // Routing fixture → 5 subfiles (TRE, RGN, LBL, NET, NOD)
-        assert_eq!(fs.entry_count(), 5, "routing map must have TRE/RGN/LBL/NET/NOD");
+        assert!(build_img(&mp).is_err());
     }
 }

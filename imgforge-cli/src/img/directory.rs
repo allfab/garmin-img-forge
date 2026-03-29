@@ -1,144 +1,169 @@
-//! Garmin IMG FAT directory entry — 512 bytes (one sector) per entry.
-//!
-//! Each entry contains a 32-byte header followed by a 480-byte block
-//! allocation table (240 × LE16 block numbers, 0xFFFF = unused).
-//!
-//! Large files that need more than 240 blocks use multiple FAT entries
-//! (continuation parts) with incrementing part numbers.
-//!
-//! ```text
-//! Offset  Len  Content
-//! 0x00    1    Flag: 0x01 = file entry
-//! 0x01    8    Filename, space-padded (ASCII)
-//! 0x09    3    Extension (e.g. "TRE", "RGN", "LBL")
-//! 0x0C    4    File size (LE32) — only in first entry (part 0)
-//! 0x10    1    Subtype: 0x00 = regular file, 0x03 = volume label
-//! 0x11    1    Part number (0 = first entry, 1+ = continuation)
-//! 0x12    14   Reserved (zeros)
-//! 0x20    480  Block allocation table (240 × LE16, 0xFFFF = unused)
-//! ```
+// Directory + Dirent — 512B directory entries with 240 block slots
+// Faithful to mkgmap Dirent.java + Directory.java
 
-use crate::error::ImgError;
+/// Size of each directory entry in bytes
+pub const ENTRY_SIZE: usize = 512;
+/// Maximum number of block pointers per directory entry
+pub const TABLE_SIZE: usize = 240;
+/// Block table starts at offset 0x20 within each entry
+const BLOCKS_TABLE_START: usize = 0x20;
+const MAX_FILE_LEN: usize = 8;
+const MAX_EXT_LEN: usize = 3;
 
-/// Size of a single FAT entry in bytes (one 512-byte sector).
-pub const FAT_ENTRY_SIZE: usize = 512;
+// Field offsets within a directory entry
+const OFF_FILE_USED: usize = 0x00;
+const OFF_NAME: usize = 0x01;
+const OFF_EXT: usize = 0x09;
+const OFF_SIZE: usize = 0x0C;
+const OFF_FLAG: usize = 0x10;
+const OFF_FILE_PART: usize = 0x11;
 
-/// Offset where the block allocation table starts within the entry.
-const BLOCK_TABLE_OFFSET: usize = 0x20;
-
-/// Maximum number of block indices per FAT entry (480 / 2).
-pub const BLOCKS_PER_ENTRY: usize = 240;
-
-/// A single 512-byte Garmin FAT directory entry.
-#[derive(Debug, Clone)]
-pub struct FatEntry {
-    /// 8-byte filename, space-padded (0x20).
-    pub name: [u8; 8],
-    /// 3-byte extension (e.g. *b"TRE"*).
-    pub ext: [u8; 3],
-    /// File size in bytes (only meaningful for part 0).
-    pub file_size: u32,
-    /// Subtype flag at offset 0x10: 0x00 = regular file, 0x03 = volume label.
-    pub subtype: u8,
-    /// Part number at offset 0x11: 0 = first entry, 1+ = continuation.
-    pub part: u8,
-    /// Allocated block indices for this entry.
+/// A single file entry in the IMG directory
+pub struct Dirent {
+    pub name: String,
+    pub ext: String,
+    pub size: u32,
     pub blocks: Vec<u16>,
+    pub special: bool,
 }
 
-impl FatEntry {
-    /// Create a file FAT entry.
-    ///
-    /// - `map_id`: numeric filename (≤ 8 chars, ASCII digits).
-    /// - `ext`: subfile extension ("TRE", "RGN", etc.).
-    /// - `file_size`: real file size (only stored in part 0).
-    /// - `part`: part number (0 for first entry).
-    /// - `blocks`: block indices allocated to this part (max 240).
-    ///
-    /// # Errors
-    /// Returns [`ImgError::InvalidMapId`] if `map_id` is invalid.
-    pub fn new_file(
-        map_id: &str,
-        ext: &str,
-        file_size: u32,
-        part: u8,
-        blocks: Vec<u16>,
-    ) -> Result<Self, ImgError> {
-        if map_id.is_empty() || !map_id.chars().all(|c| c.is_ascii_digit()) || map_id.len() > 8 {
-            return Err(ImgError::InvalidMapId {
-                id: map_id.to_string(),
-            });
-        }
-
-        let mut name = [0x20u8; 8];
-        let id_bytes = map_id.as_bytes();
-        name[..id_bytes.len()].copy_from_slice(id_bytes);
-
-        let mut ext_buf = [0x20u8; 3];
-        let ext_bytes = ext.as_bytes();
-        let len = ext_bytes.len().min(3);
-        ext_buf[..len].copy_from_slice(&ext_bytes[..len]);
-
-        Ok(Self {
-            name,
-            ext: ext_buf,
-            file_size,
-            subtype: 0x00, // regular file
-            part,
-            blocks,
-        })
-    }
-
-    /// Create a volume label FAT entry (header area descriptor).
-    ///
-    /// The volume label uses space-padded name and extension. Its block
-    /// allocation table lists all blocks occupied by the header area.
-    pub fn new_volume_label(total_fat_entries: u16, header_blocks: Vec<u16>) -> Self {
-        // file_size = total header-area bytes used (header + reserved + FAT sectors).
-        // Must be >= cluster_size (2^(E1+E2) = 2048) for gmt compatibility.
-        let used_bytes = (2 + total_fat_entries as u32) * 512;
-        let cluster_size = 2048u32; // 2^(E1+E2) = 2^(9+2)
+impl Dirent {
+    pub fn new(name: &str, ext: &str) -> Self {
         Self {
-            name: [0x20; 8],
-            ext: [0x20; 3],
-            file_size: used_bytes.max(cluster_size),
-            subtype: 0x03, // volume label flag
-            part: 0x00,
-            blocks: header_blocks,
+            name: pad_or_truncate(name, MAX_FILE_LEN, b'0', true),
+            ext: ext[..MAX_EXT_LEN.min(ext.len())].to_string(),
+            size: 0,
+            blocks: Vec::new(),
+            special: false,
         }
     }
 
-    /// Serialise this entry into a fixed 512-byte buffer.
-    pub fn to_bytes(&self) -> [u8; FAT_ENTRY_SIZE] {
-        let mut buf = [0u8; FAT_ENTRY_SIZE];
+    pub fn add_block(&mut self, block: u16) {
+        self.blocks.push(block);
+    }
 
-        // Fill block allocation area with 0xFFFF (unused marker).
-        buf[BLOCK_TABLE_OFFSET..].fill(0xFF);
+    /// Number of 512-byte directory entries needed for this file
+    pub fn num_parts(&self) -> usize {
+        let n = self.blocks.len();
+        if n == 0 {
+            1
+        } else {
+            (n + TABLE_SIZE - 1) / TABLE_SIZE
+        }
+    }
 
-        // ── Header (0x00–0x1F) ──────────────────────────────────────────
-        buf[0x00] = 0x01; // flag: file entry
-        buf[0x01..0x09].copy_from_slice(&self.name);
-        buf[0x09..0x0C].copy_from_slice(&self.ext);
-        buf[0x0C..0x10].copy_from_slice(&self.file_size.to_le_bytes());
-        buf[0x10] = self.subtype; // 0x00 = file, 0x03 = volume label
-        buf[0x11] = self.part;    // part number (0 = first, 1+ = continuation)
-        // 0x12–0x1F: reserved (already zeros)
+    /// Write all directory entry parts (each 512 bytes) — mkgmap Dirent.sync
+    pub fn write(&self) -> Vec<u8> {
+        let n_parts = self.num_parts();
+        let mut buf = vec![0u8; ENTRY_SIZE * n_parts];
 
-        // ── Block allocation table (0x20–0x1FF) ────────────────────────
-        for (i, &block) in self.blocks.iter().enumerate() {
-            if i >= BLOCKS_PER_ENTRY {
-                break;
+        for part in 0..n_parts {
+            let base = part * ENTRY_SIZE;
+
+            // File used flag
+            buf[base + OFF_FILE_USED] = 0x01;
+
+            // Name (8 bytes, space-padded)
+            let name_bytes = self.name.as_bytes();
+            for i in 0..MAX_FILE_LEN {
+                buf[base + OFF_NAME + i] = if i < name_bytes.len() {
+                    name_bytes[i]
+                } else {
+                    b' '
+                };
             }
-            let off = BLOCK_TABLE_OFFSET + i * 2;
-            buf[off..off + 2].copy_from_slice(&block.to_le_bytes());
+
+            // Extension (3 bytes)
+            let ext_bytes = self.ext.as_bytes();
+            for i in 0..MAX_EXT_LEN {
+                buf[base + OFF_EXT + i] = if i < ext_bytes.len() {
+                    ext_bytes[i]
+                } else {
+                    b' '
+                };
+            }
+
+            // Size only in first part
+            if part == 0 {
+                let sb = self.size.to_le_bytes();
+                buf[base + OFF_SIZE..base + OFF_SIZE + 4].copy_from_slice(&sb);
+            }
+
+            // Flag
+            buf[base + OFF_FLAG] = if self.special { 0x03 } else { 0x00 };
+
+            // Part number (u16 LE, mkgmap writes as putChar = unsigned 16-bit)
+            let part_bytes = (part as u16).to_le_bytes();
+            buf[base + OFF_FILE_PART] = part_bytes[0];
+            buf[base + OFF_FILE_PART + 1] = part_bytes[1];
+
+            // Block table for this part
+            let block_start = part * TABLE_SIZE;
+            let block_end = (block_start + TABLE_SIZE).min(self.blocks.len());
+            for (i, &blk) in self.blocks[block_start..block_end].iter().enumerate() {
+                let off = base + BLOCKS_TABLE_START + i * 2;
+                let b = blk.to_le_bytes();
+                buf[off] = b[0];
+                buf[off + 1] = b[1];
+            }
+            // Fill remaining slots with 0xFFFF
+            for i in (block_end - block_start)..TABLE_SIZE {
+                let off = base + BLOCKS_TABLE_START + i * 2;
+                buf[off] = 0xFF;
+                buf[off + 1] = 0xFF;
+            }
         }
 
         buf
     }
+}
 
-    /// Number of FAT entries required for a file occupying `n_blocks` blocks.
-    pub fn entries_needed(n_blocks: u32) -> u32 {
-        n_blocks.div_ceil(BLOCKS_PER_ENTRY as u32).max(1)
+/// The directory containing all file entries
+pub struct Directory {
+    pub entries: Vec<Dirent>,
+}
+
+impl Directory {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn add_entry(&mut self, entry: Dirent) {
+        self.entries.push(entry);
+    }
+
+    /// Total number of 512-byte blocks used by the directory
+    pub fn total_directory_blocks(&self) -> usize {
+        self.entries.iter().map(|e| e.num_parts()).sum()
+    }
+
+    /// Write all directory entries
+    pub fn write(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        for entry in &self.entries {
+            buf.extend_from_slice(&entry.write());
+        }
+        buf
+    }
+}
+
+/// Pad or truncate a string to the given length
+fn pad_or_truncate(s: &str, len: usize, pad_char: u8, pad_left: bool) -> String {
+    if s.len() > len {
+        s[..len].to_string()
+    } else if s.len() < len {
+        let padding = std::iter::repeat(pad_char as char)
+            .take(len - s.len())
+            .collect::<String>();
+        if pad_left {
+            format!("{}{}", padding, s)
+        } else {
+            format!("{}{}", s, padding)
+        }
+    } else {
+        s.to_string()
     }
 }
 
@@ -147,105 +172,94 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fat_entry_size() {
-        let e = FatEntry::new_file("63240001", "TRE", 1024, 0, vec![10]).unwrap();
-        assert_eq!(e.to_bytes().len(), 512);
+    fn test_dirent_size_512() {
+        let d = Dirent::new("63240001", "TRE");
+        let buf = d.write();
+        assert_eq!(buf.len(), ENTRY_SIZE);
     }
 
     #[test]
-    fn test_fat_entry_name_padding() {
-        let e = FatEntry::new_file("12345", "TRE", 512, 0, vec![5]).unwrap();
-        assert_eq!(e.name, [b'1', b'2', b'3', b'4', b'5', 0x20, 0x20, 0x20]);
+    fn test_dirent_used_flag() {
+        let d = Dirent::new("63240001", "TRE");
+        let buf = d.write();
+        assert_eq!(buf[0], 0x01);
     }
 
     #[test]
-    fn test_fat_entry_name_no_padding_8chars() {
-        let e = FatEntry::new_file("63240001", "TRE", 512, 0, vec![5]).unwrap();
-        assert_eq!(e.name, *b"63240001");
+    fn test_dirent_name_ext() {
+        let d = Dirent::new("63240001", "TRE");
+        let buf = d.write();
+        assert_eq!(&buf[OFF_NAME..OFF_NAME + 8], b"63240001");
+        assert_eq!(&buf[OFF_EXT..OFF_EXT + 3], b"TRE");
     }
 
     #[test]
-    fn test_fat_entry_flag() {
-        let e = FatEntry::new_file("63240001", "TRE", 512, 0, vec![5]).unwrap();
-        assert_eq!(e.to_bytes()[0x00], 0x01);
+    fn test_dirent_name_padding() {
+        let d = Dirent::new("1234", "RGN");
+        let buf = d.write();
+        // Left-padded with '0' to 8 chars
+        assert_eq!(&buf[OFF_NAME..OFF_NAME + 8], b"00001234");
     }
 
     #[test]
-    fn test_fat_entry_extension() {
-        let e = FatEntry::new_file("63240001", "LBL", 512, 0, vec![5]).unwrap();
-        assert_eq!(&e.to_bytes()[0x09..0x0C], b"LBL");
+    fn test_dirent_blocks() {
+        let mut d = Dirent::new("63240001", "TRE");
+        d.add_block(5);
+        d.add_block(6);
+        d.add_block(7);
+        d.size = 1024;
+        let buf = d.write();
+
+        // Size in first part
+        let size = u32::from_le_bytes([buf[OFF_SIZE], buf[OFF_SIZE+1], buf[OFF_SIZE+2], buf[OFF_SIZE+3]]);
+        assert_eq!(size, 1024);
+
+        // Block 0
+        let blk0 = u16::from_le_bytes([buf[BLOCKS_TABLE_START], buf[BLOCKS_TABLE_START+1]]);
+        assert_eq!(blk0, 5);
     }
 
     #[test]
-    fn test_fat_entry_file_size() {
-        let e = FatEntry::new_file("63240001", "RGN", 0x1234, 0, vec![5]).unwrap();
-        let bytes = e.to_bytes();
-        let sz = u32::from_le_bytes([bytes[0x0C], bytes[0x0D], bytes[0x0E], bytes[0x0F]]);
-        assert_eq!(sz, 0x1234);
+    fn test_dirent_multi_part() {
+        let mut d = Dirent::new("63240001", "TRE");
+        // Add 241 blocks → needs 2 parts
+        for i in 0..241 {
+            d.add_block(i);
+        }
+        d.size = 241 * 512;
+        assert_eq!(d.num_parts(), 2);
+        let buf = d.write();
+        assert_eq!(buf.len(), ENTRY_SIZE * 2);
+
+        // Second part: part number = 1
+        let part_num = u16::from_le_bytes([buf[ENTRY_SIZE + OFF_FILE_PART], buf[ENTRY_SIZE + OFF_FILE_PART + 1]]);
+        assert_eq!(part_num, 1);
+
+        // Second part: size should be 0
+        let size2 = u32::from_le_bytes([
+            buf[ENTRY_SIZE + OFF_SIZE],
+            buf[ENTRY_SIZE + OFF_SIZE + 1],
+            buf[ENTRY_SIZE + OFF_SIZE + 2],
+            buf[ENTRY_SIZE + OFF_SIZE + 3],
+        ]);
+        assert_eq!(size2, 0);
     }
 
     #[test]
-    fn test_fat_entry_part_number() {
-        let e = FatEntry::new_file("63240001", "RGN", 0, 2, vec![100, 101]).unwrap();
-        assert_eq!(e.to_bytes()[0x10], 0x00, "subtype = 0x00 for regular file");
-        assert_eq!(e.to_bytes()[0x11], 2, "part number at offset 0x11");
+    fn test_unused_slots_ffff() {
+        let mut d = Dirent::new("63240001", "TRE");
+        d.add_block(10);
+        let buf = d.write();
+        // Slot 1 should be 0xFFFF
+        let slot1 = u16::from_le_bytes([buf[BLOCKS_TABLE_START + 2], buf[BLOCKS_TABLE_START + 3]]);
+        assert_eq!(slot1, 0xFFFF);
     }
 
     #[test]
-    fn test_fat_entry_block_allocation() {
-        let blocks = vec![10u16, 11, 12];
-        let e = FatEntry::new_file("63240001", "TRE", 1024, 0, blocks).unwrap();
-        let bytes = e.to_bytes();
-        assert_eq!(u16::from_le_bytes([bytes[0x20], bytes[0x21]]), 10);
-        assert_eq!(u16::from_le_bytes([bytes[0x22], bytes[0x23]]), 11);
-        assert_eq!(u16::from_le_bytes([bytes[0x24], bytes[0x25]]), 12);
-        // Unused slots filled with 0xFFFF
-        assert_eq!(u16::from_le_bytes([bytes[0x26], bytes[0x27]]), 0xFFFF);
-    }
-
-    #[test]
-    fn test_fat_entry_volume_label() {
-        let e = FatEntry::new_volume_label(5, vec![0, 1, 2]);
-        let bytes = e.to_bytes();
-        assert_eq!(bytes[0x00], 0x01);
-        assert_eq!(&bytes[0x01..0x09], &[0x20; 8]); // spaces
-        assert_eq!(&bytes[0x09..0x0C], &[0x20; 3]); // spaces
-        // file_size = max((2 + total_fat_entries) * 512, 2048)
-        // For 5 entries: (2+5)*512 = 3584 > 2048 → 3584
-        let fs = u32::from_le_bytes([bytes[0x0C], bytes[0x0D], bytes[0x0E], bytes[0x0F]]);
-        assert_eq!(fs, 3584, "volume label file_size = (2 + 5) * 512 = 3584");
-        assert_eq!(bytes[0x10], 0x03, "subtype = 0x03 for volume label");
-        assert_eq!(bytes[0x11], 0x00, "part = 0");
-        assert_eq!(u16::from_le_bytes([bytes[0x20], bytes[0x21]]), 0);
-        assert_eq!(u16::from_le_bytes([bytes[0x22], bytes[0x23]]), 1);
-        assert_eq!(u16::from_le_bytes([bytes[0x24], bytes[0x25]]), 2);
-    }
-
-    #[test]
-    fn test_fat_entry_invalid_map_id_empty() {
-        let err = FatEntry::new_file("", "TRE", 0, 0, vec![]).unwrap_err();
-        assert!(matches!(err, ImgError::InvalidMapId { .. }));
-    }
-
-    #[test]
-    fn test_fat_entry_invalid_map_id_non_digit() {
-        let err = FatEntry::new_file("NOTDIGIT", "TRE", 0, 0, vec![]).unwrap_err();
-        assert!(matches!(err, ImgError::InvalidMapId { .. }));
-    }
-
-    #[test]
-    fn test_fat_entry_invalid_map_id_too_long() {
-        let err = FatEntry::new_file("123456789", "TRE", 0, 0, vec![]).unwrap_err();
-        assert!(matches!(err, ImgError::InvalidMapId { .. }));
-    }
-
-    #[test]
-    fn test_entries_needed() {
-        assert_eq!(FatEntry::entries_needed(0), 1);
-        assert_eq!(FatEntry::entries_needed(1), 1);
-        assert_eq!(FatEntry::entries_needed(240), 1);
-        assert_eq!(FatEntry::entries_needed(241), 2);
-        assert_eq!(FatEntry::entries_needed(480), 2);
-        assert_eq!(FatEntry::entries_needed(481), 3);
+    fn test_directory_total_blocks() {
+        let mut dir = Directory::new();
+        dir.add_entry(Dirent::new("FILE1", "TRE"));
+        dir.add_entry(Dirent::new("FILE2", "RGN"));
+        assert_eq!(dir.total_directory_blocks(), 2);
     }
 }

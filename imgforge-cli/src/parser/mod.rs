@@ -1,613 +1,246 @@
-//! Polish Map (.mp) file parser.
-//!
-//! Implements a line-by-line state machine parser for the Polish Map format
-//! used by cGPSmapper and compatible tools.
-
 pub mod mp_types;
 
-use std::collections::{BTreeMap, HashMap};
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-
 use crate::error::ParseError;
-use mp_types::{MpFile, MpHeader, MpPoint, MpPolygon, MpPolyline, MpRoutingAttrs};
+use crate::img::coord::Coord;
+use mp_types::*;
 
-/// Parser for Polish Map (.mp) files.
-pub struct MpParser;
+/// Parser state machine for Polish Map (.mp) files
+pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
+    let mut header = MpHeader::default();
+    header.codepage = 1252;
+    header.draw_priority = 25;
+    header.levels = vec![24, 22, 20, 18, 16];
 
-/// Internal parser state machine states.
-#[derive(Debug, PartialEq)]
-enum ParseState {
-    Idle,
-    InHeader,
-    InPoi,
-    InPolyline,
-    InPolygon,
-}
+    let mut points = Vec::new();
+    let mut polylines = Vec::new();
+    let mut polygons = Vec::new();
 
-/// Accumulated data while parsing a [POI] section.
-#[derive(Default)]
-struct PoiBuilder {
-    type_code: Option<String>,
-    label: Option<String>,
-    end_level: Option<u8>,
-    lat: Option<f64>,
-    lon: Option<f64>,
-    other_fields: HashMap<String, String>,
-}
+    let mut section = Section::None;
+    let mut current_point: Option<MpPoint> = None;
+    let mut current_polyline: Option<MpPolyline> = None;
+    let mut current_polygon: Option<MpPolygon> = None;
 
-/// Accumulated data while parsing a [POLYLINE] section.
-#[derive(Default)]
-struct PolylineBuilder {
-    type_code: Option<String>,
-    label: Option<String>,
-    end_level: Option<u8>,
-    coords: Vec<(f64, f64)>,
-    road_id: Option<String>,
-    route_param: Option<String>,
-    speed_type: Option<i32>,
-    dir_indicator: Option<i32>,
-    roundabout: Option<bool>,
-    max_height: Option<u32>,
-    max_weight: Option<u32>,
-    max_width: Option<u32>,
-    max_length: Option<u32>,
-    other_fields: HashMap<String, String>,
-}
-
-/// Accumulated data while parsing a [POLYGON] section.
-#[derive(Default)]
-struct PolygonBuilder {
-    type_code: Option<String>,
-    label: Option<String>,
-    end_level: Option<u8>,
-    outer: Vec<(f64, f64)>,
-    /// Interior rings keyed by Data suffix index (Data1→1, Data2→2, …) for ordered collection.
-    holes_map: BTreeMap<usize, Vec<(f64, f64)>>,
-    other_fields: HashMap<String, String>,
-}
-
-/// Known canonical field names for [POI], [POLYLINE], [POLYGON] sections.
-const FEATURE_KNOWN_FIELDS: &[&str] = &[
-    "Type", "Label", "EndLevel", "Levels", "Marine", "Data0", "Data1", "Data2", "Data3", "Data4",
-    "Data5", "Data6", "Data7", "Data8", "Data9",
-];
-
-/// Known routing field names for [POLYLINE] sections.
-const ROUTING_FIELDS: &[&str] = &[
-    "RoadID",
-    "RouteParam",
-    "SpeedType",
-    "Speed",
-    "DirIndicator",
-    "Direction",
-    "Roundabout",
-    "MaxHeight",
-    "MaxWeight",
-    "MaxWidth",
-    "MaxLength",
-];
-
-impl MpParser {
-    /// Parse a Polish Map file from the given path.
-    ///
-    /// Returns a fully populated `MpFile` on success.
-    /// Returns `ParseError::MissingImgId` if no `[IMG ID]` section is found.
-    /// Returns `ParseError::InvalidFormat` with line number for format errors.
-    pub fn parse_file(path: &Path) -> Result<MpFile, ParseError> {
-        // Decode each line as UTF-8; fall back to Latin-1 (ISO-8859-1) for lines that
-        // contain invalid UTF-8. This handles both:
-        //   - UTF-8 encoded .mp files (test fixtures, modern generators)
-        //   - CP1252 encoded .mp files (French BDTOPO, legacy tools)
-        // Latin-1 round-trips correctly through the LBL encoder: U+00E9 (é) → CP1252 0xE9.
-        use std::io::BufRead;
-        let file = std::fs::File::open(path)?;
-        let mut raw_reader = BufReader::new(file);
-        let mut content = String::new();
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            let n = raw_reader.read_until(b'\n', &mut buf)?;
-            if n == 0 {
-                break;
-            }
-            // Strip trailing \r\n or \n before decoding, re-add \n after.
-            if buf.ends_with(b"\n") {
-                buf.pop();
-            }
-            if buf.ends_with(b"\r") {
-                buf.pop();
-            }
-            match std::str::from_utf8(&buf) {
-                Ok(s) => content.push_str(s),
-                Err(_) => buf.iter().for_each(|&b| content.push(b as char)),
-            }
-            content.push('\n');
+    for (line_num, raw_line) in content.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with(';') {
+            continue;
         }
-        let reader = BufReader::new(std::io::Cursor::new(content));
-        Self::parse_reader(reader)
-    }
 
-    /// Parse from any `BufRead` source (used by tests).
-    pub fn parse_reader<R: BufRead>(reader: R) -> Result<MpFile, ParseError> {
-        let mut state = ParseState::Idle;
-        let mut header_seen = false;
-
-        let mut header = MpHeader::default();
-        let mut points: Vec<MpPoint> = Vec::new();
-        let mut polylines: Vec<MpPolyline> = Vec::new();
-        let mut polygons: Vec<MpPolygon> = Vec::new();
-
-        let mut poi_builder = PoiBuilder::default();
-        let mut polyline_builder = PolylineBuilder::default();
-        let mut polygon_builder = PolygonBuilder::default();
-
-        let mut line_num: usize = 0;
-
-        for line_result in reader.lines() {
-            line_num += 1;
-            let raw = line_result?;
-            let line = raw.trim();
-
-            // Skip empty lines and comments
-            if line.is_empty() || line.starts_with(';') {
-                continue;
-            }
-
-            // --- Section header detection ---
-            if line.starts_with('[') {
-                match line {
-                    "[IMG ID]" => {
-                        state = ParseState::InHeader;
-                        header = MpHeader::default();
-                        continue;
-                    }
-                    "[END-IMG ID]" => {
-                        if state == ParseState::InHeader {
-                            if header.id.is_empty() {
-                                return Err(ParseError::InvalidFormat {
-                                    line: line_num,
-                                    message: "missing required field ID in [IMG ID] section"
-                                        .to_string(),
-                                });
-                            }
-                            header_seen = true;
-                            state = ParseState::Idle;
-                        }
-                        continue;
-                    }
-                    "[POI]" => {
-                        state = ParseState::InPoi;
-                        poi_builder = PoiBuilder::default();
-                        continue;
-                    }
-                    "[POLYLINE]" => {
-                        state = ParseState::InPolyline;
-                        polyline_builder = PolylineBuilder::default();
-                        continue;
-                    }
-                    "[POLYGON]" => {
-                        state = ParseState::InPolygon;
-                        polygon_builder = PolygonBuilder::default();
-                        continue;
-                    }
-                    "[END]" => {
-                        match state {
-                            // Some generators (e.g. mpforge-cli) close [IMG ID] with [END]
-                            // instead of [END-IMG ID]. Both forms are accepted.
-                            ParseState::InHeader => {
-                                if header.id.is_empty() {
-                                    return Err(ParseError::InvalidFormat {
-                                        line: line_num,
-                                        message: "missing required field ID in [IMG ID] section"
-                                            .to_string(),
-                                    });
-                                }
-                                header_seen = true;
-                            }
-                            ParseState::InPoi => {
-                                let b = std::mem::take(&mut poi_builder);
-                                let lat = b.lat.ok_or_else(|| ParseError::InvalidFormat {
-                                    line: line_num,
-                                    message: "POI section missing Data0 coordinate".to_string(),
-                                })?;
-                                let lon = b.lon.ok_or_else(|| ParseError::InvalidFormat {
-                                    line: line_num,
-                                    message: "POI section missing Data0 coordinate".to_string(),
-                                })?;
-                                let type_code = b.type_code.unwrap_or_else(|| "0x00".to_string());
-                                points.push(MpPoint {
-                                    type_code,
-                                    label: b.label,
-                                    end_level: b.end_level,
-                                    lat,
-                                    lon,
-                                    other_fields: b.other_fields,
-                                });
-                            }
-                            ParseState::InPolyline => {
-                                let b = std::mem::take(&mut polyline_builder);
-                                if b.coords.is_empty() {
-                                    return Err(ParseError::InvalidFormat {
-                                        line: line_num,
-                                        message: "POLYLINE section missing Data0 coordinates"
-                                            .to_string(),
-                                    });
-                                }
-                                let type_code = b.type_code.unwrap_or_else(|| "0x00".to_string());
-                                let routing = if b.road_id.is_some()
-                                    || b.route_param.is_some()
-                                    || b.speed_type.is_some()
-                                    || b.dir_indicator.is_some()
-                                    || b.roundabout.is_some()
-                                    || b.max_height.is_some()
-                                    || b.max_weight.is_some()
-                                    || b.max_width.is_some()
-                                    || b.max_length.is_some()
-                                {
-                                    Some(MpRoutingAttrs {
-                                        road_id: b.road_id,
-                                        route_param: b.route_param,
-                                        speed_type: b.speed_type,
-                                        dir_indicator: b.dir_indicator,
-                                        roundabout: b.roundabout,
-                                        max_height: b.max_height,
-                                        max_weight: b.max_weight,
-                                        max_width: b.max_width,
-                                        max_length: b.max_length,
-                                    })
-                                } else {
-                                    None
-                                };
-                                polylines.push(MpPolyline {
-                                    type_code,
-                                    label: b.label,
-                                    end_level: b.end_level,
-                                    coords: b.coords,
-                                    routing,
-                                    other_fields: b.other_fields,
-                                });
-                            }
-                            ParseState::InPolygon => {
-                                let b = std::mem::take(&mut polygon_builder);
-                                if b.outer.is_empty() {
-                                    return Err(ParseError::InvalidFormat {
-                                        line: line_num,
-                                        message: "POLYGON section missing Data0 coordinates"
-                                            .to_string(),
-                                    });
-                                }
-                                let type_code = b.type_code.unwrap_or_else(|| "0x00".to_string());
-                                let holes: Vec<Vec<(f64, f64)>> =
-                                    b.holes_map.into_values().collect();
-                                polygons.push(MpPolygon {
-                                    type_code,
-                                    label: b.label,
-                                    end_level: b.end_level,
-                                    coords: b.outer,
-                                    holes,
-                                    other_fields: b.other_fields,
-                                });
-                            }
-                            _ => {}
-                        }
-                        state = ParseState::Idle;
-                        continue;
-                    }
-                    _ => {
-                        // Unknown section header — skip
-                        continue;
+        // Section headers
+        if line.eq_ignore_ascii_case("[IMG ID]") {
+            section = Section::Header;
+            continue;
+        }
+        if line.eq_ignore_ascii_case("[END]") || line.eq_ignore_ascii_case("[END-IMG ID]") {
+            match section {
+                Section::Point => {
+                    if let Some(p) = current_point.take() {
+                        points.push(p);
                     }
                 }
-            }
-
-            // --- Key=value line parsing ---
-            if let Some(eq_pos) = line.find('=') {
-                let key = line[..eq_pos].trim();
-                let value = line[eq_pos + 1..].trim();
-
-                match state {
-                    ParseState::InHeader => {
-                        parse_header_field(&mut header, key, value, line_num)?;
-                    }
-                    ParseState::InPoi => {
-                        parse_poi_field(&mut poi_builder, key, value, line_num)?;
-                    }
-                    ParseState::InPolyline => {
-                        parse_polyline_field(&mut polyline_builder, key, value, line_num)?;
-                    }
-                    ParseState::InPolygon => {
-                        parse_polygon_field(&mut polygon_builder, key, value, line_num)?;
-                    }
-                    ParseState::Idle => {
-                        // Fields outside sections are ignored
+                Section::Polyline => {
+                    if let Some(pl) = current_polyline.take() {
+                        polylines.push(pl);
                     }
                 }
-            }
-        }
-
-        if !header_seen {
-            return Err(ParseError::MissingImgId);
-        }
-
-        Ok(MpFile {
-            header,
-            points,
-            polylines,
-            polygons,
-        })
-    }
-}
-
-/// Parse a key=value pair for the [IMG ID] header section.
-fn parse_header_field(
-    header: &mut MpHeader,
-    key: &str,
-    value: &str,
-    line_num: usize,
-) -> Result<(), ParseError> {
-    match key {
-        "Name" => header.name = value.to_string(),
-        "ID" => header.id = value.to_string(),
-        "CodePage" => header.code_page = value.to_string(),
-        "Levels" => {
-            header.levels = Some(value.parse::<u8>().map_err(|_| ParseError::InvalidFormat {
-                line: line_num,
-                message: format!("invalid Levels value: '{}'", value),
-            })?);
-        }
-        "TreeSize" => {
-            header.tree_size =
-                Some(
-                    value
-                        .parse::<u32>()
-                        .map_err(|_| ParseError::InvalidFormat {
-                            line: line_num,
-                            message: format!("invalid TreeSize value: '{}'", value),
-                        })?,
-                );
-        }
-        "RgnLimit" => {
-            header.rgn_limit =
-                Some(
-                    value
-                        .parse::<u32>()
-                        .map_err(|_| ParseError::InvalidFormat {
-                            line: line_num,
-                            message: format!("invalid RgnLimit value: '{}'", value),
-                        })?,
-                );
-        }
-        k if k.starts_with("Level") && k.len() > 5 => {
-            // Level0, Level1, ... Level9
-            let suffix = &k[5..];
-            if suffix.chars().all(|c| c.is_ascii_digit()) {
-                let bits = value.parse::<u8>().map_err(|_| ParseError::InvalidFormat {
-                    line: line_num,
-                    message: format!("invalid {} value: '{}'", k, value),
-                })?;
-                let idx = suffix.parse::<usize>().unwrap_or(0);
-                if idx < 10 {
-                    // Grow the vec as needed
-                    while header.level_defs.len() <= idx {
-                        header.level_defs.push(0);
+                Section::Polygon => {
+                    if let Some(pg) = current_polygon.take() {
+                        polygons.push(pg);
                     }
-                    header.level_defs[idx] = bits;
                 }
-            } else {
-                header.other_fields.insert(k.to_string(), value.to_string());
+                _ => {}
+            }
+            section = Section::None;
+            continue;
+        }
+        if line.eq_ignore_ascii_case("[POI]") || line.eq_ignore_ascii_case("[RGN10]") || line.eq_ignore_ascii_case("[POINT]") {
+            section = Section::Point;
+            current_point = Some(MpPoint {
+                type_code: 0,
+                label: String::new(),
+                coord: Coord::new(0, 0),
+                end_level: None,
+                city_name: None,
+                region_name: None,
+                country_name: None,
+                zip: None,
+            });
+            continue;
+        }
+        if line.eq_ignore_ascii_case("[POLYLINE]") || line.eq_ignore_ascii_case("[RGN40]") {
+            section = Section::Polyline;
+            current_polyline = Some(MpPolyline {
+                type_code: 0,
+                label: String::new(),
+                points: Vec::new(),
+                end_level: None,
+                direction: false,
+                road_id: None,
+                route_param: None,
+            });
+            continue;
+        }
+        if line.eq_ignore_ascii_case("[POLYGON]") || line.eq_ignore_ascii_case("[RGN80]") {
+            section = Section::Polygon;
+            current_polygon = Some(MpPolygon {
+                type_code: 0,
+                label: String::new(),
+                points: Vec::new(),
+                end_level: None,
+            });
+            continue;
+        }
+
+        // Key=Value parsing
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let value = value.trim();
+
+            match section {
+                Section::Header => parse_header_field(&mut header, key, value),
+                Section::Point => {
+                    if let Some(ref mut p) = current_point {
+                        parse_point_field(p, key, value, line_num)?;
+                    }
+                }
+                Section::Polyline => {
+                    if let Some(ref mut pl) = current_polyline {
+                        parse_polyline_field(pl, key, value, line_num)?;
+                    }
+                }
+                Section::Polygon => {
+                    if let Some(ref mut pg) = current_polygon {
+                        parse_polygon_field(pg, key, value, line_num)?;
+                    }
+                }
+                Section::None => {}
             }
         }
-        k => {
-            // Store all other fields for forward-compatibility (includes extended known fields)
-            header.other_fields.insert(k.to_string(), value.to_string());
-        }
     }
-    Ok(())
+
+    Ok(MpFile {
+        header,
+        points,
+        polylines,
+        polygons,
+    })
 }
 
-/// Parse a key=value pair for a [POI] section.
-fn parse_poi_field(
-    builder: &mut PoiBuilder,
-    key: &str,
-    value: &str,
-    line_num: usize,
-) -> Result<(), ParseError> {
-    match key {
-        "Type" => builder.type_code = Some(value.to_string()),
-        "Label" => builder.label = Some(value.to_string()),
-        "EndLevel" => {
-            builder.end_level =
-                Some(value.parse::<u8>().map_err(|_| ParseError::InvalidFormat {
-                    line: line_num,
-                    message: format!("invalid EndLevel value: '{}'", value),
-                })?);
-        }
-        "Data0" => {
-            let coords = parse_data_line(value, line_num)?;
-            if coords.len() != 1 {
-                return Err(ParseError::InvalidFormat {
-                    line: line_num,
-                    message: format!(
-                        "POI Data0 must have exactly 1 coordinate pair, got {}",
-                        coords.len()
-                    ),
-                });
-            }
-            let (lat, lon) = coords[0];
-            builder.lat = Some(lat);
-            builder.lon = Some(lon);
-        }
-        k if !FEATURE_KNOWN_FIELDS.contains(&k) => {
-            builder
-                .other_fields
-                .insert(k.to_string(), value.to_string());
-        }
-        _ => {}
-    }
-    Ok(())
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Section {
+    None,
+    Header,
+    Point,
+    Polyline,
+    Polygon,
 }
 
-/// Parse a key=value pair for a [POLYLINE] section.
-fn parse_polyline_field(
-    builder: &mut PolylineBuilder,
-    key: &str,
-    value: &str,
-    line_num: usize,
-) -> Result<(), ParseError> {
-    match key {
-        "Type" => builder.type_code = Some(value.to_string()),
-        "Label" => builder.label = Some(value.to_string()),
-        "EndLevel" => {
-            builder.end_level =
-                Some(value.parse::<u8>().map_err(|_| ParseError::InvalidFormat {
-                    line: line_num,
-                    message: format!("invalid EndLevel value: '{}'", value),
-                })?);
-        }
-        "Data0" => {
-            builder.coords = parse_data_line(value, line_num)?;
-        }
-        "RoadID" => builder.road_id = Some(value.to_string()),
-        "RouteParam" => builder.route_param = Some(value.to_string()),
-        "SpeedType" | "Speed" => {
-            if let Ok(n) = value.parse::<i32>() {
-                builder.speed_type = Some(n);
-            }
-        }
-        "DirIndicator" | "Direction" => {
-            if let Ok(n) = value.parse::<i32>() {
-                builder.dir_indicator = Some(n);
-            }
-        }
-        "Roundabout" => {
-            // Roundabout=1 → true, Roundabout=0 → false, invalid → ignored
-            if let Ok(n) = value.parse::<i32>() {
-                builder.roundabout = Some(n != 0);
-            }
-        }
-        "MaxHeight" => {
-            if let Ok(n) = value.parse::<u32>() {
-                builder.max_height = Some(n);
-            }
-        }
-        "MaxWeight" => {
-            if let Ok(n) = value.parse::<u32>() {
-                builder.max_weight = Some(n);
-            }
-        }
-        "MaxWidth" => {
-            if let Ok(n) = value.parse::<u32>() {
-                builder.max_width = Some(n);
-            }
-        }
-        "MaxLength" => {
-            if let Ok(n) = value.parse::<u32>() {
-                builder.max_length = Some(n);
-            }
-        }
-        k if !FEATURE_KNOWN_FIELDS.contains(&k) && !ROUTING_FIELDS.contains(&k) => {
-            builder
-                .other_fields
-                .insert(k.to_string(), value.to_string());
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Parse a key=value pair for a [POLYGON] section.
-fn parse_polygon_field(
-    builder: &mut PolygonBuilder,
-    key: &str,
-    value: &str,
-    line_num: usize,
-) -> Result<(), ParseError> {
-    match key {
-        "Type" => builder.type_code = Some(value.to_string()),
-        "Label" => builder.label = Some(value.to_string()),
-        "EndLevel" => {
-            builder.end_level =
-                Some(value.parse::<u8>().map_err(|_| ParseError::InvalidFormat {
-                    line: line_num,
-                    message: format!("invalid EndLevel value: '{}'", value),
-                })?);
-        }
-        "Data0" => {
-            builder.outer = parse_data_line(value, line_num)?;
-        }
-        k if k.starts_with("Data") && k.len() > 4 => {
-            // Data1, Data2, ... are interior rings (holes) — keyed by index for ordered collection
-            let suffix = &k[4..];
-            if suffix.chars().all(|c| c.is_ascii_digit()) {
-                let idx: usize = suffix.parse().unwrap_or(0);
-                let hole_coords = parse_data_line(value, line_num)?;
-                builder.holes_map.insert(idx, hole_coords);
-            } else {
-                builder
-                    .other_fields
-                    .insert(k.to_string(), value.to_string());
-            }
-        }
-        k if !FEATURE_KNOWN_FIELDS.contains(&k) => {
-            builder
-                .other_fields
-                .insert(k.to_string(), value.to_string());
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Parse a Data0 coordinate string into a list of (lat, lon) pairs.
-///
-/// Input format: `(lat1,lon1),(lat2,lon2),...`
-///
-/// Returns `ParseError::InvalidFormat` with the line number on parse failure.
-pub fn parse_data_line(value: &str, line_num: usize) -> Result<Vec<(f64, f64)>, ParseError> {
-    let mut coords = Vec::new();
-    let trimmed = value.trim();
-
-    if trimmed.is_empty() {
-        return Err(ParseError::InvalidFormat {
-            line: line_num,
-            message: "empty coordinate value".to_string(),
-        });
-    }
-
-    // Split on '),(' to separate coordinate pairs
-    // Input: "(45.1880,5.7245),(45.1890,5.7255)"
-    for pair in trimmed.split("),(") {
-        let pair = pair.trim_matches(|c| c == '(' || c == ')').trim();
-        let parts: Vec<&str> = pair.splitn(2, ',').collect();
-        if parts.len() != 2 {
-            return Err(ParseError::InvalidFormat {
-                line: line_num,
-                message: format!("malformed coordinate pair: '{}'", pair),
+fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
+    match key.to_lowercase().as_str() {
+        "id" => {
+            header.id = value.parse().unwrap_or_else(|_| {
+                tracing::warn!("Invalid map ID '{}', defaulting to 0", value);
+                0
             });
         }
-        let lat = parts[0]
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| ParseError::InvalidFormat {
-                line: line_num,
-                message: format!("invalid latitude value: '{}'", parts[0].trim()),
-            })?;
-        let lon = parts[1]
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| ParseError::InvalidFormat {
-                line: line_num,
-                message: format!("invalid longitude value: '{}'", parts[1].trim()),
-            })?;
-        coords.push((lat, lon));
+        "name" => header.name = value.to_string(),
+        "copyright" => header.copyright = value.to_string(),
+        "codepage" => header.codepage = value.parse().unwrap_or(1252),
+        "datum" => header.datum = value.to_string(),
+        "transparent" => header.transparent = value == "Y" || value == "1",
+        "drawpriority" => header.draw_priority = value.parse().unwrap_or(25),
+        "previewlat" => header.preview_lat = value.parse().unwrap_or(0.0),
+        "previewlon" | "previewlong" => header.preview_lon = value.parse().unwrap_or(0.0),
+        "levels" => {
+            header.levels = value
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+        }
+        _ => {}
     }
+}
 
-    if coords.is_empty() {
-        return Err(ParseError::InvalidFormat {
-            line: line_num,
-            message: "no valid coordinates found".to_string(),
-        });
+fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
+    match key.to_lowercase().as_str() {
+        "type" => point.type_code = parse_type(value),
+        "label" => point.label = value.to_string(),
+        "endlevel" => point.end_level = value.parse().ok(),
+        "cityname" => point.city_name = Some(value.to_string()),
+        "regionname" => point.region_name = Some(value.to_string()),
+        "countryname" => point.country_name = Some(value.to_string()),
+        "zip" => point.zip = Some(value.to_string()),
+        k if k.starts_with("data") => {
+            let coords = parse_coords(value, line_num)?;
+            if let Some(c) = coords.first() {
+                point.coord = *c;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_polyline_field(pl: &mut MpPolyline, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
+    match key.to_lowercase().as_str() {
+        "type" => pl.type_code = parse_type(value),
+        "label" => pl.label = value.to_string(),
+        "endlevel" => pl.end_level = value.parse().ok(),
+        "dirindicator" => pl.direction = value == "1",
+        "roadid" => pl.road_id = value.parse().ok(),
+        "routeparam" => pl.route_param = Some(value.to_string()),
+        k if k.starts_with("data") => {
+            let coords = parse_coords(value, line_num)?;
+            pl.points.extend(coords);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_polygon_field(pg: &mut MpPolygon, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
+    match key.to_lowercase().as_str() {
+        "type" => pg.type_code = parse_type(value),
+        "label" => pg.label = value.to_string(),
+        "endlevel" => pg.end_level = value.parse().ok(),
+        k if k.starts_with("data") => {
+            let coords = parse_coords(value, line_num)?;
+            pg.points.extend(coords);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_type(value: &str) -> u16 {
+    if value.starts_with("0x") || value.starts_with("0X") {
+        u16::from_str_radix(&value[2..], 16).unwrap_or(0)
+    } else {
+        value.parse().unwrap_or(0)
+    }
+}
+
+/// Parse coordinate string: "(lat,lon),(lat,lon),..."
+fn parse_coords(value: &str, line_num: usize) -> Result<Vec<Coord>, ParseError> {
+    let mut coords = Vec::new();
+    let mut rest = value.trim();
+
+    while let Some(start) = rest.find('(') {
+        let end = rest[start..].find(')').ok_or_else(|| ParseError::InvalidCoord(
+            format!("Unclosed parenthesis at line {}", line_num + 1),
+        ))?;
+        let pair = &rest[start + 1..start + end];
+        let parts: Vec<&str> = pair.split(',').collect();
+        if parts.len() >= 2 {
+            let lat: f64 = parts[0].trim().parse().map_err(|_| {
+                ParseError::InvalidCoord(format!("Invalid lat '{}' at line {}", parts[0], line_num + 1))
+            })?;
+            let lon: f64 = parts[1].trim().parse().map_err(|_| {
+                ParseError::InvalidCoord(format!("Invalid lon '{}' at line {}", parts[1], line_num + 1))
+            })?;
+            coords.push(Coord::from_degrees(lat, lon));
+        }
+        rest = &rest[start + end + 1..];
     }
 
     Ok(coords)
@@ -616,397 +249,75 @@ pub fn parse_data_line(value: &str, line_num: usize) -> Result<Vec<(f64, f64)>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
-
-    fn parse_str(input: &str) -> Result<MpFile, ParseError> {
-        MpParser::parse_reader(Cursor::new(input))
-    }
-
-    // ----------------------------------------------------------------
-    // Header tests
-    // ----------------------------------------------------------------
 
     #[test]
-    fn test_parse_header() {
-        let input = r#"
+    fn test_parse_minimal_mp() {
+        let content = r#"
 [IMG ID]
-Name=Ma Carte
 ID=63240001
-CodePage=1252
-Levels=2
-Level0=24
-Level1=18
-TreeSize=3000
-RgnLimit=1024
+Name=Test Map
 [END-IMG ID]
-"#;
-        let mp = parse_str(input).unwrap();
-        assert_eq!(mp.header.name, "Ma Carte");
-        assert_eq!(mp.header.id, "63240001");
-        assert_eq!(mp.header.code_page, "1252");
-        assert_eq!(mp.header.levels, Some(2));
-        assert_eq!(mp.header.level_defs, vec![24, 18]);
-        assert_eq!(mp.header.tree_size, Some(3000));
-        assert_eq!(mp.header.rgn_limit, Some(1024));
-    }
-
-    #[test]
-    fn test_parse_header_defaults() {
-        let input = "[IMG ID]\nName=Test\nID=00000001\n[END-IMG ID]\n";
-        let mp = parse_str(input).unwrap();
-        assert_eq!(mp.header.code_page, "1252");
-        assert!(mp.header.levels.is_none());
-        assert!(mp.header.tree_size.is_none());
-    }
-
-    // ----------------------------------------------------------------
-    // POI tests
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_parse_poi() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
 [POI]
 Type=0x2C00
-Label=Mairie
-Data0=(45.1880,5.7245)
-EndLevel=4
+Label=Test POI
+Data0=(48.5734,7.7521)
 [END]
-"#;
-        let mp = parse_str(input).unwrap();
-        assert_eq!(mp.points.len(), 1);
-        let poi = &mp.points[0];
-        assert_eq!(poi.type_code, "0x2C00");
-        assert_eq!(poi.label.as_deref(), Some("Mairie"));
-        assert_eq!(poi.end_level, Some(4));
-        assert!((poi.lat - 45.1880).abs() < 1e-6);
-        assert!((poi.lon - 5.7245).abs() < 1e-6);
-    }
-
-    // ----------------------------------------------------------------
-    // Polyline tests
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_parse_polyline() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
 [POLYLINE]
 Type=0x01
-Label=Autoroute A480
-Data0=(45.2000,5.7000),(45.2100,5.7100),(45.2200,5.7200)
-EndLevel=4
+Label=Main Street
+Data0=(48.5734,7.7521),(48.5834,7.7621)
+[END]
+[POLYGON]
+Type=0x03
+Label=Forest
+Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
 [END]
 "#;
-        let mp = parse_str(input).unwrap();
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.header.id, 63240001);
+        assert_eq!(mp.header.name, "Test Map");
+        assert_eq!(mp.points.len(), 1);
+        assert_eq!(mp.points[0].label, "Test POI");
         assert_eq!(mp.polylines.len(), 1);
-        let poly = &mp.polylines[0];
-        assert_eq!(poly.type_code, "0x01");
-        assert_eq!(poly.label.as_deref(), Some("Autoroute A480"));
-        assert_eq!(poly.coords.len(), 3);
-        assert!((poly.coords[0].0 - 45.2000).abs() < 1e-6);
-        assert!((poly.coords[2].1 - 5.7200).abs() < 1e-6);
-        assert!(poly.routing.is_none());
+        assert_eq!(mp.polylines[0].points.len(), 2);
+        assert_eq!(mp.polygons.len(), 1);
+        assert_eq!(mp.polygons[0].points.len(), 4);
     }
-
-    // ----------------------------------------------------------------
-    // Polygon with hole tests
-    // ----------------------------------------------------------------
 
     #[test]
-    fn test_parse_polygon_with_hole() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
-[POLYGON]
-Type=0x50
-Label=Forêt
-Data0=(45.2000,5.7000),(45.2100,5.7000),(45.2100,5.7100),(45.2000,5.7100),(45.2000,5.7000)
-Data1=(45.2020,5.7020),(45.2080,5.7020),(45.2080,5.7080),(45.2020,5.7080),(45.2020,5.7020)
-EndLevel=3
-[END]
-"#;
-        let mp = parse_str(input).unwrap();
-        assert_eq!(mp.polygons.len(), 1);
-        let poly = &mp.polygons[0];
-        assert_eq!(poly.type_code, "0x50");
-        assert_eq!(poly.coords.len(), 5); // outer ring
-        assert_eq!(poly.holes.len(), 1);
-        assert_eq!(poly.holes[0].len(), 5); // inner ring
+    fn test_parse_coords() {
+        let coords = parse_coords("(48.5734,7.7521),(48.5834,7.7621)", 0).unwrap();
+        assert_eq!(coords.len(), 2);
+        assert!((coords[0].lat_degrees() - 48.5734).abs() < 0.001);
     }
 
-    // ----------------------------------------------------------------
-    // Routing attributes tests
-    // ----------------------------------------------------------------
+    #[test]
+    fn test_parse_type_hex() {
+        assert_eq!(parse_type("0x2C00"), 0x2C00);
+        assert_eq!(parse_type("0x01"), 1);
+    }
 
     #[test]
     fn test_parse_routing_attrs() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
+        let content = r#"
 [POLYLINE]
-Type=0x01
-Label=Autoroute A480
-Data0=(45.2000,5.7000),(45.2100,5.7100),(45.2200,5.7200)
-RoadID=A480_001
-RouteParam=7,4,0,1,0,0,0,0,0
-DirIndicator=0
+Type=0x06
+Label=Highway
+RoadID=1234
+RouteParam=4,3,0,0,0,0,0,0,0,0,0,0
+Data0=(48.57,7.75),(48.58,7.76)
 [END]
 "#;
-        let mp = parse_str(input).unwrap();
-        let poly = &mp.polylines[0];
-        let routing = poly.routing.as_ref().unwrap();
-        assert_eq!(routing.road_id.as_deref(), Some("A480_001"));
-        assert_eq!(routing.route_param.as_deref(), Some("7,4,0,1,0,0,0,0,0"));
-        assert_eq!(routing.dir_indicator, Some(0));
-        // Story 14.1: New fields default to None when absent
-        assert_eq!(routing.roundabout, None);
-        assert_eq!(routing.max_height, None);
-        assert_eq!(routing.max_weight, None);
-    }
-
-    /// Story 14.1: Parse all routing attributes including new fields
-    #[test]
-    fn test_parse_routing_attrs_full() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
-[POLYLINE]
-Type=0x01
-Label=Nationale N7
-Data0=(45.2000,5.7000),(45.2100,5.7100),(45.2200,5.7200)
-RoadID=42
-RouteParam=6,3,1,1,0,0,0,0,0,0,0,0
-DirIndicator=1
-Roundabout=0
-MaxHeight=350
-MaxWeight=19000
-MaxWidth=250
-MaxLength=1200
-[END]
-
-[POLYLINE]
-Type=0x0C
-Label=Rond-point
-Data0=(45.3000,5.8000),(45.3010,5.8010),(45.3020,5.8020)
-RoadID=43
-RouteParam=3,1,1,0,0,0,0,0,0,0,0,0
-DirIndicator=-1
-Roundabout=1
-[END]
-"#;
-        let mp = parse_str(input).unwrap();
-        assert_eq!(mp.polylines.len(), 2);
-
-        // First polyline: full routing with restrictions
-        let r1 = mp.polylines[0].routing.as_ref().unwrap();
-        assert_eq!(r1.road_id.as_deref(), Some("42"));
-        assert_eq!(r1.route_param.as_deref(), Some("6,3,1,1,0,0,0,0,0,0,0,0"));
-        assert_eq!(r1.dir_indicator, Some(1));
-        assert_eq!(r1.roundabout, Some(false));
-        assert_eq!(r1.max_height, Some(350));
-        assert_eq!(r1.max_weight, Some(19000));
-        assert_eq!(r1.max_width, Some(250));
-        assert_eq!(r1.max_length, Some(1200));
-
-        // Second polyline: roundabout, no restrictions
-        let r2 = mp.polylines[1].routing.as_ref().unwrap();
-        assert_eq!(r2.road_id.as_deref(), Some("43"));
-        assert_eq!(r2.dir_indicator, Some(-1));
-        assert_eq!(r2.roundabout, Some(true));
-        assert_eq!(r2.max_height, None);
-        assert_eq!(r2.max_weight, None);
-    }
-
-    // ----------------------------------------------------------------
-    // Error tests
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_error_missing_img_id() {
-        let input = "[POI]\nType=0x2C00\nData0=(45.0,5.0)\n[END]\n";
-        let result = parse_str(input);
-        assert!(matches!(result, Err(ParseError::MissingImgId)));
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].road_id, Some(1234));
+        assert!(mp.polylines[0].route_param.is_some());
     }
 
     #[test]
-    fn test_error_invalid_coords() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-[END-IMG ID]
-
-[POI]
-Type=0x2C00
-Data0=(not_a_number,5.7245)
-[END]
-"#;
-        let result = parse_str(input);
-        assert!(matches!(
-            result,
-            Err(ParseError::InvalidFormat {
-                line: _,
-                message: _
-            })
-        ));
-        if let Err(ParseError::InvalidFormat { line, .. }) = result {
-            assert!(line > 0, "line number must be positive");
-        }
-    }
-
-    // ----------------------------------------------------------------
-    // Unknown fields (other_fields forward-compat)
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_unknown_fields_in_other_fields() {
-        let input = r#"
-[IMG ID]
-Name=Test
-ID=00000001
-CustomHeaderField=custom_value
-[END-IMG ID]
-
-[POI]
-Type=0x2C00
-Data0=(45.0,5.0)
-CustomPOIField=poi_custom
-[END]
-"#;
-        let mp = parse_str(input).unwrap();
-        assert_eq!(
-            mp.header
-                .other_fields
-                .get("CustomHeaderField")
-                .map(|s| s.as_str()),
-            Some("custom_value")
-        );
-        assert_eq!(
-            mp.points[0]
-                .other_fields
-                .get("CustomPOIField")
-                .map(|s| s.as_str()),
-            Some("poi_custom")
-        );
-    }
-
-    // ----------------------------------------------------------------
-    // Coordinate parsing tests
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_parse_data_line_single() {
-        let result = parse_data_line("(45.1880,5.7245)", 1).unwrap();
-        assert_eq!(result.len(), 1);
-        assert!((result[0].0 - 45.188).abs() < 1e-6);
-        assert!((result[0].1 - 5.7245).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_parse_data_line_multiple() {
-        let result =
-            parse_data_line("(45.2000,5.7000),(45.2100,5.7100),(45.2200,5.7200)", 1).unwrap();
-        assert_eq!(result.len(), 3);
-    }
-
-    #[test]
-    fn test_parse_data_line_invalid_lat() {
-        let result = parse_data_line("(abc,5.7245)", 10);
-        assert!(matches!(
-            result,
-            Err(ParseError::InvalidFormat { line: 10, .. })
-        ));
-    }
-
-    #[test]
-    fn test_parse_data_line_invalid_lon() {
-        let result = parse_data_line("(45.0,xyz)", 20);
-        assert!(matches!(
-            result,
-            Err(ParseError::InvalidFormat { line: 20, .. })
-        ));
-    }
-
-    #[test]
-    fn test_parse_data_line_missing_comma() {
-        let result = parse_data_line("(45.0)", 5);
-        assert!(matches!(
-            result,
-            Err(ParseError::InvalidFormat { line: 5, .. })
-        ));
-    }
-
-    // ----------------------------------------------------------------
-    // New validation tests (added by code review fixes)
-    // ----------------------------------------------------------------
-
-    #[test]
-    fn test_error_invalid_levels_value() {
-        let input = "[IMG ID]\nName=Test\nID=00000001\nLevels=invalid\n[END-IMG ID]\n";
-        let result = parse_str(input);
-        assert!(matches!(result, Err(ParseError::InvalidFormat { .. })));
-        if let Err(ParseError::InvalidFormat { message, .. }) = result {
-            assert!(
-                message.contains("Levels"),
-                "message should mention field: {}",
-                message
-            );
-        }
-    }
-
-    #[test]
-    fn test_error_invalid_end_level_poi() {
-        let input = "[IMG ID]\nName=Test\nID=00000001\n[END-IMG ID]\n\
-                     [POI]\nType=0x2C00\nData0=(45.0,5.0)\nEndLevel=abc\n[END]\n";
-        let result = parse_str(input);
-        assert!(matches!(result, Err(ParseError::InvalidFormat { .. })));
-    }
-
-    #[test]
-    fn test_error_poi_multiple_coords() {
-        let input = "[IMG ID]\nName=Test\nID=00000001\n[END-IMG ID]\n\
-                     [POI]\nType=0x2C00\nData0=(45.0,5.0),(46.0,6.0)\n[END]\n";
-        let result = parse_str(input);
-        assert!(matches!(result, Err(ParseError::InvalidFormat { .. })));
-        if let Err(ParseError::InvalidFormat { message, .. }) = result {
-            assert!(
-                message.contains("exactly 1"),
-                "message should mention single point: {}",
-                message
-            );
-        }
-    }
-
-    #[test]
-    fn test_error_missing_id_field() {
-        let input = "[IMG ID]\nName=Test\n[END-IMG ID]\n";
-        let result = parse_str(input);
-        assert!(matches!(result, Err(ParseError::InvalidFormat { .. })));
-        if let Err(ParseError::InvalidFormat { message, .. }) = result {
-            assert!(
-                message.contains("ID"),
-                "message should mention ID field: {}",
-                message
-            );
-        }
+    fn test_parse_empty() {
+        let mp = parse_mp("").unwrap();
+        assert!(mp.points.is_empty());
+        assert!(mp.polylines.is_empty());
+        assert!(mp.polygons.is_empty());
     }
 }
