@@ -283,14 +283,71 @@ rulesets:
   # ==========================================================================
   # ADMINISTRATIF — Zones d'habitation (POLYGON)
   # Source FME : 01-COMMUNE-ZONEURBA.fmw
-  # 1 regle NATURE="Lieu-dit habite" (seule NATURE traitee par FME)
+  # Ref TYP-MAPPING-RULES.md section 5.2
+  # 8 regles : 7 NATURE explicites + catch-all
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
     rules:
-      # 1. Lieu-dit habite
+      # 1. Chateau (manoir, tour nommee)
+      - match:
+          NATURE: "Château"
+        set:
+          Type: "0x10f0a"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 2. Grange (cabane, bergerie, baraquement)
+      - match:
+          NATURE: "Grange"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 3. Habitat temporaire (Guyane — carbet, habitation intermittente)
+      - match:
+          NATURE: "Habitat temporaire"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 4. Lieu-dit habite (hameau, groupe d'habitations)
       - match:
           NATURE: "Lieu-dit habité"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 5. Moulin (moulin a eau nomme)
+      - match:
+          NATURE: "Moulin"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 6. Quartier (cite, faubourg, lotissement)
+      - match:
+          NATURE: "Quartier"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 7. Ruines (batiment ou construction en ruines)
+      - match:
+          NATURE: "Ruines"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 8. Catch-all Zone d'habitation (NATURE non reconnue)
+      - match:
+          NATURE: "*"
         set:
           Type: "0x03"
           EndLevel: "4"
@@ -1064,11 +1121,11 @@ rulesets:
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
   # Source FME : 08-TOPONYMIE.fmw
   # Input BDTOPO : Couche unique TOPONYMIE, champs CLASSE, NATURE, GRAPHIE
-  # 10 categories CLASSE traitees, 11 supprimees (gerees par autres rulesets)
+  # 10 categories CLASSE actives, 11 desactivees (doublons avec autres couches)
   # Conditions AND : CLASSE + NATURE (chaque regle doit avoir les deux)
   # Label source : GRAPHIE (FME renomme GRAPHIE→NAME)
   # EndLevel : 2 pour toutes les regles, MPBITLEVEL=22
-  # Total : 162 regles
+  # Total : 162 regles actives (+ 11 categories commentees en fin de bloc)
   # ==========================================================================
   - name: "Toponymie"
     source_layer: "TOPONYMIE"
@@ -2582,3 +2639,235 @@ rulesets:
           Type: "0x00d00"
           EndLevel: "2"
           Label: "${GRAPHIE}"
+
+      # ==================================================================
+      # CATEGORIES TOPONYMIE DESACTIVEES — DOUBLONS AVEC AUTRES COUCHES
+      # ==================================================================
+      # Les 11 categories CLASSE ci-dessous sont volontairement desactivees.
+      # Les geometries ET labels de ces entites sont deja portes par les
+      # couches source dediees (TRONCON_HYDROGRAPHIQUE, SURFACE_HYDROGRAPHIQUE,
+      # DETAIL_HYDROGRAPHIQUE, TRANSPORT_PAR_CABLE, etc.).
+      # Activer ces regles creerait des POI en doublon sur la carte Garmin.
+      #
+      # Categories supprimees (11) :
+      #   - Cours d'eau          → doublons TRONCON_HYDROGRAPHIQUE
+      #   - Detail hydrographique → doublons DETAIL_HYDROGRAPHIQUE
+      #   - Equipement de transport → doublons couches Transport
+      #   - Itineraire autre     → pas de couche source dediee, lineaire
+      #   - Parc ou reserve      → doublons FORET_PUBLIQUE / zones reglementees
+      #   - Plan d'eau           → doublons SURFACE_HYDROGRAPHIQUE
+      #   - Point du reseau      → doublons couches Transport
+      #   - Poste de transformation → doublons LIGNE_ELECTRIQUE
+      #   - Route                → doublons TRONCON_DE_ROUTE
+      #   - Transport par cable  → doublons TRANSPORT_PAR_CABLE
+      #   - Voie ferree          → doublons TRONCON_DE_VOIE_FERREE
+      #
+      # Ref mappings complets : TYP-MAPPING-RULES.md sections 5.27-5.35
+      # Pour reactiver : decommenter les regles ci-dessous.
+      # ==================================================================
+
+      # --- Cat 11 : Cours d'eau (doublons TRONCON_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Cours d'eau"
+      #     NATURE: "*"
+      #   set:
+      #     Type: "0x06512"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+
+      # --- Cat 12 : Detail hydrographique (doublons DETAIL_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Cascade"
+      #   set:
+      #     Type: "0x06508"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Citerne"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Fontaine"
+      #   set:
+      #     Type: "0x06509"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Lavoir"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Marais"
+      #   set:
+      #     Type: "0x06513"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Perte"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Point d'eau"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Résurgence"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Source"
+      #   set:
+      #     Type: "0x06511"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Source captée"
+      #   set:
+      #     Type: "0x06511"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:  # catch-all
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "*"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+
+      # --- Cat 13 : Equipement de transport (doublons couches Transport) ---
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Aérogare"
+      #   set: { Type: "0x02d0b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Aire de repos ou de service"
+      #   set: { Type: "0x02b03", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Carrefour"
+      #   set: { Type: "0x06406", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Parking"
+      #   set: { Type: "0x1100b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Péage"
+      #   set: { Type: "0x02f01", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Port"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Station de métro"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Station de tramway"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "*"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 14 : Itineraire autre ---
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire de randonnée pédestre"
+      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire cyclable"
+      #   set: { Type: "0x1160a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire équestre"
+      #   set: { Type: "0x02d0a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "*"
+      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 15 : Parc ou reserve (doublons FORET_PUBLIQUE / zones reg.) ---
+      # - match:
+      #     CLASSE: "Parc ou réserve"
+      #     NATURE: "*"
+      #   set: { Type: "0x02c06", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 16 : Plan d'eau (doublons SURFACE_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Lac"
+      #   set: { Type: "0x0650d", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Glacier, névé"
+      #   set: { Type: "0x0650a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Retenue"
+      #   set: { Type: "0x0650f", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "*"
+      #   set: { Type: "0x06414", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 17 : Point du reseau (doublons couches Transport) ---
+      # - match:
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "Passage à niveau"
+      #   set: { Type: "0x1160b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "Poteau de balisage de randonnée"
+      #   set: { Type: "0x0660f", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "*"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 18 : Poste de transformation (doublons LIGNE_ELECTRIQUE) ---
+      # - match:
+      #     CLASSE: "Poste de transformation"
+      #     NATURE: "*"
+      #   set: { Type: "0x11506", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 19 : Route (doublons TRONCON_DE_ROUTE) ---
+      # - match:
+      #     CLASSE: "Route"
+      #     NATURE: "*"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 20 : Transport par cable (doublons TRANSPORT_PAR_CABLE) ---
+      # - match:
+      #     CLASSE: "Transport par cable"
+      #     NATURE: "*"
+      #   set: { Type: "0x15501", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 21 : Voie ferree (doublons TRONCON_DE_VOIE_FERREE) ---
+      # - match:
+      #     CLASSE: "Voie ferrée"
+      #     NATURE: "*"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
