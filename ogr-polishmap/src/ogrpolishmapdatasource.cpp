@@ -327,8 +327,8 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
         CPLDebug("OGR_POLISHMAP", "HEADER_TEMPLATE validated: %s", pszHeaderTemplate);
     }
 
-    // Task 1.3: Create file with VSIFOpenL() in mode "w" (overwrites if exists)
-    VSILFILE* fp = VSIFOpenL(pszFilename, "w");
+    // Task 1.3: Create file with VSIFOpenL() in binary mode to preserve CP1252 bytes
+    VSILFILE* fp = VSIFOpenL(pszFilename, "wb");
     if (fp == nullptr) {
         // Task 1.4: Return NULL + CPLError on failure
         CPLError(CE_Failure, CPLE_OpenFailed,

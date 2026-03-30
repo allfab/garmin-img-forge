@@ -58,14 +58,9 @@ pub struct TileResult {
 
 /// Build subfiles from a parsed .mp without assembling into IMG
 pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
-    let charset = if mp.header.codepage == 0 || mp.header.codepage == 65001 {
-        "utf-8"
-    } else if mp.header.codepage == 1252 {
-        "cp1252"
-    } else {
-        "ascii"
-    };
-    let encoding = LabelEncoding::from_charset(charset);
+    // Use UTF-8 (format 10) for label encoding — universally supported by modern viewers.
+    // CP1252 input is converted to Unicode by read_mp_file's CP1252 fallback.
+    let encoding = LabelEncoding::Format10;
 
     // 1. Build LBL — all labels
     let mut lbl_writer = LblWriter::new(encoding);
