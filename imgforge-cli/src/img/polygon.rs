@@ -7,19 +7,19 @@ use super::map_object::MapObject;
 /// A polygon on the map
 #[derive(Debug, Clone)]
 pub struct Polygon {
-    pub type_code: u16,
+    pub type_code: u32,
     pub label_offset: u32,
     pub points: Vec<Coord>,
 }
 
 impl MapObject for Polygon {
-    fn type_code(&self) -> u16 { self.type_code }
+    fn type_code(&self) -> u32 { self.type_code }
     fn label_offset(&self) -> u32 { self.label_offset }
     fn coords(&self) -> &[Coord] { &self.points }
 }
 
 impl Polygon {
-    pub fn new(type_code: u16, points: Vec<Coord>) -> Self {
+    pub fn new(type_code: u32, points: Vec<Coord>) -> Self {
         Self {
             type_code,
             label_offset: 0,
@@ -65,11 +65,85 @@ impl Polygon {
         buf.extend_from_slice(bitstream);
         buf
     }
+
+    /// Write extended polygon record — same format as extended polyline
+    /// Format: type(2B BE) + dx(2B LE) + dy(2B LE) + len_encoded(1-2B) + bitstream + [label(3B)]
+    pub fn write_ext(
+        &self,
+        subdiv_center_lat: i32,
+        subdiv_center_lon: i32,
+        shift: i32,
+        bitstream: &[u8],
+    ) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + bitstream.len());
+
+        let has_label = self.label_offset > 0;
+
+        // Type: 2 bytes big-endian
+        let type_high = ((self.type_code >> 8) & 0xFF) as u8;
+        let mut type_low = (self.type_code & 0x1F) as u8;
+        if has_label {
+            type_low |= 0x20;
+        }
+        buf.push(type_high);
+        buf.push(type_low);
+
+        // First point delta from subdivision center (i16 LE)
+        let first = &self.points[0];
+        let dx = ((first.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
+        let dy = ((first.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
+        buf.extend_from_slice(&dx.to_le_bytes());
+        buf.extend_from_slice(&dy.to_le_bytes());
+
+        // Extended type length encoding:
+        // len < 0x80 → (len << 1) | 1 as single byte
+        // else → (len << 2) | 2 as 2 bytes LE
+        let len = bitstream.len();
+        if len < 0x80 {
+            buf.push(((len << 1) | 1) as u8);
+        } else {
+            let encoded = ((len << 2) | 2) as u16;
+            buf.extend_from_slice(&encoded.to_le_bytes());
+        }
+
+        // Bitstream data
+        buf.extend_from_slice(bitstream);
+
+        // Label AFTER bitstream (extended type convention)
+        if has_label {
+            let lb = self.label_offset.to_le_bytes();
+            buf.push(lb[0]);
+            buf.push(lb[1]);
+            buf.push(lb[2]);
+        }
+
+        buf
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_polygon_ext_write() {
+        let points = vec![
+            Coord::new(0, 0),
+            Coord::new(100, 0),
+            Coord::new(100, 100),
+            Coord::new(0, 100),
+        ];
+        let pg = Polygon::new(0x10f04, points);
+        let bitstream = vec![0x12, 0x34];
+        let buf = pg.write_ext(0, 0, 0, &bitstream);
+
+        // type(2) + dx(2) + dy(2) + len(1) + bs(2) = 9
+        assert_eq!(buf.len(), 9);
+        assert_eq!(buf[0], 0x0f); // type high: (0x10f04 >> 8) & 0xFF = 0x0f
+        assert_eq!(buf[1], 0x04); // type low: 0x10f04 & 0x1F = 0x04, no label
+        // len encoding: (2 << 1) | 1 = 5
+        assert_eq!(buf[6], 5);
+    }
 
     #[test]
     fn test_polygon_write() {

@@ -238,17 +238,9 @@ fn parse_polygon_field(pg: &mut MpPolygon, key: &str, value: &str, line_num: usi
     Ok(())
 }
 
-fn parse_type(value: &str) -> u16 {
+fn parse_type(value: &str) -> u32 {
     if value.starts_with("0x") || value.starts_with("0X") {
-        // Parse as u32 first to detect extended types that overflow u16
-        let val = u32::from_str_radix(&value[2..], 16).unwrap_or(0);
-        if val > u16::MAX as u32 {
-            // Extended type that doesn't fit in u16 — preserve as > 0x100
-            // so the extended-type filter can exclude it
-            0xFFFF
-        } else {
-            val as u16
-        }
+        u32::from_str_radix(&value[2..], 16).unwrap_or(0)
     } else {
         value.parse().unwrap_or(0)
     }
@@ -327,8 +319,15 @@ Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
 
     #[test]
     fn test_parse_type_hex() {
-        assert_eq!(parse_type("0x2C00"), 0x2C00);
-        assert_eq!(parse_type("0x01"), 1);
+        assert_eq!(parse_type("0x2C00"), 0x2C00u32);
+        assert_eq!(parse_type("0x01"), 1u32);
+    }
+
+    #[test]
+    fn test_parse_type_extended() {
+        assert_eq!(parse_type("0x10f04"), 0x10f04u32);
+        assert_eq!(parse_type("0x2C04"), 0x2C04u32);
+        assert_eq!(parse_type("0x1101C"), 0x1101Cu32);
     }
 
     #[test]

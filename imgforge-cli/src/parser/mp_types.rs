@@ -29,7 +29,7 @@ pub struct MpHeader {
 /// [POI] section
 #[derive(Debug, Clone)]
 pub struct MpPoint {
-    pub type_code: u16,
+    pub type_code: u32,
     pub label: String,
     pub coord: Coord,
     pub end_level: Option<u8>,
@@ -42,7 +42,7 @@ pub struct MpPoint {
 /// [POLYLINE] section
 #[derive(Debug, Clone)]
 pub struct MpPolyline {
-    pub type_code: u16,
+    pub type_code: u32,
     pub label: String,
     pub points: Vec<Coord>,
     pub end_level: Option<u8>,
@@ -54,7 +54,7 @@ pub struct MpPolyline {
 /// [POLYGON] section
 #[derive(Debug, Clone)]
 pub struct MpPolygon {
-    pub type_code: u16,
+    pub type_code: u32,
     pub label: String,
     pub points: Vec<Coord>,
     pub end_level: Option<u8>,

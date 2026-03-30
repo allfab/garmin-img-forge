@@ -1,7 +1,10 @@
 // TREFile — TRE subfile, faithful to mkgmap TREFile.java + TREHeader.java
 
 use super::common_header::{self, CommonHeader};
-use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
+use super::overview::{
+    PointOverview, PolylineOverview, PolygonOverview,
+    ExtPointOverview, ExtPolylineOverview, ExtPolygonOverview,
+};
 use super::subdivision::Subdivision;
 use super::zoom::Zoom;
 
@@ -28,6 +31,12 @@ pub struct TreWriter {
     pub copyright_offsets: Vec<u32>,
     /// Last RGN position (relative to body) — written as 4-byte terminator after subdivisions
     pub last_rgn_pos: u32,
+    /// Extended overviews
+    pub ext_point_overviews: Vec<ExtPointOverview>,
+    pub ext_polyline_overviews: Vec<ExtPolylineOverview>,
+    pub ext_polygon_overviews: Vec<ExtPolygonOverview>,
+    /// Extended type offsets data (built externally)
+    pub ext_type_offsets_data: Vec<u8>,
 }
 
 impl TreWriter {
@@ -45,6 +54,10 @@ impl TreWriter {
             display_priority: 0x19,
             copyright_offsets: Vec::new(),
             last_rgn_pos: 0,
+            ext_point_overviews: Vec::new(),
+            ext_polyline_overviews: Vec::new(),
+            ext_polygon_overviews: Vec::new(),
+            ext_type_offsets_data: Vec::new(),
         }
     }
 
@@ -56,8 +69,11 @@ impl TreWriter {
     }
 
     /// Build the complete TRE subfile bytes
+    /// Layout faithful to mkgmap TREHeader.java:writeFileHeader
     pub fn build(&self) -> Vec<u8> {
         let mut buf = Vec::new();
+
+        let has_ext = !self.ext_type_offsets_data.is_empty();
 
         // Build sections first to know their sizes
         let map_levels_data = self.build_map_levels();
@@ -66,52 +82,108 @@ impl TreWriter {
         let polyline_ov_data = self.build_polyline_overviews();
         let polygon_ov_data = self.build_polygon_overviews();
         let point_ov_data = self.build_point_overviews();
+        let ext_type_offsets_data = &self.ext_type_offsets_data;
+        let ext_type_overviews_data = self.build_ext_type_overviews();
 
-        // --- Header (188 bytes) ---
+        // --- Header (188 bytes) — mkgmap TREHeader.java layout ---
         let common = CommonHeader::new(TRE_HEADER_LEN, "GARMIN TRE");
-        common.write(&mut buf);
+        common.write(&mut buf); // 21 bytes (0-20)
 
-        // Bounds: north(3) + east(3) + south(3) + west(3) = 12 bytes at offset 21
+        // Bounds: north(3) + east(3) + south(3) + west(3) = 12 bytes @21-32
         common_header::write_i24(&mut buf, self.north);
         common_header::write_i24(&mut buf, self.east);
         common_header::write_i24(&mut buf, self.south);
         common_header::write_i24(&mut buf, self.west);
 
-        // Map levels section: offset(4) + size(4) at offset 33
+        // Map levels section: offset(4) + size(4) @33-40
         let mut current_offset = TRE_HEADER_LEN as u32;
         common_header::write_section(&mut buf, current_offset, map_levels_data.len() as u32);
         current_offset += map_levels_data.len() as u32;
 
-        // Subdivisions section at offset 41
+        // Subdivisions section: offset(4) + size(4) @41-48
         common_header::write_section(&mut buf, current_offset, subdivisions_data.len() as u32);
         current_offset += subdivisions_data.len() as u32;
 
-        // Copyright section at offset 49
+        // Copyright section: offset(4) + size(4) + itemSize(2) @49-58
         common_header::write_section(&mut buf, current_offset, copyright_data.len() as u32);
+        buf.extend_from_slice(&3u16.to_le_bytes()); // itemSize = 3 bytes per copyright entry
         current_offset += copyright_data.len() as u32;
 
-        // POI display flags
+        // Reserved @59-62
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // POI display flags @63
         buf.push(0x00);
 
-        // Display priority (4 bytes)
-        buf.extend_from_slice(&self.display_priority.to_le_bytes());
+        // Display priority @64-66 (3 bytes, mkgmap put3u)
+        common_header::write_u24(&mut buf, self.display_priority);
 
-        // Polyline overview section at offset 74
-        common_header::pad_to(&mut buf, 74);
+        // Custom/standard marker @67-70 (mkgmap: 0x170401 for POI display, or 0x110301)
+        buf.extend_from_slice(&0x00u32.to_le_bytes());
+
+        // Reserved @71-72 (2 bytes, value 1 in mkgmap)
+        buf.extend_from_slice(&1u16.to_le_bytes());
+
+        // Reserved @73 (1 byte)
+        buf.push(0x00);
+
+        // Polyline overview: offset(4) + size(4) + itemSize(2) @74-83
+        assert_eq!(buf.len(), 74);
         common_header::write_section(&mut buf, current_offset, polyline_ov_data.len() as u32);
         buf.extend_from_slice(&2u16.to_le_bytes());
         current_offset += polyline_ov_data.len() as u32;
 
-        // Polygon overview section at offset 84
-        common_header::pad_to(&mut buf, 84);
+        // Reserved @84-87
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // Polygon overview: offset(4) + size(4) + itemSize(2) @88-97
+        assert_eq!(buf.len(), 88);
         common_header::write_section(&mut buf, current_offset, polygon_ov_data.len() as u32);
         buf.extend_from_slice(&2u16.to_le_bytes());
         current_offset += polygon_ov_data.len() as u32;
 
-        // Point overview section at offset 94
-        common_header::pad_to(&mut buf, 94);
+        // Reserved @98-101
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // Point overview: offset(4) + size(4) + itemSize(2) @102-111
+        assert_eq!(buf.len(), 102);
         common_header::write_section(&mut buf, current_offset, point_ov_data.len() as u32);
         buf.extend_from_slice(&3u16.to_le_bytes());
+        current_offset += point_ov_data.len() as u32;
+
+        // Reserved @112-115
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // MapID @116-119
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // Reserved @120-123
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // Extended type sections @124+
+        if has_ext {
+            // extTypeOffsets: offset(4) + size(4) + itemSize(2) @124-133
+            assert_eq!(buf.len(), 124);
+            common_header::write_section(&mut buf, current_offset, ext_type_offsets_data.len() as u32);
+            buf.extend_from_slice(&13u16.to_le_bytes());
+            current_offset += ext_type_offsets_data.len() as u32;
+
+            // Magic 0x0607 @134-137 (4 bytes, mkgmap put4)
+            buf.extend_from_slice(&0x0607u32.to_le_bytes());
+
+            // extTypeOverviews: offset(4) + size(4) + itemSize(2) @138-147
+            assert_eq!(buf.len(), 138);
+            common_header::write_section(&mut buf, current_offset, ext_type_overviews_data.len() as u32);
+            buf.extend_from_slice(&4u16.to_le_bytes());
+
+            // NumExtType counts @148-153
+            let num_ext_lines = self.ext_polyline_overviews.len() as u16;
+            let num_ext_areas = self.ext_polygon_overviews.len() as u16;
+            let num_ext_points = self.ext_point_overviews.len() as u16;
+            buf.extend_from_slice(&num_ext_lines.to_le_bytes());
+            buf.extend_from_slice(&num_ext_areas.to_le_bytes());
+            buf.extend_from_slice(&num_ext_points.to_le_bytes());
+        }
 
         // Pad to exactly TRE_HEADER_LEN
         common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
@@ -123,6 +195,11 @@ impl TreWriter {
         buf.extend_from_slice(&polyline_ov_data);
         buf.extend_from_slice(&polygon_ov_data);
         buf.extend_from_slice(&point_ov_data);
+
+        if has_ext {
+            buf.extend_from_slice(ext_type_offsets_data);
+            buf.extend_from_slice(&ext_type_overviews_data);
+        }
 
         buf
     }
@@ -177,6 +254,33 @@ impl TreWriter {
         let mut sorted = self.point_overviews.clone();
         sorted.sort();
         sorted.iter().flat_map(|o| o.write()).collect()
+    }
+
+    fn build_ext_type_overviews(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+
+        let mut sorted_points = self.ext_point_overviews.clone();
+        sorted_points.sort();
+        sorted_points.dedup();
+        for o in &sorted_points {
+            data.extend_from_slice(&o.write());
+        }
+
+        let mut sorted_lines = self.ext_polyline_overviews.clone();
+        sorted_lines.sort();
+        sorted_lines.dedup();
+        for o in &sorted_lines {
+            data.extend_from_slice(&o.write());
+        }
+
+        let mut sorted_polys = self.ext_polygon_overviews.clone();
+        sorted_polys.sort();
+        sorted_polys.dedup();
+        for o in &sorted_polys {
+            data.extend_from_slice(&o.write());
+        }
+
+        data
     }
 }
 

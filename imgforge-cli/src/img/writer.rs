@@ -14,7 +14,10 @@ use super::lbl::LblWriter;
 use super::line_preparer;
 use super::net::{NetWriter, RoadDef};
 use super::nod::NodWriter;
-use super::overview::{PointOverview, PolylineOverview, PolygonOverview};
+use super::overview::{
+    PointOverview, PolylineOverview, PolygonOverview,
+    ExtPointOverview, ExtPolylineOverview, ExtPolygonOverview,
+};
 use super::point::Point;
 use super::polygon::Polygon;
 use super::polyline::Polyline;
@@ -92,7 +95,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
 
     // 4. Build multi-level subdivision hierarchy + encode RGN
     let mut rgn = RgnWriter::new();
-    let (all_subdivisions, tre_levels) = build_multilevel_hierarchy(
+    let (all_subdivisions, tre_levels, ext_type_offsets_data) = build_multilevel_hierarchy(
         mp, &bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
     );
 
@@ -108,15 +111,27 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body
     tre.last_rgn_pos = rgn.position();
 
-    // Build overviews (deduplicated, standard types only)
-    for mp_point in mp.points.iter().filter(|p| p.type_code < 0x100) {
-        tre.point_overviews.push(PointOverview::new(mp_point.type_code as u8, 0, 0));
+    // Build overviews (deduplicated)
+    for mp_point in &mp.points {
+        if mp_point.type_code < 0x100 {
+            tre.point_overviews.push(PointOverview::new(mp_point.type_code as u8, 0, 0));
+        } else {
+            tre.ext_point_overviews.push(ExtPointOverview::from_type_code(mp_point.type_code, 0));
+        }
     }
-    for mp_line in mp.polylines.iter().filter(|l| l.type_code < 0x100) {
-        tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
+    for mp_line in &mp.polylines {
+        if mp_line.type_code < 0x100 {
+            tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
+        } else {
+            tre.ext_polyline_overviews.push(ExtPolylineOverview::from_type_code(mp_line.type_code, 0));
+        }
     }
-    for mp_poly in mp.polygons.iter().filter(|p| p.type_code < 0x100) {
-        tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
+    for mp_poly in &mp.polygons {
+        if mp_poly.type_code < 0x100 {
+            tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
+        } else {
+            tre.ext_polygon_overviews.push(ExtPolygonOverview::from_type_code(mp_poly.type_code, 0));
+        }
     }
     tre.polyline_overviews.sort();
     tre.polyline_overviews.dedup();
@@ -124,6 +139,15 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     tre.polygon_overviews.dedup();
     tre.point_overviews.sort();
     tre.point_overviews.dedup();
+    tre.ext_polyline_overviews.sort();
+    tre.ext_polyline_overviews.dedup();
+    tre.ext_polygon_overviews.sort();
+    tre.ext_polygon_overviews.dedup();
+    tre.ext_point_overviews.sort();
+    tre.ext_point_overviews.dedup();
+
+    // Set extended type offsets data
+    tre.ext_type_offsets_data = ext_type_offsets_data;
 
     // 6. Build NET + NOD if routing data present
     let (net_data, nod_data) = build_routing(mp, &line_labels);
@@ -154,7 +178,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
 /// Uses pickArea distribution, Sutherland-Hodgman polygon clipping,
 /// recursive split (addAreasToList), and per-level feature filtering by EndLevel.
 ///
-/// Returns (subdivisions ordered for TRE, zoom levels for TRE).
+/// Returns (subdivisions ordered for TRE, zoom levels for TRE, ext_type_offsets_data).
 fn build_multilevel_hierarchy(
     mp: &MpFile,
     bounds: &Area,
@@ -163,9 +187,9 @@ fn build_multilevel_hierarchy(
     line_labels: &[u32],
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
-) -> (Vec<Subdivision>, Vec<Zoom>) {
+) -> (Vec<Subdivision>, Vec<Zoom>, Vec<u8>) {
     if levels.is_empty() {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     }
 
     let num_levels = levels.len();
@@ -187,6 +211,12 @@ fn build_multilevel_hierarchy(
     let mut all_subdivisions: Vec<Subdivision> = vec![topdiv];
     let mut subdiv_counter: u32 = 2;
     let mut parent_areas: Vec<(Area, u32)> = vec![(*bounds, 1)];
+
+    // Track ext type offsets per subdivision for TRE extTypeOffsets section
+    // (ext_areas_before, ext_lines_before, ext_points_before) per subdivision number
+    let mut ext_offsets: Vec<(u32, u32, u32, u32, u32, u32)> = Vec::new();
+    // Topdiv has no extended data
+    ext_offsets.push((0, 0, 0, 0, 0, 0));
 
     // ── Process each level from most zoomed-out to most detailed ──
     // Skip the highest level (it's the inherited topdiv level)
@@ -228,8 +258,20 @@ fn build_multilevel_hierarchy(
                 subdiv.parent = *parent_num as u16;
                 subdiv.is_last = i == areas.len() - 1;
 
+                // Capture ext positions before encoding
+                let ext_areas_before = rgn.ext_areas_position();
+                let ext_lines_before = rgn.ext_lines_position();
+                let ext_points_before = rgn.ext_points_position();
+
                 let (pts_data, lines_data, polys_data) =
-                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels);
+                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn);
+
+                // Capture ext positions after encoding
+                let ext_areas_after = rgn.ext_areas_position();
+                let ext_lines_after = rgn.ext_lines_position();
+                let ext_points_after = rgn.ext_points_position();
+                ext_offsets.push((ext_areas_before, ext_lines_before, ext_points_before,
+                                  ext_areas_after, ext_lines_after, ext_points_after));
 
                 if !pts_data.is_empty() { subdiv.flags |= subdivision::HAS_POINTS; }
                 if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
@@ -285,7 +327,37 @@ fn build_multilevel_hierarchy(
         }
     }
 
-    (all_subdivisions, tre_levels_build)
+    // Build extTypeOffsets data if we have extended data
+    let ext_type_offsets_data = if rgn.has_ext_data() {
+        let mut data = Vec::new();
+        // One 13-byte record per subdivision
+        for (_i, offsets) in ext_offsets.iter().enumerate() {
+            let (areas_before, lines_before, points_before,
+                 areas_after, lines_after, points_after) = *offsets;
+
+            // Offset in each extended section
+            data.extend_from_slice(&areas_before.to_le_bytes());
+            data.extend_from_slice(&lines_before.to_le_bytes());
+            data.extend_from_slice(&points_before.to_le_bytes());
+
+            // kinds = number of non-empty sections for this subdivision
+            let mut kinds: u8 = 0;
+            if areas_after > areas_before { kinds += 1; }
+            if lines_after > lines_before { kinds += 1; }
+            if points_after > points_before { kinds += 1; }
+            data.push(kinds);
+        }
+        // Final record: total sizes, kinds = 0
+        data.extend_from_slice(&rgn.ext_areas_size().to_le_bytes());
+        data.extend_from_slice(&rgn.ext_lines_size().to_le_bytes());
+        data.extend_from_slice(&rgn.ext_points_size().to_le_bytes());
+        data.push(0); // kinds = 0 for final record
+        data
+    } else {
+        Vec::new()
+    };
+
+    (all_subdivisions, tre_levels_build, ext_type_offsets_data)
 }
 
 // ── Feature filtering per level ────────────────────────────────────────────
@@ -313,23 +385,19 @@ fn filter_features_for_level(
         parent_bounds.max_lon() + 1,
     );
 
-    // Skip extended types (>= 0x100) — they require a separate RGN section not yet implemented
     let points: Vec<SplitPoint> = mp.points.iter().enumerate()
-        .filter(|(_, p)| p.type_code < 0x100)
         .filter(|(_, p)| p.end_level.unwrap_or(0) >= level)
         .filter(|(_, p)| expanded.contains_coord(&p.coord))
         .map(|(i, p)| SplitPoint { mp_index: i, location: p.coord })
         .collect();
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
-        .filter(|(_, l)| l.type_code < 0x100)
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
         .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
         .map(|(i, l)| SplitLine { mp_index: i, points: l.points.clone() })
         .collect();
 
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
-        .filter(|(_, s)| s.type_code < 0x100)
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
         .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
         .map(|(i, s)| SplitShape { mp_index: i, points: s.points.clone() })
@@ -341,6 +409,8 @@ fn filter_features_for_level(
 // ── RGN encoding per subdivision ───────────────────────────────────────────
 
 /// Encode features from a MapArea into RGN binary data for one subdivision.
+/// Standard types (< 0x100) go into the returned tuple.
+/// Extended types (≥ 0x100) are written directly into the RGN extended buffers.
 fn encode_subdivision_rgn(
     mp: &MpFile,
     area: &MapArea,
@@ -349,6 +419,7 @@ fn encode_subdivision_rgn(
     point_labels: &[u32],
     line_labels: &[u32],
     poly_labels: &[u32],
+    rgn: &mut RgnWriter,
 ) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // Points
     let mut points_data = Vec::new();
@@ -356,7 +427,12 @@ fn encode_subdivision_rgn(
         let mp_point = &mp.points[split_pt.mp_index];
         let mut pt = Point::new(mp_point.type_code, split_pt.location);
         pt.label_offset = point_labels[split_pt.mp_index];
-        points_data.extend_from_slice(&pt.write(subdiv.center_lat, subdiv.center_lon, shift));
+
+        if mp_point.type_code >= 0x100 {
+            rgn.write_ext_point(&pt.write_ext(subdiv.center_lat, subdiv.center_lon, shift));
+        } else {
+            points_data.extend_from_slice(&pt.write(subdiv.center_lat, subdiv.center_lon, shift));
+        }
     }
 
     // Polylines
@@ -368,10 +444,17 @@ fn encode_subdivision_rgn(
         pl.label_offset = line_labels[split_line.mp_index];
         pl.direction = mp_line.direction;
         let deltas = compute_deltas(&split_line.points, subdiv);
-        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
-            polylines_data.extend_from_slice(
-                &pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, false),
-            );
+        let is_ext = mp_line.type_code >= 0x100;
+        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
+            if is_ext {
+                rgn.write_ext_polyline(
+                    &pl.write_ext(subdiv.center_lat, subdiv.center_lon, shift, &bitstream),
+                );
+            } else {
+                polylines_data.extend_from_slice(
+                    &pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, false),
+                );
+            }
         }
     }
 
@@ -383,10 +466,17 @@ fn encode_subdivision_rgn(
         let mut pg = Polygon::new(mp_poly.type_code, split_shape.points.clone());
         pg.label_offset = poly_labels[split_shape.mp_index];
         let deltas = compute_deltas(&split_shape.points, subdiv);
-        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
-            polygons_data.extend_from_slice(
-                &pg.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream),
-            );
+        let is_ext = mp_poly.type_code >= 0x100;
+        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
+            if is_ext {
+                rgn.write_ext_polygon(
+                    &pg.write_ext(subdiv.center_lat, subdiv.center_lon, shift, &bitstream),
+                );
+            } else {
+                polygons_data.extend_from_slice(
+                    &pg.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream),
+                );
+            }
         }
     }
 

@@ -52,6 +52,72 @@ impl PolygonOverview {
     }
 }
 
+/// Extended point overview: 4 bytes (type_high + max_level + type_low + 0x00)
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExtPointOverview {
+    pub type_high: u8,
+    pub max_level: u8,
+    pub type_low: u8,
+}
+
+impl ExtPointOverview {
+    pub fn from_type_code(type_code: u32, max_level: u8) -> Self {
+        Self {
+            type_high: ((type_code >> 8) & 0xFF) as u8,
+            max_level,
+            type_low: (type_code & 0xFF) as u8,
+        }
+    }
+
+    pub fn write(&self) -> [u8; 4] {
+        [self.type_high, self.max_level, self.type_low, 0x00]
+    }
+}
+
+/// Extended polyline overview: 4 bytes (type_high + max_level + type_low + 0x00)
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExtPolylineOverview {
+    pub type_high: u8,
+    pub max_level: u8,
+    pub type_low: u8,
+}
+
+impl ExtPolylineOverview {
+    pub fn from_type_code(type_code: u32, max_level: u8) -> Self {
+        Self {
+            type_high: ((type_code >> 8) & 0xFF) as u8,
+            max_level,
+            type_low: (type_code & 0xFF) as u8,
+        }
+    }
+
+    pub fn write(&self) -> [u8; 4] {
+        [self.type_high, self.max_level, self.type_low, 0x00]
+    }
+}
+
+/// Extended polygon overview: 4 bytes (type_high + max_level + type_low + 0x00)
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExtPolygonOverview {
+    pub type_high: u8,
+    pub max_level: u8,
+    pub type_low: u8,
+}
+
+impl ExtPolygonOverview {
+    pub fn from_type_code(type_code: u32, max_level: u8) -> Self {
+        Self {
+            type_high: ((type_code >> 8) & 0xFF) as u8,
+            max_level,
+            type_low: (type_code & 0xFF) as u8,
+        }
+    }
+
+    pub fn write(&self) -> [u8; 4] {
+        [self.type_high, self.max_level, self.type_low, 0x00]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +138,18 @@ mod tests {
     fn test_polygon_overview_2_bytes() {
         let go = PolygonOverview::new(0x03, 1);
         assert_eq!(go.write(), [0x03, 1]);
+    }
+
+    #[test]
+    fn test_ext_polygon_overview_4_bytes() {
+        let ov = ExtPolygonOverview::from_type_code(0x10f04, 0);
+        assert_eq!(ov.write(), [0x0f, 0, 0x04, 0x00]);
+    }
+
+    #[test]
+    fn test_ext_point_overview_4_bytes() {
+        let ov = ExtPointOverview::from_type_code(0x2C04, 0);
+        assert_eq!(ov.write(), [0x2C, 0, 0x04, 0x00]);
     }
 
     #[test]

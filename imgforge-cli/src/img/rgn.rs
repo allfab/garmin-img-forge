@@ -6,14 +6,23 @@ pub const RGN_HEADER_LEN: u16 = 125;
 
 /// RGN file writer
 pub struct RgnWriter {
-    /// RGN data (per-subdivision records)
+    /// RGN data (per-subdivision records, standard types)
     data: Vec<u8>,
+    /// Extended areas data (polygons with type ≥ 0x100)
+    ext_areas_data: Vec<u8>,
+    /// Extended lines data (polylines with type ≥ 0x100)
+    ext_lines_data: Vec<u8>,
+    /// Extended points data (points with type ≥ 0x100)
+    ext_points_data: Vec<u8>,
 }
 
 impl RgnWriter {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
+            ext_areas_data: Vec::new(),
+            ext_lines_data: Vec::new(),
+            ext_points_data: Vec::new(),
         }
     }
 
@@ -94,16 +103,104 @@ impl RgnWriter {
         let common = CommonHeader::new(RGN_HEADER_LEN, "GARMIN RGN");
         common.write(&mut buf);
 
-        // Data section: offset(4) + size(4)
+        // Data section: offset(4) + size(4) at position 21
+        // mkgmap: data section covers ONLY standard data, extended sections are separate
         common_header::write_section(&mut buf, RGN_HEADER_LEN as u32, self.data.len() as u32);
 
-        // Pad to 125 bytes
+        // Extended type sections in header (positions 29-124)
+        // Extended areas: offset(4) + size(4) at position 29
+        let ext_areas_offset = if self.ext_areas_data.is_empty() {
+            0u32
+        } else {
+            RGN_HEADER_LEN as u32 + self.data.len() as u32
+        };
+        common_header::pad_to(&mut buf, 29);
+        common_header::write_section(&mut buf, ext_areas_offset, self.ext_areas_data.len() as u32);
+
+        // Reserved bytes 37-56 (zeros)
+        common_header::pad_to(&mut buf, 57);
+
+        // Extended lines: offset(4) + size(4) at position 57
+        let ext_lines_offset = if self.ext_lines_data.is_empty() {
+            0u32
+        } else {
+            RGN_HEADER_LEN as u32 + self.data.len() as u32 + self.ext_areas_data.len() as u32
+        };
+        common_header::write_section(&mut buf, ext_lines_offset, self.ext_lines_data.len() as u32);
+
+        // Reserved bytes 65-84 (zeros)
+        common_header::pad_to(&mut buf, 85);
+
+        // Extended points: offset(4) + size(4) at position 85
+        let ext_points_offset = if self.ext_points_data.is_empty() {
+            0u32
+        } else {
+            RGN_HEADER_LEN as u32 + self.data.len() as u32
+                + self.ext_areas_data.len() as u32 + self.ext_lines_data.len() as u32
+        };
+        common_header::write_section(&mut buf, ext_points_offset, self.ext_points_data.len() as u32);
+
+        // Reserved bytes 93-124 (zeros)
         common_header::pad_to(&mut buf, RGN_HEADER_LEN as usize);
 
-        // Append RGN data
+        // Append standard RGN data
         buf.extend_from_slice(&self.data);
 
+        // Append extended sections
+        buf.extend_from_slice(&self.ext_areas_data);
+        buf.extend_from_slice(&self.ext_lines_data);
+        buf.extend_from_slice(&self.ext_points_data);
+
         buf
+    }
+
+    /// Current offset in extended areas buffer
+    pub fn ext_areas_position(&self) -> u32 {
+        self.ext_areas_data.len() as u32
+    }
+
+    /// Current offset in extended lines buffer
+    pub fn ext_lines_position(&self) -> u32 {
+        self.ext_lines_data.len() as u32
+    }
+
+    /// Current offset in extended points buffer
+    pub fn ext_points_position(&self) -> u32 {
+        self.ext_points_data.len() as u32
+    }
+
+    /// Write extended polygon data
+    pub fn write_ext_polygon(&mut self, data: &[u8]) {
+        self.ext_areas_data.extend_from_slice(data);
+    }
+
+    /// Write extended polyline data
+    pub fn write_ext_polyline(&mut self, data: &[u8]) {
+        self.ext_lines_data.extend_from_slice(data);
+    }
+
+    /// Write extended point data
+    pub fn write_ext_point(&mut self, data: &[u8]) {
+        self.ext_points_data.extend_from_slice(data);
+    }
+
+    /// Whether any extended data exists
+    pub fn has_ext_data(&self) -> bool {
+        !self.ext_areas_data.is_empty()
+            || !self.ext_lines_data.is_empty()
+            || !self.ext_points_data.is_empty()
+    }
+
+    pub fn ext_areas_size(&self) -> u32 {
+        self.ext_areas_data.len() as u32
+    }
+
+    pub fn ext_lines_size(&self) -> u32 {
+        self.ext_lines_data.len() as u32
+    }
+
+    pub fn ext_points_size(&self) -> u32 {
+        self.ext_points_data.len() as u32
     }
 
     pub fn data_size(&self) -> usize {

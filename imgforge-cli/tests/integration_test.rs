@@ -413,6 +413,112 @@ fn test_multi_tile_gmapsupp_has_subfiles() {
 }
 
 // ============================================================================
+// 12.5 — Tests intégration types étendus
+// ============================================================================
+
+#[test]
+fn test_extended_types_compile() {
+    let img = compile_fixture("extended_types.mp");
+    assert!(img.len() > 512, "Extended types IMG too small");
+    assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+    assert_eq!(img[0x1FE], 0x55);
+    assert_eq!(img[0x1FF], 0xAA);
+}
+
+#[test]
+fn test_extended_types_rgn_has_ext_sections() {
+    let img = compile_fixture("extended_types.mp");
+    if let Some((offset, size)) = find_subfile(&img, "RGN") {
+        let rgn = &img[offset..offset + size];
+
+        // RGN header: standard data at 21-28
+        let data_offset = read_u32(rgn, 21);
+        let data_size = read_u32(rgn, 25);
+        assert_eq!(data_offset, 125, "RGN data should start after 125B header");
+        assert!(data_size > 0, "RGN standard data should not be empty");
+
+        // Extended areas at position 29-36
+        let ext_areas_offset = read_u32(rgn, 29);
+        let ext_areas_size = read_u32(rgn, 33);
+        assert!(ext_areas_offset > 0, "Extended areas offset should be non-zero (has polygon 0x10f04)");
+        assert!(ext_areas_size > 0, "Extended areas size should be non-zero");
+
+        // Extended points at position 85-92
+        let ext_points_offset = read_u32(rgn, 85);
+        let ext_points_size = read_u32(rgn, 89);
+        assert!(ext_points_offset > 0, "Extended points offset should be non-zero (has POI 0x2C04)");
+        assert!(ext_points_size > 0, "Extended points size should be non-zero");
+    }
+}
+
+#[test]
+fn test_extended_types_tre_has_ext_overviews() {
+    let img = compile_fixture("extended_types.mp");
+    if let Some((offset, size)) = find_subfile(&img, "TRE") {
+        let tre = &img[offset..offset + size];
+        let hlen = read_u16(tre, 0);
+        assert_eq!(hlen, 188, "TRE header should be 188 bytes");
+
+        // extTypeOffsets at position 124-133 (mkgmap TREHeader layout)
+        let ext_offsets_offset = read_u32(tre, 124);
+        let ext_offsets_size = read_u32(tre, 128);
+        assert!(ext_offsets_offset > 0, "extTypeOffsets offset should be non-zero");
+        assert!(ext_offsets_size > 0, "extTypeOffsets should have data");
+
+        // Record size should be 13
+        let record_size = read_u16(tre, 132);
+        assert_eq!(record_size, 13, "extTypeOffsets record size should be 13");
+
+        // Magic 0x0607 at position 134-137
+        let magic = read_u32(tre, 134);
+        assert_eq!(magic, 0x0607, "Extended types magic should be 0x0607");
+
+        // extTypeOverviews at position 138-147
+        let ext_ov_offset = read_u32(tre, 138);
+        let ext_ov_size = read_u32(tre, 142);
+        assert!(ext_ov_offset > 0, "extTypeOverviews offset should be non-zero");
+        assert!(ext_ov_size > 0, "extTypeOverviews should have data");
+
+        // Record size should be 4
+        let ov_record_size = read_u16(tre, 146);
+        assert_eq!(ov_record_size, 4, "extTypeOverviews record size should be 4");
+    }
+}
+
+#[test]
+fn test_extended_types_parser_preserves_large_types() {
+    let content = load_fixture("extended_types.mp");
+    let mp = parser::parse_mp(&content).unwrap();
+
+    // 0x1101C should not be truncated
+    let large_poi = mp.points.iter().find(|p| p.label == "Large Type POI").unwrap();
+    assert_eq!(large_poi.type_code, 0x1101C, "Type 0x1101C must be preserved as u32");
+
+    // 0x2C04 should be preserved
+    let ext_poi = mp.points.iter().find(|p| p.label == "Extended POI").unwrap();
+    assert_eq!(ext_poi.type_code, 0x2C04);
+
+    // 0x10f04 should be preserved
+    let ext_poly = mp.polygons.iter().find(|p| p.label == "Extended Building").unwrap();
+    assert_eq!(ext_poly.type_code, 0x10f04);
+}
+
+#[test]
+fn test_extended_types_nonregression_fixtures() {
+    // All existing fixtures must still compile correctly
+    for fixture in &["minimal.mp", "routing.mp", "labels_accented.mp", "tile_a.mp", "tile_b.mp"] {
+        let content = load_fixture(fixture);
+        let mp = parser::parse_mp(&content)
+            .unwrap_or_else(|e| panic!("Parse failed for {}: {}", fixture, e));
+        let img = writer::build_img(&mp)
+            .unwrap_or_else(|e| panic!("Build failed for {}: {}", fixture, e));
+
+        assert!(img.len() > 512, "{} produced IMG < 512 bytes", fixture);
+        assert_eq!(&img[0x10..0x17], b"DSKIMG\0", "{} missing DSKIMG", fixture);
+    }
+}
+
+// ============================================================================
 // Parse → Compile round-trip sanity checks
 // ============================================================================
 
