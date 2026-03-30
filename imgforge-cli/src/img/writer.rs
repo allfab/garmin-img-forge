@@ -58,9 +58,14 @@ pub struct TileResult {
 
 /// Build subfiles from a parsed .mp without assembling into IMG
 pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
-    // Use UTF-8 (format 10) for label encoding — universally supported by modern viewers.
-    // CP1252 input is converted to Unicode by read_mp_file's CP1252 fallback.
-    let encoding = LabelEncoding::Format10;
+    // Labels are read as Unicode (UTF-8 or CP1252 fallback in read_mp_file).
+    // Use UTF-8 (format 10) for output — universally supported by modern viewers
+    // and preserves all characters including accented ones.
+    let encoding = if mp.header.codepage == 0 {
+        LabelEncoding::Format6  // ASCII-only maps
+    } else {
+        LabelEncoding::Format10 // UTF-8 for CP1252, UTF-8, and all other codepages
+    };
 
     // 1. Build LBL — all labels
     let mut lbl_writer = LblWriter::new(encoding);
@@ -620,6 +625,24 @@ Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
         assert_eq!(img[0x1FE], 0x55);
         assert_eq!(img[0x1FF], 0xAA);
         assert!(img.len() > 512);
+    }
+
+    #[test]
+    fn test_build_accented_labels_utf8() {
+        let content = "[IMG ID]\nID=99990001\nName=Test Accents\nCodePage=1252\nLevels=24\n[END-IMG ID]\n[POI]\nType=0x2C00\nLabel=Ch\u{00E2}teau Fort\nData0=(48.57,7.75)\n[END]\n[POLYGON]\nType=0x03\nLabel=For\u{00EA}t de Ch\u{00EA}nes\nData0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)\n[END]\n";
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+
+        // LBL format should be 10 (UTF-8) for codepage 1252
+        let lbl = &result.lbl;
+        assert_eq!(lbl[30], 10, "LBL format should be 10 (UTF-8)");
+
+        // Labels should contain UTF-8 encoded accented characters
+        let label_off = u32::from_le_bytes([lbl[21], lbl[22], lbl[23], lbl[24]]) as usize;
+        let label_data = &lbl[label_off..];
+        // "â" in UTF-8 = C3 A2, "ê" = C3 AA
+        assert!(label_data.windows(2).any(|w| w == [0xC3, 0xA2]), "Should contain â in UTF-8");
+        assert!(label_data.windows(2).any(|w| w == [0xC3, 0xAA]), "Should contain ê in UTF-8");
     }
 
     #[test]

@@ -69,7 +69,7 @@ fn unicode_to_cp1252(c: char) -> Option<u8> {
 }
 
 /// Map CP1252 byte to Unicode character
-fn cp1252_to_unicode(b: u8) -> char {
+pub fn cp1252_to_unicode(b: u8) -> char {
     match b {
         0x80 => '\u{20AC}', // €
         0x82 => '\u{201A}', // ‚
