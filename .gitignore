@@ -20,3 +20,5 @@ mkgmap/
 xI2023100.typ
 pipeline/resources/img/63240001.img
 pipeline/resources/img/osmmap.tdb
+/tmp
+.claude/
