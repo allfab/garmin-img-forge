@@ -573,12 +573,11 @@ run_imgforge_build() {
     fi
 
     cmd+=(build
-          --input-dir "${tiles_dir}"
+          "${tiles_dir}"
           -o "${OUTPUT_DIR}/gmapsupp.img"
           --family-id "${FAMILY_ID}"
-          --description "${DESCRIPTION}"
-          --jobs "${JOBS}"
-          --report "${IMGFORGE_REPORT_FILE}")
+          --family-name "${DESCRIPTION}"
+          -j "${JOBS}")
 
     [[ -n "$TYP_FILE" ]] && cmd+=(--typ "${TYP_FILE}")
     [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)

@@ -7,6 +7,7 @@ __pycache__/
 pipeline/data/bdtopo/*/
 !pipeline/data/bdtopo/.gitkeep
 pipeline/output/tiles/*.mp
+pipeline/output/img/
 pipeline/output/*.img
 pipeline/output/*.json
 !pipeline/output/.gitkeep
