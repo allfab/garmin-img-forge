@@ -18,5 +18,5 @@ tiles/
 *.mp
 examples/output/
 
-# Embedded resources (copied during CI build)
-/resources/proj.db
+# Embedded resources
+# proj.db is now tracked in Git for portable builds

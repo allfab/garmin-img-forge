@@ -4,35 +4,19 @@ Ce répertoire contient les fichiers qui sont embarqués dans le binaire au mome
 
 ## proj.db
 
-**Ce fichier n'est PAS versionné dans Git.**
+Le fichier `proj.db` est la base de données PROJ (bibliothèque de transformations de coordonnées).
+Il est **versionné dans Git** pour garantir que la compilation fonctionne directement après un clone,
+sans dépendance à une installation PROJ locale.
 
-Il est automatiquement copié ici pendant le build CI depuis `/opt/proj-static/share/proj/proj.db`.
-
-Le fichier est ensuite embarqué dans le binaire via `include_bytes!()` dans `src/proj_init.rs`,
+Le fichier est embarqué dans le binaire via `include_bytes!()` dans `src/proj_init.rs`,
 ce qui permet au binaire d'être 100% autonome sans dépendance externe.
 
-## Pour les développeurs
+### Mise à jour de proj.db
 
-Si vous voulez compiler localement avec support PROJ complet, vous devez :
+Si vous devez mettre à jour vers une version plus récente de PROJ :
 
-1. Installer PROJ (version 9.3.1 ou supérieure)
-2. Copier manuellement proj.db ici :
-   ```bash
-   cp /usr/share/proj/proj.db resources/
-   ```
-
-Si `proj.db` n'est pas présent, la compilation échouera avec :
-```
-error: couldn't read ..../resources/proj.db: No such file or directory
+```bash
+cp /usr/share/proj/proj.db resources/
 ```
 
-## Alternative : Build sans proj.db embarqué
-
-Pour compiler sans embarquer proj.db (mode développement), vous pouvez :
-
-1. Créer un fichier vide `resources/proj.db` : `touch resources/proj.db`
-2. Définir `PROJ_DATA` manuellement avant d'exécuter le binaire :
-   ```bash
-   export PROJ_DATA=/usr/share/proj
-   ./target/debug/mpforge --version
-   ```
+Puis commiter le fichier mis à jour.
