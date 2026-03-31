@@ -310,3 +310,4 @@ message(STATUS "GDAL library: ${GDAL_LIBRARIES}")
 message(STATUS "Plugin install dir: ${GDAL_PLUGIN_DIR}")
 message(STATUS "=========================================")
 
+
