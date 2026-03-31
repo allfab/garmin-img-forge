@@ -1,0 +1,70 @@
+{% extends "main.html" %}
+
+{% block tabs %}{% endblock %}
+
+{% block content %}{% endblock %}
+
+{% block hero %}
+<section class="zn-hero">
+  <div class="zn-hero__background">
+    <svg class="zn-hero__contours" viewBox="0 0 1200 600" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path class="zn-contour zn-contour--1" d="M-100,450 C100,420 200,480 400,440 C600,400 700,460 900,430 C1100,400 1200,450 1400,420" fill="none" />
+      <path class="zn-contour zn-contour--2" d="M-100,400 C150,360 250,410 450,380 C650,350 750,400 950,370 C1150,340 1250,390 1400,360" fill="none" />
+      <path class="zn-contour zn-contour--3" d="M-100,350 C100,310 300,360 500,320 C700,280 800,340 1000,310 C1200,280 1300,330 1400,300" fill="none" />
+      <path class="zn-contour zn-contour--4" d="M-100,300 C150,260 350,300 550,270 C750,240 850,290 1050,260 C1250,230 1350,280 1400,250" fill="none" />
+      <path class="zn-contour zn-contour--5" d="M-100,250 C200,210 300,260 500,220 C700,180 900,240 1100,200 C1250,170 1350,230 1400,200" fill="none" />
+      <path class="zn-contour zn-contour--6" d="M-100,200 C150,160 350,200 550,170 C750,140 850,190 1050,160 C1200,130 1350,180 1400,150" fill="none" />
+      <path class="zn-contour zn-contour--7" d="M-100,160 C100,130 300,170 500,130 C700,90 900,150 1050,120 C1200,90 1300,140 1400,110" fill="none" />
+      <path class="zn-contour zn-contour--8" d="M-100,520 C200,490 350,530 550,500 C750,470 900,520 1100,490 C1250,460 1350,510 1400,480" fill="none" />
+      <path class="zn-contour zn-contour--9" d="M-100,560 C150,540 300,570 500,550 C700,530 850,560 1050,540 C1250,520 1350,550 1400,530" fill="none" />
+    </svg>
+  </div>
+  <div class="zn-hero__inner md-grid">
+    <div class="zn-hero__content">
+      <h1 class="zn-hero__title">On forge des cartes Garmin à partir de données SIG massives.</h1>
+      <p class="zn-hero__tagline">
+        Pipeline open-source qui transforme la <strong>BD TOPO IGN</strong> en cartes topographiques
+        <strong>Garmin</strong> prêtes à l'emploi — 100 % automatisé, 100 % reproductible.
+      </p>
+      <div class="zn-hero__actions">
+        <a href="{{ '06-telechargements/' | url }}" class="md-button md-button--primary">
+          Télécharger une carte
+        </a>
+        <a href="{{ '01-introduction/' | url }}" class="md-button">
+          Découvrir le projet
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="zn-hero__seo" hidden>
+    <p>Cartes topographiques Garmin gratuites générées depuis les données ouvertes IGN BD TOPO.
+    Téléchargez des cartes .img pour GPS couvrant la France métropolitaine et l'outre-mer.</p>
+  </div>
+</section>
+
+<section class="zn-features md-grid">
+  <div class="zn-features__grid">
+    <div class="zn-feature">
+      <div class="zn-feature__icon">
+        {% include ".icons/material/database.svg" %}
+      </div>
+      <h3>Données ouvertes IGN</h3>
+      <p>BD TOPO — précision métrique, mise à jour semestrielle, licence Etalab 2.0</p>
+    </div>
+    <div class="zn-feature">
+      <div class="zn-feature__icon">
+        {% include ".icons/material/cog.svg" %}
+      </div>
+      <h3>Pipeline automatisé</h3>
+      <p>De la donnée brute au fichier <code>.img</code> Garmin en une commande</p>
+    </div>
+    <div class="zn-feature">
+      <div class="zn-feature__icon">
+        {% include ".icons/material/map.svg" %}
+      </div>
+      <h3>France entière</h3>
+      <p>Métropole et outre-mer — par région ou en téléchargement national</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
