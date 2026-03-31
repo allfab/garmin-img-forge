@@ -82,11 +82,11 @@ children = [
 
 [markdown_extensions]
 admonition = {}
-pymdownx_highlight = { anchor_linenums = true }
-pymdownx_inlinehilite = {}
-pymdownx_snippets = {}
-pymdownx_superfences = { custom_fences = [{ name = "mermaid", class = "mermaid", format = "superfences_format_mermaid" }] }
-pymdownx_tabbed = { alternate_style = true }
+"pymdownx.highlight" = { anchor_linenums = true }
+"pymdownx.inlinehilite" = {}
+"pymdownx.snippets" = {}
+"pymdownx.superfences" = { custom_fences = [{ name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_div_format" }] }
+"pymdownx.tabbed" = { alternate_style = true }
 tables = {}
 footnotes = {}
 attr_list = {}
@@ -95,8 +95,7 @@ md_in_html = {}
 [extra]
 generator = false
 
-[extra.social]
-[[extra.social.links]]
+[[extra.social]]
 icon = "fontawesome/brands/git-alt"
 link = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
 name = "Dépôt source"
