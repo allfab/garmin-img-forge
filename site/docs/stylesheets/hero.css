@@ -86,19 +86,27 @@
 /* CTA Buttons */
 .zn-hero__actions {
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   justify-content: center;
   flex-wrap: wrap;
 }
 
 .zn-hero__actions .md-button {
-  border-color: var(--md-primary-bg-color);
-  color: var(--md-primary-bg-color);
+  padding: 0.85em 2em;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: none;
+  border-radius: 0.5rem;
+  backdrop-filter: blur(4px);
+  background-color: hsla(0, 0%, 100%, 0.12);
+  color: #fff;
+  transition: all 0.25s;
 }
 
 .zn-hero__actions .md-button:hover {
-  background-color: var(--md-primary-bg-color);
-  color: var(--md-primary-fg-color);
+  background-color: hsla(0, 0%, 100%, 0.22);
+  color: #fff;
 }
 
 .zn-hero__actions .md-button:focus-visible {
@@ -107,14 +115,16 @@
 }
 
 .zn-hero__actions .md-button--primary {
-  background-color: var(--md-primary-bg-color);
-  color: var(--md-primary-fg-color);
-  border-color: var(--md-primary-bg-color);
+  backdrop-filter: blur(4px);
+  background: linear-gradient(35deg, rgba(76, 175, 80, 0.95), rgba(255, 138, 101, 0.9));
+  color: #fff;
+  border: none;
 }
 
 .zn-hero__actions .md-button--primary:hover {
-  background-color: transparent;
-  color: var(--md-primary-bg-color);
+  background: linear-gradient(35deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(76, 175, 80, 0.35);
 }
 
 /* --- Dark mode --- */
@@ -132,24 +142,24 @@
 }
 
 [data-md-color-scheme="slate"] .zn-hero__actions .md-button {
-  border-color: var(--md-primary-fg-color);
-  color: var(--md-primary-fg-color);
+  background-color: hsla(0, 0%, 100%, 0.08);
+  color: #fff;
 }
 
 [data-md-color-scheme="slate"] .zn-hero__actions .md-button:hover {
-  background-color: var(--md-primary-fg-color);
-  color: var(--md-primary-bg-color);
+  background-color: hsla(0, 0%, 100%, 0.16);
+  color: #fff;
 }
 
 [data-md-color-scheme="slate"] .zn-hero__actions .md-button--primary {
-  background-color: var(--md-primary-fg-color);
-  color: var(--md-primary-bg-color);
-  border-color: var(--md-primary-fg-color);
+  background: linear-gradient(35deg, rgba(76, 175, 80, 0.95), rgba(255, 138, 101, 0.9));
+  color: #fff;
 }
 
 [data-md-color-scheme="slate"] .zn-hero__actions .md-button--primary:hover {
-  background-color: transparent;
-  color: var(--md-primary-fg-color);
+  background: linear-gradient(35deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(76, 175, 80, 0.35);
 }
 
 /* --- Features Section --- */
