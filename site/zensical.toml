@@ -1,5 +1,5 @@
 site_name = "GARMIN IGN BDTOPO MAP"
-site_url = "https://garmin-ign-bdtopo-map.ovh"
+site_url = "https://maps.garmin.allfabox.fr"
 site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
 site_author = "allfab"
 docs_dir = "docs"

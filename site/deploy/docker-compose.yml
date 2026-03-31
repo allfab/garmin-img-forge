@@ -1,0 +1,18 @@
+services:
+  pages-server:
+    image: codeberg.org/codeberg/pages-server:v6.4
+    container_name: pages-server
+    restart: unless-stopped
+    environment:
+      PAGES_DOMAIN: pages.allfabox.fr
+      RAW_DOMAIN: raw.pages.allfabox.fr
+      GITEA_ROOT: http://forgejo:3000
+      GITEA_API_TOKEN: ${PAGES_TOKEN}
+      ACME_ACCEPT_TERMS: "false"
+      ENABLE_HTTP_SERVER: "true"
+    networks:
+      - forge
+
+networks:
+  forge:
+    external: true
