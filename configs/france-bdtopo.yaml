@@ -1,5 +1,5 @@
 # =============================================================================
-# france-bdtopo.yaml — Config mpforge-cli générique (France BDTOPO)
+# france-bdtopo.yaml — Config mpforge générique (France BDTOPO)
 # =============================================================================
 #
 # Template de configuration pour le pipeline France complet (21 couches BDTOPO).
@@ -10,7 +10,7 @@
 #   export DATA_ROOT="./data/bdtopo/2025/v2025.12/D038"
 #   export OUTPUT_DIR="./output"
 #   envsubst < configs/france-bdtopo.yaml > /tmp/mpforge-config.yaml
-#   mpforge-cli build --config /tmp/mpforge-config.yaml --jobs 8
+#   mpforge build --config /tmp/mpforge-config.yaml --jobs 8
 #
 # NOTE : build-garmin-map.sh génère automatiquement une config équivalente en
 #        découvrant les couches disponibles dans DATA_ROOT. Ce fichier sert de
@@ -218,7 +218,7 @@ header:
 
 # Règles de transformation BDTOPO → types Garmin
 # ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)
-# Exemple absolu si usage direct : /home/user/mpforge/mpforge-cli/rules/bdtopo-garmin-rules.yaml
+# Exemple absolu si usage direct : /home/user/mpforge/mpforge/rules/bdtopo-garmin-rules.yaml
 rules: "${RULES_FILE}"
 
 error_handling: "continue"

@@ -3,13 +3,18 @@ R04/
 export/
 rapport-*.json
 __pycache__/
-data/
-output/
+# Pipeline de production — données et artefacts
+data/bdtopo/*/
+!data/bdtopo/.gitkeep
+output/tiles/*.mp
+output/*.img
+output/*.json
+!output/.gitkeep
+!output/tiles/.gitkeep
 *.mp
-!imgforge-cli/tests/fixtures/*.mp
+!imgforge/tests/fixtures/*.mp
 *.img
 mkgmap/
-_imgforge-cli/
 xI2023100.typ
 resources/img/63240001.img
 resources/img/osmmap.tdb

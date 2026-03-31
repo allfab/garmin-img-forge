@@ -1,0 +1,102 @@
+site_name = "GARMIN IGN BDTOPO MAP"
+site_url = "https://garmin-ign-bdtopo-map.ovh"
+site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
+site_author = "allfab"
+docs_dir = "docs"
+site_dir = "_site"
+use_directory_urls = true
+
+[theme]
+name = "classic"
+language = "fr"
+palette = [
+  { media = "(prefers-color-scheme: light)", scheme = "default", primary = "green", accent = "deep-orange", toggle = { icon = "material/brightness-7", name = "Mode sombre" } },
+  { media = "(prefers-color-scheme: dark)", scheme = "slate", primary = "green", accent = "deep-orange", toggle = { icon = "material/brightness-4", name = "Mode clair" } }
+]
+features = [
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.expand",
+  "navigation.top",
+  "search.suggest",
+  "search.highlight",
+  "content.code.annotate",
+  "content.code.copy"
+]
+
+[theme.font]
+text = "Roboto"
+code = "Roboto Mono"
+
+[[nav]]
+title = "Accueil"
+file = "index.md"
+
+[[nav]]
+title = "Introduction"
+file = "01-introduction/index.md"
+
+[[nav]]
+title = "Pile technologique"
+children = [
+  { title = "Vue d'ensemble", file = "02-pile-technologique/index.md" },
+  { title = "Logiciels et outils", file = "02-pile-technologique/logiciels-outils.md" },
+  { title = "Arborescence", file = "02-pile-technologique/arborescence.md" },
+  { title = "Socle de données", file = "02-pile-technologique/socle-donnees.md" }
+]
+
+[[nav]]
+title = "Processus"
+children = [
+  { title = "Vue d'ensemble", file = "03-processus/index.md" },
+  { title = "Diagramme de flux", file = "03-processus/diagramme.md" },
+  { title = "Détail des étapes", file = "03-processus/details-processus.md" }
+]
+
+[[nav]]
+title = "Guide pas à pas"
+children = [
+  { title = "Introduction", file = "04-guide-pas-a-pas/index.md" },
+  { title = "Préambule", file = "04-guide-pas-a-pas/preambule.md" },
+  { title = "Format Polish Map", file = "04-guide-pas-a-pas/polish-map-format.md" },
+  { title = "Compilation Garmin IMG", file = "04-guide-pas-a-pas/compilation-garmin-img.md" },
+  { title = "Limites des formats", file = "04-guide-pas-a-pas/limites-formats.md" }
+]
+
+[[nav]]
+title = "Installation"
+children = [
+  { title = "Vue d'ensemble", file = "05-installation/index.md" },
+  { title = "Assemblage des données", file = "05-installation/assemblage-donnees.md" },
+  { title = "Procédure d'installation", file = "05-installation/procedure-installation.md" }
+]
+
+[[nav]]
+title = "Téléchargements"
+children = [
+  { title = "Vue d'ensemble", file = "06-telechargements/index.md" },
+  { title = "France métropolitaine", file = "06-telechargements/france.md" },
+  { title = "Par région", file = "06-telechargements/regions.md" },
+  { title = "Outre-mer", file = "06-telechargements/outre-mer.md" }
+]
+
+[markdown_extensions]
+admonition = {}
+pymdownx_highlight = { anchor_linenums = true }
+pymdownx_inlinehilite = {}
+pymdownx_snippets = {}
+pymdownx_superfences = { custom_fences = [{ name = "mermaid", class = "mermaid", format = "superfences_format_mermaid" }] }
+pymdownx_tabbed = { alternate_style = true }
+tables = {}
+footnotes = {}
+attr_list = {}
+md_in_html = {}
+
+[extra]
+generator = false
+
+[extra.social]
+[[extra.social.links]]
+icon = "fontawesome/brands/git-alt"
+link = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
+name = "Dépôt source"

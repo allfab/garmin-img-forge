@@ -100,7 +100,7 @@ field_mapping:
 # https://geoservices.ign.fr/bdtopo
 #
 # Documentation driver PolishMap :
-# Voir mpforge-cli/README.md pour la documentation field mapping
+# Voir mpforge/README.md pour la documentation field mapping
 #
 # Format Polish Map :
 # http://cgpsmapper.com/buy.htm

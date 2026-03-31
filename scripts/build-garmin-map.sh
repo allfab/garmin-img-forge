@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli → gmapsupp.img
+# build-garmin-map.sh — Pipeline mpforge → imgforge → gmapsupp.img
 # =============================================================================
 #
-# Enchaîne mpforge-cli build et imgforge-cli build pour produire une carte Garmin :
+# Enchaîne mpforge build et imgforge build pour produire une carte Garmin :
 #
 #   1. Prépare la config YAML (fournie ou générée depuis DATA_ROOT)
-#   2. Lance mpforge-cli build (génère les tuiles .mp)
+#   2. Lance mpforge build (génère les tuiles .mp)
 #   3. Vérifie le code de sortie et le rapport JSON
-#   4. Lance imgforge-cli build (compile .mp → gmapsupp.img)
+#   4. Lance imgforge build (compile .mp → gmapsupp.img)
 #   5. Affiche le résumé final (tuiles, temps, taille)
 #
 # Pipeline : download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
 #
-# Prérequis : mpforge-cli (ou cargo), imgforge-cli (ou cargo build --release)
+# Prérequis : mpforge (ou cargo), imgforge (ou cargo build --release)
 # =============================================================================
 
 set -euo pipefail
@@ -37,10 +37,10 @@ SKIP_EXISTING=false
 VERBOSE_COUNT=0             # 0=warn, 1=-v, 2=-vv
 
 # Binaires résolus
-_MPFORGE_CLI=""
-_IMGFORGE_CLI=""            # binaire imgforge-cli résolu
+_MPFORGE=""
+_IMGFORGE=""            # binaire imgforge résolu
 
-# Métriques mpforge-cli
+# Métriques mpforge
 BUILD_START_TIME=0
 TILES_TOTAL=0
 TILES_SUCCESS=0
@@ -48,7 +48,7 @@ TILES_FAILED=0
 MPFORGE_DURATION=0
 FEATURES_PROCESSED=0
 
-# Métriques imgforge-cli
+# Métriques imgforge
 IMGFORGE_TILES_COMPILED=0
 IMGFORGE_TILES_FAILED=0
 IMGFORGE_DURATION=0
@@ -59,7 +59,7 @@ IMGFORGE_ROUTING_ARCS=0
 # Fichier config temporaire généré automatiquement
 _TMP_CONFIG=""
 
-# État pipeline : tuiles en échec malgré exit 0 de mpforge-cli (error_handling=continue)
+# État pipeline : tuiles en échec malgré exit 0 de mpforge (error_handling=continue)
 PARTIAL_FAILURE=false
 
 # ---------------------------------------------------------------------------
@@ -89,17 +89,17 @@ log_step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
 # ---------------------------------------------------------------------------
 show_help() {
     cat << 'EOF'
-build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli → gmapsupp.img
+build-garmin-map.sh — Pipeline mpforge → imgforge → gmapsupp.img
 
 USAGE :
     ./scripts/build-garmin-map.sh [OPTIONS]
 
 OPTIONS :
-    --config FILE           Config YAML mpforge-cli (défaut: génération auto depuis --data-root)
+    --config FILE           Config YAML mpforge (défaut: génération auto depuis --data-root)
     --rules FILE            Fichier de règles YAML (défaut: auto-découverte bdtopo-garmin-rules.yaml)
     --jobs N                Parallélisation (défaut: 8)
     --output DIR            Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./output)
-    --imgforge-cli FILE     Chemin binaire imgforge-cli (défaut: auto-découverte)
+    --imgforge FILE     Chemin binaire imgforge (défaut: auto-découverte)
     --family-id N           Family ID Garmin (défaut: 6324)
     --description STR       Description de la carte (défaut: "BDTOPO Garmin")
     --typ FILE              Fichier TYP styles personnalisés (optionnel)
@@ -118,15 +118,15 @@ EXEMPLES :
     ./scripts/build-garmin-map.sh --skip-existing --jobs 4           # Reprise partielle
 
 PRÉREQUIS :
-    mpforge-cli   (ou cargo build --release dans mpforge-cli/)
-    imgforge-cli  (ou cargo build --release dans imgforge-cli/)
+    mpforge   (ou cargo build --release dans mpforge/)
+    imgforge  (ou cargo build --release dans imgforge/)
 
 STRUCTURE DE SORTIE :
     ./output/
-    ├── tiles/              ← tuiles .mp générées par mpforge-cli
-    ├── gmapsupp.img        ← carte Garmin finale générée par imgforge-cli
-    ├── mpforge-report.json ← rapport mpforge-cli
-    └── imgforge-report.json ← rapport imgforge-cli
+    ├── tiles/              ← tuiles .mp générées par mpforge
+    ├── gmapsupp.img        ← carte Garmin finale générée par imgforge
+    ├── mpforge-report.json ← rapport mpforge
+    └── imgforge-report.json ← rapport imgforge
 EOF
     exit 0
 }
@@ -141,7 +141,7 @@ parse_args() {
             --rules)         RULES_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
             --output)        OUTPUT_DIR="$2"; shift 2 ;;
-            --imgforge-cli)  _IMGFORGE_CLI="$2"; shift 2 ;;
+            --imgforge)  _IMGFORGE="$2"; shift 2 ;;
             --family-id)     FAMILY_ID="$2"; shift 2 ;;
             --description)   DESCRIPTION="$2"; shift 2 ;;
             --typ)           TYP_FILE="$2"; shift 2 ;;
@@ -161,12 +161,12 @@ parse_args() {
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte binaire mpforge-cli
+# Auto-découverte binaire mpforge
 # ---------------------------------------------------------------------------
-find_mpforge_cli() {
+find_mpforge() {
     local candidates=(
-        "./mpforge-cli/target/release/mpforge-cli"
-        "../mpforge-cli/target/release/mpforge-cli"
+        "./mpforge/target/release/mpforge"
+        "../mpforge/target/release/mpforge"
     )
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
@@ -174,20 +174,20 @@ find_mpforge_cli() {
             return 0
         fi
     done
-    if command -v mpforge-cli &>/dev/null; then
-        command -v mpforge-cli
+    if command -v mpforge &>/dev/null; then
+        command -v mpforge
         return 0
     fi
     echo ""
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte binaire imgforge-cli
+# Auto-découverte binaire imgforge
 # ---------------------------------------------------------------------------
-find_imgforge_cli() {
+find_imgforge() {
     local candidates=(
-        "./imgforge-cli/target/release/imgforge-cli"
-        "../imgforge-cli/target/release/imgforge-cli"
+        "./imgforge/target/release/imgforge"
+        "../imgforge/target/release/imgforge"
     )
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
@@ -195,8 +195,8 @@ find_imgforge_cli() {
             return 0
         fi
     done
-    if command -v imgforge-cli &>/dev/null; then
-        command -v imgforge-cli
+    if command -v imgforge &>/dev/null; then
+        command -v imgforge
         return 0
     fi
     echo ""
@@ -207,8 +207,8 @@ find_imgforge_cli() {
 # ---------------------------------------------------------------------------
 find_rules_file() {
     local candidates=(
-        "./mpforge-cli/rules/bdtopo-garmin-rules.yaml"
-        "../mpforge-cli/rules/bdtopo-garmin-rules.yaml"
+        "./mpforge/rules/bdtopo-garmin-rules.yaml"
+        "../mpforge/rules/bdtopo-garmin-rules.yaml"
         "./rules/bdtopo-garmin-rules.yaml"
         "./bdtopo-garmin-rules.yaml"
     )
@@ -227,45 +227,45 @@ find_rules_file() {
 check_prerequisites() {
     log_step "Vérification des prérequis"
 
-    # --- mpforge-cli ---
-    if [[ -z "$_MPFORGE_CLI" ]]; then
-        _MPFORGE_CLI=$(find_mpforge_cli)
+    # --- mpforge ---
+    if [[ -z "$_MPFORGE" ]]; then
+        _MPFORGE=$(find_mpforge)
     fi
 
-    if [[ -z "$_MPFORGE_CLI" ]]; then
+    if [[ -z "$_MPFORGE" ]]; then
         if command -v cargo &>/dev/null; then
-            log_warn "mpforge-cli non trouvé comme binaire — fallback 'cargo run --release'"
-            _MPFORGE_CLI="__CARGO_RUN__"
+            log_warn "mpforge non trouvé comme binaire — fallback 'cargo run --release'"
+            _MPFORGE="__CARGO_RUN__"
         else
-            log_error "mpforge-cli introuvable (ni binaire ni cargo)"
-            log_error "  → Compilez avec : cd mpforge-cli && cargo build --release"
+            log_error "mpforge introuvable (ni binaire ni cargo)"
+            log_error "  → Compilez avec : cd mpforge && cargo build --release"
             exit 1
         fi
     else
-        log_ok "mpforge-cli : $_MPFORGE_CLI"
+        log_ok "mpforge : $_MPFORGE"
     fi
 
-    # --- imgforge-cli ---
-    if [[ -z "$_IMGFORGE_CLI" ]]; then
-        _IMGFORGE_CLI=$(find_imgforge_cli)
+    # --- imgforge ---
+    if [[ -z "$_IMGFORGE" ]]; then
+        _IMGFORGE=$(find_imgforge)
     fi
 
-    if [[ -z "$_IMGFORGE_CLI" ]]; then
+    if [[ -z "$_IMGFORGE" ]]; then
         if command -v cargo &>/dev/null; then
-            log_warn "imgforge-cli non trouvé comme binaire — fallback 'cargo run --release'"
-            _IMGFORGE_CLI="__CARGO_RUN_IMGFORGE__"
+            log_warn "imgforge non trouvé comme binaire — fallback 'cargo run --release'"
+            _IMGFORGE="__CARGO_RUN_IMGFORGE__"
         else
-            log_error "imgforge-cli introuvable"
-            log_error "  → Compilez avec : cd imgforge-cli && cargo build --release"
+            log_error "imgforge introuvable"
+            log_error "  → Compilez avec : cd imgforge && cargo build --release"
             exit 1
         fi
     else
-        log_ok "imgforge-cli : $_IMGFORGE_CLI"
+        log_ok "imgforge : $_IMGFORGE"
     fi
 
     # --- Validation fichier config (si fourni explicitement) ---
     if [[ -n "$CONFIG_FILE" && ! -f "$CONFIG_FILE" ]]; then
-        log_error "Config mpforge-cli introuvable : $CONFIG_FILE"
+        log_error "Config mpforge introuvable : $CONFIG_FILE"
         exit 1
     fi
 
@@ -297,14 +297,14 @@ show_report_errors() {
     log_error "── Erreurs du rapport JSON ──────────────────────────────"
     # Extraire les messages d'erreur avec contexte tuile si disponible
     if grep -q '"tile":' "$report" 2>/dev/null; then
-        # Format imgforge-cli : errors[{tile, error}] — afficher avec contexte tuile
+        # Format imgforge : errors[{tile, error}] — afficher avec contexte tuile
         grep -o '"tile":"[^"]*","error":"[^"]*"' "$report" 2>/dev/null \
             | sed 's/"tile":"//;s/","error":"/ : /;s/"$//' \
             | while IFS= read -r msg; do
                 [[ -n "$msg" ]] && log_error "  • tuile $msg"
             done || true
     else
-        # Format mpforge-cli : "message":"..."
+        # Format mpforge : "message":"..."
         grep -o '"message":"[^"]*"\|"error":"[^"]*"' "$report" 2>/dev/null \
             | sed 's/"message":"//;s/"error":"//;s/"$//' \
             | while IFS= read -r msg; do
@@ -319,9 +319,9 @@ show_report_errors() {
 }
 
 # ---------------------------------------------------------------------------
-# Génération dynamique du config YAML mpforge-cli depuis DATA_ROOT
+# Génération dynamique du config YAML mpforge depuis DATA_ROOT
 # Option 1 recommandée (Dev Notes) : découverte auto des .shp (21 couches BDTOPO)
-# Les règles sont injectées dans le YAML (pas de --rules CLI dans mpforge-cli)
+# Les règles sont injectées dans le YAML (pas de --rules CLI dans mpforge)
 # ---------------------------------------------------------------------------
 generate_config() {
     local data_dir="$1"
@@ -393,7 +393,7 @@ generate_config() {
 }
 
 # ---------------------------------------------------------------------------
-# Préparation de la configuration mpforge-cli (résolution règles + config)
+# Préparation de la configuration mpforge (résolution règles + config)
 # ---------------------------------------------------------------------------
 prepare_config() {
     log_step "Préparation de la configuration"
@@ -454,7 +454,7 @@ prepare_config() {
         fi
         log_info "  → $shp_count fichier(s) .shp disponible(s)"
 
-        # L3 : mkdir déplacé dans run_mpforge_cli() — valide aussi pour --config explicite
+        # L3 : mkdir déplacé dans run_mpforge() — valide aussi pour --config explicite
         CONFIG_FILE=$(generate_config "$DATA_ROOT" "$OUTPUT_DIR" "$RULES_FILE")
 
         local layers_in_config
@@ -473,31 +473,31 @@ prepare_config() {
 }
 
 # ---------------------------------------------------------------------------
-# Étape 1/2 — Lancement mpforge-cli build
+# Étape 1/2 — Lancement mpforge build
 # ---------------------------------------------------------------------------
-run_mpforge_cli() {
-    log_step "Étape 1/2 — mpforge-cli build"
+run_mpforge() {
+    log_step "Étape 1/2 — mpforge build"
 
     mkdir -p "$OUTPUT_DIR"
 
     # Construction de la commande
     local -a cmd=()
 
-    if [[ "$_MPFORGE_CLI" == "__CARGO_RUN__" ]]; then
+    if [[ "$_MPFORGE" == "__CARGO_RUN__" ]]; then
         # Fallback cargo run (mode dev)
         local mpforge_dir
         mpforge_dir=$(find . -maxdepth 2 -name "Cargo.toml" \
-                      -exec grep -l 'name.*=.*"mpforge-cli"' {} \; 2>/dev/null \
+                      -exec grep -l 'name.*=.*"mpforge"' {} \; 2>/dev/null \
                       | head -1 | xargs dirname 2>/dev/null || echo "")
 
         if [[ -z "$mpforge_dir" ]]; then
             # Essai d'un répertoire standard
-            mpforge_dir="./mpforge-cli"
+            mpforge_dir="./mpforge"
         fi
         cmd=(env PROJ_DATA=/usr/share/proj
              cargo run --manifest-path "${mpforge_dir}/Cargo.toml" --release --)
     else
-        cmd=("$_MPFORGE_CLI")
+        cmd=("$_MPFORGE")
     fi
 
     cmd+=(build
@@ -513,22 +513,22 @@ run_mpforge_cli() {
 
     if [[ "$DRY_RUN" == true ]]; then
         echo -e "  ${YELLOW}[DRY-RUN]${NC} ${cmd[*]}"
-        log_ok "Dry-run : commande mpforge-cli affichée (non exécutée)"
+        log_ok "Dry-run : commande mpforge affichée (non exécutée)"
         return 0
     fi
 
     local exit_code=0
     "${cmd[@]}" || exit_code=$?
 
-    # Arrêt immédiat sur échec mpforge-cli
+    # Arrêt immédiat sur échec mpforge
     if [[ "$exit_code" -ne 0 ]]; then
-        log_error "mpforge-cli a échoué (exit code : $exit_code)"
+        log_error "mpforge a échoué (exit code : $exit_code)"
         show_report_errors "$REPORT_FILE"
-        log_error "Pipeline arrêté — imgforge-cli NON lancé"
+        log_error "Pipeline arrêté — imgforge NON lancé"
         exit "$exit_code"
     fi
 
-    log_ok "mpforge-cli terminé avec succès"
+    log_ok "mpforge terminé avec succès"
 
     # Lecture des métriques depuis le rapport JSON
     if [[ -f "$REPORT_FILE" ]]; then
@@ -548,28 +548,28 @@ run_mpforge_cli() {
 }
 
 # ---------------------------------------------------------------------------
-# Étape 2/2 — Lancement imgforge-cli build
+# Étape 2/2 — Lancement imgforge build
 # ---------------------------------------------------------------------------
-run_imgforge_cli_build() {
-    log_step "Étape 2/2 — imgforge-cli build"
+run_imgforge_build() {
+    log_step "Étape 2/2 — imgforge build"
 
     local tiles_dir="${OUTPUT_DIR}/tiles"
 
     # Construction de la commande
     local -a cmd=()
 
-    if [[ "$_IMGFORGE_CLI" == "__CARGO_RUN_IMGFORGE__" ]]; then
+    if [[ "$_IMGFORGE" == "__CARGO_RUN_IMGFORGE__" ]]; then
         # Fallback cargo run (mode dev)
         local imgforge_dir
         imgforge_dir=$(find . -maxdepth 2 -name "Cargo.toml" \
-                       -exec grep -l 'name.*=.*"imgforge-cli"' {} \; 2>/dev/null \
+                       -exec grep -l 'name.*=.*"imgforge"' {} \; 2>/dev/null \
                        | head -1 | xargs dirname 2>/dev/null || echo "")
         if [[ -z "$imgforge_dir" ]]; then
-            imgforge_dir="./imgforge-cli"
+            imgforge_dir="./imgforge"
         fi
         cmd=(cargo run --manifest-path "${imgforge_dir}/Cargo.toml" --release --)
     else
-        cmd=("$_IMGFORGE_CLI")
+        cmd=("$_IMGFORGE")
     fi
 
     cmd+=(build
@@ -588,7 +588,7 @@ run_imgforge_cli_build() {
 
     if [[ "$DRY_RUN" == true ]]; then
         echo -e "  ${YELLOW}[DRY-RUN]${NC} ${cmd[*]}"
-        log_ok "Dry-run : commande imgforge-cli affichée (non exécutée)"
+        log_ok "Dry-run : commande imgforge affichée (non exécutée)"
         return 0
     fi
 
@@ -605,7 +605,7 @@ run_imgforge_cli_build() {
     "${cmd[@]}" || exit_code=$?
 
     if [[ "$exit_code" -ne 0 ]]; then
-        log_error "imgforge-cli a échoué (exit code : $exit_code)"
+        log_error "imgforge a échoué (exit code : $exit_code)"
         show_report_errors "$IMGFORGE_REPORT_FILE"
         log_error "Pipeline arrêté"
         exit "$exit_code"
@@ -618,7 +618,7 @@ run_imgforge_cli_build() {
 
     log_ok "gmapsupp.img produit : ${OUTPUT_DIR}/gmapsupp.img"
 
-    # Lecture métriques rapport imgforge-cli
+    # Lecture métriques rapport imgforge
     if [[ -f "$IMGFORGE_REPORT_FILE" ]]; then
         IMGFORGE_TILES_COMPILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_compiled" 0)
         IMGFORGE_TILES_FAILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_failed" 0)
@@ -643,7 +643,7 @@ show_summary() {
     local total_duration=$(( SECONDS - BUILD_START_TIME ))
 
     if [[ "$DRY_RUN" == false ]]; then
-        echo -e "  ${BOLD}[Phase 1 — mpforge-cli]${NC}"
+        echo -e "  ${BOLD}[Phase 1 — mpforge]${NC}"
         echo -e "  Tuiles générées    : ${TILES_SUCCESS}/${TILES_TOTAL}"
         if [[ "$TILES_FAILED" -gt 0 ]]; then
             echo -e "  ${YELLOW}${BOLD}Tuiles en échec  :${NC}  ${TILES_FAILED}"
@@ -652,11 +652,11 @@ show_summary() {
             echo -e "  Features           : ${FEATURES_PROCESSED}"
         if [[ "$MPFORGE_DURATION" -gt 0 ]]; then
             local m=$(( MPFORGE_DURATION / 60 )) s=$(( MPFORGE_DURATION % 60 ))
-            echo -e "  mpforge-cli        : ${m}m${s}s"
+            echo -e "  mpforge        : ${m}m${s}s"
         fi
 
         echo ""
-        echo -e "  ${BOLD}[Phase 2 — imgforge-cli]${NC}"
+        echo -e "  ${BOLD}[Phase 2 — imgforge]${NC}"
         echo -e "  Tuiles compilées   : ${IMGFORGE_TILES_COMPILED}"
         [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]] && \
             echo -e "  ${YELLOW}Tuiles en échec  : ${IMGFORGE_TILES_FAILED}${NC}"
@@ -666,7 +666,7 @@ show_summary() {
             echo -e "  Arcs routage       : ${IMGFORGE_ROUTING_ARCS}"
         if [[ "$IMGFORGE_DURATION" -gt 0 ]]; then
             local im=$(( IMGFORGE_DURATION / 60 )) is=$(( IMGFORGE_DURATION % 60 ))
-            echo -e "  imgforge-cli       : ${im}m${is}s"
+            echo -e "  imgforge       : ${im}m${is}s"
         fi
         echo ""
     fi
@@ -700,7 +700,7 @@ show_summary() {
 main() {
     echo -e "${BOLD}${CYAN}"
     echo "  ┌─────────────────────────────────────────────────────────────────┐"
-    echo "  │  build-garmin-map.sh — Pipeline mpforge-cli → imgforge-cli      │"
+    echo "  │  build-garmin-map.sh — Pipeline mpforge → imgforge      │"
     echo "  │  BDTOPO → tuiles .mp → gmapsupp.img · v${SCRIPT_VERSION}                │"
     echo "  └─────────────────────────────────────────────────────────────────┘"
     echo -e "${NC}"
@@ -710,8 +710,8 @@ main() {
 
     check_prerequisites
     prepare_config
-    run_mpforge_cli
-    run_imgforge_cli_build
+    run_mpforge
+    run_imgforge_build
     show_summary
 
     if [[ "$PARTIAL_FAILURE" == true ]]; then

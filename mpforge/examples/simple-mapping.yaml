@@ -1,0 +1,62 @@
+# Simple field mapping configuration
+# Maps source field names to Polish Map canonical field names
+
+field_mapping:
+  # ============================================
+  # ESSENTIAL FIELDS
+  # ============================================
+
+  # Feature identification
+  MP_TYPE: Type          # Garmin type code (e.g., 0x4e00 for city)
+  NAME: Label            # Feature name/label
+
+  # ============================================
+  # LOCATION FIELDS (optional)
+  # ============================================
+
+  Country: CountryName   # Country name (e.g., "France~[0x1d]FRA")
+  CityName: CityName     # City/town name
+  RegionName: RegionName # Region name
+  Zip: Zip              # Postal code
+
+  # ============================================
+  # DISPLAY PARAMETERS (optional)
+  # ============================================
+
+  MPBITLEVEL: Levels    # Zoom levels range (e.g., "0-3")
+  EndLevel: EndLevel    # Maximum zoom level (0-9)
+
+# ============================================
+# USAGE NOTES
+# ============================================
+#
+# 1. Source → Destination format
+#    - Left side: Field name in your source data
+#    - Right side: Canonical Polish Map field name
+#
+# 2. Only mapped fields are written to .mp files
+#    - Unmapped source fields are ignored
+#    - This is intentional to keep output clean
+#
+# 3. Common Polish Map field names:
+#    - Type: Garmin type code (REQUIRED for POI/POLYLINE/POLYGON)
+#    - Label: Feature name/label
+#    - CountryName: Country (format: "Name~[0xHH]CODE")
+#    - CityName: City/town
+#    - Levels: Zoom levels (format: "min-max")
+#    - EndLevel: Max zoom level (0-9)
+#
+# 4. Example source data:
+#    If your shapefile has columns: MP_TYPE, NAME, Country
+#    And you want them as: Type, Label, CountryName in .mp files
+#    Then map: MP_TYPE → Type, NAME → Label, Country → CountryName
+#
+# ============================================
+# REFERENCE
+# ============================================
+#
+# Polish Map format documentation:
+# http://cgpsmapper.com/buy.htm
+#
+# mpforge field mapping documentation:
+# https://forgejo.allfabox.fr/allfab/mpforge/src/branch/main/mpforge/README.md#field-mapping-configuration

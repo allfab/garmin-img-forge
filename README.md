@@ -7,10 +7,27 @@ MPForge est composé de trois briques :
 | Composant | Description | Documentation |
 |-----------|-------------|---------------|
 | **[ogr-polishmap](./ogr-polishmap/)** | Driver GDAL/OGR pour le format Polish Map (.mp) | [README](./ogr-polishmap/README.md), [Spec RST](./ogr-polishmap/doc/polishmap.rst) |
-| **[mpforge-cli](./mpforge-cli/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./mpforge-cli/README.md), [Exemples](./mpforge-cli/examples/) |
-| **[imgforge-cli](./imgforge-cli/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./imgforge-cli/README.md) |
+| **[mpforge](./mpforge/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./mpforge/README.md), [Exemples](./mpforge/examples/) |
+| **[imgforge](./imgforge/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./imgforge/README.md) |
 
-**Pipeline complet** : Données SIG → `mpforge-cli` (tuiles .mp) → `imgforge-cli` (fichiers .img) → GPS Garmin
+**Pipeline complet** : Données SIG → `mpforge` (tuiles .mp) → `imgforge` (fichiers .img) → GPS Garmin
+
+---
+
+## Site de documentation
+
+Le site **[garmin-ign-bdtopo-map.ovh](https://garmin-ign-bdtopo-map.ovh)** documente le projet
+et met à disposition les cartes Garmin téléchargeables.
+
+Le site est généré avec **Zensical** (successeur de MkDocs Material) et déployé via Forgejo Pages.
+
+Sources du site : [`site/`](./site/) — configuration `site/zensical.toml`, contenu `site/docs/`
+
+```bash
+# Build local (nécessite zensical installé)
+pip install zensical
+cd site && zensical build
+```
 
 ---
 
@@ -22,8 +39,9 @@ Chaque outil a son propre pipeline CI avec des tags préfixés pour des cycles d
 
 | Pipeline | Déclencheur | Description |
 |----------|-------------|-------------|
-| [`.woodpecker/mpforge-cli.yml`](./.woodpecker/mpforge-cli.yml) | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
-| [`.woodpecker/imgforge-cli.yml`](./.woodpecker/imgforge-cli.yml) | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
+| [`.woodpecker/mpforge.yml`](./.woodpecker/mpforge.yml) | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
+| [`.woodpecker/imgforge.yml`](./.woodpecker/imgforge.yml) | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
+| [`.woodpecker/site.yml`](./.woodpecker/site.yml) | Push sur `main` (dans `site/`) | Build et déploiement du site Zensical |
 
 Les deux pipelines produisent automatiquement une release Forgejo avec binaire, checksums SHA-256 et metadata JSON.
 
@@ -39,7 +57,7 @@ Pour activer le CI sur un nouveau dépôt :
 ### Architecture du build statique
 
 ```
-Tag mpforge-v* poussé --> Woodpecker CI déclenche mpforge-cli.yml
+Tag mpforge-v* poussé --> Woodpecker CI déclenche mpforge.yml
   Phase 1  : Installation dépendances (cmake, pkg-config, sqlite3)
   Phase 2  : Compilation PROJ 9.3.1 statique
   Phase 3  : Compilation GEOS 3.13.0 statique
@@ -49,13 +67,13 @@ Tag mpforge-v* poussé --> Woodpecker CI déclenche mpforge-cli.yml
   Phase 7  : Compilation et installation GDAL
   Phase 8  : Configuration Rust (GDAL_STATIC=1, pkg-config)
   Phase 9  : Copie proj.db dans resources/
-  Phase 10 : Compilation mpforge-cli (proj.db embarqué via include_bytes!)
+  Phase 10 : Compilation mpforge (proj.db embarqué via include_bytes!)
   Phase 11 : Vérification (ldd, taille, test --version)
   Phase 12 : Package + checksums + upload release Forgejo
 
-Tag imgforge-v* poussé --> Woodpecker CI déclenche imgforge-cli.yml
+Tag imgforge-v* poussé --> Woodpecker CI déclenche imgforge.yml
   Phase 1  : Installation dépendances (build-essential)
-  Phase 2  : Compilation imgforge-cli (cargo build --release)
+  Phase 2  : Compilation imgforge (cargo build --release)
   Phase 3  : Vérification (ldd, taille, test --version)
   Phase 4  : Package + checksums + upload release Forgejo
 ```
@@ -69,10 +87,10 @@ Le binaire produit est **100% autonome** : aucune dépendance externe, `proj.db`
 La version affichée par `--version` est dérivée du tag Git via `build.rs` dans chaque crate. Les préfixes de tag (`mpforge-`, `imgforge-`) sont automatiquement strippés :
 
 ```
-Sur un tag       : mpforge-cli v1.0.0    (tag mpforge-v1.0.0)
-                   imgforge-cli v0.1.0   (tag imgforge-v0.1.0)
-Entre deux tags  : mpforge-cli v1.0.0-3-g1a2b3c4
-Dirty            : mpforge-cli v1.0.0-dirty
+Sur un tag       : mpforge v1.0.0    (tag mpforge-v1.0.0)
+                   imgforge v0.1.0   (tag imgforge-v0.1.0)
+Entre deux tags  : mpforge v1.0.0-3-g1a2b3c4
+Dirty            : mpforge v1.0.0-dirty
 ```
 
 Fallbacks : `CI_COMMIT_TAG` (strip préfixe) > `git describe --tags` > `git rev-parse --short HEAD` > `CARGO_PKG_VERSION`.
@@ -86,12 +104,12 @@ Les tags sont préfixés par le nom de l'outil pour permettre des cycles de rele
 git status
 git push
 
-# 2. Release mpforge-cli (~15-20 min de build)
-git tag -a mpforge-v1.0.0 -m "Release mpforge-cli v1.0.0"
+# 2. Release mpforge (~15-20 min de build)
+git tag -a mpforge-v1.0.0 -m "Release mpforge v1.0.0"
 git push origin mpforge-v1.0.0
 
-# 3. Release imgforge-cli (~2-3 min de build)
-git tag -a imgforge-v0.1.0 -m "Release imgforge-cli v0.1.0"
+# 3. Release imgforge (~2-3 min de build)
+git tag -a imgforge-v0.1.0 -m "Release imgforge v0.1.0"
 git push origin imgforge-v0.1.0
 
 # 4. Surveiller le build
@@ -106,7 +124,7 @@ git tag -d mpforge-v1.0.0
 git push --delete origin mpforge-v1.0.0
 # Supprimer aussi la release dans Forgejo UI si elle existe
 
-git tag -a mpforge-v1.0.0 -m "Release mpforge-cli v1.0.0 (corrected)"
+git tag -a mpforge-v1.0.0 -m "Release mpforge v1.0.0 (corrected)"
 git push origin mpforge-v1.0.0
 ```
 
@@ -126,8 +144,8 @@ Note : supprimer un tag ne supprime **pas** la release Forgejo. Il faut la suppr
 
 | Action | Commande |
 |--------|----------|
-| Release mpforge-cli | `git tag -a mpforge-v1.0.0 -m "Release mpforge-cli v1.0.0"` |
-| Release imgforge-cli | `git tag -a imgforge-v0.1.0 -m "Release imgforge-cli v0.1.0"` |
+| Release mpforge | `git tag -a mpforge-v1.0.0 -m "Release mpforge v1.0.0"` |
+| Release imgforge | `git tag -a imgforge-v0.1.0 -m "Release imgforge v0.1.0"` |
 | Pousser tag | `git push origin mpforge-v1.0.0` |
 | Lister tags par outil | `git tag -l 'mpforge-v*'` / `git tag -l 'imgforge-v*'` |
 | Voir détails tag | `git show mpforge-v1.0.0` |
@@ -153,7 +171,7 @@ v0.2.0 -> v1.0.0  : Breaking change
 
 | Composant | Requis pour |
 |-----------|-------------|
-| **Rust** (via rustup) | mpforge-cli |
+| **Rust** (via rustup) | mpforge |
 | **GCC/Clang + CMake 3.20+** | ogr-polishmap (driver C++) |
 | **GDAL 3.6+ dev** (3.10+ recommandé) | ogr-polishmap |
 | **Python 3.10+ + PyQGIS** | Plugin QGIS (optionnel) |
@@ -209,12 +227,12 @@ mkdir -p ~/.gdal/plugins
 cd ogr-polishmap
 cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
 
-# mpforge-cli (nécessite GDAL installé)
-cd mpforge-cli
+# mpforge (nécessite GDAL installé)
+cd mpforge
 cargo build --release
 
-# imgforge-cli (Pure Rust, aucune dépendance système)
-cd imgforge-cli
+# imgforge (Pure Rust, aucune dépendance système)
+cd imgforge
 cargo build --release
 ```
 
@@ -224,12 +242,12 @@ cargo build --release
 
 ```
 mpforge/
-├── mpforge-cli/              # CLI Rust — génération de tuiles Polish Map
+├── mpforge/              # CLI Rust — génération de tuiles Polish Map
 │   ├── src/                  # Code source
 │   ├── examples/             # Exemples de configuration YAML
 │   └── resources/            # proj.db (embarqué dans le binaire)
 │
-├── imgforge-cli/             # CLI Rust — compilateur .mp → Garmin .img
+├── imgforge/             # CLI Rust — compilateur .mp → Garmin .img
 │   ├── src/                  # Code source (parser, img writer)
 │   └── tests/                # Tests d'intégration + fixtures
 │
@@ -240,8 +258,8 @@ mpforge/
 │   └── test/                 # Tests et données de test
 │
 ├── .woodpecker/              # Pipelines CI/CD
-│   ├── mpforge-cli.yml       # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
-│   └── imgforge-cli.yml      # Build standard (Pure Rust), tag imgforge-v*
+│   ├── mpforge.yml       # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
+│   └── imgforge.yml      # Build standard (Pure Rust), tag imgforge-v*
 │
 └── docs/                     # Documentation projet (BMAD, specs format)
     ├── planning-artifacts/   # PRD, architecture, epics

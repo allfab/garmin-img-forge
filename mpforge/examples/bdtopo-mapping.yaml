@@ -1,0 +1,106 @@
+# Configuration de mapping de champs pour IGN BDTOPO
+# Utilisation : ogr2ogr -f "PolishMap" -dsco FIELD_MAPPING=bdtopo-mapping.yaml output.mp input.shp
+
+field_mapping:
+  # ============================================
+  # CHAMPS PRINCIPAUX
+  # ============================================
+
+  # Identification et étiquetage
+  NAME: Label                  # Nom de la feature
+  MP_TYPE: Type                # Code type Garmin (ex: 0x54 pour commune)
+
+  # ============================================
+  # LOCALISATION GÉOGRAPHIQUE
+  # ============================================
+
+  # Hiérarchie administrative
+  Country: CountryName         # Pays (ex: "France~[0x1d]FRA")
+  RegionName: RegionName       # Nom de la région
+  CityName: CityName          # Nom de la ville/commune
+  Zip: Zip                    # Code postal
+
+  # ============================================
+  # PARAMÈTRES D'AFFICHAGE
+  # ============================================
+
+  # Niveaux de zoom
+  MPBITLEVEL: Levels          # Plage de niveaux (ex: "0-3")
+  EndLevel: EndLevel          # Niveau de zoom maximum (0-9)
+
+  # ============================================
+  # CHAMPS BDTOPO SPÉCIFIQUES
+  # ============================================
+
+  # Selon le dataset BDTOPO utilisé, décommenter les lignes nécessaires :
+
+  # COMMUNE
+  # INSEE_COM: Data1          # Code INSEE commune
+  # POPULATION: Data2         # Population
+
+  # LIEU_DIT_HABITE
+  # IMPORTANCE: SubType       # Importance du lieu-dit
+
+  # TRONCON_ROUTE
+  # NATURE: SubType           # Nature de la route
+  # LARGEUR: Data1            # Largeur de la chaussée
+
+  # BATIMENT
+  # USAGE: SubType            # Usage du bâtiment
+  # HAUTEUR: Data1            # Hauteur du bâtiment
+
+# ============================================
+# NOTES D'UTILISATION
+# ============================================
+#
+# 1. Types de géométrie supportés :
+#    - POI (POINT) : Points d'intérêt
+#    - POLYLINE (LINESTRING) : Routes, cours d'eau
+#    - POLYGON (POLYGON) : Communes, bâtiments, forêts
+#
+# 2. Champs obligatoires automatiques :
+#    - Data0 : Coordonnées (géré automatiquement par le driver)
+#
+# 3. Valeurs Type recommandées :
+#    - 0x13 : Ville (city)
+#    - 0x54 : Commune/Canton
+#    - 0x01 : Route principale
+#    - 0x13 : Bâtiment
+#
+# 4. Format CountryName :
+#    - Format : "NomPays~[0xHH]CODE"
+#    - Exemple : "France~[0x1d]FRA"
+#
+# 5. Format Levels :
+#    - Format : "min-max"
+#    - Exemple : "0-3" (visible du niveau 0 au niveau 3)
+#
+# ============================================
+# EXEMPLES D'UTILISATION
+# ============================================
+#
+# Conversion COMMUNE :
+# ogr2ogr -f "PolishMap" -dsco FIELD_MAPPING=bdtopo-mapping.yaml \
+#   communes.mp COMMUNE.shp
+#
+# Conversion avec filtre :
+# ogr2ogr -f "PolishMap" -dsco FIELD_MAPPING=bdtopo-mapping.yaml \
+#   -where "POPULATION > 10000" \
+#   grandes_villes.mp COMMUNE.shp
+#
+# Conversion multi-couches :
+# ogr2ogr -f "PolishMap" -dsco FIELD_MAPPING=bdtopo-mapping.yaml \
+#   reunion.mp BDTOPO_LA_REUNION.gdb
+#
+# ============================================
+# RESSOURCES
+# ============================================
+#
+# Documentation BDTOPO :
+# https://geoservices.ign.fr/bdtopo
+#
+# Documentation mpforge :
+# https://forgejo.allfabox.fr/allfab/mpforge/src/branch/main/mpforge/README.md#field-mapping-configuration
+#
+# Format Polish Map :
+# http://cgpsmapper.com/buy.htm

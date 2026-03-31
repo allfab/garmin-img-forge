@@ -93,7 +93,7 @@ Pour compiler le driver directement dans GDAL (au lieu de plugin) :
 2. Ajouter l'entrée dans `gdal/ogr/ogrsf_frmts/CMakeLists.txt`
 3. Recompiler GDAL
 
-C'est ce que fait le pipeline CI/CD pour produire le binaire statique `mpforge-cli`.
+C'est ce que fait le pipeline CI/CD pour produire le binaire statique `mpforge`.
 
 ---
 

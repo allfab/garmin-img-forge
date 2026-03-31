@@ -1,0 +1,550 @@
+use imgforge::img::writer;
+use imgforge::img::assembler;
+use imgforge::parser;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+fn load_fixture(name: &str) -> String {
+    let path = format!(
+        "{}/tests/fixtures/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        name
+    );
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Cannot read fixture {}: {}", name, e))
+}
+
+fn compile_fixture(name: &str) -> Vec<u8> {
+    let content = load_fixture(name);
+    let mp = parser::parse_mp(&content).expect("Parse failed");
+    writer::build_img(&mp).expect("Build failed")
+}
+
+/// Read a 24-bit signed little-endian value
+fn read_i24(data: &[u8], offset: usize) -> i32 {
+    let val = data[offset] as i32
+        | ((data[offset + 1] as i32) << 8)
+        | ((data[offset + 2] as i32) << 16);
+    if val & 0x800000 != 0 {
+        val | !0xFFFFFF
+    } else {
+        val
+    }
+}
+
+fn read_u16(data: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes([data[offset], data[offset + 1]])
+}
+
+fn read_u32(data: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
+}
+
+/// Find a subfile in IMG directory, returns (data_offset, size)
+fn find_subfile(img: &[u8], ext: &str) -> Option<(usize, usize)> {
+    let block_exp1 = img[0x61] as u32;
+    let block_exp2 = img[0x62] as u32;
+    let block_size = 1u32 << (block_exp1 + block_exp2);
+    let dir_start = 2 * 512;
+
+    let mut pos = dir_start;
+    while pos + 512 <= img.len() {
+        let entry = &img[pos..pos + 512];
+        if entry[0] != 0x01 {
+            pos += 512;
+            continue;
+        }
+
+        let file_ext = std::str::from_utf8(&entry[9..12]).unwrap_or("").trim();
+        let part = u16::from_le_bytes([entry[0x11], entry[0x12]]);
+
+        if file_ext == ext && part == 0 {
+            let size = u32::from_le_bytes([
+                entry[0x0C], entry[0x0D], entry[0x0E], entry[0x0F],
+            ]) as usize;
+
+            // First block number
+            let first_block = u16::from_le_bytes([entry[0x20], entry[0x21]]);
+            if first_block != 0xFFFF {
+                let data_offset = first_block as usize * block_size as usize;
+                return Some((data_offset, size));
+            }
+        }
+        pos += 512;
+    }
+    None
+}
+
+// ============================================================================
+// 12.2 — Tests intégration single-tile
+// ============================================================================
+
+#[test]
+fn test_minimal_img_header_signatures() {
+    let img = compile_fixture("minimal.mp");
+
+    // DSKIMG signature at 0x10
+    assert_eq!(
+        &img[0x10..0x17],
+        b"DSKIMG\0",
+        "Missing DSKIMG signature"
+    );
+
+    // GARMIN identifier at 0x41
+    assert_eq!(
+        &img[0x41..0x48],
+        b"GARMIN\0",
+        "Missing GARMIN identifier"
+    );
+
+    // Partition signature 0x55AA at 0x1FE
+    assert_eq!(img[0x1FE], 0x55, "Missing partition sig low byte");
+    assert_eq!(img[0x1FF], 0xAA, "Missing partition sig high byte");
+}
+
+#[test]
+fn test_minimal_img_block_size_valid() {
+    let img = compile_fixture("minimal.mp");
+    let exp1 = img[0x61] as u32;
+    let exp2 = img[0x62] as u32;
+
+    assert_eq!(exp1, 9, "Block exponent 1 should be 9");
+    assert!(exp1 + exp2 >= 9, "Block size too small");
+    assert!(exp1 + exp2 <= 24, "Block size too large");
+}
+
+#[test]
+fn test_minimal_img_directory_has_entries() {
+    let img = compile_fixture("minimal.mp");
+    let dir_start = 2 * 512;
+
+    // Should have at least the header entry + TRE + RGN + LBL = 4 entries
+    assert!(img.len() > dir_start + 4 * 512, "IMG too small for directory");
+
+    // Count used directory entries
+    let mut count = 0;
+    let mut pos = dir_start;
+    while pos + 512 <= img.len() {
+        if img[pos] == 0x01 {
+            count += 1;
+        }
+        pos += 512;
+        if count > 100 {
+            break;
+        }
+    }
+
+    assert!(count >= 4, "Expected at least 4 directory entries (header+TRE+RGN+LBL), got {}", count);
+}
+
+#[test]
+fn test_minimal_img_has_tre_subfile() {
+    let img = compile_fixture("minimal.mp");
+    let subfile = find_subfile(&img, "TRE");
+    assert!(subfile.is_some(), "TRE subfile not found in directory");
+    let (offset, size) = subfile.unwrap();
+    assert!(size > 0, "TRE subfile has zero size");
+    assert!(offset + size <= img.len(), "TRE subfile extends past IMG end");
+}
+
+#[test]
+fn test_minimal_img_has_rgn_subfile() {
+    let img = compile_fixture("minimal.mp");
+    let subfile = find_subfile(&img, "RGN");
+    assert!(subfile.is_some(), "RGN subfile not found in directory");
+    let (_, size) = subfile.unwrap();
+    assert!(size > 0, "RGN subfile has zero size");
+}
+
+#[test]
+fn test_minimal_img_has_lbl_subfile() {
+    let img = compile_fixture("minimal.mp");
+    let subfile = find_subfile(&img, "LBL");
+    assert!(subfile.is_some(), "LBL subfile not found in directory");
+    let (_, size) = subfile.unwrap();
+    assert!(size > 0, "LBL subfile has zero size");
+}
+
+#[test]
+fn test_minimal_tre_header_garmin_type() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, size)) = find_subfile(&img, "TRE") {
+        assert!(size >= 188, "TRE too small for header");
+        let tre = &img[offset..offset + size];
+
+        // Header length
+        let hlen = read_u16(tre, 0);
+        assert_eq!(hlen, 188, "TRE header length should be 188");
+
+        // Type string
+        assert_eq!(&tre[2..12], b"GARMIN TRE", "TRE type string mismatch");
+    }
+}
+
+#[test]
+fn test_minimal_rgn_header_garmin_type() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, size)) = find_subfile(&img, "RGN") {
+        assert!(size >= 125, "RGN too small for header");
+        let rgn = &img[offset..offset + size];
+
+        let hlen = read_u16(rgn, 0);
+        assert_eq!(hlen, 125, "RGN header length should be 125");
+        assert_eq!(&rgn[2..12], b"GARMIN RGN", "RGN type string mismatch");
+    }
+}
+
+#[test]
+fn test_minimal_lbl_header_garmin_type() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, size)) = find_subfile(&img, "LBL") {
+        assert!(size >= 196, "LBL too small for header");
+        let lbl = &img[offset..offset + size];
+
+        let hlen = read_u16(lbl, 0);
+        assert_eq!(hlen, 196, "LBL header length should be 196");
+        assert_eq!(&lbl[2..12], b"GARMIN LBL", "LBL type string mismatch");
+    }
+}
+
+#[test]
+fn test_minimal_tre_bounds_nonzero() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, _)) = find_subfile(&img, "TRE") {
+        let tre = &img[offset..];
+
+        // Bounds at offset 21: north(3) + east(3) + south(3) + west(3)
+        let north = read_i24(tre, 21);
+        let east = read_i24(tre, 24);
+        let south = read_i24(tre, 27);
+        let west = read_i24(tre, 30);
+
+        assert!(north > south, "North {} should be > South {}", north, south);
+        assert!(east > west, "East {} should be > West {}", east, west);
+        assert!(north != 0 || south != 0, "Bounds should not all be zero");
+    }
+}
+
+#[test]
+fn test_minimal_rgn_has_data() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, size)) = find_subfile(&img, "RGN") {
+        let rgn = &img[offset..offset + size];
+
+        // Data section offset and size in RGN header (at offset 21)
+        let data_offset = read_u32(rgn, 21);
+        let data_size = read_u32(rgn, 25);
+
+        assert_eq!(data_offset, 125, "RGN data should start after 125B header");
+        assert!(data_size > 0, "RGN data section should not be empty (has 1 POI + 1 polyline + 1 polygon)");
+    }
+}
+
+#[test]
+fn test_minimal_lbl_has_labels() {
+    let img = compile_fixture("minimal.mp");
+    if let Some((offset, size)) = find_subfile(&img, "LBL") {
+        let lbl = &img[offset..offset + size];
+
+        // Label section offset and size (at offset 21 in LBL header)
+        let label_offset = read_u32(lbl, 21);
+        let label_size = read_u32(lbl, 25);
+
+        assert_eq!(label_offset, 196, "Label data should start after 196B header");
+        assert!(label_size > 1, "Label section should contain labels (got size {})", label_size);
+    }
+}
+
+// ============================================================================
+// 12.2 — Labels accentués
+// ============================================================================
+
+#[test]
+fn test_accented_labels_compile() {
+    let img = compile_fixture("labels_accented.mp");
+    assert!(img.len() > 512, "Accented labels IMG too small");
+    assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+}
+
+#[test]
+fn test_accented_labels_lbl_has_content() {
+    let img = compile_fixture("labels_accented.mp");
+    if let Some((offset, size)) = find_subfile(&img, "LBL") {
+        let lbl = &img[offset..offset + size];
+        let label_size = read_u32(lbl, 25);
+        // Should have at least labels for: Château de Versailles, Forêt de Fontainebleau, etc.
+        assert!(label_size > 20, "Label section too small for accented labels: {}", label_size);
+    }
+}
+
+// ============================================================================
+// 12.3 — Tests intégration routing
+// ============================================================================
+
+#[test]
+fn test_routing_compiles() {
+    let img = compile_fixture("routing.mp");
+    assert!(img.len() > 512);
+    assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+}
+
+#[test]
+fn test_routing_has_tre_rgn_lbl() {
+    let img = compile_fixture("routing.mp");
+    assert!(find_subfile(&img, "TRE").is_some(), "Missing TRE");
+    assert!(find_subfile(&img, "RGN").is_some(), "Missing RGN");
+    assert!(find_subfile(&img, "LBL").is_some(), "Missing LBL");
+}
+
+#[test]
+fn test_routing_has_net_subfile() {
+    let img = compile_fixture("routing.mp");
+    let net = find_subfile(&img, "NET");
+    assert!(net.is_some(), "Routing IMG must contain NET subfile");
+    let (offset, size) = net.unwrap();
+    assert!(size >= 55, "NET subfile too small for header (got {} bytes)", size);
+    // Verify NET header
+    let net_data = &img[offset..offset + size];
+    let hlen = read_u16(net_data, 0);
+    assert_eq!(hlen, 55, "NET header length should be 55");
+    assert_eq!(&net_data[2..12], b"GARMIN NET", "NET type string mismatch");
+}
+
+#[test]
+fn test_routing_has_nod_subfile() {
+    let img = compile_fixture("routing.mp");
+    let nod = find_subfile(&img, "NOD");
+    assert!(nod.is_some(), "Routing IMG must contain NOD subfile");
+    let (offset, size) = nod.unwrap();
+    assert!(size >= 127, "NOD subfile too small for header (got {} bytes)", size);
+    // Verify NOD header
+    let nod_data = &img[offset..offset + size];
+    let hlen = read_u16(nod_data, 0);
+    assert_eq!(hlen, 127, "NOD header length should be 127");
+    assert_eq!(&nod_data[2..12], b"GARMIN NOD", "NOD type string mismatch");
+}
+
+#[test]
+fn test_routing_polylines_in_rgn() {
+    let img = compile_fixture("routing.mp");
+    if let Some((offset, size)) = find_subfile(&img, "RGN") {
+        let rgn = &img[offset..offset + size];
+        let data_size = read_u32(rgn, 25);
+        assert!(data_size > 10, "RGN data too small for routing features: {}", data_size);
+    }
+}
+
+// ============================================================================
+// 12.4 — Tests intégration multi-tile
+// ============================================================================
+
+#[test]
+fn test_multi_tile_compile_both() {
+    // Both tiles should compile individually
+    let img_a = compile_fixture("tile_a.mp");
+    let img_b = compile_fixture("tile_b.mp");
+    assert!(img_a.len() > 512);
+    assert!(img_b.len() > 512);
+}
+
+#[test]
+fn test_multi_tile_gmapsupp() {
+    let img_a = compile_fixture("tile_a.mp");
+    let img_b = compile_fixture("tile_b.mp");
+
+    let tiles = vec![
+        ("63240001".to_string(), img_a),
+        ("63240002".to_string(), img_b),
+    ];
+
+    let gmapsupp = assembler::build_gmapsupp_from_imgs(&tiles, "Alsace Multi-tile")
+        .expect("gmapsupp assembly failed");
+
+    // Basic structure checks
+    assert!(gmapsupp.len() > 512, "gmapsupp too small");
+    assert_eq!(&gmapsupp[0x10..0x17], b"DSKIMG\0", "Missing DSKIMG");
+    assert_eq!(&gmapsupp[0x41..0x48], b"GARMIN\0", "Missing GARMIN");
+    assert_eq!(gmapsupp[0x1FE], 0x55, "Missing partition sig");
+    assert_eq!(gmapsupp[0x1FF], 0xAA, "Missing partition sig");
+}
+
+#[test]
+fn test_multi_tile_gmapsupp_has_subfiles() {
+    let img_a = compile_fixture("tile_a.mp");
+    let img_b = compile_fixture("tile_b.mp");
+
+    let tiles = vec![
+        ("63240001".to_string(), img_a),
+        ("63240002".to_string(), img_b),
+    ];
+
+    let gmapsupp = assembler::build_gmapsupp_from_imgs(&tiles, "Alsace")
+        .expect("gmapsupp assembly failed");
+
+    // Count TRE subfiles in the gmapsupp directory — should have at least 2
+    let dir_start = 2 * 512;
+    let mut tre_count = 0;
+    let mut pos = dir_start;
+    while pos + 512 <= gmapsupp.len() {
+        if gmapsupp[pos] == 0x01 {
+            let ext = std::str::from_utf8(&gmapsupp[pos + 9..pos + 12]).unwrap_or("");
+            let part = u16::from_le_bytes([gmapsupp[pos + 0x11], gmapsupp[pos + 0x12]]);
+            if ext == "TRE" && part == 0 {
+                tre_count += 1;
+            }
+        }
+        pos += 512;
+        if pos > dir_start + 100 * 512 {
+            break;
+        }
+    }
+
+    assert!(
+        tre_count >= 2,
+        "Expected at least 2 TRE subfiles in gmapsupp, found {}",
+        tre_count
+    );
+}
+
+// ============================================================================
+// 12.5 — Tests intégration types étendus
+// ============================================================================
+
+#[test]
+fn test_extended_types_compile() {
+    let img = compile_fixture("extended_types.mp");
+    assert!(img.len() > 512, "Extended types IMG too small");
+    assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+    assert_eq!(img[0x1FE], 0x55);
+    assert_eq!(img[0x1FF], 0xAA);
+}
+
+#[test]
+fn test_extended_types_rgn_has_ext_sections() {
+    let img = compile_fixture("extended_types.mp");
+    if let Some((offset, size)) = find_subfile(&img, "RGN") {
+        let rgn = &img[offset..offset + size];
+
+        // RGN header: standard data at 21-28
+        let data_offset = read_u32(rgn, 21);
+        let data_size = read_u32(rgn, 25);
+        assert_eq!(data_offset, 125, "RGN data should start after 125B header");
+        assert!(data_size > 0, "RGN standard data should not be empty");
+
+        // Extended areas at position 29-36
+        let ext_areas_offset = read_u32(rgn, 29);
+        let ext_areas_size = read_u32(rgn, 33);
+        assert!(ext_areas_offset > 0, "Extended areas offset should be non-zero (has polygon 0x10f04)");
+        assert!(ext_areas_size > 0, "Extended areas size should be non-zero");
+
+        // Extended points at position 85-92
+        let ext_points_offset = read_u32(rgn, 85);
+        let ext_points_size = read_u32(rgn, 89);
+        assert!(ext_points_offset > 0, "Extended points offset should be non-zero (has POI 0x2C04)");
+        assert!(ext_points_size > 0, "Extended points size should be non-zero");
+    }
+}
+
+#[test]
+fn test_extended_types_tre_has_ext_overviews() {
+    let img = compile_fixture("extended_types.mp");
+    if let Some((offset, size)) = find_subfile(&img, "TRE") {
+        let tre = &img[offset..offset + size];
+        let hlen = read_u16(tre, 0);
+        assert_eq!(hlen, 188, "TRE header should be 188 bytes");
+
+        // extTypeOffsets at position 124-133 (mkgmap TREHeader layout)
+        let ext_offsets_offset = read_u32(tre, 124);
+        let ext_offsets_size = read_u32(tre, 128);
+        assert!(ext_offsets_offset > 0, "extTypeOffsets offset should be non-zero");
+        assert!(ext_offsets_size > 0, "extTypeOffsets should have data");
+
+        // Record size should be 13
+        let record_size = read_u16(tre, 132);
+        assert_eq!(record_size, 13, "extTypeOffsets record size should be 13");
+
+        // Magic 0x0607 at position 134-137
+        let magic = read_u32(tre, 134);
+        assert_eq!(magic, 0x0607, "Extended types magic should be 0x0607");
+
+        // extTypeOverviews at position 138-147
+        let ext_ov_offset = read_u32(tre, 138);
+        let ext_ov_size = read_u32(tre, 142);
+        assert!(ext_ov_offset > 0, "extTypeOverviews offset should be non-zero");
+        assert!(ext_ov_size > 0, "extTypeOverviews should have data");
+
+        // Record size should be 4
+        let ov_record_size = read_u16(tre, 146);
+        assert_eq!(ov_record_size, 4, "extTypeOverviews record size should be 4");
+    }
+}
+
+#[test]
+fn test_extended_types_parser_preserves_large_types() {
+    let content = load_fixture("extended_types.mp");
+    let mp = parser::parse_mp(&content).unwrap();
+
+    // 0x1101C should not be truncated
+    let large_poi = mp.points.iter().find(|p| p.label == "Large Type POI").unwrap();
+    assert_eq!(large_poi.type_code, 0x1101C, "Type 0x1101C must be preserved as u32");
+
+    // 0x2C04 should be preserved
+    let ext_poi = mp.points.iter().find(|p| p.label == "Extended POI").unwrap();
+    assert_eq!(ext_poi.type_code, 0x2C04);
+
+    // 0x10f04 should be preserved
+    let ext_poly = mp.polygons.iter().find(|p| p.label == "Extended Building").unwrap();
+    assert_eq!(ext_poly.type_code, 0x10f04);
+}
+
+#[test]
+fn test_extended_types_nonregression_fixtures() {
+    // All existing fixtures must still compile correctly
+    for fixture in &["minimal.mp", "routing.mp", "labels_accented.mp", "tile_a.mp", "tile_b.mp"] {
+        let content = load_fixture(fixture);
+        let mp = parser::parse_mp(&content)
+            .unwrap_or_else(|e| panic!("Parse failed for {}: {}", fixture, e));
+        let img = writer::build_img(&mp)
+            .unwrap_or_else(|e| panic!("Build failed for {}: {}", fixture, e));
+
+        assert!(img.len() > 512, "{} produced IMG < 512 bytes", fixture);
+        assert_eq!(&img[0x10..0x17], b"DSKIMG\0", "{} missing DSKIMG", fixture);
+    }
+}
+
+// ============================================================================
+// Parse → Compile round-trip sanity checks
+// ============================================================================
+
+#[test]
+fn test_parse_compile_all_fixtures() {
+    for fixture in &["minimal.mp", "routing.mp", "labels_accented.mp", "tile_a.mp", "tile_b.mp"] {
+        let content = load_fixture(fixture);
+        let mp = parser::parse_mp(&content)
+            .unwrap_or_else(|e| panic!("Parse failed for {}: {}", fixture, e));
+        let img = writer::build_img(&mp)
+            .unwrap_or_else(|e| panic!("Build failed for {}: {}", fixture, e));
+
+        assert!(img.len() > 512, "{} produced IMG < 512 bytes", fixture);
+        assert_eq!(
+            &img[0x10..0x17],
+            b"DSKIMG\0",
+            "{} missing DSKIMG signature",
+            fixture
+        );
+    }
+}
+
+#[test]
+fn test_img_file_size_reasonable() {
+    let img = compile_fixture("minimal.mp");
+    // A minimal map should be between 2KB and 100KB
+    assert!(img.len() > 2048, "IMG too small: {} bytes", img.len());
+    assert!(img.len() < 100_000, "IMG unexpectedly large: {} bytes", img.len());
+}

@@ -1,0 +1,172 @@
+# Configuration mpforge — Test BDTOPO Isere (D038)
+# Pipeline complet : 21 couches BDTOPO, rules + SRS reprojection + tuilage + rapport JSON
+#
+# Usage:
+#   cd mpforge
+#   cargo run --release -- build \
+#     --config examples/bdtopo-d038-config.yaml \
+#     --report examples/output/report-d038.json \
+#     --jobs 4 \
+#     -vv
+
+version: 1
+
+grid:
+  cell_size: 0.15       # ~16.5 km par tuile
+  overlap: 0.005        # Leger chevauchement
+
+inputs:
+  # ==========================================================================
+  # TRANSPORT (4 couches — FME 01-TRANSPORT)
+  # ==========================================================================
+
+  # --- Routes (428k features — le gros morceau) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Voies ferrees ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Pistes d'aerodrome ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/PISTE_D_AERODROME.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Transport par cable ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # ADMINISTRATIF (2 couches — FME 01-TRANSPORT Chef-lieu + ZONE_D_HABITATION)
+  # ==========================================================================
+
+  # --- Communes (POI chef-lieu + Polygon limites) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/ADMINISTRATIF/COMMUNE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Zones d'habitation ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
+  # ==========================================================================
+
+  # --- Troncons hydrographiques (polyline) ---
+  # NOTE: Utiliser TRONCON_HYDROGRAPHIQUE.shp (pas COURS_D_EAU.shp)
+  #   Le source_layer du ruleset = TRONCON_HYDROGRAPHIQUE
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Surfaces hydrographiques (polygon) ---
+  # NOTE: Utiliser SURFACE_HYDROGRAPHIQUE.shp (pas PLAN_D_EAU.shp)
+  #   Le source_layer du ruleset = SURFACE_HYDROGRAPHIQUE
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Details hydrographiques (POI) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
+  # ==========================================================================
+
+  # --- Batiments (polygon) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/BATIMENT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Cimetieres (polygon) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/CIMETIERE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Constructions lineaires (polyline) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/CONSTRUCTION_LINEAIRE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Constructions ponctuelles (POI) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/CONSTRUCTION_PONCTUELLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Pylones (POI) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/PYLONE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Terrains de sport (polygon) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/TERRAIN_DE_SPORT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Lignes orographiques (polyline — FME 07-OROGRAPHIE) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/BATI/LIGNE_OROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # VEGETATION (1 couche — FME 05-VEGETATION)
+  # ==========================================================================
+
+  # --- Zones de vegetation (polygon, 226k features) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # SERVICES & ACTIVITES (2 couches — FME 03-SERVICES)
+  # ==========================================================================
+
+  # --- Zones d'activite ou d'interet (polygon) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Lignes electriques (polyline) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # ZONES REGLEMENTEES (1 couche — FME 02-ZONES_REG)
+  # ==========================================================================
+
+  # --- Forets publiques (polygon) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # ==========================================================================
+  # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
+  # ==========================================================================
+
+  # --- Toponymie (POI, 162 branches sur 10 categories CLASSE) ---
+  - path: "/home/allfab/code/forgejo/garmin-ign-bdtopo-map/data/bdtopo/2025/v2025.12/D038/LIEUX_NOMMES/TOPONYMIE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+output:
+  directory: "examples/output/tiles-d038/"
+  filename_pattern: "D038_{col}_{row}.mp"
+  overwrite: true
+
+# Regles de transformation BDTOPO -> types Garmin (fichier production unique)
+rules: "rules/bdtopo-garmin-rules.yaml"
+
+# Bbox Isere approximative (WGS84) pour limiter le traitement
+filters:
+  bbox: [5.0, 44.6, 6.4, 45.9]
+
+error_handling: "continue"

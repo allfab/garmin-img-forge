@@ -9,8 +9,8 @@
 #   2. Récupère la page détail du dataset le plus récent
 #   3. Extrait les URLs de download et hash MD5 depuis la réponse API
 #
-# Pipeline : download-bdtopo.sh → mpforge-cli → imgforge-cli → gmapsupp.img
-#            (actuellement : download-bdtopo.sh → mpforge-cli → mkgmap → gmapsupp.img)
+# Pipeline : download-bdtopo.sh → mpforge → imgforge → gmapsupp.img
+#            (actuellement : download-bdtopo.sh → mpforge → mkgmap → gmapsupp.img)
 #
 # Prérequis : curl, 7z (p7zip-full)
 # =============================================================================
@@ -740,7 +740,7 @@ show_json_summary() {
 show_next_steps() {
     if [[ "$DRY_RUN" == true ]]; then return 0; fi
     log_step "Pipeline Garmin — prochaines étapes"
-    echo -e "  ${CYAN}mpforge-cli build --config france-garmin.yaml --rules bdtopo-garmin-rules.yaml --jobs 8${NC}"
+    echo -e "  ${CYAN}mpforge build --config france-garmin.yaml --rules bdtopo-garmin-rules.yaml --jobs 8${NC}"
     echo -e "  ${CYAN}java -Xmx10000m -jar mkgmap.jar --verbose --keep-going --index tiles/*.mp${NC}"
     if [[ "$PRODUCT" == "DIFF" ]]; then echo -e "\n  ${GREEN}Différentiel → ne régénérer que les tuiles impactées${NC}"; fi
     echo ""

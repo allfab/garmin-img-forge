@@ -1,0 +1,4 @@
+# Dossier de build Zensical
+_site/
+.venv/
+__pycache__/

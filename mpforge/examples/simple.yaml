@@ -1,0 +1,30 @@
+# Simple configuration example for mpforge
+# Minimal setup for basic tiling operations
+
+version: 1  # Configuration version (currently only 1 is supported)
+
+grid:
+  cell_size: 0.15  # REQUIRED: Grid cell size in degrees (must be > 0.0)
+  overlap: 0.0     # OPTIONAL: Overlap between tiles in degrees (must be >= 0.0, default: 0.0)
+  # origin: [0.0, 0.0]  # OPTIONAL: Grid origin point [lon, lat]
+
+inputs:
+  # REQUIRED: At least one input source
+  # Each input must have EITHER 'path' OR 'connection', not both
+  - path: "data/input.shp"  # File path (supports wildcards like "data/*.shp")
+
+output:
+  directory: "tiles/"          # REQUIRED: Output directory for .mp files
+  filename_pattern: "{col}_{row}.mp"  # OPTIONAL: Tile naming pattern (default: "{col}_{row}.mp")
+  # Supported variables: {col}, {row}, {seq} (aliases: {x}, {y})
+  # Zero-padding: {col:03} → "005", {seq:04} → "0001"
+  # Subdirectories: "{col}/{row}.mp" creates col/ folders automatically
+  # Examples: "{col:03}_{row:03}.mp", "{seq:04}.mp", "tile_{col}_{row}.mp"
+  # overwrite: true  # OPTIONAL: Set to false to skip existing tiles (default: true)
+  #                  # Equivalent to CLI --skip-existing flag
+
+# OPTIONAL: Spatial filters
+# filters:
+#   bbox: [-5.0, 41.0, 10.0, 51.5]  # [min_lon, min_lat, max_lon, max_lat] (min < max required)
+
+error_handling: "continue"  # OPTIONAL: "continue" or "fail-fast" (default: "continue")

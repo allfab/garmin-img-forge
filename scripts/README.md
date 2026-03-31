@@ -34,7 +34,7 @@ sudo apt install curl p7zip-full
 
 **Pipeline complet** :
 ```
-download-bdtopo.sh → mpforge-cli build → imgforge-cli → gmapsupp.img
+download-bdtopo.sh → mpforge build → imgforge → gmapsupp.img
 ```
 
 ---
