@@ -29,55 +29,48 @@ text = "Roboto"
 code = "Roboto Mono"
 
 [[nav]]
-title = "Accueil"
-file = "index.md"
+Accueil = "index.md"
 
 [[nav]]
-title = "Introduction"
-file = "01-introduction/index.md"
+Introduction = "01-introduction/index.md"
 
 [[nav]]
-title = "Pile technologique"
-children = [
-  { title = "Vue d'ensemble", file = "02-pile-technologique/index.md" },
-  { title = "Logiciels et outils", file = "02-pile-technologique/logiciels-outils.md" },
-  { title = "Arborescence", file = "02-pile-technologique/arborescence.md" },
-  { title = "Socle de données", file = "02-pile-technologique/socle-donnees.md" }
+"Pile technologique" = [
+  { "Vue d'ensemble" = "02-pile-technologique/index.md" },
+  { "Logiciels et outils" = "02-pile-technologique/logiciels-outils.md" },
+  { Arborescence = "02-pile-technologique/arborescence.md" },
+  { "Socle de données" = "02-pile-technologique/socle-donnees.md" }
 ]
 
 [[nav]]
-title = "Processus"
-children = [
-  { title = "Vue d'ensemble", file = "03-processus/index.md" },
-  { title = "Diagramme de flux", file = "03-processus/diagramme.md" },
-  { title = "Détail des étapes", file = "03-processus/details-processus.md" }
+Processus = [
+  { "Vue d'ensemble" = "03-processus/index.md" },
+  { "Diagramme de flux" = "03-processus/diagramme.md" },
+  { "Détail des étapes" = "03-processus/details-processus.md" }
 ]
 
 [[nav]]
-title = "Guide pas à pas"
-children = [
-  { title = "Introduction", file = "04-guide-pas-a-pas/index.md" },
-  { title = "Préambule", file = "04-guide-pas-a-pas/preambule.md" },
-  { title = "Format Polish Map", file = "04-guide-pas-a-pas/polish-map-format.md" },
-  { title = "Compilation Garmin IMG", file = "04-guide-pas-a-pas/compilation-garmin-img.md" },
-  { title = "Limites des formats", file = "04-guide-pas-a-pas/limites-formats.md" }
+"Guide pas à pas" = [
+  { Introduction = "04-guide-pas-a-pas/index.md" },
+  { "Préambule" = "04-guide-pas-a-pas/preambule.md" },
+  { "Format Polish Map" = "04-guide-pas-a-pas/polish-map-format.md" },
+  { "Compilation Garmin IMG" = "04-guide-pas-a-pas/compilation-garmin-img.md" },
+  { "Limites des formats" = "04-guide-pas-a-pas/limites-formats.md" }
 ]
 
 [[nav]]
-title = "Installation"
-children = [
-  { title = "Vue d'ensemble", file = "05-installation/index.md" },
-  { title = "Assemblage des données", file = "05-installation/assemblage-donnees.md" },
-  { title = "Procédure d'installation", file = "05-installation/procedure-installation.md" }
+Installation = [
+  { "Vue d'ensemble" = "05-installation/index.md" },
+  { "Assemblage des données" = "05-installation/assemblage-donnees.md" },
+  { "Procédure d'installation" = "05-installation/procedure-installation.md" }
 ]
 
 [[nav]]
-title = "Téléchargements"
-children = [
-  { title = "Vue d'ensemble", file = "06-telechargements/index.md" },
-  { title = "France métropolitaine", file = "06-telechargements/france.md" },
-  { title = "Par région", file = "06-telechargements/regions.md" },
-  { title = "Outre-mer", file = "06-telechargements/outre-mer.md" }
+"Téléchargements" = [
+  { "Vue d'ensemble" = "06-telechargements/index.md" },
+  { "France métropolitaine" = "06-telechargements/france.md" },
+  { "Par région" = "06-telechargements/regions.md" },
+  { "Outre-mer" = "06-telechargements/outre-mer.md" }
 ]
 
 [markdown_extensions]
