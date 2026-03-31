@@ -7,9 +7,9 @@
 #
 # USAGE (Task 3.2 — substitution de variables via envsubst) :
 #
-#   export DATA_ROOT="./data/bdtopo/2025/v2025.12/D038"
-#   export OUTPUT_DIR="./output"
-#   envsubst < configs/france-bdtopo.yaml > /tmp/mpforge-config.yaml
+#   export DATA_ROOT="./pipeline/data/bdtopo/2025/v2025.12/D038"
+#   export OUTPUT_DIR="./pipeline/output"
+#   envsubst < pipeline/configs/france-bdtopo.yaml > /tmp/mpforge-config.yaml
 #   mpforge build --config /tmp/mpforge-config.yaml --jobs 8
 #
 # NOTE : build-garmin-map.sh génère automatiquement une config équivalente en

@@ -9,8 +9,8 @@ fn main() {
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
 
     // Rerun si .git/HEAD ou refs/tags changent
-    println!("cargo:rerun-if-changed=../.git/HEAD");
-    println!("cargo:rerun-if-changed=../.git/refs/tags");
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/tags");
 
     // Rerun si les variables CI changent
     println!("cargo:rerun-if-env-changed=CI_COMMIT_TAG");

@@ -21,7 +21,7 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 API_BASE="https://data.geopf.fr/telechargement"
-DATA_ROOT="./data/bdtopo"
+DATA_ROOT="./pipeline/data/bdtopo"
 PRODUCT="FULL"          # FULL | DIFF | EXPRESS
 FORMAT="SHP"            # SHP | GPKG | SQL
 THEMES="TOUSTHEMES"     # TOUSTHEMES | TRANSPORT | HYDROGRAPHIE | etc.
@@ -114,7 +114,7 @@ OPTIONS :
                           EXPRESS → France entière en GPKG (zone=FXX, automatique)
     --themes THEMES     TOUSTHEMES (défaut) | TRANSPORT | HYDROGRAPHIE | etc.
     --date YYYY-MM-DD   Forcer une date d'édition (sinon la plus récente)
-    --data-root DIR     Racine des données (défaut: ./data/bdtopo)
+    --data-root DIR     Racine des données (défaut: ./pipeline/data/bdtopo)
     --no-extract        Ne pas décompresser les .7z
     --no-skip           Re-télécharger même si déjà présent
     --dry-run           Simuler sans télécharger

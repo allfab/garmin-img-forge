@@ -4,8 +4,8 @@ use std::process::Command;
 fn main() {
     let git_version = get_git_version();
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
-    println!("cargo:rerun-if-changed=../.git/HEAD");
-    println!("cargo:rerun-if-changed=../.git/refs/tags");
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/tags");
     println!("cargo:rerun-if-env-changed=CI_COMMIT_TAG");
     println!("cargo:rerun-if-env-changed=CI_COMMIT_SHA");
 }

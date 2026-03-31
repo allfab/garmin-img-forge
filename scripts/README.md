@@ -24,7 +24,7 @@
 - Télécharge l'archive `.7z` avec reprise automatique (`curl -C -`)
 - Vérifie le hash MD5 des fichiers téléchargés
 - Extrait les dossiers thématiques Shapefile (ADMINISTRATIF, BATI, HYDROGRAPHIE, …)
-- Organise les données dans `data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`
+- Organise les données dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`
 - Idempotent : skip les fichiers déjà téléchargés et intacts (MD5 OK)
 
 **Prérequis** :

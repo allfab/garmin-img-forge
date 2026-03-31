@@ -6,9 +6,9 @@ MPForge est composé de trois briques :
 
 | Composant | Description | Documentation |
 |-----------|-------------|---------------|
-| **[ogr-polishmap](./ogr-polishmap/)** | Driver GDAL/OGR pour le format Polish Map (.mp) | [README](./ogr-polishmap/README.md), [Spec RST](./ogr-polishmap/doc/polishmap.rst) |
-| **[mpforge](./mpforge/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./mpforge/README.md), [Exemples](./mpforge/examples/) |
-| **[imgforge](./imgforge/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./imgforge/README.md) |
+| **[ogr-polishmap](./tools/ogr-polishmap/)** | Driver GDAL/OGR pour le format Polish Map (.mp) | [README](./tools/ogr-polishmap/README.md), [Spec RST](./tools/ogr-polishmap/doc/polishmap.rst) |
+| **[mpforge](./tools/mpforge/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./tools/mpforge/README.md), [Exemples](./tools/mpforge/examples/) |
+| **[imgforge](./tools/imgforge/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./tools/imgforge/README.md) |
 
 **Pipeline complet** : Données SIG → `mpforge` (tuiles .mp) → `imgforge` (fichiers .img) → GPS Garmin
 
@@ -224,15 +224,15 @@ mkdir -p ~/.gdal/plugins
 
 ```bash
 # ogr-polishmap (driver GDAL)
-cd ogr-polishmap
+cd tools/ogr-polishmap
 cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
 
 # mpforge (nécessite GDAL installé)
-cd mpforge
+cd tools/mpforge
 cargo build --release
 
 # imgforge (Pure Rust, aucune dépendance système)
-cd imgforge
+cd tools/imgforge
 cargo build --release
 ```
 
@@ -241,32 +241,44 @@ cargo build --release
 ## Structure du projet
 
 ```
-mpforge/
-├── mpforge/              # CLI Rust — génération de tuiles Polish Map
-│   ├── src/                  # Code source
-│   ├── examples/             # Exemples de configuration YAML
-│   └── resources/            # proj.db (embarqué dans le binaire)
+garmin-ign-bdtopo-map/
+├── tools/                        # CODE SOURCE DES OUTILS
+│   ├── mpforge/                  # CLI Rust — génération de tuiles Polish Map
+│   │   ├── src/                  # Code source
+│   │   ├── examples/             # Exemples de configuration YAML
+│   │   └── resources/            # proj.db (embarqué dans le binaire)
+│   │
+│   ├── imgforge/                 # CLI Rust — compilateur .mp → Garmin .img
+│   │   ├── src/                  # Code source (parser, img writer)
+│   │   └── tests/                # Tests d'intégration + fixtures
+│   │
+│   └── ogr-polishmap/            # Driver GDAL/OGR C++
+│       ├── src/                  # Code source
+│       ├── doc/                  # Spec format, compliance GDAL
+│       ├── examples/             # Scripts Python d'exemple
+│       └── test/                 # Tests et données de test
 │
-├── imgforge/             # CLI Rust — compilateur .mp → Garmin .img
-│   ├── src/                  # Code source (parser, img writer)
-│   └── tests/                # Tests d'intégration + fixtures
+├── pipeline/                     # PRODUCTION DE CARTES
+│   ├── configs/                  # Configuration YAML mpforge
+│   ├── data/                     # Données BDTOPO téléchargées
+│   ├── output/                   # Tuiles .mp et gmapsupp.img
+│   └── resources/                # Typfiles et ressources production
 │
-├── ogr-polishmap/            # Driver GDAL/OGR C++
-│   ├── src/                  # Code source
-│   ├── doc/                  # Spec format, compliance GDAL
-│   ├── examples/             # Scripts Python d'exemple
-│   └── test/                 # Tests et données de test
+├── scripts/                      # ORCHESTRATION (transversal)
 │
-├── .woodpecker/              # Pipelines CI/CD
-│   ├── mpforge.yml       # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
-│   └── imgforge.yml      # Build standard (Pure Rust), tag imgforge-v*
+├── site/                         # SITE PUBLIC Zensical
 │
-└── docs/                     # Documentation projet (BMAD, specs format)
-    ├── planning-artifacts/   # PRD, architecture, epics
-    ├── implementation-artifacts/  # Stories, tech-specs
-    ├── mp-file-syntax-description/  # Spec Polish Map (cGPSmapper)
-    ├── brainstorming/        # Sessions de brainstorming
-    └── samples/              # Fichiers d'exemple (MP, diagrammes)
+├── .woodpecker/                  # Pipelines CI/CD
+│   ├── mpforge.yml               # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
+│   ├── imgforge.yml              # Build standard (Pure Rust), tag imgforge-v*
+│   └── site.yml                  # Build et déploiement du site
+│
+└── docs/                         # Documentation projet (BMAD, specs format)
+    ├── planning-artifacts/       # PRD, architecture, epics
+    ├── implementation-artifacts/ # Stories, tech-specs
+    ├── mp-file-syntax-description/ # Spec Polish Map (cGPSmapper)
+    ├── brainstorming/            # Sessions de brainstorming
+    └── samples/                  # Fichiers d'exemple (MP, diagrammes)
 ```
 
 ---

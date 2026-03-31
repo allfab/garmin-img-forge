@@ -13,7 +13,7 @@
 #
 # Pipeline : download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
 #
-# Prérequis : mpforge (ou cargo), imgforge (ou cargo build --release)
+# Prérequis : mpforge (ou cd tools/mpforge && cargo build --release), imgforge (idem tools/imgforge)
 # =============================================================================
 
 set -euo pipefail
@@ -22,8 +22,8 @@ set -euo pipefail
 # Configuration par défaut
 # ---------------------------------------------------------------------------
 SCRIPT_VERSION="2.0.0"
-DATA_ROOT="./data/bdtopo"
-OUTPUT_DIR="./output"
+DATA_ROOT="./pipeline/data/bdtopo"
+OUTPUT_DIR="./pipeline/output"
 REPORT_FILE=""              # calculé après parse_args (dépend de OUTPUT_DIR)
 IMGFORGE_REPORT_FILE=""     # calculé après parse_args
 JOBS=8
@@ -98,12 +98,12 @@ OPTIONS :
     --config FILE           Config YAML mpforge (défaut: génération auto depuis --data-root)
     --rules FILE            Fichier de règles YAML (défaut: auto-découverte bdtopo-garmin-rules.yaml)
     --jobs N                Parallélisation (défaut: 8)
-    --output DIR            Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./output)
+    --output DIR            Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./pipeline/output)
     --imgforge FILE     Chemin binaire imgforge (défaut: auto-découverte)
     --family-id N           Family ID Garmin (défaut: 6324)
     --description STR       Description de la carte (défaut: "BDTOPO Garmin")
     --typ FILE              Fichier TYP styles personnalisés (optionnel)
-    --data-root DIR         Racine des données BDTOPO (défaut: ./data/bdtopo)
+    --data-root DIR         Racine des données BDTOPO (défaut: ./pipeline/data/bdtopo)
     --skip-existing         Passer les tuiles déjà présentes (idempotence)
     --dry-run               Simuler sans exécuter les commandes
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
@@ -112,17 +112,17 @@ OPTIONS :
 
 EXEMPLES :
     ./scripts/build-garmin-map.sh                                     # Auto-découverte de tout
-    ./scripts/build-garmin-map.sh --data-root data/bdtopo/2025/v2025.12/D038
-    ./scripts/build-garmin-map.sh --config configs/france-bdtopo.yaml --jobs 16
+    ./scripts/build-garmin-map.sh --data-root pipeline/data/bdtopo/2025/v2025.12/D038
+    ./scripts/build-garmin-map.sh --config pipeline/configs/france-bdtopo.yaml --jobs 16
     ./scripts/build-garmin-map.sh --dry-run                          # Simuler le pipeline
     ./scripts/build-garmin-map.sh --skip-existing --jobs 4           # Reprise partielle
 
 PRÉREQUIS :
-    mpforge   (ou cargo build --release dans mpforge/)
-    imgforge  (ou cargo build --release dans imgforge/)
+    mpforge   (ou cargo build --release dans tools/mpforge/)
+    imgforge  (ou cargo build --release dans tools/imgforge/)
 
 STRUCTURE DE SORTIE :
-    ./output/
+    ./pipeline/output/
     ├── tiles/              ← tuiles .mp générées par mpforge
     ├── gmapsupp.img        ← carte Garmin finale générée par imgforge
     ├── mpforge-report.json ← rapport mpforge
@@ -165,8 +165,8 @@ parse_args() {
 # ---------------------------------------------------------------------------
 find_mpforge() {
     local candidates=(
-        "./mpforge/target/release/mpforge"
-        "../mpforge/target/release/mpforge"
+        "./tools/mpforge/target/release/mpforge"
+        "../tools/mpforge/target/release/mpforge"
     )
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
@@ -186,8 +186,8 @@ find_mpforge() {
 # ---------------------------------------------------------------------------
 find_imgforge() {
     local candidates=(
-        "./imgforge/target/release/imgforge"
-        "../imgforge/target/release/imgforge"
+        "./tools/imgforge/target/release/imgforge"
+        "../tools/imgforge/target/release/imgforge"
     )
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
@@ -207,8 +207,8 @@ find_imgforge() {
 # ---------------------------------------------------------------------------
 find_rules_file() {
     local candidates=(
-        "./mpforge/rules/bdtopo-garmin-rules.yaml"
-        "../mpforge/rules/bdtopo-garmin-rules.yaml"
+        "./tools/mpforge/rules/bdtopo-garmin-rules.yaml"
+        "../tools/mpforge/rules/bdtopo-garmin-rules.yaml"
         "./rules/bdtopo-garmin-rules.yaml"
         "./bdtopo-garmin-rules.yaml"
     )
@@ -238,7 +238,7 @@ check_prerequisites() {
             _MPFORGE="__CARGO_RUN__"
         else
             log_error "mpforge introuvable (ni binaire ni cargo)"
-            log_error "  → Compilez avec : cd mpforge && cargo build --release"
+            log_error "  → Compilez avec : cd tools/mpforge && cargo build --release"
             exit 1
         fi
     else
@@ -256,7 +256,7 @@ check_prerequisites() {
             _IMGFORGE="__CARGO_RUN_IMGFORGE__"
         else
             log_error "imgforge introuvable"
-            log_error "  → Compilez avec : cd imgforge && cargo build --release"
+            log_error "  → Compilez avec : cd tools/imgforge && cargo build --release"
             exit 1
         fi
     else
@@ -486,13 +486,13 @@ run_mpforge() {
     if [[ "$_MPFORGE" == "__CARGO_RUN__" ]]; then
         # Fallback cargo run (mode dev)
         local mpforge_dir
-        mpforge_dir=$(find . -maxdepth 2 -name "Cargo.toml" \
+        mpforge_dir=$(find . -maxdepth 3 -name "Cargo.toml" \
                       -exec grep -l 'name.*=.*"mpforge"' {} \; 2>/dev/null \
                       | head -1 | xargs dirname 2>/dev/null || echo "")
 
         if [[ -z "$mpforge_dir" ]]; then
             # Essai d'un répertoire standard
-            mpforge_dir="./mpforge"
+            mpforge_dir="./tools/mpforge"
         fi
         cmd=(env PROJ_DATA=/usr/share/proj
              cargo run --manifest-path "${mpforge_dir}/Cargo.toml" --release --)
@@ -561,11 +561,11 @@ run_imgforge_build() {
     if [[ "$_IMGFORGE" == "__CARGO_RUN_IMGFORGE__" ]]; then
         # Fallback cargo run (mode dev)
         local imgforge_dir
-        imgforge_dir=$(find . -maxdepth 2 -name "Cargo.toml" \
+        imgforge_dir=$(find . -maxdepth 3 -name "Cargo.toml" \
                        -exec grep -l 'name.*=.*"imgforge"' {} \; 2>/dev/null \
                        | head -1 | xargs dirname 2>/dev/null || echo "")
         if [[ -z "$imgforge_dir" ]]; then
-            imgforge_dir="./imgforge"
+            imgforge_dir="./tools/imgforge"
         fi
         cmd=(cargo run --manifest-path "${imgforge_dir}/Cargo.toml" --release --)
     else
