@@ -1,0 +1,17 @@
+# Routage Traefik vers nginx site-docs
+# Pattern IP:port cohérent avec la stack (Forgejo=:3000, Woodpecker=:8002, etc.)
+http:
+  routers:
+    garmin-ign-topo-map:
+      rule: "Host(`maps.garmin.allfabox.fr`)"
+      entryPoints:
+        - websecure
+      service: site-docs
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    garmin-ign-topo-map:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.20.51:8081"
