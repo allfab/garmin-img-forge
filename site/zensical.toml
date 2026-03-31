@@ -100,3 +100,4 @@ generator = false
 icon = "fontawesome/brands/git-alt"
 link = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
 name = "Dépôt source"
+
