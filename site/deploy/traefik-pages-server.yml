@@ -12,4 +12,4 @@ http:
     pages-server:
       loadBalancer:
         servers:
-          - url: "http://pages-server:8080"
+          - url: "http://pages-server:8081"

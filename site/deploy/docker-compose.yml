@@ -10,6 +10,7 @@ services:
       GITEA_API_TOKEN: ${PAGES_TOKEN}
       ACME_ACCEPT_TERMS: "false"
       ENABLE_HTTP_SERVER: "true"
+      HTTP_PORT: "8081"
     networks:
       - forge
 
