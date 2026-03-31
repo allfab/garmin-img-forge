@@ -1,0 +1,2864 @@
+# Regles de transformation BDTOPO -> Polish Map (production)
+version: 1
+
+rulesets:
+  # ==========================================================================
+  # TRANSPORT — Troncons de route (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_ROUTE
+  # 17 regles couvrant toutes les combinaisons CL_ADMIN x NATURE
+  # ==========================================================================
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      # --- Priorite CL_ADMIN (evaluee en premier dans FME) ---
+
+      # 1. Autoroute (toute NATURE)
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "7"
+          Label: "~[0x04]${NUMERO}"
+
+      # 2. Nationale (hors Rond-point)
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "!Rond-point"
+        set:
+          Type: "0x04"
+          EndLevel: "7"
+          Label: "~[0x05]${NUMERO}"
+
+      # 3. Nationale Rond-point (pas de label)
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "Rond-point"
+        set:
+          Type: "0x04"
+          EndLevel: "7"
+
+      # 4. Departementale (hors Rond-point)
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "!Rond-point"
+        set:
+          Type: "0x05"
+          EndLevel: "7"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5. Departementale Rond-point (Type override 0x04, pas de label)
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+        set:
+          Type: "0x04"
+          EndLevel: "7"
+
+      # 6. Route intercommunale (toute NATURE)
+      - match:
+          CL_ADMIN: "Route intercommunale"
+        set:
+          Type: "0x05"
+          EndLevel: "7"
+          Label: "${NUMERO}"
+
+      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
+
+      # 7. Route a 1 chaussee
+      - match:
+          NATURE: "Route à 1 chaussée"
+        set:
+          Type: "0x06"
+          EndLevel: "2"
+
+      # 8. Route a 2 chaussees
+      - match:
+          NATURE: "Route à 2 chaussées"
+        set:
+          Type: "0x06"
+          EndLevel: "2"
+
+      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
+      - match:
+          NATURE: "Rond-point"
+        set:
+          Type: "0x06"
+          EndLevel: "2"
+
+      # 10. Route empierree
+      - match:
+          NATURE: "Route empierrée"
+        set:
+          Type: "0x07"
+          EndLevel: "1"
+
+      # 11. Bretelle
+      - match:
+          NATURE: "Bretelle"
+        set:
+          Type: "0x09"
+          EndLevel: "7"
+
+      # 12. Type autoroutier
+      - match:
+          NATURE: "Type autoroutier"
+        set:
+          Type: "0x09"
+          EndLevel: "7"
+          Label: "~[0x04]${NUMERO}"
+
+      # 13. Chemin
+      - match:
+          NATURE: "Chemin"
+        set:
+          Type: "0x0a"
+          EndLevel: "1"
+
+      # 14. Escalier
+      - match:
+          NATURE: "Escalier"
+        set:
+          Type: "0x0f"
+          EndLevel: "1"
+
+      # 15. Piste cyclable
+      - match:
+          NATURE: "Piste cyclable"
+        set:
+          Type: "0x0e"
+          EndLevel: "1"
+
+      # 16. Sentier
+      - match:
+          NATURE: "Sentier"
+        set:
+          Type: "0x10"
+          EndLevel: "1"
+
+      # 17. Bac ou liaison maritime
+      - match:
+          NATURE: "Bac ou liaison maritime"
+        set:
+          Type: "0x1b"
+          EndLevel: "1"
+
+  # ==========================================================================
+  # TRANSPORT — Voies ferrees (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_VOIE_FERREE
+  # 7 regles — POS_SOL="-1" en PREMIER (souterrain override toute NATURE)
+  # ==========================================================================
+  - name: "Voies ferrees"
+    source_layer: "TRONCON_DE_VOIE_FERREE"
+    rules:
+      # 1. Souterrain (POS_SOL=-1, quelle que soit NATURE) — DOIT ETRE EN PREMIER
+      - match:
+          POS_SOL: "-1"
+        set:
+          Type: "0x10e06"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 2. Voie ferree principale (hors souterrain)
+      - match:
+          NATURE: "Voie ferrée principale"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10c00"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 3. LGV (hors souterrain)
+      - match:
+          NATURE: "LGV"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10e02"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 4. Voie de service (hors souterrain)
+      - match:
+          NATURE: "Voie de service"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10e03"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 5. Tramway (hors souterrain)
+      - match:
+          NATURE: "Tramway"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10e04"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 6. Funiculaire ou cremaillere (hors souterrain)
+      - match:
+          NATURE: "Funiculaire ou crémaillère"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10e05"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+      # 7. Sans objet (hors souterrain)
+      - match:
+          NATURE: "Sans objet"
+          POS_SOL: "!-1"
+        set:
+          Type: "0x10c00"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # TRANSPORT — Pistes d'aerodrome (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
+  # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
+  # ==========================================================================
+  - name: "Pistes aerodrome"
+    source_layer: "PISTE_D_AERODROME"
+    rules:
+      # 1. Piste en dur
+      - match:
+          NATURE: "Piste en dur"
+        set:
+          Type: "0x1090b"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 2. Piste en herbe
+      - match:
+          NATURE: "Piste en herbe"
+        set:
+          Type: "0x10f17"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # TRANSPORT — Transport par cable (POLYLINE)
+  # Source FME : 07-VOIRIE.fmw / AttributeManager TRANSPORT_PAR_CABLE
+  # 1 regle statique (wildcard)
+  # ==========================================================================
+  - name: "Transport par cable"
+    source_layer: "TRANSPORT_PAR_CABLE"
+    rules:
+      # 1. Toute feature (mapping statique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10f0b"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # ADMINISTRATIF — Communes (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
+  # 1 regle wildcard avec attributs speciaux CountryName, CityName, Zip
+  # ==========================================================================
+  - name: "Communes"
+    source_layer: "COMMUNE"
+    rules:
+      # 1. Toute commune (mapping statique)
+      - match:
+          NOM: "*"
+        set:
+          Type: "0x54"
+          EndLevel: "7"
+          Label: "${NOM}"
+          CountryName: "France~[0x1d]FRA"
+          CityName: "${NOM}"
+          Zip: "${CODE_POST}"
+
+  # ==========================================================================
+  # ADMINISTRATIF — Zones d'habitation (POLYGON)
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw
+  # Ref TYP-MAPPING-RULES.md section 5.2
+  # 8 regles : 7 NATURE explicites + catch-all
+  # ==========================================================================
+  - name: "Zones d'habitation"
+    source_layer: "ZONE_D_HABITATION"
+    rules:
+      # 1. Chateau (manoir, tour nommee)
+      - match:
+          NATURE: "Château"
+        set:
+          Type: "0x10f0a"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 2. Grange (cabane, bergerie, baraquement)
+      - match:
+          NATURE: "Grange"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 3. Habitat temporaire (Guyane — carbet, habitation intermittente)
+      - match:
+          NATURE: "Habitat temporaire"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 4. Lieu-dit habite (hameau, groupe d'habitations)
+      - match:
+          NATURE: "Lieu-dit habité"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 5. Moulin (moulin a eau nomme)
+      - match:
+          NATURE: "Moulin"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 6. Quartier (cite, faubourg, lotissement)
+      - match:
+          NATURE: "Quartier"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 7. Ruines (batiment ou construction en ruines)
+      - match:
+          NATURE: "Ruines"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+      # 8. Catch-all Zone d'habitation (NATURE non reconnue)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x03"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Troncons hydrographiques (POLYLINE)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 2 regles — Intermittent en premier, puis catch-all (Permanent, Inconnue, vide)
+  # ==========================================================================
+  - name: "Troncons hydrographiques"
+    source_layer: "TRONCON_HYDROGRAPHIQUE"
+    rules:
+      # 1. Intermittent (seul type different du defaut)
+      - match:
+          PERSISTANC: "Intermittent"
+        set:
+          Type: "0x26"
+          EndLevel: "2"
+          Label: "${NOM_C_EAU}"
+
+      # 2. Catch-all (Permanent, Inconnue, vide)
+      - match:
+          PERSISTANC: "*"
+        set:
+          Type: "0x18"
+          EndLevel: "2"
+          Label: "${NOM_C_EAU}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Surfaces hydrographiques (POLYGON)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 4 regles — NATURE="Glacier, neve" en PREMIER (override PERSISTANC)
+  # ==========================================================================
+  - name: "Surfaces hydrographiques"
+    source_layer: "SURFACE_HYDROGRAPHIQUE"
+    rules:
+      # 1. Glacier, neve (override toute valeur de PERSISTANC)
+      - match:
+          NATURE: "Glacier, névé"
+        set:
+          Type: "0x4d"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 2. Intermittent (hors Glacier)
+      - match:
+          PERSISTANC: "Intermittent"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 3. Inconnue
+      - match:
+          PERSISTANC: "Inconnue"
+        set:
+          Type: "0x4c"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+      # 4. Catch-all (Permanent, vide)
+      - match:
+          PERSISTANC: "*"
+        set:
+          Type: "0x3f"
+          EndLevel: "2"
+          Label: "${NOM_P_EAU}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Details hydrographiques (POI)
+  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
+  # 13 regles — 12 NATURE explicites + catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence)
+  # ==========================================================================
+  - name: "Details hydrographiques"
+    source_layer: "DETAIL_HYDROGRAPHIQUE"
+    rules:
+      # 1. Arroyo
+      - match:
+          NATURE: "Arroyo"
+        set:
+          Type: "0x06501"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 2. Baie
+      - match:
+          NATURE: "Baie"
+        set:
+          Type: "0x06503"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 3. Cascade
+      - match:
+          NATURE: "Cascade"
+        set:
+          Type: "0x06508"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 4. Crique
+      - match:
+          NATURE: "Crique"
+        set:
+          Type: "0x06507"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 5. Fontaine
+      - match:
+          NATURE: "Fontaine"
+        set:
+          Type: "0x06509"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 6. Glacier
+      - match:
+          NATURE: "Glacier"
+        set:
+          Type: "0x0650a"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 7. Lac
+      - match:
+          NATURE: "Lac"
+        set:
+          Type: "0x0650d"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 8. Marais
+      - match:
+          NATURE: "Marais"
+        set:
+          Type: "0x06513"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 9. Mer
+      - match:
+          NATURE: "Mer"
+        set:
+          Type: "0x06510"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 10. Reservoir
+      - match:
+          NATURE: "Réservoir"
+        set:
+          Type: "0x0650f"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 11. Source
+      - match:
+          NATURE: "Source"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 12. Source captee
+      - match:
+          NATURE: "Source captée"
+        set:
+          Type: "0x06511"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 13. Catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence, etc.)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x06414"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Batiments (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager BATIMENT
+  # 12 regles NATURE + catch-all 0x1101c (Indifferenciee)
+  # Label : Pas de Label (FME supprime TOPONYME via AttributeKeeper)
+  # ==========================================================================
+  - name: "Batiments"
+    source_layer: "BATIMENT"
+    rules:
+      # 1. Arene ou theatre antique
+      - match:
+          NATURE: "Arène ou théâtre antique"
+        set:
+          Type: "0x10f08"
+          EndLevel: "2"
+
+      # 2. Chapelle
+      - match:
+          NATURE: "Chapelle"
+        set:
+          Type: "0x10f09"
+          EndLevel: "2"
+
+      # 3. Chateau
+      - match:
+          NATURE: "Château"
+        set:
+          Type: "0x10f0a"
+          EndLevel: "2"
+
+      # 4. Eglise
+      - match:
+          NATURE: "Eglise"
+        set:
+          Type: "0x10f0b"
+          EndLevel: "2"
+
+      # 5. Fort, blockhaus, casemate
+      - match:
+          NATURE: "Fort, blockhaus, casemate"
+        set:
+          Type: "0x10f0c"
+          EndLevel: "2"
+
+      # 6. Indifferenciee
+      - match:
+          NATURE: "Indifférenciée"
+        set:
+          Type: "0x1101c"
+          EndLevel: "2"
+
+      # 7. Industriel, agricole ou commercial
+      - match:
+          NATURE: "Industriel, agricole ou commercial"
+        set:
+          Type: "0x10f04"
+          EndLevel: "2"
+
+      # 8. Monument
+      - match:
+          NATURE: "Monument"
+        set:
+          Type: "0x10f0d"
+          EndLevel: "2"
+
+      # 9. Serre
+      - match:
+          NATURE: "Serre"
+        set:
+          Type: "0x10f05"
+          EndLevel: "2"
+
+      # 10. Silo
+      - match:
+          NATURE: "Silo"
+        set:
+          Type: "0x10f06"
+          EndLevel: "2"
+
+      # 11. Tour, donjon
+      - match:
+          NATURE: "Tour, donjon"
+        set:
+          Type: "0x10f11"
+          EndLevel: "2"
+
+      # 12. Tribune
+      - match:
+          NATURE: "Tribune"
+        set:
+          Type: "0x10f12"
+          EndLevel: "2"
+
+      # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x1101c"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Cimetieres (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager CIMETIERE
+  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : Pas de Label (FME : AttributeKeeper ne garde que NATURE)
+  # ==========================================================================
+  - name: "Cimetieres"
+    source_layer: "CIMETIERE"
+    rules:
+      # 1. Civil
+      - match:
+          NATURE: "Civil"
+        set:
+          Type: "0x1a"
+          EndLevel: "4"
+
+      # 2. Militaire
+      - match:
+          NATURE: "Militaire"
+        set:
+          Type: "0x10f13"
+          EndLevel: "4"
+
+      # 3. Militaire etranger
+      - match:
+          NATURE: "Militaire étranger"
+        set:
+          Type: "0x10f13"
+          EndLevel: "4"
+
+  # ==========================================================================
+  # BATI — Constructions lineaires (POLYLINE)
+  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_LINEAIRE
+  # 11 regles NATURE + catch-all 0x10c04
+  # Label : ${TOPONYME} (FME renomme TOPONYME→NAME)
+  # ==========================================================================
+  - name: "Constructions lineaires"
+    source_layer: "CONSTRUCTION_LINEAIRE"
+    rules:
+      # 1. Autre ligne descriptive
+      - match:
+          NATURE: "Autre ligne descriptive"
+        set:
+          Type: "0x10c04"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 2. Barrage
+      - match:
+          NATURE: "Barrage"
+        set:
+          Type: "0x10f08"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 3. Cloture
+      - match:
+          NATURE: "Clôture"
+        set:
+          Type: "0x13309"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 4. Mur
+      - match:
+          NATURE: "Mur"
+        set:
+          Type: "0x13308"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 5. Mur anti-bruit
+      - match:
+          NATURE: "Mur anti-bruit"
+        set:
+          Type: "0x10e13"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 6. Mur de soutenement
+      - match:
+          NATURE: "Mur de soutènement"
+        set:
+          Type: "0x10e18"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 7. Pont
+      - match:
+          NATURE: "Pont"
+        set:
+          Type: "0x10e14"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 8. Quai
+      - match:
+          NATURE: "Quai"
+        set:
+          Type: "0x10e16"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 9. Ruines
+      - match:
+          NATURE: "Ruines"
+        set:
+          Type: "0x10e15"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 10. Sport de montagne
+      - match:
+          NATURE: "Sport de montagne"
+        set:
+          Type: "0x10f0c"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 11. Tunnel
+      - match:
+          NATURE: "Tunnel"
+        set:
+          Type: "0x10e08"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+      # 12. Catch-all (NATURE non reconnue)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10c04"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Constructions ponctuelles (POI)
+  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_PONCTUELLE
+  # 12 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : ${TOPONYME} (FME : fallback NAT_DETAIL/NATURE non reproductible)
+  # ==========================================================================
+  - name: "Constructions ponctuelles"
+    source_layer: "CONSTRUCTION_PONCTUELLE"
+    rules:
+      # 1. Antenne
+      - match:
+          NATURE: "Antenne"
+        set:
+          Type: "0x11503"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 2. Autre construction elevee
+      - match:
+          NATURE: "Autre construction élevée"
+        set:
+          Type: "0x06402"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 3. Calvaire
+      - match:
+          NATURE: "Calvaire"
+        set:
+          Type: "0x11507"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 4. Cheminee
+      - match:
+          NATURE: "Cheminée"
+        set:
+          Type: "0x11504"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 5. Clocher
+      - match:
+          NATURE: "Clocher"
+        set:
+          Type: "0x10d0e"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 6. Croix
+      - match:
+          NATURE: "Croix"
+        set:
+          Type: "0x11507"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 7. Eolienne
+      - match:
+          NATURE: "Eolienne"
+        set:
+          Type: "0x11505"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 8. Minaret
+      - match:
+          NATURE: "Minaret"
+        set:
+          Type: "0x10d0d"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 9. Phare
+      - match:
+          NATURE: "Phare"
+        set:
+          Type: "0x10101"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 10. Puits d'hydrocarbures
+      - match:
+          NATURE: "Puits d'hydrocarbures"
+        set:
+          Type: "0x0640d"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 11. Torchère
+      - match:
+          NATURE: "Torchère"
+        set:
+          Type: "0x11108"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+      # 12. Transformateur
+      - match:
+          NATURE: "Transformateur"
+        set:
+          Type: "0x11506"
+          EndLevel: "1"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # BATI — Pylones (POI)
+  # Source FME : 06-BATI.fmw / AttributeCreator PYLONE (statique)
+  # 1 regle wildcard — Type 0x11503 (ECART avec doc : doc dit 0x11500)
+  # Label : Pas de Label (pas de champ NAME dans FME)
+  # ==========================================================================
+  - name: "Pylones"
+    source_layer: "PYLONE"
+    rules:
+      # 1. Toute feature (mapping statique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11503"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Terrains de sport (POLYGON)
+  # Source FME : 06-BATI.fmw / AttributeManager TERRAIN_DE_SPORT
+  # 5 regles NATURE + catch-all 0x1090d, EndLevel variable (2 ou 4)
+  # Label : ${NAT_DETAIL} (FME renomme NAT_DETAIL→NAME)
+  # ==========================================================================
+  - name: "Terrains de sport"
+    source_layer: "TERRAIN_DE_SPORT"
+    rules:
+      # 1. Bassin de natation
+      - match:
+          NATURE: "Bassin de natation"
+        set:
+          Type: "0x10f1d"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 2. Grand terrain de sport (EndLevel=4, pas 2 !)
+      - match:
+          NATURE: "Grand terrain de sport"
+        set:
+          Type: "0x1090d"
+          EndLevel: "4"
+          Label: "${NAT_DETAIL}"
+
+      # 3. Petit terrain multi-sports
+      - match:
+          NATURE: "Petit terrain multi-sports"
+        set:
+          Type: "0x1100a"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 4. Piste de sport
+      - match:
+          NATURE: "Piste de sport"
+        set:
+          Type: "0x10f1b"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 5. Terrain de tennis
+      - match:
+          NATURE: "Terrain de tennis"
+        set:
+          Type: "0x10f1c"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+      # 6. Catch-all (NATURE non reconnue → Grand terrain par defaut, EndLevel=2)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x1090d"
+          EndLevel: "2"
+          Label: "${NAT_DETAIL}"
+
+  # ==========================================================================
+  # OROGRAPHIE — Lignes orographiques (POLYLINE)
+  # Source FME : 06-BATI.fmw / AttributeManager LIGNE_OROGRAPHIQUE
+  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
+  # Label : ${NATURE} (FME renomme NATURE→NAME)
+  # ==========================================================================
+  - name: "Lignes orographiques"
+    source_layer: "LIGNE_OROGRAPHIQUE"
+    rules:
+      # 1. Carriere
+      - match:
+          NATURE: "Carrière"
+        set:
+          Type: "0x10e1a"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+      # 2. Levee
+      - match:
+          NATURE: "Levée"
+        set:
+          Type: "0x10e17"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+      # 3. Talus
+      - match:
+          NATURE: "Talus"
+        set:
+          Type: "0x10e19"
+          EndLevel: "2"
+          Label: "${NATURE}"
+
+  # ==========================================================================
+  # VEGETATION — Zones de vegetation (POLYGON)
+  # Source FME : 05-VEGETATION.fmw / AttributeManager ZONE_DE_VEGETATION
+  # 10 regles NATURE + catch-all 0x11005, EndLevel variable (4 ou 6)
+  # Labels : raccourcis FME (pas le NATURE brut), certains sans Label
+  # ==========================================================================
+  - name: "Zones de vegetation"
+    source_layer: "ZONE_DE_VEGETATION"
+    rules:
+      # 1. Bois (EndLevel=6, Label statique)
+      - match:
+          NATURE: "Bois"
+        set:
+          Type: "0x11005"
+          EndLevel: "6"
+          Label: "Bois"
+
+      # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
+      - match:
+          NATURE: "Forêt fermée de conifères"
+        set:
+          Type: "0x10f1f"
+          EndLevel: "6"
+          Label: "Forêt de conifères"
+
+      # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
+      - match:
+          NATURE: "Forêt fermée de feuillus"
+        set:
+          Type: "0x10f1e"
+          EndLevel: "6"
+          Label: "Forêt de feuillus"
+
+      # 4. Foret fermee mixte (EndLevel=6, pas de Label)
+      - match:
+          NATURE: "Forêt fermée mixte"
+        set:
+          Type: "0x4e"
+          EndLevel: "6"
+
+      # 5. Foret ouverte (EndLevel=6, pas de Label)
+      - match:
+          NATURE: "Forêt ouverte"
+        set:
+          Type: "0x11000"
+          EndLevel: "6"
+
+      # 6. Haie (EndLevel=4, pas de Label)
+      - match:
+          NATURE: "Haie"
+        set:
+          Type: "0x11002"
+          EndLevel: "4"
+
+      # 7. Lande ligneuse (EndLevel=4, pas de Label)
+      - match:
+          NATURE: "Lande ligneuse"
+        set:
+          Type: "0x11003"
+          EndLevel: "4"
+
+      # 8. Peupleraie (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Peupleraie"
+        set:
+          Type: "0x11001"
+          EndLevel: "4"
+          Label: "Peupleraie"
+
+      # 9. Verger (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Verger"
+        set:
+          Type: "0x11004"
+          EndLevel: "4"
+          Label: "Verger"
+
+      # 10. Vigne (EndLevel=4, Label statique)
+      - match:
+          NATURE: "Vigne"
+        set:
+          Type: "0x11004"
+          EndLevel: "4"
+          Label: "Vigne"
+
+      # 11. Catch-all (NATURE non reconnue → Bois par defaut, EndLevel=4)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11005"
+          EndLevel: "4"
+
+  # ==========================================================================
+  # SERVICES — Zones d'activite ou d'interet (POLYGON)
+  # Source FME : 03-SERVICES-ACTIVITES.fmw
+  # 1 regle wildcard — Type=0x0c, EndLevel=4, Label=${TOPONYME}
+  # ECART FME : EndLevel=4 (MPBITLEVEL=20), PAS 2 comme doc pipeline
+  # ==========================================================================
+  - name: "Zones d'activite"
+    source_layer: "ZONE_D_ACTIVITE_OU_D_INTERET"
+    rules:
+      # 1. Toute feature (mapping statique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x0c"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # SERVICES — Lignes electriques (POLYLINE)
+  # Source FME : 03-SERVICES-ACTIVITES.fmw
+  # 1 regle wildcard — Type=0x29, EndLevel=2, Label="Ligne ${VOLTAGE}"
+  # Label : concatenation "Ligne " + VOLTAGE
+  # ==========================================================================
+  - name: "Lignes electriques"
+    source_layer: "LIGNE_ELECTRIQUE"
+    rules:
+      # 1. Toute feature (mapping statique avec label dynamique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x29"
+          EndLevel: "2"
+          Label: "Ligne ${VOLTAGE}"
+
+  # ==========================================================================
+  # ZONES REGLEMENTEES — Forets publiques (POLYGON)
+  # Source FME : 02-ZONES-REGLEMENTEES.fmw
+  # 1 regle wildcard — Type=0x10a03, EndLevel=3, Label=${TOPONYME}
+  # ==========================================================================
+  - name: "Forets publiques"
+    source_layer: "FORET_PUBLIQUE"
+    rules:
+      # 1. Toute feature (mapping statique)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10a03"
+          EndLevel: "3"
+          Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
+  # Source FME : 08-TOPONYMIE.fmw
+  # Input BDTOPO : Couche unique TOPONYMIE, champs CLASSE, NATURE, GRAPHIE
+  # 10 categories CLASSE actives, 11 desactivees (doublons avec autres couches)
+  # Conditions AND : CLASSE + NATURE (chaque regle doit avoir les deux)
+  # Label source : GRAPHIE (FME renomme GRAPHIE→NAME)
+  # EndLevel : 2 pour toutes les regles, MPBITLEVEL=22
+  # Total : 162 regles actives (+ 11 categories commentees en fin de bloc)
+  # ==========================================================================
+  - name: "Toponymie"
+    source_layer: "TOPONYMIE"
+    rules:
+      # ------------------------------------------------------------------
+      # Categorie 1 : Aerodrome (3 NATURE + catch-all 0x02d0b)
+      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Aerodrome"
+      # ------------------------------------------------------------------
+
+      # 1. Aerodrome
+      - match:
+          CLASSE: "Aérodrome"
+          NATURE: "Aérodrome"
+        set:
+          Type: "0x02d0b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 2. Altiport
+      - match:
+          CLASSE: "Aérodrome"
+          NATURE: "Altiport"
+        set:
+          Type: "0x15500"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 3. Heliport
+      - match:
+          CLASSE: "Aérodrome"
+          NATURE: "Héliport"
+        set:
+          Type: "0x15500"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 4. Catch-all Aerodrome (NATURE non reconnue)
+      - match:
+          CLASSE: "Aérodrome"
+          NATURE: "*"
+        set:
+          Type: "0x02d0b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 2 : Cimetiere (simplifie en 1 regle wildcard)
+      # FME: 3 NATURE + catch-all, toutes mappent a 0x06403
+      # Optimisation : 1 seule regle CLASSE="Cimetiere" + NATURE="*"
+      # ------------------------------------------------------------------
+
+      # 5. Cimetiere (toute NATURE → 0x06403)
+      - match:
+          CLASSE: "Cimetière"
+          NATURE: "*"
+        set:
+          Type: "0x06403"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 3 : Construction lineaire (8 NATURE + catch-all 0x06402)
+      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction lineaire"
+      # ------------------------------------------------------------------
+
+      # 6. Barrage
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Barrage"
+        set:
+          Type: "0x06407"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 7. Mur
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Mur"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 8. Mur de soutenement
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Mur de soutènement"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 9. Pont
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Pont"
+        set:
+          Type: "0x06401"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 10. Quai
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Quai"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 11. Ruines
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Ruines"
+        set:
+          Type: "0x11514"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 12. Sport de montagne
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Sport de montagne"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 13. Tunnel
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "Tunnel"
+        set:
+          Type: "0x06413"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 14. Catch-all Construction lineaire
+      - match:
+          CLASSE: "Construction linéaire"
+          NATURE: "*"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 4 : Construction ponctuelle (5 NATURE + catch-all 0x10101)
+      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction ponctuelle"
+      # ------------------------------------------------------------------
+
+      # 15. Autre construction elevee
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "Autre construction élevée"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 16. Calvaire
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "Calvaire"
+        set:
+          Type: "0x11507"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 17. Clocher
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "Clocher"
+        set:
+          Type: "0x10d0e"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 18. Croix
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "Croix"
+        set:
+          Type: "0x11507"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 19. Eolienne
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "Eolienne"
+        set:
+          Type: "0x11505"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 20. Catch-all Construction ponctuelle
+      - match:
+          CLASSE: "Construction ponctuelle"
+          NATURE: "*"
+        set:
+          Type: "0x10101"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 5 : Construction surfacique (4 NATURE + catch-all 0x06401)
+      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction surfacique"
+      # ------------------------------------------------------------------
+
+      # 21. Barrage
+      - match:
+          CLASSE: "Construction surfacique"
+          NATURE: "Barrage"
+        set:
+          Type: "0x06407"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 22. Dalle
+      - match:
+          CLASSE: "Construction surfacique"
+          NATURE: "Dalle"
+        set:
+          Type: "0x06401"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 23. Ecluse
+      - match:
+          CLASSE: "Construction surfacique"
+          NATURE: "Ecluse"
+        set:
+          Type: "0x06401"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 24. Pont
+      - match:
+          CLASSE: "Construction surfacique"
+          NATURE: "Pont"
+        set:
+          Type: "0x06401"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 25. Catch-all Construction surfacique
+      - match:
+          CLASSE: "Construction surfacique"
+          NATURE: "*"
+        set:
+          Type: "0x06401"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 6 : Detail orographique (23 NATURE, PAS de catch-all)
+      # FME: DEFAULT = _FME_NO_OP_ (feature ignoree si NATURE non reconnue)
+      # ------------------------------------------------------------------
+
+      # 26. Cap
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Cap"
+        set:
+          Type: "0x06606"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 27. Cirque
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Cirque"
+        set:
+          Type: "0x06608"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 28. Col
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Col"
+        set:
+          Type: "0x06601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 29. Crete
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Crête"
+        set:
+          Type: "0x06613"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 30. Depression
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Dépression"
+        set:
+          Type: "0x0660b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 31. Dune
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Dune"
+        set:
+          Type: "0x15502"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 32. Escarpement
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Escarpement"
+        set:
+          Type: "0x06607"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 33. Gorge
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Gorge"
+        set:
+          Type: "0x06611"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 34. Gouffre
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Gouffre"
+        set:
+          Type: "0x11515"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 35. Grotte
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Grotte"
+        set:
+          Type: "0x11515"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 36. Ile
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Ile"
+        set:
+          Type: "0x06501"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 37. Isthme
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Isthme"
+        set:
+          Type: "0x0660d"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 38. Montagne
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Montagne"
+        set:
+          Type: "0x06601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 39. Pic
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Pic"
+        set:
+          Type: "0x06616"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 40. Plage
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Plage"
+        set:
+          Type: "0x1160e"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 41. Plaine
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Plaine"
+        set:
+          Type: "0x06610"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 42. Recif
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Récif"
+        set:
+          Type: "0x15504"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 43. Rochers
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Rochers"
+        set:
+          Type: "0x06614"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 44. Sommet
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Sommet"
+        set:
+          Type: "0x06616"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 45. Terril
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Terril"
+        set:
+          Type: "0x15503"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 46. Vallee
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Vallée"
+        set:
+          Type: "0x06617"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 47. Versant
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Versant"
+        set:
+          Type: "0x06615"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 48. Volcan
+      - match:
+          CLASSE: "Détail orographique"
+          NATURE: "Volcan"
+        set:
+          Type: "0x06608"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 7 : Foret publique (1 regle statique, pas de condition NATURE)
+      # FME: NATURE MP_TYPE 0x0660a RENAME_SET_VALUE (SET fixe)
+      # ------------------------------------------------------------------
+
+      # 49. Foret publique (wildcard NATURE)
+      - match:
+          CLASSE: "Forêt publique"
+          NATURE: "*"
+        set:
+          Type: "0x0660a"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 8 : Lieu-dit non habite (4 NATURE, PAS de catch-all)
+      # FME: DEFAULT = _FME_NO_OP_
+      # ------------------------------------------------------------------
+
+      # 50. Arbre
+      - match:
+          CLASSE: "Lieu-dit non habité"
+          NATURE: "Arbre"
+        set:
+          Type: "0x1150c"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 51. Bois
+      - match:
+          CLASSE: "Lieu-dit non habité"
+          NATURE: "Bois"
+        set:
+          Type: "0x0660a"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 52. Pare-feu
+      - match:
+          CLASSE: "Lieu-dit non habité"
+          NATURE: "Pare-feu"
+        set:
+          Type: "0x11609"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 53. Lieu-dit non habite
+      - match:
+          CLASSE: "Lieu-dit non habité"
+          NATURE: "Lieu-dit non habité"
+        set:
+          Type: "0x1150e"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 9 : Zone d'activite ou d'interet (102 NATURE, PAS de catch-all)
+      # FME: DEFAULT = _FME_NO_OP_
+      # Site skiable : FME_NULL_VALUE → exclu (pas de regle)
+      # ------------------------------------------------------------------
+
+      # 54. Abri de montagne
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Abri de montagne"
+        set:
+          Type: "0x02b04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 55. Administration centrale de l'Etat
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Administration centrale de l'Etat"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 56. Aire d'accueil des gens du voyage
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Aire d'accueil des gens du voyage"
+        set:
+          Type: "0x02f0c"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 57. Aire de detente
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Aire de détente"
+        set:
+          Type: "0x02c04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 58. Aquaculture
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Aquaculture"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 59. Autre equipement sportif
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Autre équipement sportif"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 60. Autre etablissement d'enseignement
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Autre établissement d'enseignement"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 61. Autre service deconcentre de l'Etat
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Autre service déconcentré de l'Etat"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 62. Baignade surveillee
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Baignade surveillée"
+        set:
+          Type: "0x1151f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 63. Borne
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Borne"
+        set:
+          Type: "0x0660f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 64. Borne frontiere
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Borne frontière"
+        set:
+          Type: "0x0660f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 65. Camp militaire non clos
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Camp militaire non clos"
+        set:
+          Type: "0x0640b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 66. Camping
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Camping"
+        set:
+          Type: "0x02b03"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 67. Capitainerie
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Capitainerie"
+        set:
+          Type: "0x02f09"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 68. Carriere
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Carrière"
+        set:
+          Type: "0x0640c"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 69. Caserne
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Caserne"
+        set:
+          Type: "0x03008"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 70. Caserne de pompiers
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Caserne de pompiers"
+        set:
+          Type: "0x03008"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 71. Centrale electrique
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Centrale électrique"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 72. Centre de documentation
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Centre de documentation"
+        set:
+          Type: "0x02c03"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 73. Centre equestre
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Centre équestre"
+        set:
+          Type: "0x02d0a"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 74. Champ de tir
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Champ de tir"
+        set:
+          Type: "0x0640b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 75. College
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Collège"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 76. Complexe sportif couvert
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Complexe sportif couvert"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 77. Construction
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Construction"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 78. Culte chretien
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Culte chrétien"
+        set:
+          Type: "0x02c0e"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 79. Culte divers
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Culte divers"
+        set:
+          Type: "0x02c0b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 80. Culte israelite
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Culte israélite"
+        set:
+          Type: "0x02c10"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 81. Culte musulman
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Culte musulman"
+        set:
+          Type: "0x02c0d"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 82. Decheterie
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Déchèterie"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 83. Divers agricole
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Divers agricole"
+        set:
+          Type: "0x1150e"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 84. Divers commercial
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Divers commercial"
+        set:
+          Type: "0x02e04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 85. Divers industriel
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Divers industriel"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 86. Divers public ou administratif
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Divers public ou administratif"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 87. Ecomusee
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Ecomusée"
+        set:
+          Type: "0x11600"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 88. Elevage
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Elevage"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 89. Enceinte militaire
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Enceinte militaire"
+        set:
+          Type: "0x0640b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 90. Enseignement primaire
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Enseignement primaire"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 91. Enseignement superieur
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Enseignement supérieur"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 92. Equipement de cyclisme
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Equipement de cyclisme"
+        set:
+          Type: "0x1160a"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 93. Espace public
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Espace public"
+        set:
+          Type: "0x1160d"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 94. Etablissement extraterritorial
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Etablissement extraterritorial"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 95. Etablissement hospitalier
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Etablissement hospitalier"
+        set:
+          Type: "0x03002"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 96. Etablissement penitentiaire
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Etablissement pénitentiaire"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 97. Etablissement thermal
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Etablissement thermal"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 98. Gendarmerie
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Gendarmerie"
+        set:
+          Type: "0x03001"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 99. Golf
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Golf"
+        set:
+          Type: "0x02d05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 100. Habitation troglodytique
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Habitation troglodytique"
+        set:
+          Type: "0x11509"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 101. Haras
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Haras"
+        set:
+          Type: "0x02d0a"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 102. Hebergement de loisirs
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hébergement de loisirs"
+        set:
+          Type: "0x02b04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 103. Hippodrome
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hippodrome"
+        set:
+          Type: "0x02c08"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 104. Hopital
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hôpital"
+        set:
+          Type: "0x03002"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 105. Hotel de departement
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hôtel de département"
+        set:
+          Type: "0x03003"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 106. Hotel de region
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hôtel de région"
+        set:
+          Type: "0x03003"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 107. Hotel de collectivite
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Hôtel de collectivité"
+        set:
+          Type: "0x03003"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 108. Lycee
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Lycée"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 109. Mairie
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Mairie"
+        set:
+          Type: "0x03003"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 110. Maison de retraite
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Maison de retraite"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 111. Maison du parc
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Maison du parc"
+        set:
+          Type: "0x06402"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 112. Maison forestiere
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Maison forestière"
+        set:
+          Type: "0x14e01"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 113. Marais salant
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Marais salant"
+        set:
+          Type: "0x15505"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 114. Marche
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Marché"
+        set:
+          Type: "0x02e04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 115. Megalithe
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Mégalithe"
+        set:
+          Type: "0x11508"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 116. Mine
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Mine"
+        set:
+          Type: "0x0640c"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 117. Monument
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Monument"
+        set:
+          Type: "0x14e0f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 118. Musee
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Musée"
+        set:
+          Type: "0x02c02"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 119. Office de tourisme
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Office de tourisme"
+        set:
+          Type: "0x02f0c"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 120. Ouvrage militaire
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Ouvrage militaire"
+        set:
+          Type: "0x0640b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 121. Palais de justice
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Palais de justice"
+        set:
+          Type: "0x03004"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 122. Parc de loisirs
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Parc de loisirs"
+        set:
+          Type: "0x02c01"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 123. Parc des expositions
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Parc des expositions"
+        set:
+          Type: "0x10d09"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 124. Parc zoologique
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Parc zoologique"
+        set:
+          Type: "0x02c07"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 125. Patinoire
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Patinoire"
+        set:
+          Type: "0x02d08"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 126. Piscine
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Piscine"
+        set:
+          Type: "0x02d09"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 127. Point de vue
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Point de vue"
+        set:
+          Type: "0x02c04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 128. Police
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Police"
+        set:
+          Type: "0x03001"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 129. Poste
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Poste"
+        set:
+          Type: "0x02f05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 130. Prefecture
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Préfecture"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 131. Prefecture de region
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Préfecture de région"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 132. Refuge
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Refuge"
+        set:
+          Type: "0x02b04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 133. Salle de danse ou de jeux
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Salle de danse ou de jeux"
+        set:
+          Type: "0x02d04"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 134. Salle de spectacle ou conference
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Salle de spectacle ou conférence"
+        set:
+          Type: "0x02d01"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 135. Science
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Science"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 136. Sentier de decouverte
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Sentier de découverte"
+        set:
+          Type: "0x06412"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 137. Siege d'EPCI
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Siège d'EPCI"
+        set:
+          Type: "0x03003"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 138. Site de vol libre
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Site de vol libre"
+        set:
+          Type: "0x02d0b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 139. Site d'escalade
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Site d'escalade"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 140. Sous-prefecture
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Sous-préfecture"
+        set:
+          Type: "0x03007"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 141. Sports en eaux vives
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Sports en eaux vives"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 142. Sports mecaniques
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Sports mécaniques"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 143. Sports nautiques
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Sports nautiques"
+        set:
+          Type: "0x11601"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 144. Stade
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Stade"
+        set:
+          Type: "0x02c08"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 145. Stand de tir
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Stand de tir"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 146. Station de pompage
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Station de pompage"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 147. Station d'epuration
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Station d'épuration"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 148. Structure d'accueil pour personnes handicapees
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Structure d'accueil pour personnes handicapées"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 149. Surveillance maritime
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Surveillance maritime"
+        set:
+          Type: "0x1151f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 150. Tombeau
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Tombeau"
+        set:
+          Type: "0x06403"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 151. Universite
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Université"
+        set:
+          Type: "0x02c05"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 152. Usine
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Usine"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 153. Usine de production d'eau potable
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Usine de production d'eau potable"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 154. Vestige archeologique
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Vestige archéologique"
+        set:
+          Type: "0x1150b"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 155. Zone industrielle
+      - match:
+          CLASSE: "Zone d'activité ou d'intérêt"
+          NATURE: "Zone industrielle"
+        set:
+          Type: "0x02900"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ------------------------------------------------------------------
+      # Categorie 10 : Zone d'habitation (6 NATURE + catch-all 0x00d00)
+      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Zone d'habitation"
+      # ------------------------------------------------------------------
+
+      # 156. Chateau
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Château"
+        set:
+          Type: "0x1150f"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 157. Grange
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Grange"
+        set:
+          Type: "0x11510"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 158. Lieu-dit habite
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Lieu-dit habité"
+        set:
+          Type: "0x00d00"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 159. Moulin
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Moulin"
+        set:
+          Type: "0x11512"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 160. Quartier
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Quartier"
+        set:
+          Type: "0x11513"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 161. Ruines
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "Ruines"
+        set:
+          Type: "0x11514"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # 162. Catch-all Zone d'habitation
+      - match:
+          CLASSE: "Zone d'habitation"
+          NATURE: "*"
+        set:
+          Type: "0x00d00"
+          EndLevel: "2"
+          Label: "${GRAPHIE}"
+
+      # ==================================================================
+      # CATEGORIES TOPONYMIE DESACTIVEES — DOUBLONS AVEC AUTRES COUCHES
+      # ==================================================================
+      # Les 11 categories CLASSE ci-dessous sont volontairement desactivees.
+      # Les geometries ET labels de ces entites sont deja portes par les
+      # couches source dediees (TRONCON_HYDROGRAPHIQUE, SURFACE_HYDROGRAPHIQUE,
+      # DETAIL_HYDROGRAPHIQUE, TRANSPORT_PAR_CABLE, etc.).
+      # Activer ces regles creerait des POI en doublon sur la carte Garmin.
+      #
+      # Categories supprimees (11) :
+      #   - Cours d'eau          → doublons TRONCON_HYDROGRAPHIQUE
+      #   - Detail hydrographique → doublons DETAIL_HYDROGRAPHIQUE
+      #   - Equipement de transport → doublons couches Transport
+      #   - Itineraire autre     → pas de couche source dediee, lineaire
+      #   - Parc ou reserve      → doublons FORET_PUBLIQUE / zones reglementees
+      #   - Plan d'eau           → doublons SURFACE_HYDROGRAPHIQUE
+      #   - Point du reseau      → doublons couches Transport
+      #   - Poste de transformation → doublons LIGNE_ELECTRIQUE
+      #   - Route                → doublons TRONCON_DE_ROUTE
+      #   - Transport par cable  → doublons TRANSPORT_PAR_CABLE
+      #   - Voie ferree          → doublons TRONCON_DE_VOIE_FERREE
+      #
+      # Ref mappings complets : TYP-MAPPING-RULES.md sections 5.27-5.35
+      # Pour reactiver : decommenter les regles ci-dessous.
+      # ==================================================================
+
+      # --- Cat 11 : Cours d'eau (doublons TRONCON_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Cours d'eau"
+      #     NATURE: "*"
+      #   set:
+      #     Type: "0x06512"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+
+      # --- Cat 12 : Detail hydrographique (doublons DETAIL_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Cascade"
+      #   set:
+      #     Type: "0x06508"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Citerne"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Fontaine"
+      #   set:
+      #     Type: "0x06509"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Lavoir"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Marais"
+      #   set:
+      #     Type: "0x06513"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Perte"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Point d'eau"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Résurgence"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Source"
+      #   set:
+      #     Type: "0x06511"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "Source captée"
+      #   set:
+      #     Type: "0x06511"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+      # - match:  # catch-all
+      #     CLASSE: "Détail hydrographique"
+      #     NATURE: "*"
+      #   set:
+      #     Type: "0x06414"
+      #     EndLevel: "2"
+      #     Label: "${GRAPHIE}"
+
+      # --- Cat 13 : Equipement de transport (doublons couches Transport) ---
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Aérogare"
+      #   set: { Type: "0x02d0b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Aire de repos ou de service"
+      #   set: { Type: "0x02b03", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Carrefour"
+      #   set: { Type: "0x06406", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Parking"
+      #   set: { Type: "0x1100b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Péage"
+      #   set: { Type: "0x02f01", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Port"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Station de métro"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "Station de tramway"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Equipement de transport"
+      #     NATURE: "*"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 14 : Itineraire autre ---
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire de randonnée pédestre"
+      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire cyclable"
+      #   set: { Type: "0x1160a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "Itinéraire équestre"
+      #   set: { Type: "0x02d0a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Itineraire autre"
+      #     NATURE: "*"
+      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 15 : Parc ou reserve (doublons FORET_PUBLIQUE / zones reg.) ---
+      # - match:
+      #     CLASSE: "Parc ou réserve"
+      #     NATURE: "*"
+      #   set: { Type: "0x02c06", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 16 : Plan d'eau (doublons SURFACE_HYDROGRAPHIQUE) ---
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Lac"
+      #   set: { Type: "0x0650d", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Glacier, névé"
+      #   set: { Type: "0x0650a", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "Retenue"
+      #   set: { Type: "0x0650f", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Plan d'eau"
+      #     NATURE: "*"
+      #   set: { Type: "0x06414", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 17 : Point du reseau (doublons couches Transport) ---
+      # - match:
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "Passage à niveau"
+      #   set: { Type: "0x1160b", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "Poteau de balisage de randonnée"
+      #   set: { Type: "0x0660f", EndLevel: "2", Label: "${GRAPHIE}" }
+      # - match:  # catch-all
+      #     CLASSE: "Point du réseau"
+      #     NATURE: "*"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 18 : Poste de transformation (doublons LIGNE_ELECTRIQUE) ---
+      # - match:
+      #     CLASSE: "Poste de transformation"
+      #     NATURE: "*"
+      #   set: { Type: "0x11506", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 19 : Route (doublons TRONCON_DE_ROUTE) ---
+      # - match:
+      #     CLASSE: "Route"
+      #     NATURE: "*"
+      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 20 : Transport par cable (doublons TRANSPORT_PAR_CABLE) ---
+      # - match:
+      #     CLASSE: "Transport par cable"
+      #     NATURE: "*"
+      #   set: { Type: "0x15501", EndLevel: "2", Label: "${GRAPHIE}" }
+
+      # --- Cat 21 : Voie ferree (doublons TRONCON_DE_VOIE_FERREE) ---
+      # - match:
+      #     CLASSE: "Voie ferrée"
+      #     NATURE: "*"
+      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }

@@ -1,54 +1,3 @@
-# =============================================================================
-# france-bdtopo.yaml — Config mpforge générique (France BDTOPO)
-# =============================================================================
-#
-# Template de configuration pour le pipeline France complet (21 couches BDTOPO).
-# Utilise ${DATA_ROOT} comme racine des données et ${OUTPUT_DIR} pour la sortie.
-#
-# USAGE (Task 3.2 — substitution de variables via envsubst) :
-#
-#   export DATA_ROOT="./pipeline/data/bdtopo/2025/v2025.12/D038"
-#   export OUTPUT_DIR="./pipeline/output"
-#   envsubst < pipeline/configs/france-bdtopo.yaml > /tmp/mpforge-config.yaml
-#   mpforge build --config /tmp/mpforge-config.yaml --jobs 8
-#
-# NOTE : build-garmin-map.sh génère automatiquement une config équivalente en
-#        découvrant les couches disponibles dans DATA_ROOT. Ce fichier sert de
-#        référence ou pour une utilisation avancée (config manuelle, bbox, etc.)
-#
-# STRUCTURE ATTENDUE de DATA_ROOT :
-#   ${DATA_ROOT}/
-#   ├── TRANSPORT/
-#   │   ├── TRONCON_DE_ROUTE.shp
-#   │   ├── TRONCON_DE_VOIE_FERREE.shp
-#   │   ├── PISTE_D_AERODROME.shp
-#   │   └── TRANSPORT_PAR_CABLE.shp
-#   ├── ADMINISTRATIF/
-#   │   └── COMMUNE.shp
-#   ├── LIEUX_NOMMES/
-#   │   ├── ZONE_D_HABITATION.shp
-#   │   └── TOPONYMIE.shp
-#   ├── HYDROGRAPHIE/
-#   │   ├── TRONCON_HYDROGRAPHIQUE.shp
-#   │   ├── SURFACE_HYDROGRAPHIQUE.shp
-#   │   └── DETAIL_HYDROGRAPHIQUE.shp
-#   ├── BATI/
-#   │   ├── BATIMENT.shp
-#   │   ├── CIMETIERE.shp
-#   │   ├── CONSTRUCTION_LINEAIRE.shp
-#   │   ├── CONSTRUCTION_PONCTUELLE.shp
-#   │   ├── PYLONE.shp
-#   │   ├── TERRAIN_DE_SPORT.shp
-#   │   └── LIGNE_OROGRAPHIQUE.shp
-#   ├── OCCUPATION_DU_SOL/
-#   │   └── ZONE_DE_VEGETATION.shp
-#   ├── SERVICES_ET_ACTIVITES/
-#   │   ├── ZONE_D_ACTIVITE_OU_D_INTERET.shp
-#   │   └── LIGNE_ELECTRIQUE.shp
-#   └── ZONES_REGLEMENTEES/
-#       └── FORET_PUBLIQUE.shp
-# =============================================================================
-
 version: 1
 
 grid:
@@ -217,9 +166,8 @@ header:
   routing: "Y"
 
 # Règles de transformation BDTOPO → types Garmin
-# ${RULES_FILE} est substitué par envsubst (export RULES_FILE=/chemin/vers/bdtopo-garmin-rules.yaml)
-# Exemple absolu si usage direct : /home/user/mpforge/mpforge/rules/bdtopo-garmin-rules.yaml
-rules: "${RULES_FILE}"
+rules: garmin-rules.yaml
+
 
 error_handling: "continue"
 
