@@ -73,17 +73,6 @@ Installation = [
   { "Outre-mer" = "06-telechargements/outre-mer.md" }
 ]
 
-[markdown_extensions]
-admonition = {}
-"pymdownx.highlight" = { anchor_linenums = true }
-"pymdownx.inlinehilite" = {}
-"pymdownx.snippets" = {}
-"pymdownx.superfences" = { custom_fences = [{ name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_div_format" }] }
-"pymdownx.tabbed" = { alternate_style = true }
-tables = {}
-footnotes = {}
-attr_list = {}
-md_in_html = {}
 
 [extra]
 generator = false

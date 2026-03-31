@@ -1,4 +1,3 @@
 # Pinner la version pour éviter les cassures en CI
 # Mettre à jour manuellement après test local
-zensical
-pymdown-extensions
+zensical==0.0.30
