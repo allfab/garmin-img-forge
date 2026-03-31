@@ -163,14 +163,6 @@
 }
 
 /* --- Transparent header & tabs on hero page --- */
-.zn-hero ~ .md-header,
-.md-container:has(.zn-hero) ~ .md-header {
-  backdrop-filter: none;
-  background-color: transparent;
-  box-shadow: none;
-  color: #fff;
-}
-
 body:has(.zn-hero) .md-header {
   backdrop-filter: none;
   background-color: transparent;
