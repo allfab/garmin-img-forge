@@ -49,5 +49,4 @@ BD TOPO IGN  →  mpforge build  →  imgforge  →  gmapsupp.img
     couvrant l'ensemble du territoire français. Licence ouverte [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).
 
 !!! tip "Ancien site"
-    L'ancien site `maps.garmin.allfabox.fr` reste disponible pendant la transition.
-    Ce nouveau site remplace progressivement l'ancien contenu avec le nouveau pipeline.
+    L'ancien site reste disponible à l'adresse [https://allfab.github.io/garmin-ign-bdtopo-map/](https://allfab.github.io/garmin-ign-bdtopo-map/).
