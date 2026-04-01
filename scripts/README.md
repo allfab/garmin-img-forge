@@ -1,241 +1,368 @@
-# Scripts utilitaires MPForge
+# Pipeline BDTOPO → Garmin
 
-> Scripts pour faciliter la gestion des releases, tags Git et le pipeline BDTOPO → Garmin
+> Scripts et documentation pour transformer les données IGN BD TOPO en carte Garmin (gmapsupp.img)
 
-## Pipeline complet
+## Vue d'ensemble du pipeline
 
 ```
-download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
-       ↓                     ↓                    ↓
-  Télécharge les       mpforge build          Carte Garmin
-  données BDTOPO       (tuiles .mp)           prête à copier
-  depuis l'IGN         + imgforge build       sur le GPS
-                       (gmapsupp.img)
+download-bdtopo.sh       01-export-mp.sh         02-build-img.sh
+       |                       |                       |
+       v                       v                       v
+  Télécharge les         mpforge build             imgforge build
+  données BDTOPO         (tuiles .mp)              (gmapsupp.img)
+  depuis l'IGN           Shapefile → .mp           .mp → Garmin IMG
+```
+
+Le pipeline se décompose en 3 étapes indépendantes :
+
+1. **Télécharger** les données BDTOPO depuis la Géoplateforme IGN
+2. **Exporter** les données en tuiles Polish Map (.mp) via mpforge
+3. **Compiler** les tuiles en carte Garmin (gmapsupp.img) via imgforge
+
+---
+
+## Prérequis
+
+### Outils requis
+
+- **mpforge** — Générateur de tuiles Polish Map (.mp)
+- **imgforge** — Compilateur Garmin IMG
+- **envsubst** — Substitution de variables dans les configs YAML (`sudo apt install gettext-base`)
+- **curl**, **7z** — Pour le téléchargement BDTOPO (`sudo apt install curl p7zip-full`)
+
+### Compilation des outils Rust
+
+```bash
+# mpforge (depuis la racine du dépôt)
+cargo build --release --manifest-path tools/mpforge/Cargo.toml
+
+# imgforge (depuis la racine du dépôt)
+cargo build --release --manifest-path tools/imgforge/Cargo.toml
+```
+
+Les binaires sont dans `tools/mpforge/target/release/mpforge` et `tools/imgforge/target/release/imgforge`.
+
+Pour les installer globalement :
+
+```bash
+sudo cp tools/mpforge/target/release/mpforge /usr/local/bin/
+sudo cp tools/imgforge/target/release/imgforge /usr/local/bin/
 ```
 
 ---
 
-## Scripts disponibles
+## Configuration
 
-### download-bdtopo.sh — Téléchargement BD TOPO® IGN
+### Variables d'environnement
 
-**Usage** :
+Le fichier `pipeline/.env.example` centralise toutes les variables du pipeline :
+
 ```bash
-# Département unique
+# Copier le template
+cp pipeline/.env.example pipeline/.env
+
+# Éditer les chemins selon votre installation
+nano pipeline/.env
+
+# Charger les variables avant de lancer les scripts
+source pipeline/.env
+```
+
+### Fichiers de configuration
+
+| Fichier | Rôle |
+|---|---|
+| `pipeline/.env.example` | Template des variables d'environnement |
+| `pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml` | Sources SHP : couches BDTOPO, grille de tuilage, header MP |
+| `pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml` | Règles de mapping BDTOPO → types Garmin |
+
+Convention de nommage : `ign-bdtopo-<theme>.yaml` (sources par format, règles de mapping).
+
+---
+
+## Arborescence
+
+```
+scripts/
+  download-bdtopo.sh          # Étape 0 : téléchargement BDTOPO
+  shapefile/
+    01-export-mp.sh            # Étape 1 : export SHP → tuiles .mp
+  gpkg/
+    01-export-mp.sh            # Étape 1 : export GPKG → .mp (à venir)
+  postgis/
+    01-export-mp.sh            # Étape 1 : export PostGIS → .mp (à venir)
+  common/
+    02-build-img.sh            # Étape 2 : compilation .mp → gmapsupp.img
+  build-garmin-map.sh          # Pipeline tout-en-un (étapes 1+2)
+  check_environment.sh         # Vérification de l'environnement
+  test-static-build.sh         # Validation du build statique
+  release.sh                   # Création de release
+  retag.sh                     # Re-tag d'une release
+
+pipeline/
+  .env.example                 # Template des variables
+  configs/ign-bdtopo/
+    ign-bdtopo-sources-shp.yaml
+    ign-bdtopo-garmin-rules.yaml
+  data/bdtopo/                 # Données BDTOPO (gitignore)
+  output/                      # Sortie du pipeline (gitignore)
+    tiles/                     # Tuiles .mp générées
+    gmapsupp.img               # Carte Garmin finale
+```
+
+---
+
+## Étape 0 : Téléchargement des données BDTOPO
+
+Script : `scripts/download-bdtopo.sh`
+
+```bash
+# Département unique (Isère)
 ./scripts/download-bdtopo.sh --zones D038 --format SHP
 
-# Région entière (fichier agrégé)
+# Région entière (Auvergne-Rhône-Alpes)
 ./scripts/download-bdtopo.sh --region ARA --format SHP
 
-# Dry-run (simulation sans téléchargement)
+# Simulation sans téléchargement
 ./scripts/download-bdtopo.sh --zones D038 --dry-run
-
-# Avec debug
-./scripts/download-bdtopo.sh --zones D038 --debug
 ```
 
-**Description** :
-- Interroge l'API Géoplateforme (`data.geopf.fr`) pour découvrir les datasets BDTOPO disponibles
-- Auto-détecte la dernière édition trimestrielle disponible
-- Télécharge l'archive `.7z` avec reprise automatique (`curl -C -`)
-- Vérifie le hash MD5 des fichiers téléchargés
-- Extrait les dossiers thématiques Shapefile (ADMINISTRATIF, BATI, HYDROGRAPHIE, …)
-- Organise les données dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`
-- Idempotent : skip les fichiers déjà téléchargés et intacts (MD5 OK)
-- Supporte les régions pré-agrégées (`--region ARA`, `FXX` pour la France métro)
-
-**Prérequis** :
-```bash
-sudo apt install curl p7zip-full
-```
+Les données sont organisées dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`.
 
 ---
 
-### build-garmin-map.sh — Pipeline mpforge → imgforge → gmapsupp.img
+## Étape 1 : Export des tuiles Polish Map (.mp)
 
-**Usage** :
+### Shapefile (supporté)
+
+Script : `scripts/shapefile/01-export-mp.sh`
+
+#### Commande manuelle — binaire installé
+
 ```bash
-# Auto-découverte de tout (données dans ./pipeline/data/bdtopo/)
+# Préparer la config (substitution des placeholders)
+export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
+export OUTPUT_DIR=./pipeline/output
+envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
+  < pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  > /tmp/mpforge-config-expanded.yaml
+
+# Lancer mpforge
+mpforge build \
+  --config /tmp/mpforge-config-expanded.yaml \
+  --jobs 8 \
+  --report ./pipeline/output/mpforge-report.json \
+  --skip-existing \
+  -v
+```
+
+#### Commande manuelle — release locale
+
+```bash
+# Préparer la config (substitution des placeholders)
+export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
+export OUTPUT_DIR=./pipeline/output
+envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
+  < pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  > /tmp/mpforge-config-expanded.yaml
+
+# Lancer mpforge (binaire compilé localement)
+./tools/mpforge/target/release/mpforge build \
+  --config /tmp/mpforge-config-expanded.yaml \
+  --jobs 8 \
+  --report ./pipeline/output/mpforge-report.json \
+  --skip-existing \
+  -v
+```
+
+#### Via le script
+
+```bash
+source pipeline/.env
+./scripts/shapefile/01-export-mp.sh --skip-existing -v
+```
+
+#### Paramètres mpforge build
+
+| Paramètre | Description | Défaut |
+|---|---|---|
+| `--config <file>` | Fichier de configuration YAML (obligatoire) | — |
+| `--input <dir>` | Override du répertoire d'entrée | depuis la config |
+| `--output <dir>` | Override du répertoire de sortie | depuis la config |
+| `--jobs <n>` | Nombre de jobs parallèles | `1` |
+| `--report <file>` | Chemin du rapport JSON | *(aucun)* |
+| `--skip-existing` | Passer les tuiles déjà générées | `false` |
+| `--fail-fast` | Arrêter au premier échec | `false` |
+| `--dry-run` | Simuler sans écrire de fichiers | `false` |
+| `-v`, `-vv`, `-vvv` | Verbosity (INFO, DEBUG, TRACE) | off |
+
+### GeoPackage (à venir)
+
+Script : `scripts/gpkg/01-export-mp.sh`
+
+> **Non supporté** — mpforge ne supporte actuellement que les Shapefiles comme source SIG.
+> Ce script affiche un message d'erreur et exit 1.
+
+### PostGIS (à venir)
+
+Script : `scripts/postgis/01-export-mp.sh`
+
+> **Non supporté** — mpforge ne supporte actuellement que les Shapefiles comme source SIG.
+> Ce script affiche un message d'erreur et exit 1.
+
+---
+
+## Étape 2 : Compilation Garmin IMG
+
+Script : `scripts/common/02-build-img.sh`
+
+#### Commande manuelle — binaire installé
+
+```bash
+imgforge build ./pipeline/output/tiles/ \
+  --output ./pipeline/output/gmapsupp.img \
+  --jobs 8 \
+  --family-id 6324 \
+  --product-id 1 \
+  --series-name "BDTOPO France" \
+  --family-name "IGN BDTOPO" \
+  -v
+```
+
+#### Commande manuelle — release locale
+
+```bash
+./tools/imgforge/target/release/imgforge build ./pipeline/output/tiles/ \
+  --output ./pipeline/output/gmapsupp.img \
+  --jobs 8 \
+  --family-id 6324 \
+  --product-id 1 \
+  --series-name "BDTOPO France" \
+  --family-name "IGN BDTOPO" \
+  -v
+```
+
+#### Via le script
+
+```bash
+source pipeline/.env
+./scripts/common/02-build-img.sh -v
+
+# Simulation sans exécuter
+./scripts/common/02-build-img.sh --dry-run
+```
+
+#### Paramètres imgforge build
+
+| Paramètre | Description | Défaut |
+|---|---|---|
+| `<input>` | Répertoire contenant les tuiles .mp (obligatoire) | — |
+| `--output <file>` | Fichier de sortie | `gmapsupp.img` |
+| `--jobs <n>` | Nombre de jobs parallèles | *(auto)* |
+| `--family-id <id>` | Family ID Garmin | *(aucun)* |
+| `--product-id <id>` | Product ID Garmin | *(aucun)* |
+| `--series-name <name>` | Nom de la série | *(aucun)* |
+| `--family-name <name>` | Nom de la famille | *(aucun)* |
+| `-v`, `-vv`, `-vvv` | Verbosity (INFO, DEBUG, TRACE) | off |
+
+#### Paramètres imgforge compile (fichier unique)
+
+```bash
+imgforge compile input.mp --output output.img --description "Ma carte"
+```
+
+| Paramètre | Description | Défaut |
+|---|---|---|
+| `<input>` | Fichier .mp à compiler (obligatoire) | — |
+| `--output <file>` | Fichier .img de sortie | *(dérivé du nom d'entrée)* |
+| `--description <desc>` | Description de la carte | *(aucun)* |
+| `-v`, `-vv`, `-vvv` | Verbosity | off |
+
+---
+
+## Pipeline automatique (tout-en-un)
+
+Script : `scripts/build-garmin-map.sh`
+
+Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des binaires et génération dynamique de la config.
+
+```bash
+# Auto-découverte de tout
 ./scripts/build-garmin-map.sh
 
-# Spécifier la racine des données (ex: un seul département)
+# Département spécifique
 ./scripts/build-garmin-map.sh --data-root pipeline/data/bdtopo/2025/v2025.12/D038
 
-# Avec un fichier config YAML explicite
-./scripts/build-garmin-map.sh --config pipeline/configs/france-bdtopo.yaml --jobs 16
+# Avec config YAML explicite
+./scripts/build-garmin-map.sh \
+  --config pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
+  --jobs 8
 
-# Dry-run (affiche les commandes sans les exécuter)
+# Simulation
 ./scripts/build-garmin-map.sh --dry-run
 
-# Reprise partielle (skip les tuiles déjà générées)
+# Reprise partielle
 ./scripts/build-garmin-map.sh --skip-existing --jobs 4
 ```
 
-**Description** :
-- Enchaîne automatiquement les deux étapes du build :
-  1. **mpforge build** — Lit les Shapefiles BDTOPO, applique les règles de conversion (`bdtopo-garmin-rules.yaml`) et génère des tuiles `.mp` (Polish Map Format)
-  2. **imgforge build** — Compile les tuiles `.mp` en un fichier `gmapsupp.img` prêt pour le GPS Garmin
-- Auto-découverte des binaires `mpforge` et `imgforge` (binaires compilés ou fallback `cargo run`)
-- Auto-découverte du fichier de règles `bdtopo-garmin-rules.yaml`
-- Génération dynamique de la config YAML mpforge depuis `DATA_ROOT` (21 couches BDTOPO)
-- Supporte aussi une config YAML explicite avec placeholders `${DATA_ROOT}` (substitution via `envsubst`)
-- Produit un rapport JSON par étape (`mpforge-report.json`, `imgforge-report.json`)
-- Affiche un résumé final avec métriques (tuiles, temps, taille, routage)
-- Gestion des échecs partiels (`error_handling: continue`) — exit code 2 si carte incomplète
-
-**Options principales** :
-
 | Option | Description | Défaut |
 |---|---|---|
-| `--data-root DIR` | Racine des données BDTOPO | `./pipeline/data/bdtopo` |
-| `--config FILE` | Config YAML mpforge explicite | génération auto |
-| `--rules FILE` | Fichier de règles YAML | auto-découverte |
-| `--jobs N` | Parallélisation | `8` |
-| `--output DIR` | Répertoire de sortie | `./pipeline/output` |
-| `--family-id N` | Family ID Garmin | `6324` |
-| `--description STR` | Description de la carte | `"BDTOPO Garmin"` |
-| `--typ FILE` | Fichier TYP styles personnalisés | *(aucun)* |
+| `--data-root <dir>` | Racine des données BDTOPO | `./pipeline/data/bdtopo` |
+| `--config <file>` | Config YAML mpforge explicite | génération auto |
+| `--rules <file>` | Fichier de règles YAML | auto-découverte |
+| `--jobs <n>` | Parallélisation | `8` |
+| `--output <dir>` | Répertoire de sortie | `./pipeline/output` |
+| `--family-id <n>` | Family ID Garmin | `6324` |
+| `--description <str>` | Description de la carte | `"BDTOPO Garmin"` |
+| `--typ <file>` | Fichier TYP styles personnalisés | *(aucun)* |
 | `--skip-existing` | Passer les tuiles déjà générées | `false` |
 | `--dry-run` | Simuler sans exécuter | `false` |
 | `-v`, `-vv` | Mode verbeux | off |
 
-**Structure de sortie** :
+Structure de sortie :
+
 ```
 ./pipeline/output/
-├── tiles/               ← tuiles .mp générées par mpforge
-├── gmapsupp.img         ← carte Garmin finale
-├── mpforge-report.json  ← rapport mpforge (métriques, erreurs)
-└── imgforge-report.json ← rapport imgforge (métriques, routage)
-```
-
-**Prérequis** :
-```bash
-# Compiler les outils Rust
-cd tools/mpforge && cargo build --release
-cd tools/imgforge && cargo build --release
-```
-
-**Exemple complet** (après téléchargement BDTOPO Isère) :
-```bash
-# Avec variables d'environnement explicites
-PROJ_DATA=/usr/share/proj \
-  ./scripts/build-garmin-map.sh \
-  --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
-  --skip-existing \
-  --jobs 4
+  tiles/               ← tuiles .mp générées par mpforge
+  gmapsupp.img         ← carte Garmin finale
+  mpforge-report.json  ← rapport mpforge (métriques, erreurs)
+  imgforge-report.json ← rapport imgforge (métriques, routage)
 ```
 
 ---
 
-### check_environment.sh — Vérification de l'environnement de développement
+## Scripts utilitaires
 
-**Usage** :
+### check_environment.sh — Vérification de l'environnement
+
 ```bash
 ./scripts/check_environment.sh
 ```
 
-**Description** :
-- Vérifie la présence et les versions de tous les outils requis :
-  - Outils de build (GCC, CMake, Make, pkg-config)
-  - GDAL et dépendances géospatiales (GDAL, OGR, PROJ)
-  - Rust toolchain (rustc, cargo, clippy, rustfmt)
-  - Python et QGIS (Python 3, PyQGIS)
-  - Outils optionnels (Java, mkgmap, splitter, Git, Doxygen)
-  - Variables d'environnement (GDAL_DATA, PROJ_DATA, etc.)
-  - Structure du projet
-- Affiche un résumé coloré avec compteurs de succès/échecs/avertissements
-
-**Cas d'usage** :
-- Valider un nouvel environnement de développement
-- Diagnostiquer des problèmes de build
-
----
+Vérifie la présence et les versions de tous les outils requis (GCC, CMake, GDAL, Rust, Python, QGIS, etc.).
 
 ### test-static-build.sh — Validation du build statique mpforge
 
-**Usage** :
 ```bash
 ./scripts/test-static-build.sh <mpforge-linux-x64-static.tar.gz> [test-config.yaml]
 ```
 
-**Description** :
-- Valide qu'une archive de build statique mpforge est correctement empaquetée :
-  1. Extraction et vérification de la structure (binaire, wrapper, proj.db)
-  2. Test du binaire sans `PROJ_DATA` (doit échouer correctement)
-  3. Test avec `PROJ_DATA` manuel
-  4. Test du wrapper `mpforge.sh` (auto-configure `PROJ_DATA`)
-  5. Test fonctionnel optionnel avec un fichier config
-  6. Statistiques de taille
+Valide qu'une archive de build statique mpforge est correctement empaquetée (binaire, wrapper, proj.db).
 
-**Cas d'usage** :
-- Valider une release CI/CD avant publication
-- Vérifier la portabilité du binaire statique
+### release.sh — Créer une release
 
----
-
-### release.sh — Créer une release complète
-
-**Usage** :
 ```bash
 ./scripts/release.sh v0.1.0
 ```
 
-**Description** :
-- Vérifie que vous êtes sur `main`
-- Vérifie qu'il n'y a pas de changements non commités
-- Vérifie que le tag n'existe pas déjà
-- Pull pour synchroniser
-- Demande un message de release interactif
-- Crée et push le tag
-
-**Cas d'usage** :
-- Créer une nouvelle release de façon sécurisée
-- Workflow de release complet avec validation
-
----
+Vérifie qu'on est sur `main`, qu'il n'y a pas de changements non commités, crée et push le tag.
 
 ### retag.sh — Forcer un tag existant
 
-**Usage** :
 ```bash
-./scripts/retag.sh v0.1.0           # Retag current HEAD
-./scripts/retag.sh v0.1.0 abc123    # Retag specific commit
+./scripts/retag.sh v0.1.0           # Retag HEAD
+./scripts/retag.sh v0.1.0 abc123    # Retag un commit spécifique
 ```
 
-**Description** :
-- Supprime le tag local et distant
-- Re-crée le tag sur le commit spécifié (ou HEAD)
-- Push le nouveau tag
-- Déclenche automatiquement le workflow Woodpecker
-
-**Cas d'usage** :
-- Corriger un workflow qui a échoué
-- Mettre à jour une release avec un nouveau commit
-
----
-
-## Documentation complète
-
-Voir la section **[CI/CD : Woodpecker CI](../README.md#cicd--woodpecker-ci)** du README principal pour :
-- Guide complet de gestion des tags et releases
-- Bonnes pratiques
-- Commandes de référence
-
----
-
-## Installation
-
-Les scripts sont déjà exécutables. Si nécessaire :
-
-```bash
-chmod +x scripts/*.sh
-```
-
----
-
-## Important
-
-- `retag.sh` et `release.sh` modifient l'historique Git (tags). Utilisez-les avec précaution en production.
-- `build-garmin-map.sh` peut consommer beaucoup de CPU/RAM selon le nombre de départements. Ajustez `--jobs` en fonction de votre machine.
-
-**Recommandation** : Testez d'abord sur une branche de développement ou un tag de test.
+Supprime le tag local et distant, re-crée le tag et push. Utile pour corriger un workflow CI qui a échoué.

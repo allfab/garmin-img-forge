@@ -4,6 +4,7 @@ export/
 rapport-*.json
 __pycache__/
 # Pipeline de production — données et artefacts
+pipeline/.env
 pipeline/data/bdtopo/*/
 !pipeline/data/bdtopo/.gitkeep
 pipeline/output/tiles/*.mp
