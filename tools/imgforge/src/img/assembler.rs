@@ -57,6 +57,16 @@ pub fn build_gmapsupp_with_meta(
     description: &str,
     meta: &GmapsuppMeta,
 ) -> Result<Vec<u8>, ImgError> {
+    build_gmapsupp_with_meta_and_typ(tiles, description, meta, None)
+}
+
+/// Assemble with explicit metadata and optional TYP styling data
+pub fn build_gmapsupp_with_meta_and_typ(
+    tiles: &[TileSubfiles],
+    description: &str,
+    meta: &GmapsuppMeta,
+    typ_data: Option<&[u8]>,
+) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
     }
@@ -74,6 +84,12 @@ pub fn build_gmapsupp_with_meta(
         if let Some(ref nod) = tile.nod {
             fs.add_file(&name, "NOD", nod.clone());
         }
+    }
+
+    // Add TYP file if provided (mkgmap convention: family_id as filename)
+    if let Some(typ) = typ_data {
+        let typ_name = format!("{:08}", meta.family_id);
+        fs.add_file(&typ_name, "TYP", typ.to_vec());
     }
 
     // Build and add MPS subfile

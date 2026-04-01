@@ -15,6 +15,7 @@
 - **Cartes overlay** : Support transparent avec priorité d'affichage configurable
 - **Métadonnées complètes** : Copyright, pays, région, version produit dans le TDB
 - **Résilience** : Mode `--keep-going` pour continuer malgré les tuiles en erreur
+- **Symbologie TYP** : Intégration d'un fichier `.typ` personnalisé pour le rendu des cartes
 - **Format Garmin complet** : Génération des sous-fichiers TRE, RGN, LBL, NET, NOD
 - **Fichier TDB** : Génération automatique du fichier compagnon `.tdb`
 - **Rapport JSON** : Statistiques de compilation en sortie structurée
@@ -112,6 +113,9 @@ imgforge compile tile_0_0.mp --reduce-point-density 5.0 --min-size-polygon 20
 
 # Désactiver le routing (pas de NET/NOD)
 imgforge compile tile_0_0.mp --no-route
+
+# Avec un fichier TYP personnalisé pour la symbologie
+imgforge compile tile_0_0.mp --typ-file style.typ
 ```
 
 ### Commande `build` : Multi-tile gmapsupp
@@ -145,6 +149,9 @@ imgforge build tiles/ --jobs 8 --keep-going
 
 # Build optimisé : simplification + encodage UTF-8
 imgforge build tiles/ --unicode --reduce-point-density 3.0 --min-size-polygon 8
+
+# Build avec fichier TYP personnalisé pour la symbologie
+imgforge build tiles/ --jobs 8 --typ-file bdtopo.typ
 ```
 
 ## Options CLI
@@ -203,6 +210,12 @@ Les options suivantes sont disponibles sur les deux commandes. Elles sont appliq
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `--copyright-message <TEXT>` | Message copyright (écrit dans TRE et TDB) | header .mp |
+
+#### Symbologie
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--typ-file <FILE>` | Fichier `.typ` de symbologie personnalisée (couleurs, motifs, icônes) | - |
 
 ### Commande `compile`
 
@@ -313,6 +326,7 @@ imgforge build tiles/ --output gmapsupp.img --jobs 8 \
   --latin1 \
   --reduce-point-density 3.0 \
   --min-size-polygon 8 \
+  --typ-file bdtopo.typ \
   --keep-going
 
 # Vérifier le résultat
@@ -351,6 +365,7 @@ imgforge génère les sous-fichiers standards du format Garmin IMG :
 | **LBL** | Labels (noms, encodage Format 6/9/10 — ASCII, codepage, UTF-8) |
 | **NET** | Réseau routier (topologie) |
 | **NOD** | Noeuds de routage |
+| **TYP** | Symbologie personnalisée (couleurs, motifs, icônes de points/lignes/polygones) |
 | **TDB** | Table de description (métadonnées de la carte) |
 
 ## Développement

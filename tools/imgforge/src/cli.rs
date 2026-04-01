@@ -1,5 +1,6 @@
 // CLI definitions (clap)
 
+use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -93,6 +94,10 @@ pub enum Commands {
         /// Copyright message
         #[arg(long)]
         copyright_message: Option<String>,
+
+        /// TYP file for custom map styling/symbology
+        #[arg(long, value_name = "FILE")]
+        typ_file: Option<PathBuf>,
     },
 
     /// Build multi-tile gmapsupp.img from a directory of .mp files
@@ -219,5 +224,9 @@ pub enum Commands {
         /// Continue building if a tile fails
         #[arg(long)]
         keep_going: bool,
+
+        /// TYP file for custom map styling/symbology
+        #[arg(long, value_name = "FILE")]
+        typ_file: Option<PathBuf>,
     },
 }

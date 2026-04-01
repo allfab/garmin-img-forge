@@ -23,6 +23,15 @@ fn read_mp_file(path: impl AsRef<Path>) -> Result<String> {
     }
 }
 
+/// Read optional TYP file from disk, validating it is non-empty
+fn read_typ_file(path: impl AsRef<Path>) -> Result<Vec<u8>> {
+    let path = path.as_ref();
+    let data = std::fs::read(path)
+        .with_context(|| format!("Failed to read TYP file: {}", path.display()))?;
+    anyhow::ensure!(!data.is_empty(), "TYP file is empty: {}", path.display());
+    Ok(data)
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -43,7 +52,7 @@ fn main() -> Result<()> {
             code_page, unicode, latin1, lower_case,
             transparent, draw_priority, levels, order_by_decreasing_area,
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
-            route, net, no_route, copyright_message,
+            route, net, no_route, copyright_message, typ_file,
         } => {
             let start = Instant::now();
             let mut report = BuildReport::new();
@@ -68,7 +77,9 @@ fn main() -> Result<()> {
             report.total_polylines = mp.polylines.len();
             report.total_polygons = mp.polygons.len();
 
-            let img_data = writer::build_img(&mp)
+            let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
+
+            let img_data = writer::build_img_with_typ(&mp, typ_data.as_deref())
                 .with_context(|| "Failed to build IMG")?;
 
             let out_path = output.unwrap_or_else(|| {
@@ -96,7 +107,7 @@ fn main() -> Result<()> {
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
-            area_name, product_version, keep_going,
+            area_name, product_version, keep_going, typ_file,
         } => {
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
@@ -206,7 +217,9 @@ fn main() -> Result<()> {
                 area_name: area_name.as_deref().unwrap_or("").to_string(),
                 codepage: effective_codepage,
             };
-            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta(&tile_subfiles, map_desc, &gmapsupp_meta)?;
+            let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
+
+            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(&tile_subfiles, map_desc, &gmapsupp_meta, typ_data.as_deref())?;
             std::fs::write(&output, &gmapsupp)?;
 
             // Generate TDB companion file

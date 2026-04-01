@@ -29,6 +29,11 @@ use super::zoom::Zoom;
 
 /// Build a single-tile IMG file from a parsed .mp file
 pub fn build_img(mp: &MpFile) -> Result<Vec<u8>, ImgError> {
+    build_img_with_typ(mp, None)
+}
+
+/// Build a single-tile IMG file with optional TYP styling data
+pub fn build_img_with_typ(mp: &MpFile, typ_data: Option<&[u8]>) -> Result<Vec<u8>, ImgError> {
     let result = build_subfiles(mp)?;
 
     let mut fs = ImgFilesystem::new(&result.description);
@@ -40,6 +45,9 @@ pub fn build_img(mp: &MpFile) -> Result<Vec<u8>, ImgError> {
     }
     if let Some(ref nod) = result.nod {
         fs.add_file(&result.map_number, "NOD", nod.clone());
+    }
+    if let Some(typ) = typ_data {
+        fs.add_file(&result.map_number, "TYP", typ.to_vec());
     }
 
     fs.sync()
