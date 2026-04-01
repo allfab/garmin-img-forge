@@ -38,32 +38,39 @@ fn main() -> Result<()> {
         .init();
 
     match cli.command {
-        Commands::Compile { input, output, description } => {
+        Commands::Compile {
+            input, output, description,
+            code_page, unicode, latin1, lower_case,
+            transparent, draw_priority, levels, order_by_decreasing_area,
+            reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
+            route, net, no_route, copyright_message,
+        } => {
             let start = Instant::now();
             let mut report = BuildReport::new();
 
-            // Read input .mp file (UTF-8 with Latin-1 fallback for BDTOPO accents)
             let content = read_mp_file(&input)
                 .with_context(|| format!("Failed to read {}", input))?;
 
-            // Parse
             let mut mp = parser::parse_mp(&content)
                 .with_context(|| format!("Failed to parse {}", input))?;
 
-            // Override description from CLI if provided
-            if let Some(ref desc) = description {
-                mp.header.name = desc.clone();
-            }
+            // Apply CLI overrides
+            apply_tile_overrides(
+                &mut mp, description.as_deref(),
+                code_page, unicode, latin1, lower_case,
+                transparent, draw_priority, levels.as_deref(),
+                order_by_decreasing_area,
+                reduce_point_density, simplify_polygons.as_deref(), min_size_polygon, merge_lines,
+                route, net, no_route, copyright_message.as_deref(),
+            );
 
             report.total_points = mp.points.len();
             report.total_polylines = mp.polylines.len();
             report.total_polygons = mp.polygons.len();
 
-            // Build IMG
             let img_data = writer::build_img(&mp)
                 .with_context(|| "Failed to build IMG")?;
 
-            // Determine output path
             let out_path = output.unwrap_or_else(|| {
                 let stem = Path::new(&input).file_stem()
                     .and_then(|s| s.to_str())
@@ -71,7 +78,6 @@ fn main() -> Result<()> {
                 format!("{}.img", stem)
             });
 
-            // Write output
             std::fs::write(&out_path, &img_data)
                 .with_context(|| format!("Failed to write {}", out_path))?;
 
@@ -83,8 +89,15 @@ fn main() -> Result<()> {
             println!("{}", report.to_json());
         }
 
-        Commands::Build { input, output, jobs, family_id, product_id, series_name, family_name } => {
-            // Configure rayon thread pool if --jobs specified
+        Commands::Build {
+            input, output, jobs, family_id, product_id, series_name, family_name,
+            code_page, unicode, latin1, lower_case,
+            transparent, draw_priority, levels, order_by_decreasing_area,
+            reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
+            route, net, no_route, copyright_message,
+            mapname: _, country_name, country_abbr, region_name, region_abbr,
+            area_name, product_version, keep_going,
+        } => {
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(j)
@@ -94,7 +107,6 @@ fn main() -> Result<()> {
             let start = Instant::now();
             let mut report = BuildReport::new();
 
-            // Find all .mp files in directory
             let input_path = Path::new(&input);
             let mp_files: Vec<_> = std::fs::read_dir(input_path)
                 .with_context(|| format!("Failed to read directory {}", input))?
@@ -106,52 +118,102 @@ fn main() -> Result<()> {
                 anyhow::bail!("No .mp files found in {}", input);
             }
 
-            // Compile each tile in parallel
+            // Clone CLI values for parallel closure
+            let levels_clone = levels.clone();
+            let simplify_clone = simplify_polygons.clone();
+            let copyright_clone = copyright_message.clone();
+
             use rayon::prelude::*;
 
-            let compiled: Result<Vec<_>, anyhow::Error> = mp_files.par_iter().map(|entry| {
+            let results: Vec<Result<_, anyhow::Error>> = mp_files.par_iter().map(|entry| {
                 let path = entry.path();
                 let content = read_mp_file(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                let mp = parser::parse_mp(&content)
+                let mut mp = parser::parse_mp(&content)
                     .with_context(|| format!("Failed to parse {}", path.display()))?;
+
+                apply_tile_overrides(
+                    &mut mp, None,
+                    code_page, unicode, latin1, lower_case,
+                    transparent, draw_priority, levels_clone.as_deref(),
+                    order_by_decreasing_area,
+                    reduce_point_density, simplify_clone.as_deref(), min_size_polygon, merge_lines,
+                    route, net, no_route, copyright_clone.as_deref(),
+                );
+
                 let tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
-                Ok((tile, counts))
+                Ok((tile, counts, path.display().to_string()))
             }).collect();
-            let compiled = compiled?;
 
+            // Handle keep-going: collect successes, log failures
             use imgforge::img::assembler::TileSubfiles;
-            let mut tile_subfiles = Vec::with_capacity(compiled.len());
-            for (tile, (pts, lines, polys)) in compiled {
-                report.total_points += pts;
-                report.total_polylines += lines;
-                report.total_polygons += polys;
-                report.tiles_compiled += 1;
-                tile_subfiles.push(TileSubfiles {
-                    map_number: tile.map_number,
-                    tre: tile.tre,
-                    rgn: tile.rgn,
-                    lbl: tile.lbl,
-                    net: tile.net,
-                    nod: tile.nod,
-                });
+            let mut tile_subfiles = Vec::with_capacity(results.len());
+            let mut errors = 0usize;
+
+            for result in results {
+                match result {
+                    Ok((tile, (pts, lines, polys), _path)) => {
+                        report.total_points += pts;
+                        report.total_polylines += lines;
+                        report.total_polygons += polys;
+                        report.tiles_compiled += 1;
+                        tile_subfiles.push(TileSubfiles {
+                            map_number: tile.map_number,
+                            description: tile.description,
+                            tre: tile.tre,
+                            rgn: tile.rgn,
+                            lbl: tile.lbl,
+                            net: tile.net,
+                            nod: tile.nod,
+                        });
+                    }
+                    Err(e) => {
+                        if keep_going {
+                            eprintln!("WARNING: {:#}", e);
+                            errors += 1;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
             }
 
-            // Assemble gmapsupp directly from subfiles (no round-trip through IMG extraction)
+            if tile_subfiles.is_empty() {
+                anyhow::bail!("All tiles failed to compile");
+            }
+
+            if errors > 0 {
+                eprintln!("{} tiles compiled, {} errors", tile_subfiles.len(), errors);
+            }
+
+            let fid = family_id.unwrap_or(1);
+            let pid = product_id.unwrap_or(1);
             let map_desc = family_name.as_deref().unwrap_or("Map");
-            let gmapsupp = imgforge::img::assembler::build_gmapsupp(&tile_subfiles, map_desc)?;
+
+            let gmapsupp_meta = imgforge::img::assembler::GmapsuppMeta {
+                family_id: fid,
+                product_id: pid,
+                family_name: map_desc.to_string(),
+                codepage: code_page.unwrap_or(if unicode { 65001 } else if latin1 { 1252 } else { 0 }),
+            };
+            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta(&tile_subfiles, map_desc, &gmapsupp_meta)?;
             std::fs::write(&output, &gmapsupp)?;
 
             // Generate TDB companion file
             {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
-                let fid = family_id.unwrap_or(1);
-                let pid = product_id.unwrap_or(1);
                 let mut tdb = TdbWriter::new(fid, pid);
                 tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
                 tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();
+                if let Some(ref an) = area_name { tdb.area_name = an.clone(); }
+                if let Some(ref cm) = copyright_message { tdb.copyright = cm.clone(); }
+                if let Some(pv) = product_version { tdb.product_version = pv; }
+                if let Some(ref cn) = country_name { tdb.country_name = cn.clone(); }
+                if let Some(ref ca) = country_abbr { tdb.country_abbr = ca.clone(); }
+                if let Some(ref rn) = region_name { tdb.region_name = rn.clone(); }
+                if let Some(ref ra) = region_abbr { tdb.region_abbr = ra.clone(); }
 
                 for tile in &tile_subfiles {
                     let map_num: u32 = tile.map_number.parse().unwrap_or(0);
@@ -179,4 +241,83 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Apply tile-level CLI overrides to a parsed MpFile
+fn apply_tile_overrides(
+    mp: &mut imgforge::parser::mp_types::MpFile,
+    description: Option<&str>,
+    code_page: Option<u16>, unicode: bool, latin1: bool, lower_case: bool,
+    transparent: bool, draw_priority: Option<u32>, levels: Option<&str>,
+    order_by_decreasing_area: bool,
+    reduce_point_density: Option<f64>, simplify_polygons: Option<&str>,
+    min_size_polygon: Option<i32>, merge_lines: bool,
+    route: bool, net: bool, no_route: bool,
+    copyright_message: Option<&str>,
+) {
+    use imgforge::parser::mp_types::RoutingMode;
+
+    if let Some(desc) = description {
+        mp.header.name = desc.to_string();
+    }
+
+    // Encoding overrides
+    if unicode { mp.header.codepage = 65001; }
+    else if latin1 { mp.header.codepage = 1252; }
+    else if let Some(cp) = code_page { mp.header.codepage = cp; }
+    mp.header.lower_case = lower_case;
+
+    // Rendering overrides
+    if transparent { mp.header.transparent = true; }
+    if let Some(dp) = draw_priority { mp.header.draw_priority = dp; }
+    if let Some(lvl) = levels {
+        if let Some(parsed) = parse_levels(lvl) {
+            mp.header.levels = parsed;
+        }
+    }
+    mp.header.order_by_decreasing_area = order_by_decreasing_area;
+
+    // Geometry overrides
+    mp.header.reduce_point_density = reduce_point_density;
+    mp.header.simplify_polygons = simplify_polygons.map(|s| s.to_string());
+    mp.header.min_size_polygon = min_size_polygon;
+    mp.header.merge_lines = merge_lines;
+
+    // Routing overrides
+    if no_route {
+        mp.header.routing_mode = RoutingMode::Disabled;
+    } else if net {
+        mp.header.routing_mode = RoutingMode::NetOnly;
+    } else if route {
+        mp.header.routing_mode = RoutingMode::Route;
+    }
+
+    // Copyright override
+    if let Some(cm) = copyright_message {
+        mp.header.copyright = cm.to_string();
+    }
+}
+
+/// Parse levels string: "24,22,20" or "0:24,1:22,2:20"
+fn parse_levels(s: &str) -> Option<Vec<u8>> {
+    let parts: Vec<&str> = s.split(',').collect();
+    if parts.is_empty() { return None; }
+
+    let mut levels = Vec::new();
+    for part in &parts {
+        let part = part.trim();
+        if let Some((_idx, res)) = part.split_once(':') {
+            match res.trim().parse::<u8>() {
+                Ok(r) => levels.push(r),
+                Err(_) => tracing::warn!("Ignoring malformed level entry: '{}'", part),
+            }
+        } else {
+            match part.parse::<u8>() {
+                Ok(r) => levels.push(r),
+                Err(_) => tracing::warn!("Ignoring malformed level entry: '{}'", part),
+            }
+        }
+    }
+
+    if levels.is_empty() { None } else { Some(levels) }
 }

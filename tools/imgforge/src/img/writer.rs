@@ -58,13 +58,17 @@ pub struct TileResult {
 
 /// Build subfiles from a parsed .mp without assembling into IMG
 pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
-    // Labels are read as Unicode (UTF-8 or CP1252 fallback in read_mp_file).
-    // Use UTF-8 (format 10) for output — universally supported by modern viewers
-    // and preserves all characters including accented ones.
-    let encoding = if mp.header.codepage == 0 {
+    // Encoding selection: codepage drives the label format.
+    // --lower-case forces Format9/10 (Format6 is uppercase-only).
+    let encoding = if mp.header.lower_case && mp.header.codepage == 0 {
+        // Format6 can't represent lowercase — upgrade to Format10
+        LabelEncoding::Format10
+    } else if mp.header.codepage == 0 {
         LabelEncoding::Format6  // ASCII-only maps
+    } else if mp.header.codepage == 65001 {
+        LabelEncoding::Format10 // UTF-8
     } else {
-        LabelEncoding::Format10 // UTF-8 for CP1252, UTF-8, and all other codepages
+        LabelEncoding::Format9(mp.header.codepage) // CP1252, CP1250, CP1251, etc.
     };
 
     // 1. Build LBL — all labels
@@ -103,6 +107,8 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     let mut tre = TreWriter::new();
     tre.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
     tre.display_priority = mp.header.draw_priority;
+    tre.transparent = mp.header.transparent;
+    tre.map_id = mp.header.id;
     if copyright_label > 0 {
         tre.copyright_offsets.push(copyright_label);
     }
@@ -370,8 +376,8 @@ fn build_multilevel_hierarchy(
 ///
 /// For level K: include features where end_level.unwrap_or(0) >= K
 ///
-/// Uses expanded bounds (+1 margin) to avoid losing features at area boundaries
-/// due to rounding between pickArea integer division and contains_coord comparison.
+/// Applies geometry optimizations (simplification, min-size filtering, area sorting)
+/// based on MpHeader options.
 fn filter_features_for_level(
     mp: &MpFile,
     level: u8,
@@ -391,19 +397,82 @@ fn filter_features_for_level(
         .map(|(i, p)| SplitPoint { mp_index: i, location: p.coord })
         .collect();
 
+    // Determine DP epsilon for lines
+    let line_epsilon = mp.header.reduce_point_density;
+
+    // Determine DP epsilon for polygons (simplify_polygons per-resolution or fallback to reduce_point_density)
+    let poly_epsilon = resolve_polygon_epsilon(&mp.header, level)
+        .or(mp.header.reduce_point_density);
+
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
         .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
-        .map(|(i, l)| SplitLine { mp_index: i, points: l.points.clone() })
+        .map(|(i, l)| {
+            let mut pts = l.points.clone();
+            if let Some(eps) = line_epsilon {
+                let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
+                let simplified = douglas_peucker(&coords, eps);
+                if simplified.len() >= 2 {
+                    pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
+                }
+            }
+            SplitLine { mp_index: i, points: pts }
+        })
         .collect();
 
-    let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
+    let min_size = mp.header.min_size_polygon;
+
+    let mut shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
         .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
-        .map(|(i, s)| SplitShape { mp_index: i, points: s.points.clone() })
+        .filter_map(|(i, s)| {
+            // Min-size filtering
+            if let Some(min) = min_size {
+                let coords: Vec<(i32, i32)> = s.points.iter().map(|c| (c.latitude(), c.longitude())).collect();
+                if compute_area(&coords) < min as f64 {
+                    return None;
+                }
+            }
+            let mut pts = s.points.clone();
+            // Polygon simplification
+            if let Some(eps) = poly_epsilon {
+                let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
+                let simplified = douglas_peucker(&coords, eps);
+                if simplified.len() >= 3 {
+                    pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
+                }
+            }
+            Some(SplitShape { mp_index: i, points: pts })
+        })
         .collect();
 
+    // Order by decreasing area if requested
+    if mp.header.order_by_decreasing_area && !shapes.is_empty() {
+        shapes.sort_by(|a, b| {
+            let area_a = compute_area(&a.points.iter().map(|c| (c.latitude(), c.longitude())).collect::<Vec<_>>());
+            let area_b = compute_area(&b.points.iter().map(|c| (c.latitude(), c.longitude())).collect::<Vec<_>>());
+            area_b.partial_cmp(&area_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+
     (points, lines, shapes)
+}
+
+/// Resolve polygon epsilon from simplify_polygons spec (e.g. "24:12,18:10,16:8")
+fn resolve_polygon_epsilon(header: &crate::parser::mp_types::MpHeader, level: u8) -> Option<f64> {
+    let spec = header.simplify_polygons.as_deref()?;
+    let resolution = header.levels.get(level as usize).copied()?;
+
+    for part in spec.split(',') {
+        if let Some((res_str, eps_str)) = part.trim().split_once(':') {
+            if let (Ok(res), Ok(eps)) = (res_str.trim().parse::<u8>(), eps_str.trim().parse::<f64>()) {
+                if res == resolution {
+                    return Some(eps);
+                }
+            }
+        }
+    }
+    None
 }
 
 // ── RGN encoding per subdivision ───────────────────────────────────────────
@@ -521,6 +590,61 @@ fn update_bounds(min_lat: &mut i32, max_lat: &mut i32, min_lon: &mut i32, max_lo
     if lon > *max_lon { *max_lon = lon; }
 }
 
+/// Douglas-Peucker line simplification on map-unit coordinates
+pub fn douglas_peucker(points: &[(i32, i32)], epsilon: f64) -> Vec<(i32, i32)> {
+    if points.len() <= 2 {
+        return points.to_vec();
+    }
+
+    let (start, end) = (points[0], points[points.len() - 1]);
+    let mut max_dist = 0.0f64;
+    let mut max_idx = 0;
+
+    for (i, &p) in points.iter().enumerate().skip(1).take(points.len() - 2) {
+        let d = perpendicular_distance(p, start, end);
+        if d > max_dist {
+            max_dist = d;
+            max_idx = i;
+        }
+    }
+
+    if max_dist > epsilon {
+        let mut left = douglas_peucker(&points[..=max_idx], epsilon);
+        let right = douglas_peucker(&points[max_idx..], epsilon);
+        left.pop(); // remove duplicate junction point
+        left.extend_from_slice(&right);
+        left
+    } else {
+        vec![start, end]
+    }
+}
+
+fn perpendicular_distance(p: (i32, i32), a: (i32, i32), b: (i32, i32)) -> f64 {
+    let dx = (b.0 - a.0) as f64;
+    let dy = (b.1 - a.1) as f64;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq == 0.0 {
+        let ex = (p.0 - a.0) as f64;
+        let ey = (p.1 - a.1) as f64;
+        return (ex * ex + ey * ey).sqrt();
+    }
+    let num = ((p.0 - a.0) as f64 * dy - (p.1 - a.1) as f64 * dx).abs();
+    num / len_sq.sqrt()
+}
+
+/// Compute signed area of polygon using shoelace formula (in map units²)
+pub fn compute_area(points: &[(i32, i32)]) -> f64 {
+    let n = points.len();
+    if n < 3 { return 0.0; }
+    let mut area = 0i64;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        area += points[i].0 as i64 * points[j].1 as i64;
+        area -= points[j].0 as i64 * points[i].1 as i64;
+    }
+    (area as f64).abs() / 2.0
+}
+
 fn estimate_road_length(points: &[Coord]) -> u32 {
     let mut total = 0.0;
     for i in 1..points.len() {
@@ -549,10 +673,23 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
 }
 
 fn build_routing(mp: &MpFile, line_labels: &[u32]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
-    let has_routing = mp.polylines.iter().any(|pl| pl.road_id.is_some());
+    use crate::parser::mp_types::RoutingMode;
 
-    if !has_routing {
-        return (None, None);
+    // Routing mode check
+    match mp.header.routing_mode {
+        RoutingMode::Disabled => return (None, None),
+        RoutingMode::Auto => {
+            if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
+                return (None, None);
+            }
+        }
+        RoutingMode::Route | RoutingMode::NetOnly => {
+            // Force routing even if no road_id detected
+            if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
+                tracing::warn!("--route/--net specified but no RoadID found in .mp data");
+                return (None, None);
+            }
+        }
     }
 
     let mut net_writer = NetWriter::new();
@@ -585,7 +722,11 @@ fn build_routing(mp: &MpFile, line_labels: &[u32]) -> (Option<Vec<u8>>, Option<V
         nod_writer.add_node(node);
     }
 
-    (Some(net_writer.build()), Some(nod_writer.build()))
+    let net_data = Some(net_writer.build());
+    if mp.header.routing_mode == RoutingMode::NetOnly {
+        return (net_data, None);
+    }
+    (net_data, Some(nod_writer.build()))
 }
 
 #[cfg(test)]
@@ -628,21 +769,31 @@ Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
     }
 
     #[test]
-    fn test_build_accented_labels_utf8() {
+    fn test_build_accented_labels_cp1252() {
         let content = "[IMG ID]\nID=99990001\nName=Test Accents\nCodePage=1252\nLevels=24\n[END-IMG ID]\n[POI]\nType=0x2C00\nLabel=Ch\u{00E2}teau Fort\nData0=(48.57,7.75)\n[END]\n[POLYGON]\nType=0x03\nLabel=For\u{00EA}t de Ch\u{00EA}nes\nData0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)\n[END]\n";
         let mp = parser::parse_mp(content).unwrap();
         let result = build_subfiles(&mp).unwrap();
 
-        // LBL format should be 10 (UTF-8) for codepage 1252
+        // LBL format should be 9 (Format9/codepage) for codepage 1252
         let lbl = &result.lbl;
-        assert_eq!(lbl[30], 10, "LBL format should be 10 (UTF-8)");
+        assert_eq!(lbl[30], 9, "LBL format should be 9 (codepage) for CP1252");
 
-        // Labels should contain UTF-8 encoded accented characters
+        // Labels should contain CP1252 encoded accented characters
         let label_off = u32::from_le_bytes([lbl[21], lbl[22], lbl[23], lbl[24]]) as usize;
         let label_data = &lbl[label_off..];
-        // "â" in UTF-8 = C3 A2, "ê" = C3 AA
-        assert!(label_data.windows(2).any(|w| w == [0xC3, 0xA2]), "Should contain â in UTF-8");
-        assert!(label_data.windows(2).any(|w| w == [0xC3, 0xAA]), "Should contain ê in UTF-8");
+        // "â" in CP1252 = 0xE2, "ê" = 0xEA
+        assert!(label_data.contains(&0xE2), "Should contain â in CP1252");
+        assert!(label_data.contains(&0xEA), "Should contain ê in CP1252");
+    }
+
+    #[test]
+    fn test_build_accented_labels_utf8() {
+        let content = "[IMG ID]\nID=99990001\nName=Test Accents UTF8\nCodePage=65001\nLevels=24\n[END-IMG ID]\n[POI]\nType=0x2C00\nLabel=Ch\u{00E2}teau Fort\nData0=(48.57,7.75)\n[END]\n";
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+
+        let lbl = &result.lbl;
+        assert_eq!(lbl[30], 10, "LBL format should be 10 (UTF-8) for codepage 65001");
     }
 
     #[test]

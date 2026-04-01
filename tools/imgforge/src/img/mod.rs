@@ -25,4 +25,5 @@ pub mod writer;
 pub mod splitter;
 pub mod assembler;
 pub mod tdb;
+pub mod mps;
 pub mod srt;

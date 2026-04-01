@@ -9,7 +9,12 @@
 - **Compilation single-tile** : Convertir un fichier `.mp` en `.img`
 - **Build multi-tile** : Assembler un répertoire de `.mp` en `gmapsupp.img` prêt pour le GPS
 - **Parallélisation** : Compilation multi-thread des tuiles via rayon
-- **Encodage** : Support UTF-8 avec fallback CP1252 (accents BDTOPO)
+- **Encodage configurable** : Format 6 (ASCII), Format 9 (CP1252/CP1250/CP1251), Format 10 (UTF-8)
+- **Optimisation géométrique** : Simplification Douglas-Peucker, filtrage polygones par taille, tri par aire
+- **Contrôle routing** : NET+NOD complet, NET seul, ou désactivation du routing
+- **Cartes overlay** : Support transparent avec priorité d'affichage configurable
+- **Métadonnées complètes** : Copyright, pays, région, version produit dans le TDB
+- **Résilience** : Mode `--keep-going` pour continuer malgré les tuiles en erreur
 - **Format Garmin complet** : Génération des sous-fichiers TRE, RGN, LBL, NET, NOD
 - **Fichier TDB** : Génération automatique du fichier compagnon `.tdb`
 - **Rapport JSON** : Statistiques de compilation en sortie structurée
@@ -95,6 +100,18 @@ imgforge compile tile_0_0.mp --output ma_carte.img
 
 # Avec description personnalisée
 imgforge compile tile_0_0.mp --description "BDTOPO Réunion"
+
+# Forcer l'encodage CP1252 (Format 9) au lieu du codepage du .mp
+imgforge compile tile_0_0.mp --latin1
+
+# Carte overlay transparente avec priorité haute
+imgforge compile overlay.mp --transparent --draw-priority 50
+
+# Simplification géométrique pour réduire la taille
+imgforge compile tile_0_0.mp --reduce-point-density 5.0 --min-size-polygon 20
+
+# Désactiver le routing (pas de NET/NOD)
+imgforge compile tile_0_0.mp --no-route
 ```
 
 ### Commande `build` : Multi-tile gmapsupp
@@ -111,15 +128,81 @@ imgforge build tiles/ --output ma_carte.img
 # Compilation parallèle
 imgforge build tiles/ --jobs 8
 
-# Avec métadonnées de carte
+# Avec métadonnées complètes
 imgforge build tiles/ \
   --family-id 1234 \
   --product-id 1 \
   --series-name "BDTOPO France" \
-  --family-name "IGN BDTOPO"
+  --family-name "IGN BDTOPO" \
+  --area-name "France métropolitaine" \
+  --country-name "France" \
+  --country-abbr "FRA" \
+  --copyright-message "IGN BDTOPO 2026" \
+  --product-version 200
+
+# Build robuste : continuer si une tuile échoue
+imgforge build tiles/ --jobs 8 --keep-going
+
+# Build optimisé : simplification + encodage UTF-8
+imgforge build tiles/ --unicode --reduce-point-density 3.0 --min-size-polygon 8
 ```
 
 ## Options CLI
+
+### Options communes (`compile` et `build`)
+
+Les options suivantes sont disponibles sur les deux commandes. Elles sont appliquées à chaque tuile.
+
+#### Générales
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `-v, --verbose...` | Verbosité (`-v`, `-vv`, `-vvv`) | WARN |
+
+#### Encodage
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--code-page <N>` | Codepage numérique (1252, 1250, 1251, 65001, 0...) | header .mp |
+| `--unicode` | Raccourci pour `--code-page 65001` (UTF-8, Format 10) | - |
+| `--latin1` | Raccourci pour `--code-page 1252` (CP1252, Format 9) | - |
+| `--lower-case` | Autoriser les minuscules (force Format 9 ou 10 au lieu de Format 6) | `false` |
+
+> `--unicode` et `--latin1` sont mutuellement exclusifs avec `--code-page`.
+
+#### Rendu
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--transparent` | Carte transparente (overlay) — set le flag TRE | `false` |
+| `--draw-priority <N>` | Priorité d'affichage (0-255) | `25` |
+| `--levels <LEVELS>` | Niveaux de zoom : `"24,22,20,18,16"` ou `"0:24,1:22,2:20"` | header .mp |
+| `--order-by-decreasing-area` | Trier les polygones par aire décroissante (plus grands rendus en premier) | `false` |
+
+#### Optimisation géométrique
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--reduce-point-density <NUM>` | Seuil Douglas-Peucker pour simplification des lignes et polygones (en map units) | - |
+| `--simplify-polygons <SPEC>` | DP par résolution : `"24:12,18:10,16:8"` (prioritaire sur `--reduce-point-density` pour les polygones) | - |
+| `--min-size-polygon <NUM>` | Filtrer les polygones dont l'aire < NUM (en map units², mkgmap défaut: 8) | - |
+| `--merge-lines` | Fusionner les polylignes adjacentes de même type/label *(réservé, non implémenté)* | `false` |
+
+#### Contrôle routing
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--route` | Forcer la génération NET+NOD | auto-détection |
+| `--net` | Générer NET seul (recherche d'adresse sans routing turn-by-turn) | - |
+| `--no-route` | Désactiver le routing même si des roads sont présents | - |
+
+> `--route`, `--net` et `--no-route` sont mutuellement exclusifs.
+
+#### Copyright
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--copyright-message <TEXT>` | Message copyright (écrit dans TRE et TDB) | header .mp |
 
 ### Commande `compile`
 
@@ -132,7 +215,8 @@ imgforge compile [OPTIONS] <INPUT>
 | `<INPUT>` | Fichier `.mp` à compiler | **REQUIS** |
 | `-o, --output <FILE>` | Fichier `.img` de sortie | `<input>.img` |
 | `--description <TEXT>` | Description de la carte (override le header .mp) | - |
-| `-v, --verbose...` | Verbosité (`-v`, `-vv`, `-vvv`) | WARN |
+
+Plus toutes les [options communes](#options-communes-compile-et-build) ci-dessus.
 
 ### Commande `build`
 
@@ -140,16 +224,37 @@ imgforge compile [OPTIONS] <INPUT>
 imgforge build [OPTIONS] <INPUT>
 ```
 
+#### Options spécifiques à `build`
+
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `<INPUT>` | Répertoire contenant les fichiers `.mp` | **REQUIS** |
 | `-o, --output <FILE>` | Fichier `gmapsupp.img` de sortie | `gmapsupp.img` |
 | `-j, --jobs <N>` | Nombre de threads parallèles | `1` |
+| `--keep-going` | Continuer si une tuile échoue (log warning, ignorer la tuile) | `false` |
+
+#### Identité carte Garmin
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
 | `--family-id <ID>` | Family ID Garmin | `1` |
 | `--product-id <ID>` | Product ID Garmin | `1` |
 | `--series-name <NAME>` | Nom de la série de cartes | `imgforge` |
 | `--family-name <NAME>` | Nom de la famille de cartes | `Map` |
-| `-v, --verbose...` | Verbosité (`-v`, `-vv`, `-vvv`) | WARN |
+
+#### Métadonnées TDB
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--mapname <NAME>` | Identifiant carte (8 chiffres) | header .mp |
+| `--area-name <TEXT>` | Nom de la zone géographique | - |
+| `--country-name <TEXT>` | Nom du pays | - |
+| `--country-abbr <TEXT>` | Abréviation pays | - |
+| `--region-name <TEXT>` | Nom de la région | - |
+| `--region-abbr <TEXT>` | Abréviation région | - |
+| `--product-version <N>` | Version produit (100 = v1.00) | `100` |
+
+Plus toutes les [options communes](#options-communes-compile-et-build) ci-dessus.
 
 ### Niveaux de verbosité
 
@@ -204,7 +309,11 @@ mpforge build --config bdtopo.yaml --jobs 8
 # Étape 2 : Compiler en gmapsupp.img
 imgforge build tiles/ --output gmapsupp.img --jobs 8 \
   --family-name "BDTOPO France" \
-  --series-name "IGN BDTOPO 2026"
+  --series-name "IGN BDTOPO 2026" \
+  --latin1 \
+  --reduce-point-density 3.0 \
+  --min-size-polygon 8 \
+  --keep-going
 
 # Vérifier le résultat
 echo "Compilation terminée"
@@ -239,7 +348,7 @@ imgforge génère les sous-fichiers standards du format Garmin IMG :
 |-------------|-------------|
 | **TRE** | Table des régions (index spatial, niveaux de zoom) |
 | **RGN** | Données régions (géométries : points, lignes, polygones) |
-| **LBL** | Labels (noms, encodage Format 9 / CP1252) |
+| **LBL** | Labels (noms, encodage Format 6/9/10 — ASCII, codepage, UTF-8) |
 | **NET** | Réseau routier (topologie) |
 | **NOD** | Noeuds de routage |
 | **TDB** | Table de description (métadonnées de la carte) |

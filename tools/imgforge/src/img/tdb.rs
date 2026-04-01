@@ -10,10 +10,15 @@ const BLOCK_DETAIL: u8 = 0x4C;
 pub struct TdbWriter {
     pub family_id: u16,
     pub product_id: u16,
+    pub product_version: u16,
     pub series_name: String,
     pub family_name: String,
     pub area_name: String,
     pub copyright: String,
+    pub country_name: String,
+    pub country_abbr: String,
+    pub region_name: String,
+    pub region_abbr: String,
     pub overview_map_number: u32,
     pub tiles: Vec<TdbTile>,
 }
@@ -33,10 +38,15 @@ impl TdbWriter {
         Self {
             family_id,
             product_id,
+            product_version: 100,
             series_name: String::new(),
             family_name: String::new(),
             area_name: String::new(),
             copyright: String::new(),
+            country_name: String::new(),
+            country_abbr: String::new(),
+            region_name: String::new(),
+            region_abbr: String::new(),
             overview_map_number: 0,
             tiles: Vec::new(),
         }
@@ -73,6 +83,7 @@ impl TdbWriter {
         let mut data = Vec::new();
         data.extend_from_slice(&self.family_id.to_le_bytes());
         data.extend_from_slice(&self.product_id.to_le_bytes());
+        data.extend_from_slice(&self.product_version.to_le_bytes());
 
         // Series name (null-terminated)
         data.extend_from_slice(self.series_name.as_bytes());

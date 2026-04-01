@@ -519,6 +519,144 @@ fn test_extended_types_nonregression_fixtures() {
 }
 
 // ============================================================================
+// 12.6 — Tests MPS subfile dans gmapsupp
+// ============================================================================
+
+#[test]
+fn test_gmapsupp_contains_mps() {
+    let img_a = compile_fixture("tile_a.mp");
+    let img_b = compile_fixture("tile_b.mp");
+
+    let tiles = vec![
+        ("63240001".to_string(), img_a),
+        ("63240002".to_string(), img_b),
+    ];
+
+    let gmapsupp = assembler::build_gmapsupp_from_imgs(&tiles, "Test MPS")
+        .expect("gmapsupp assembly failed");
+
+    // Scan directory for MPS subfile
+    let dir_start = 2 * 512;
+    let mut found_mps = false;
+    let mut pos = dir_start;
+    while pos + 512 <= gmapsupp.len() {
+        if gmapsupp[pos] == 0x01 {
+            let ext = std::str::from_utf8(&gmapsupp[pos + 9..pos + 12]).unwrap_or("");
+            let part = u16::from_le_bytes([gmapsupp[pos + 0x11], gmapsupp[pos + 0x12]]);
+            if ext == "MPS" && part == 0 {
+                found_mps = true;
+                break;
+            }
+        }
+        pos += 512;
+        if pos > dir_start + 200 * 512 { break; }
+    }
+
+    assert!(found_mps, "gmapsupp should contain an MPS subfile");
+}
+
+#[test]
+fn test_gmapsupp_mps_contains_product_and_map_blocks() {
+    use imgforge::img::assembler::{TileSubfiles, GmapsuppMeta, build_gmapsupp_with_meta};
+
+    let content_a = load_fixture("tile_a.mp");
+    let content_b = load_fixture("tile_b.mp");
+    let mp_a = parser::parse_mp(&content_a).unwrap();
+    let mp_b = parser::parse_mp(&content_b).unwrap();
+    let tile_a = writer::build_subfiles(&mp_a).unwrap();
+    let tile_b = writer::build_subfiles(&mp_b).unwrap();
+
+    let tiles = vec![
+        TileSubfiles {
+            map_number: tile_a.map_number, description: tile_a.description,
+            tre: tile_a.tre, rgn: tile_a.rgn, lbl: tile_a.lbl,
+            net: tile_a.net, nod: tile_a.nod,
+        },
+        TileSubfiles {
+            map_number: tile_b.map_number, description: tile_b.description,
+            tre: tile_b.tre, rgn: tile_b.rgn, lbl: tile_b.lbl,
+            net: tile_b.net, nod: tile_b.nod,
+        },
+    ];
+
+    let meta = GmapsuppMeta {
+        family_id: 53403,
+        product_id: 1,
+        family_name: "Test Map Family".to_string(),
+        codepage: 1252,
+    };
+
+    let gmapsupp = build_gmapsupp_with_meta(&tiles, "Test", &meta).unwrap();
+
+    // Extract MPS data from gmapsupp
+    let dir_start = 2 * 512;
+    let block_exp1 = gmapsupp[0x61] as u32;
+    let block_exp2 = gmapsupp[0x62] as u32;
+    let block_size = 1u32 << (block_exp1 + block_exp2);
+
+    let mut mps_data = Vec::new();
+    let mut pos = dir_start;
+    while pos + 512 <= gmapsupp.len() {
+        if gmapsupp[pos] == 0x01 {
+            let ext = std::str::from_utf8(&gmapsupp[pos + 9..pos + 12]).unwrap_or("");
+            let part = u16::from_le_bytes([gmapsupp[pos + 0x11], gmapsupp[pos + 0x12]]);
+            if ext == "MPS" && part == 0 {
+                let size = u32::from_le_bytes([
+                    gmapsupp[pos + 0x0C], gmapsupp[pos + 0x0D],
+                    gmapsupp[pos + 0x0E], gmapsupp[pos + 0x0F],
+                ]) as usize;
+                // Read blocks
+                for slot in 0..240 {
+                    let blk_off = pos + 0x20 + slot * 2;
+                    let blk = u16::from_le_bytes([gmapsupp[blk_off], gmapsupp[blk_off + 1]]);
+                    if blk == 0xFFFF { break; }
+                    let data_start = blk as usize * block_size as usize;
+                    let data_end = (data_start + block_size as usize).min(gmapsupp.len());
+                    let take = (size - mps_data.len()).min(data_end - data_start);
+                    mps_data.extend_from_slice(&gmapsupp[data_start..data_start + take]);
+                }
+                mps_data.truncate(size);
+                break;
+            }
+        }
+        pos += 512;
+        if pos > dir_start + 200 * 512 { break; }
+    }
+
+    assert!(!mps_data.is_empty(), "MPS data should not be empty");
+
+    // Parse MPS blocks: count product (0x46) and map (0x4C) blocks
+    let mut product_count = 0;
+    let mut map_count = 0;
+    let mut mps_pos = 0;
+    while mps_pos + 3 <= mps_data.len() {
+        let block_type = mps_data[mps_pos];
+        let block_len = u16::from_le_bytes([mps_data[mps_pos + 1], mps_data[mps_pos + 2]]) as usize;
+        match block_type {
+            0x46 => {
+                product_count += 1;
+                // Verify FID = 53403
+                let fid = u16::from_le_bytes([mps_data[mps_pos + 5], mps_data[mps_pos + 6]]);
+                assert_eq!(fid, 53403, "MPS product block should contain FID 53403");
+            }
+            0x4C => {
+                map_count += 1;
+                // Verify PID and FID
+                let pid = u16::from_le_bytes([mps_data[mps_pos + 3], mps_data[mps_pos + 4]]);
+                let fid = u16::from_le_bytes([mps_data[mps_pos + 5], mps_data[mps_pos + 6]]);
+                assert_eq!(pid, 1, "MPS map block PID should be 1");
+                assert_eq!(fid, 53403, "MPS map block FID should be 53403");
+            }
+            _ => {}
+        }
+        mps_pos += 3 + block_len;
+    }
+
+    assert_eq!(product_count, 1, "Should have exactly 1 product block");
+    assert_eq!(map_count, 2, "Should have exactly 2 map blocks (one per tile)");
+}
+
+// ============================================================================
 // Parse → Compile round-trip sanity checks
 // ============================================================================
 

@@ -2,10 +2,12 @@
 
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
+use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
 
 /// Subfiles for a single tile
 pub struct TileSubfiles {
     pub map_number: String,
+    pub description: String,
     pub tre: Vec<u8>,
     pub rgn: Vec<u8>,
     pub lbl: Vec<u8>,
@@ -13,12 +15,45 @@ pub struct TileSubfiles {
     pub nod: Option<Vec<u8>>,
 }
 
+/// Metadata for the gmapsupp assembly
+pub struct GmapsuppMeta {
+    pub family_id: u16,
+    pub product_id: u16,
+    pub family_name: String,
+    pub codepage: u16,
+}
+
+impl Default for GmapsuppMeta {
+    fn default() -> Self {
+        Self {
+            family_id: 1,
+            product_id: 1,
+            family_name: "Map".to_string(),
+            codepage: 0,
+        }
+    }
+}
+
 /// Assemble multiple tiles into a single gmapsupp.img
 /// Each tile's subfiles (TRE/RGN/LBL/NET/NOD) are added as separate files
 /// in a flat filesystem directory, as Garmin devices expect.
+/// Includes an MPS subfile with per-tile metadata (PID, FID, description).
 pub fn build_gmapsupp(
     tiles: &[TileSubfiles],
     description: &str,
+) -> Result<Vec<u8>, ImgError> {
+    let meta = GmapsuppMeta {
+        family_name: description.to_string(),
+        ..Default::default()
+    };
+    build_gmapsupp_with_meta(tiles, description, &meta)
+}
+
+/// Assemble with explicit metadata (family_id, product_id, etc.)
+pub fn build_gmapsupp_with_meta(
+    tiles: &[TileSubfiles],
+    description: &str,
+    meta: &GmapsuppMeta,
 ) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
@@ -39,7 +74,42 @@ pub fn build_gmapsupp(
         }
     }
 
+    // Build and add MPS subfile
+    let mps_data = build_mps(tiles, meta);
+    // MPS file uses "MAKEGMAP" as filename (mkgmap convention)
+    fs.add_file("MAKEGMAP", "MPS", mps_data);
+
     fs.sync()
+}
+
+/// Build MPS subfile data from tiles and metadata
+fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
+    let mut mps = MpsWriter::new();
+
+    // One product entry for the whole map set
+    mps.add_product(MpsProductEntry {
+        product_id: meta.product_id,
+        family_id: meta.family_id,
+        family_name: meta.family_name.clone(),
+    });
+
+    // One map entry per tile
+    for tile in tiles {
+        let map_num: u32 = tile.map_number.parse().unwrap_or(0);
+        mps.add_map(MpsMapEntry {
+            product_id: meta.product_id,
+            family_id: meta.family_id,
+            map_number: map_num,
+            hex_number: format!("{:08}", tile.map_number),
+            map_description: if tile.description.is_empty() {
+                meta.family_name.clone()
+            } else {
+                tile.description.clone()
+            },
+        });
+    }
+
+    mps.build()
 }
 
 /// Legacy wrapper: assemble from pre-built single-tile IMG bytes
@@ -155,6 +225,7 @@ fn extract_subfiles(img_data: &[u8], map_number: &str) -> Result<TileSubfiles, I
 
     Ok(TileSubfiles {
         map_number: map_number.to_string(),
+        description: String::new(),
         tre,
         rgn,
         lbl,
@@ -177,6 +248,7 @@ mod tests {
     fn test_build_gmapsupp_with_subfiles() {
         let tile = TileSubfiles {
             map_number: "63240001".to_string(),
+            description: "Test".to_string(),
             tre: vec![0x01; 200],
             rgn: vec![0x02; 300],
             lbl: vec![0x03; 150],

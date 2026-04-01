@@ -11,6 +11,25 @@ pub struct MpFile {
     pub polygons: Vec<MpPolygon>,
 }
 
+/// Routing generation mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingMode {
+    /// Auto-detect: generate NET+NOD if road_id present
+    Auto,
+    /// Force NET+NOD generation
+    Route,
+    /// Generate NET only (address search, no turn-by-turn)
+    NetOnly,
+    /// Disable routing entirely
+    Disabled,
+}
+
+impl Default for RoutingMode {
+    fn default() -> Self {
+        RoutingMode::Auto
+    }
+}
+
 /// [IMG ID] section header
 #[derive(Debug, Clone, Default)]
 pub struct MpHeader {
@@ -24,6 +43,23 @@ pub struct MpHeader {
     pub draw_priority: u32,
     pub preview_lat: f64,
     pub preview_lon: f64,
+    // Encoding
+    pub lower_case: bool,
+    // Rendering
+    pub order_by_decreasing_area: bool,
+    // Geometry optimization
+    pub reduce_point_density: Option<f64>,
+    pub simplify_polygons: Option<String>,
+    pub min_size_polygon: Option<i32>,
+    pub merge_lines: bool,
+    // Routing
+    pub routing_mode: RoutingMode,
+    // Metadata (TDB-level)
+    pub country_name: String,
+    pub country_abbr: String,
+    pub region_name: String,
+    pub region_abbr: String,
+    pub product_version: u16,
 }
 
 /// [POI] section

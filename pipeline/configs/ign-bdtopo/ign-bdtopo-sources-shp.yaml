@@ -146,7 +146,7 @@ output:
   directory: "${OUTPUT_DIR}/tiles/"
   filename_pattern: "tile_{col:03}_{row:03}.mp"
   overwrite: true
-  base_id: 6324            # Auto-génère des IDs uniques par tuile : 63240001, 63240002, etc.
+  base_id: ${BASE_ID}      # Auto-génère des IDs uniques par tuile : ex. 00380001, 00380002, etc.
 
 # Header MP — métadonnées écrites dans chaque tuile .mp
 # Le champ 'name' supporte les variables {col}, {row} (0-based), {seq} (1-based)

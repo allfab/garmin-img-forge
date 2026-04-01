@@ -27,6 +27,10 @@ pub struct TreWriter {
     pub point_overviews: Vec<PointOverview>,
     /// Display priority
     pub display_priority: u32,
+    /// Transparent map (overlay)
+    pub transparent: bool,
+    /// Map ID (written at TRE header offset 116-119)
+    pub map_id: u32,
     /// Copyright strings as LBL offsets
     pub copyright_offsets: Vec<u32>,
     /// Last RGN position (relative to body) — written as 4-byte terminator after subdivisions
@@ -52,6 +56,8 @@ impl TreWriter {
             polygon_overviews: Vec::new(),
             point_overviews: Vec::new(),
             display_priority: 0x19,
+            transparent: false,
+            map_id: 0,
             copyright_offsets: Vec::new(),
             last_rgn_pos: 0,
             ext_point_overviews: Vec::new(),
@@ -112,8 +118,8 @@ impl TreWriter {
         // Reserved @59-62
         buf.extend_from_slice(&0u32.to_le_bytes());
 
-        // POI display flags @63
-        buf.push(0x00);
+        // POI display flags @63 — bit 0x20 = transparent map (mkgmap TREHeader)
+        buf.push(if self.transparent { 0x20 } else { 0x00 });
 
         // Display priority @64-66 (3 bytes, mkgmap put3u)
         common_header::write_u24(&mut buf, self.display_priority);
@@ -155,7 +161,7 @@ impl TreWriter {
         buf.extend_from_slice(&0u32.to_le_bytes());
 
         // MapID @116-119
-        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&self.map_id.to_le_bytes());
 
         // Reserved @120-123
         buf.extend_from_slice(&0u32.to_le_bytes());
