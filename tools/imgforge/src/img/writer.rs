@@ -109,9 +109,14 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     tre.display_priority = mp.header.draw_priority;
     tre.transparent = mp.header.transparent;
     tre.map_id = mp.header.id;
+    // mkgmap stores copyright via two mechanisms in TRE:
+    // 1. LBL offsets in the copyright section (standard Garmin format, used by GPS devices)
+    // 2. Raw text blob between header and section data (used by QMapShack for hover tooltip)
     if copyright_label > 0 {
         tre.copyright_offsets.push(copyright_label);
     }
+    tre.copyright_message = mp.header.copyright.clone();
+    tre.codepage = mp.header.codepage;
     tre.levels = tre_levels;
     tre.subdivisions = all_subdivisions;
     // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body

@@ -1,6 +1,7 @@
 // TREFile — TRE subfile, faithful to mkgmap TREFile.java + TREHeader.java
 
 use super::common_header::{self, CommonHeader};
+use super::labelenc::format9;
 use super::overview::{
     PointOverview, PolylineOverview, PolygonOverview,
     ExtPointOverview, ExtPolylineOverview, ExtPolygonOverview,
@@ -41,6 +42,12 @@ pub struct TreWriter {
     pub ext_polygon_overviews: Vec<ExtPolygonOverview>,
     /// Extended type offsets data (built externally)
     pub ext_type_offsets_data: Vec<u8>,
+    /// Copyright text blob (written between header and section data, read by QMapShack for tooltip)
+    /// Note: mkgmap writes BOTH this blob AND the LBL copyright records. The blob is used by
+    /// QMapShack for the hover tooltip; the LBL records are the standard Garmin format for GPS devices.
+    pub copyright_message: String,
+    /// Codepage for encoding the copyright blob (0 or 65001 = UTF-8/ASCII)
+    pub codepage: u16,
 }
 
 impl TreWriter {
@@ -64,6 +71,8 @@ impl TreWriter {
             ext_polyline_overviews: Vec::new(),
             ext_polygon_overviews: Vec::new(),
             ext_type_offsets_data: Vec::new(),
+            copyright_message: String::new(),
+            codepage: 0,
         }
     }
 
@@ -102,7 +111,9 @@ impl TreWriter {
         common_header::write_i24(&mut buf, self.west);
 
         // Map levels section: offset(4) + size(4) @33-40
-        let mut current_offset = TRE_HEADER_LEN as u32;
+        // Account for copyright text blob between header and section data
+        let copyright_blob = self.encode_copyright_blob();
+        let mut current_offset = TRE_HEADER_LEN as u32 + copyright_blob.len() as u32;
         common_header::write_section(&mut buf, current_offset, map_levels_data.len() as u32);
         current_offset += map_levels_data.len() as u32;
 
@@ -194,6 +205,9 @@ impl TreWriter {
         // Pad to exactly TRE_HEADER_LEN
         common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
 
+        // --- Copyright text blob (between header and section data, for QMapShack tooltip) ---
+        buf.extend_from_slice(&copyright_blob);
+
         // --- Section data ---
         buf.extend_from_slice(&map_levels_data);
         buf.extend_from_slice(&subdivisions_data);
@@ -208,6 +222,22 @@ impl TreWriter {
         }
 
         buf
+    }
+
+    /// Encode copyright message blob respecting the map's codepage.
+    /// Returns empty vec if no copyright message.
+    fn encode_copyright_blob(&self) -> Vec<u8> {
+        if self.copyright_message.is_empty() {
+            return Vec::new();
+        }
+        if self.codepage > 0 && self.codepage != 65001 {
+            // format9::encode already appends a null terminator
+            format9::encode(&self.copyright_message, self.codepage)
+        } else {
+            let mut blob = self.copyright_message.as_bytes().to_vec();
+            blob.push(0x00);
+            blob
+        }
     }
 
     fn build_map_levels(&self) -> Vec<u8> {
@@ -336,6 +366,56 @@ mod tests {
         tre.levels.push(Zoom::new(1, 20));
         let data = tre.build();
         assert!(data.len() > TRE_HEADER_LEN as usize);
+    }
+
+    #[test]
+    fn test_tre_copyright_blob() {
+        let mut tre = TreWriter::new();
+        tre.copyright_message = "Map data (c) Test\nProgram released under GPL".to_string();
+        let data = tre.build();
+
+        // Copyright blob should appear right after the 188-byte header
+        let blob_start = TRE_HEADER_LEN as usize;
+        let blob = &data[blob_start..blob_start + tre.copyright_message.len()];
+        assert_eq!(blob, tre.copyright_message.as_bytes());
+        // Null terminator after the blob
+        assert_eq!(data[blob_start + tre.copyright_message.len()], 0x00);
+
+        // Map levels section offset (at header offset 33-36) should account for copyright blob
+        let ml_offset = u32::from_le_bytes([data[33], data[34], data[35], data[36]]);
+        let expected = TRE_HEADER_LEN as u32 + tre.copyright_message.len() as u32 + 1;
+        assert_eq!(ml_offset, expected);
+    }
+
+    #[test]
+    fn test_tre_copyright_blob_codepage() {
+        let mut tre = TreWriter::new();
+        tre.codepage = 1252;
+        tre.copyright_message = "Données IGN © 2026".to_string();
+        let data = tre.build();
+
+        let blob_start = TRE_HEADER_LEN as usize;
+        // Should NOT contain UTF-8 multi-byte sequences for é (c3 a9) or è (c3 a8)
+        let blob_end = {
+            let mut i = blob_start;
+            while i < data.len() && data[i] != 0x00 { i += 1; }
+            i
+        };
+        let blob = &data[blob_start..blob_end];
+        assert!(!blob.windows(2).any(|w| w == [0xc3, 0xa9]),
+            "TRE copyright blob should not contain UTF-8 é when codepage is 1252");
+        // Should contain CP1252 é = 0xe9
+        assert!(blob.contains(&0xe9),
+            "TRE copyright blob should contain CP1252 é (0xe9)");
+    }
+
+    #[test]
+    fn test_tre_no_copyright_blob() {
+        let tre = TreWriter::new();
+        let data = tre.build();
+        // Map levels section offset should be TRE_HEADER_LEN (no copyright blob)
+        let ml_offset = u32::from_le_bytes([data[33], data[34], data[35], data[36]]);
+        assert_eq!(ml_offset, TRE_HEADER_LEN as u32);
     }
 
     fn i24_from_le(bytes: &[u8]) -> i32 {
