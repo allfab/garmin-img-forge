@@ -95,7 +95,7 @@ fn main() -> Result<()> {
             transparent, draw_priority, levels, order_by_decreasing_area,
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             route, net, no_route, copyright_message,
-            mapname: _, country_name, country_abbr, region_name, region_abbr,
+            mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going,
         } => {
             if let Some(j) = jobs {
@@ -190,13 +190,21 @@ fn main() -> Result<()> {
 
             let fid = family_id.unwrap_or(1);
             let pid = product_id.unwrap_or(1);
-            let map_desc = family_name.as_deref().unwrap_or("Map");
+            let map_desc = mapname.as_deref()
+                .or(family_name.as_deref())
+                .unwrap_or("Map");
+
+            // Effective codepage: CLI flags > .mp default
+            let effective_codepage = if unicode { 65001 }
+                else if latin1 { 1252 }
+                else { code_page.unwrap_or(0) };
 
             let gmapsupp_meta = imgforge::img::assembler::GmapsuppMeta {
                 family_id: fid,
                 product_id: pid,
-                family_name: map_desc.to_string(),
-                codepage: code_page.unwrap_or(if unicode { 65001 } else if latin1 { 1252 } else { 0 }),
+                family_name: family_name.as_deref().unwrap_or("Map").to_string(),
+                area_name: area_name.as_deref().unwrap_or("").to_string(),
+                codepage: effective_codepage,
             };
             let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta(&tile_subfiles, map_desc, &gmapsupp_meta)?;
             std::fs::write(&output, &gmapsupp)?;
@@ -205,6 +213,7 @@ fn main() -> Result<()> {
             {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
                 let mut tdb = TdbWriter::new(fid, pid);
+                tdb.codepage = effective_codepage;
                 tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
                 tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();
                 if let Some(ref an) = area_name { tdb.area_name = an.clone(); }

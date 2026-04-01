@@ -583,6 +583,7 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
         family_id: 53403,
         product_id: 1,
         family_name: "Test Map Family".to_string(),
+        area_name: String::new(),
         codepage: 1252,
     };
 

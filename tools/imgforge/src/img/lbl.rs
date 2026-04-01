@@ -5,9 +5,9 @@ use super::common_header::{self, CommonHeader};
 use super::labelenc::{self, LabelEncoding};
 
 pub const LBL_HEADER_LEN: u16 = 196;
-const OFF_CODEPAGE: usize = 190;
-const OFF_SORT_ID1: usize = 192;
-const OFF_SORT_ID2: usize = 194;
+const OFF_CODEPAGE: usize = 170; // 0xAA — mkgmap LBLHeader codepage offset
+const OFF_SORT_ID1: usize = 172; // 0xAC
+const OFF_SORT_ID2: usize = 174; // 0xAE
 
 pub struct LblWriter {
     encoding: LabelEncoding,

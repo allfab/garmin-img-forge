@@ -1,5 +1,7 @@
 // TDB — Table of Database companion file, faithful to mkgmap TdbFile.java
 
+use super::labelenc::format9;
+
 /// TDB block types
 const BLOCK_PRODUCT: u8 = 0x50;
 const BLOCK_COPYRIGHT: u8 = 0x44;
@@ -21,6 +23,7 @@ pub struct TdbWriter {
     pub region_abbr: String,
     pub overview_map_number: u32,
     pub tiles: Vec<TdbTile>,
+    pub codepage: u16,
 }
 
 /// A tile entry in the TDB
@@ -49,6 +52,18 @@ impl TdbWriter {
             region_abbr: String::new(),
             overview_map_number: 0,
             tiles: Vec::new(),
+            codepage: 0,
+        }
+    }
+
+    /// Encode string in the map's codepage (for accented metadata)
+    fn encode_str(&self, s: &str) -> Vec<u8> {
+        if self.codepage > 0 && self.codepage != 65001 {
+            let encoded = format9::encode(s, self.codepage);
+            // Remove trailing null — caller adds it
+            encoded[..encoded.len() - 1].to_vec()
+        } else {
+            s.as_bytes().to_vec()
         }
     }
 
@@ -86,15 +101,15 @@ impl TdbWriter {
         data.extend_from_slice(&self.product_version.to_le_bytes());
 
         // Series name (null-terminated)
-        data.extend_from_slice(self.series_name.as_bytes());
+        data.extend_from_slice(&self.encode_str(&self.series_name));
         data.push(0);
 
         // Family name (null-terminated)
-        data.extend_from_slice(self.family_name.as_bytes());
+        data.extend_from_slice(&self.encode_str(&self.family_name));
         data.push(0);
 
         // Area name (null-terminated)
-        data.extend_from_slice(self.area_name.as_bytes());
+        data.extend_from_slice(&self.encode_str(&self.area_name));
         data.push(0);
 
         write_block(buf, BLOCK_PRODUCT, &data);
@@ -102,7 +117,7 @@ impl TdbWriter {
 
     fn write_copyright_block(&self, buf: &mut Vec<u8>) {
         let mut data = Vec::new();
-        data.extend_from_slice(self.copyright.as_bytes());
+        data.extend_from_slice(&self.encode_str(&self.copyright));
         data.push(0);
         write_block(buf, BLOCK_COPYRIGHT, &data);
     }
@@ -124,7 +139,7 @@ impl TdbWriter {
         data.extend_from_slice(&tile.west.to_le_bytes());
 
         // Description (null-terminated)
-        data.extend_from_slice(tile.description.as_bytes());
+        data.extend_from_slice(&self.encode_str(&tile.description));
         data.push(0);
 
         write_block(buf, BLOCK_DETAIL, &data);
@@ -167,5 +182,20 @@ mod tests {
         tdb.copyright = "Copyright Test".to_string();
         let data = tdb.build();
         assert!(data.len() > 10);
+    }
+
+    #[test]
+    fn test_tdb_codepage_encoding() {
+        let mut tdb = TdbWriter::new(1, 1);
+        tdb.codepage = 1252;
+        tdb.area_name = "Région ARA".to_string();
+        let data = tdb.build();
+        // "Région" in CP1252: R(52) é(e9) g(67) i(69) o(6f) n(6e)
+        // Should NOT contain UTF-8 sequence c3 a9
+        assert!(!data.windows(2).any(|w| w == [0xc3, 0xa9]),
+            "TDB should not contain UTF-8 é (c3 a9) when codepage is 1252");
+        // Should contain CP1252 é = 0xe9
+        assert!(data.contains(&0xe9),
+            "TDB should contain CP1252 é (0xe9)");
     }
 }

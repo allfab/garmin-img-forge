@@ -20,6 +20,7 @@ pub struct GmapsuppMeta {
     pub family_id: u16,
     pub product_id: u16,
     pub family_name: String,
+    pub area_name: String,
     pub codepage: u16,
 }
 
@@ -29,6 +30,7 @@ impl Default for GmapsuppMeta {
             family_id: 1,
             product_id: 1,
             family_name: "Map".to_string(),
+            area_name: String::new(),
             codepage: 0,
         }
     }
@@ -85,6 +87,7 @@ pub fn build_gmapsupp_with_meta(
 /// Build MPS subfile data from tiles and metadata
 fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
     let mut mps = MpsWriter::new();
+    mps.codepage = meta.codepage;
 
     // One product entry for the whole map set
     mps.add_product(MpsProductEntry {
@@ -96,16 +99,18 @@ fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
     // One map entry per tile
     for tile in tiles {
         let map_num: u32 = tile.map_number.parse().unwrap_or(0);
+        let desc = if tile.description.is_empty() {
+            meta.family_name.clone()
+        } else {
+            tile.description.clone()
+        };
         mps.add_map(MpsMapEntry {
             product_id: meta.product_id,
             family_id: meta.family_id,
             map_number: map_num,
-            hex_number: format!("{:08}", tile.map_number),
-            map_description: if tile.description.is_empty() {
-                meta.family_name.clone()
-            } else {
-                tile.description.clone()
-            },
+            map_name: desc.clone(),
+            map_description: desc,
+            area_name: meta.area_name.clone(),
         });
     }
 
