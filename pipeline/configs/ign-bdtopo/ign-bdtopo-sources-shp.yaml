@@ -166,7 +166,7 @@ header:
   routing: "Y"
 
 # Règles de transformation BDTOPO → types Garmin
-rules: ign-bdtopo-garmin-rules.yaml
+rules: pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml
 
 
 error_handling: "continue"
