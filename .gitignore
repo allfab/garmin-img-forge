@@ -18,6 +18,7 @@ pipeline/output/*.json
 !tools/ogr-polishmap/test/**/*.mp
 !tools/mpforge/examples/**/*.mp
 *.img
+*.tdb
 mkgmap/
 xI2023100.typ
 pipeline/resources/img/63240001.img
