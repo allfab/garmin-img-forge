@@ -1,7 +1,6 @@
 // TREFile — TRE subfile, faithful to mkgmap TREFile.java + TREHeader.java
 
 use super::common_header::{self, CommonHeader};
-use super::labelenc::format9;
 use super::overview::{
     PointOverview, PolylineOverview, PolygonOverview,
     ExtPointOverview, ExtPolylineOverview, ExtPolygonOverview,
@@ -224,20 +223,17 @@ impl TreWriter {
         buf
     }
 
-    /// Encode copyright message blob respecting the map's codepage.
+    /// Encode copyright message blob as UTF-8 (QMapShack always reads this blob as UTF-8).
+    /// Replaces literal `\n` escape sequences with real newlines (0x0A).
     /// Returns empty vec if no copyright message.
     fn encode_copyright_blob(&self) -> Vec<u8> {
         if self.copyright_message.is_empty() {
             return Vec::new();
         }
-        if self.codepage > 0 && self.codepage != 65001 {
-            // format9::encode already appends a null terminator
-            format9::encode(&self.copyright_message, self.codepage)
-        } else {
-            let mut blob = self.copyright_message.as_bytes().to_vec();
-            blob.push(0x00);
-            blob
-        }
+        let text = self.copyright_message.replace("\\n", "\n");
+        let mut blob = text.into_bytes();
+        blob.push(0x00);
+        blob
     }
 
     fn build_map_levels(&self) -> Vec<u8> {
@@ -388,25 +384,43 @@ mod tests {
     }
 
     #[test]
-    fn test_tre_copyright_blob_codepage() {
+    fn test_tre_copyright_blob_always_utf8() {
         let mut tre = TreWriter::new();
-        tre.codepage = 1252;
+        tre.codepage = 1252; // even with CP1252, blob must be UTF-8
         tre.copyright_message = "Données IGN © 2026".to_string();
         let data = tre.build();
 
         let blob_start = TRE_HEADER_LEN as usize;
-        // Should NOT contain UTF-8 multi-byte sequences for é (c3 a9) or è (c3 a8)
         let blob_end = {
             let mut i = blob_start;
             while i < data.len() && data[i] != 0x00 { i += 1; }
             i
         };
         let blob = &data[blob_start..blob_end];
-        assert!(!blob.windows(2).any(|w| w == [0xc3, 0xa9]),
-            "TRE copyright blob should not contain UTF-8 é when codepage is 1252");
-        // Should contain CP1252 é = 0xe9
-        assert!(blob.contains(&0xe9),
-            "TRE copyright blob should contain CP1252 é (0xe9)");
+        // Must contain UTF-8 é (c3 a9), NOT CP1252 single-byte
+        assert!(blob.windows(2).any(|w| w == [0xc3, 0xa9]),
+            "TRE copyright blob must be UTF-8 (é = c3 a9)");
+        assert_eq!(std::str::from_utf8(blob).unwrap(), "Données IGN © 2026");
+    }
+
+    #[test]
+    fn test_tre_copyright_blob_newline_escape() {
+        let mut tre = TreWriter::new();
+        tre.copyright_message = "Line 1\\nLine 2\\nLine 3".to_string();
+        let data = tre.build();
+
+        let blob_start = TRE_HEADER_LEN as usize;
+        let blob_end = {
+            let mut i = blob_start;
+            while i < data.len() && data[i] != 0x00 { i += 1; }
+            i
+        };
+        let blob = &data[blob_start..blob_end];
+        assert_eq!(std::str::from_utf8(blob).unwrap(), "Line 1\nLine 2\nLine 3");
+        // Should contain real 0x0A newlines, not literal backslash-n
+        assert!(blob.contains(&0x0A), "blob should contain real newline bytes");
+        assert!(!blob.windows(2).any(|w| w == [b'\\', b'n']),
+            "blob should not contain literal \\n");
     }
 
     #[test]
