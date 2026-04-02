@@ -35,7 +35,14 @@ impl Polyline {
     }
 
     /// Write polyline record — mkgmap Polyline.java
-    /// Format: type(1B) + label(3B) + delta_lon(i16) + delta_lat(i16) + blen(1-2B) + bitstream
+    /// Format: type(1B) + label_or_net(3B) + delta_lon(i16) + delta_lat(i16) + blen(1-2B) + bitstream
+    ///
+    /// When has_net_info: the 3-byte label field contains the NET1 offset
+    /// (not the LBL offset) with FLAG_NETINFO (0x800000) set. The road's
+    /// label is stored in NET1 instead. No extra bytes after the bitstream.
+    /// This is mkgmap's 2-pass approach: write LBL offset first, then patch
+    /// with NET1 offset after NET is built. We do it in one pass since we
+    /// pre-compute routing before RGN encoding.
     pub fn write(
         &self,
         subdiv_center_lat: i32,
@@ -46,25 +53,24 @@ impl Polyline {
     ) -> Vec<u8> {
         let mut buf = Vec::with_capacity(8 + bitstream.len());
 
-        // Total data after blen field: bitstream + NET offset (3B) if has_net_info
-        let total_len = if self.has_net_info {
-            bitstream.len() + 3
-        } else {
-            bitstream.len()
-        };
-
         // Type byte with flags
         let mut type_byte = (self.type_code & 0xFF) as u8;
         if self.direction {
             type_byte |= 0x40;
         }
-        if total_len > 256 {
+        if bitstream.len() > 256 {
             type_byte |= 0x80; // 2-byte length
         }
         buf.push(type_byte);
 
-        // Label offset (3 bytes) with flags
-        let mut lbl = self.label_offset;
+        // Label/NET field (3 bytes)
+        // For routing polylines: NET1 offset | flags (replaces LBL offset)
+        // For non-routing: LBL offset | flags
+        let mut lbl = if self.has_net_info {
+            self.net_offset  // NET1 offset replaces label
+        } else {
+            self.label_offset
+        };
         if extra_bit {
             lbl |= 0x400000;
         }
@@ -83,9 +89,8 @@ impl Polyline {
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 
-        // Bitstream length — includes NET offset when has_net_info.
-        // Decoder reads blen+1 bytes; last 3 are NET offset if has_net_info.
-        let blen = total_len - 1;
+        // Bitstream length — blen = bitstream bytes only (no extra NET data)
+        let blen = bitstream.len() - 1;
         if blen >= 256 {
             buf.extend_from_slice(&(blen as u16).to_le_bytes());
         } else {
@@ -94,15 +99,6 @@ impl Polyline {
 
         // Bitstream data
         buf.extend_from_slice(bitstream);
-
-        // NET1 offset (3 bytes, little-endian) — appended AFTER bitstream,
-        // NOT counted in blen. Decoder reads these separately when has_net_info is set.
-        if self.has_net_info {
-            let nb = self.net_offset.to_le_bytes();
-            buf.push(nb[0]);
-            buf.push(nb[1]);
-            buf.push(nb[2]);
-        }
 
         buf
     }
@@ -286,25 +282,22 @@ mod tests {
         let points = vec![Coord::new(100, 200), Coord::new(110, 210)];
         let mut pl = Polyline::new(0x01, points);
         pl.has_net_info = true;
-        pl.net_offset = 0x123456;
+        pl.net_offset = 0x042;  // NET1 offset (must fit in 22 bits)
+        pl.label_offset = 0x100; // label is ignored when has_net_info
         let bitstream = vec![0xAA, 0xBB];
         let buf = pl.write(0, 0, 0, &bitstream, false);
 
-        // label should have 0x800000 flag
+        // Label field should contain NET1 offset + FLAG_NETINFO, NOT the LBL offset
         let lbl = u32::from_le_bytes([buf[1], buf[2], buf[3], 0]);
-        assert!(lbl & 0x800000 != 0, "has_net_info flag should be set in label");
+        assert!(lbl & 0x800000 != 0, "has_net_info flag should be set");
+        assert_eq!(lbl & 0x3FFFFF, 0x042, "label field should contain NET1 offset");
 
-        // blen includes NET offset: (2 + 3) - 1 = 4
-        assert_eq!(buf[8], 4, "blen should be bitstream(2) + net_offset(3) - 1 = 4");
+        // blen is bitstream only: 2 - 1 = 1 (no extra bytes)
+        assert_eq!(buf[8], 1, "blen should be bitstream(2) - 1 = 1");
 
-        // Last 3 bytes should be net_offset (little-endian)
-        let len = buf.len();
-        assert_eq!(buf[len - 3], 0x56);
-        assert_eq!(buf[len - 2], 0x34);
-        assert_eq!(buf[len - 1], 0x12);
-
-        // Total: type(1) + label(3) + dx(2) + dy(2) + blen(1) + bitstream(2) + net_offset(3) = 14
-        assert_eq!(len, 14);
+        // No extra bytes after bitstream
+        // Total: type(1) + label(3) + dx(2) + dy(2) + blen(1) + bitstream(2) = 11
+        assert_eq!(buf.len(), 11);
     }
 
     #[test]
