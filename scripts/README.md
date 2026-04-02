@@ -15,7 +15,7 @@ download-bdtopo.sh       01-export-mp.sh         02-build-img.sh
 
 Le pipeline se décompose en 3 étapes indépendantes :
 
-1. **Télécharger** les données BDTOPO depuis la Géoplateforme IGN
+1. **Télécharger** les données BDTOPO (+ courbes de niveau optionnel) depuis la Géoplateforme IGN
 2. **Exporter** les données en tuiles Polish Map (.mp) via mpforge
 3. **Compiler** les tuiles en carte Garmin (gmapsupp.img) via imgforge
 
@@ -72,9 +72,9 @@ source pipeline/.env
 
 | Fichier | Rôle |
 |---|---|
-| `pipeline/.env.example` | Template des variables d'environnement |
-| `pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml` | Sources SHP : couches BDTOPO, grille de tuilage, header MP |
-| `pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml` | Règles de mapping BDTOPO → types Garmin |
+| `pipeline/.env.example` | Template des variables d'environnement (`DATA_ROOT`, `CONTOURS_DATA_ROOT`, etc.) |
+| `pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml` | Sources SHP : couches BDTOPO + courbes de niveau, grille de tuilage, header MP |
+| `pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml` | Règles de mapping BDTOPO + courbes → types Garmin |
 
 Convention de nommage : `ign-bdtopo-<theme>.yaml` (sources par format, règles de mapping).
 
@@ -105,6 +105,11 @@ pipeline/
     ign-bdtopo-sources-shp.yaml
     ign-bdtopo-garmin-rules.yaml
   data/bdtopo/                 # Données BDTOPO (gitignore)
+  data/courbes/                # Courbes de niveau IGN (gitignore)
+    D038/                      # Dalles SHP par département
+      COURBE_0840_6440.shp
+      COURBE_0880_6440.shp
+      ...
   output/                      # Sortie du pipeline (gitignore)
     tiles/                     # Tuiles .mp générées
     gmapsupp.img               # Carte Garmin finale
@@ -128,6 +133,36 @@ Script : `scripts/download-bdtopo.sh`
 ```
 
 Les données sont organisées dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`.
+
+### Courbes de niveau
+
+Le produit IGN "Courbes de niveau" est livré séparément de la BD TOPO, par département. L'option `--with-contours` télécharge les courbes en parallèle de la BDTOPO.
+
+```bash
+# BDTOPO + courbes de niveau pour l'Isère
+./scripts/download-bdtopo.sh --zones D038 --with-contours
+
+# BDTOPO région ARA + courbes de niveau des 12 départements ARA
+./scripts/download-bdtopo.sh --region ARA --with-contours
+
+# Multi-départements
+./scripts/download-bdtopo.sh --zones D038,D073,D074 --with-contours
+
+# Simulation
+./scripts/download-bdtopo.sh --zones D038 --with-contours --dry-run
+
+# Répertoire de stockage personnalisé
+./scripts/download-bdtopo.sh --zones D038 --with-contours --contours-root /data/courbes
+```
+
+Les courbes sont téléchargées dans `pipeline/data/courbes/{DXXX}/` (arborescence séparée de la BDTOPO). Chaque département contient plusieurs dalles SHP (`COURBE_0840_6440.shp`, `COURBE_0880_6440.shp`, etc.).
+
+| Option | Description | Défaut |
+|---|---|---|
+| `--with-contours` | Télécharger aussi les courbes de niveau | `false` |
+| `--contours-root <dir>` | Racine des données courbes | `./pipeline/data/courbes` |
+
+> **Note** : `--with-contours` nécessite `--zones` ou `--region`. Sans zone, une erreur explicite est affichée.
 
 ---
 
@@ -304,11 +339,18 @@ Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des
 
 # Reprise partielle
 ./scripts/build-garmin-map.sh --skip-existing --jobs 4
+
+# Avec courbes de niveau (après download --with-contours)
+./scripts/build-garmin-map.sh \
+  --config pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
+  --contours-root pipeline/data/courbes/D038
 ```
 
 | Option | Description | Défaut |
 |---|---|---|
 | `--data-root <dir>` | Racine des données BDTOPO | `./pipeline/data/bdtopo` |
+| `--contours-root <dir>` | Racine des courbes de niveau | `./pipeline/data/courbes` |
 | `--config <file>` | Config YAML mpforge explicite | génération auto |
 | `--rules <file>` | Fichier de règles YAML | auto-découverte |
 | `--jobs <n>` | Parallélisation | `8` |
