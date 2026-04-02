@@ -45,7 +45,7 @@ ogr2ogr -f "PolishMap" communes.mp COMMUNE.shp \
 
 - **GDAL 3.6+** avec headers de développement
 - **CMake 3.20+**
-- **GCC 13+** (compilateur C++17)
+- **GCC 13+** (Linux) ou **MSVC 19+** via Visual Studio Build Tools (Windows)
 
 ### Build et installation (Debian/Ubuntu)
 
@@ -78,11 +78,79 @@ echo 'export GDAL_DRIVER_PATH=$HOME/.gdal/plugins' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Build et installation (Windows / QGIS via OSGeo4W)
+
+#### Prérequis
+
+- **QGIS** installé via [OSGeo4W](https://trac.osgeo.org/osgeo4w/) (fournit GDAL 3.6+ avec headers de développement)
+- **CMake 3.20+** — télécharger le `.msi` sur https://cmake.org/download/ (cocher "Add CMake to the system PATH")
+- **Visual Studio Build Tools 2022+** — télécharger sur https://visualstudio.microsoft.com/downloads/ (section "Tools for Visual Studio"), installer le workload **"Desktop development with C++"**
+
+#### Configuration de l'environnement
+
+OSGeo4W Shell écrase le PATH système. Il faut charger les deux environnements (OSGeo4W + MSVC) dans le bon ordre.
+
+**Option A — Depuis un terminal classique :**
+
+```cmd
+call "C:\OSGeo4W\bin\o4w_env.bat"
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+```
+
+**Option B — Ajouter CMake au PATH d'OSGeo4W Shell :**
+
+Éditer `C:\OSGeo4W\OSGeo4W.bat`, ajouter après `call "%~dp0\bin\o4w_env.bat"` :
+
+```bat
+set PATH=%PATH%;C:\Program Files\CMake\bin
+```
+
+Puis charger MSVC depuis OSGeo4W Shell :
+
+```cmd
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+```
+
+> **Note :** Adapter le chemin de `vcvars64.bat` selon l'édition installée (BuildTools, Community, etc.) et la version (2022, 2026...).
+
+#### Build
+
+```cmd
+cd tools\ogr-polishmap
+cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release ^
+    -DGDAL_INCLUDE_DIR=C:/OSGeo4W/include ^
+    -DGDAL_LIBRARY=C:/OSGeo4W/lib/gdal_i.lib
+cmake --build build
+```
+
+Cela produit `build\ogr_PolishMap.dll`.
+
+#### Installation dans QGIS
+
+```cmd
+copy build\ogr_PolishMap.dll C:\OSGeo4W\apps\gdal\lib\gdalplugins\
+```
+
+Après redémarrage de QGIS, le driver "PolishMap" apparaît dans la liste des formats supportés et les fichiers `.mp` peuvent être ouverts directement.
+
+#### Points d'attention
+
+- Le `.dll` **doit être compilé contre la même version de GDAL** que celle utilisée par QGIS (sinon crash au chargement)
+- Le code supporte GDAL 3.6 à 3.12+ grâce aux macros de compatibilité dans `src/ogrpolishmap_compat.h`
+- Sous Windows, `PREFIX ""` dans CMake retire le préfixe `lib` — CMake produit `ogr_PolishMap.dll` directement
+
 ### Vérification
 
 ```bash
+# Linux
 ogrinfo --formats | grep -i polish
-# Attendu : PolishMap -vector- (rw): Polish Map (.mp)
+
+# Windows (OSGeo4W Shell)
+ogrinfo --formats | findstr -i polish
+```
+
+```
+# Attendu : PolishMap -vector- (rw+v): Polish Map Format (*.mp)
 ```
 
 ### Intégration directe dans GDAL (avancé)
@@ -350,11 +418,15 @@ Vérifier : la bibliothèque existe dans le répertoire plugin, `GDAL_DRIVER_PAT
 
 ### Erreurs de build
 
-| Erreur | Solution |
-|--------|----------|
-| `gdal_priv.h: No such file` | `sudo apt install libgdal-dev` |
-| `Could not find GDAL` | `cmake .. -DCMAKE_PREFIX_PATH=/usr/local` |
-| `Symbol not found` (runtime) | Recompiler contre la version GDAL installée |
+| Erreur | Plateforme | Solution |
+|--------|------------|----------|
+| `gdal_priv.h: No such file` | Linux | `sudo apt install libgdal-dev` |
+| `Could not find GDAL` | Linux | `cmake .. -DCMAKE_PREFIX_PATH=/usr/local` |
+| `Could NOT find GDAL` | Windows | Ajouter `-DGDAL_INCLUDE_DIR=C:/OSGeo4W/include -DGDAL_LIBRARY=C:/OSGeo4W/lib/gdal_i.lib` |
+| `nmake: no such file or directory` | Windows | Charger l'environnement MSVC avec `vcvars64.bat` avant CMake |
+| `override did not override` | Windows | Vérifier que `ogrpolishmap_compat.h` est présent (macros GDAL 3.12) |
+| `visibility: identifier not found` | Windows | Vérifier que `OGR_POLISHMAP_EXPORT` est utilisé au lieu de `__attribute__` |
+| `Symbol not found` (runtime) | Toutes | Recompiler contre la version GDAL installée |
 
 ### Problèmes d'encodage
 
