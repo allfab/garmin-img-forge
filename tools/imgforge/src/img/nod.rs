@@ -199,20 +199,31 @@ impl NodWriter {
         // Build NOD3 data (boundary nodes with correct NOD1 offsets)
         let nod3_data = self.build_nod3(&node_offsets);
 
-        // Section descriptors
+        // Section descriptors — mkgmap NODHeader.java layout
+        // Each section has property bytes between the offset+size pair
+
+        // NOD1 section @0x15
         let nod1_offset = NOD_HEADER_LEN as u32;
         let nod1_size = nod1_data.len() as u32;
-        common_header::write_section(&mut buf, nod1_offset, nod1_size);
+        common_header::write_section(&mut buf, nod1_offset, nod1_size); // 8B @0x15-0x1C
+        buf.push(0x27);                                  // @0x1D: NOD1 flags
+        buf.push(0x02);                                  // @0x1E: unknown
+        buf.extend_from_slice(&0u16.to_le_bytes());      // @0x1F-0x20: unknown
+        buf.extend_from_slice(&0x0006u16.to_le_bytes()); // @0x21-0x22: alignment shift (1<<6 = 64)
+        buf.extend_from_slice(&0x0005u16.to_le_bytes()); // @0x23-0x24: Table A record size (5B per arc)
 
+        // NOD2 section @0x25
         let nod2_offset = nod1_offset + nod1_size;
-        common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32);
+        common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32); // 8B @0x25-0x2C
+        buf.extend_from_slice(&0u32.to_le_bytes());      // @0x2D-0x30: flags/reserved
 
+        // NOD3 section @0x31
         let nod3_offset = nod2_offset + nod2_data.len() as u32;
-        common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32);
+        common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32); // 8B @0x31-0x38
+        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // @0x39-0x3A: record size (9B per boundary node)
+        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // @0x3B-0x3C: flags
 
-        // Drive on left flag
-        buf.push(if self.drive_on_left { 1 } else { 0 });
-
+        // Pad remaining header to NOD_HEADER_LEN
         common_header::pad_to(&mut buf, NOD_HEADER_LEN as usize);
 
         // Section data

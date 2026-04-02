@@ -312,8 +312,9 @@ fn build_multilevel_hierarchy(
                 let ext_lines_before = rgn.ext_lines_position();
                 let ext_points_before = rgn.ext_points_position();
 
+                let is_leaf = level_idx == 0;
                 let (pts_data, lines_data, polys_data) =
-                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx);
+                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx, is_leaf);
 
                 // Capture ext positions after encoding
                 let ext_areas_after = rgn.ext_areas_position();
@@ -533,6 +534,7 @@ fn encode_subdivision_rgn(
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
     routing_ctx: Option<&RoutingContext>,
+    is_leaf_level: bool,
 ) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // Points
     let mut points_data = Vec::new();
@@ -557,10 +559,17 @@ fn encode_subdivision_rgn(
         pl.label_offset = line_labels[split_line.mp_index];
         pl.direction = mp_line.direction;
 
-        // P3 (has_net_info / net_offset) and P4 (extra_bit / node_flags) are
-        // disabled for now — polylines encoded identically to pre-routing code.
-        // NET/NOD are still generated; we test if the graph appears in GPSMapEdit
-        // before activating the RGN→NET link.
+        // P3: Activate RGN→NET link for standard-type routing polylines
+        // at the leaf level (most detailed) only — mkgmap convention.
+        // P4 (extra_bit / node_flags) is disabled for now.
+        if is_leaf_level {
+            if let Some(ctx) = routing_ctx {
+                if let Some(&net1_off) = ctx.net1_offsets_by_mp_index.get(&split_line.mp_index) {
+                    pl.has_net_info = true;
+                    pl.net_offset = net1_off;
+                }
+            }
+        }
 
         let deltas = compute_deltas(&split_line.points, subdiv);
         let is_ext = mp_line.type_code >= 0x100;
@@ -790,10 +799,10 @@ fn pre_compute_routing(
     // Build NOD2 bitstream
     let (nod2_data, nod2_offsets) = build_nod2_bitstream(&all_node_flags);
 
-    // Set nod2_offset on each RoadDef
-    for (road_idx, &nod2_off) in nod2_offsets.iter().enumerate() {
-        net_writer.roads[road_idx].nod2_offset = Some(nod2_off);
-    }
+    // NOD2 offset in RoadDefs is disabled — GPSMapEdit crashes with the 0x40 flag
+    // in NET1 records. The RGN→NET link (has_net_info) works without it.
+    // TODO: investigate the full NET1 record format with nod2_offset
+    let _ = &nod2_offsets; // suppress unused warning
 
     // Build NET → get NET1 offsets
     let net_data = net_writer.build();

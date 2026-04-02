@@ -138,18 +138,27 @@ impl NetWriter {
         // Store offsets for external access (patch_net1_offsets)
         self.net1_offsets = net1_offsets;
 
-        // Section descriptors
+        // Section descriptors — mkgmap NETHeader.java layout:
+        // Each section = offset(4B) + size(4B) + flag(1B)
         let net1_offset = NET_HEADER_LEN as u32;
         let net1_size = net1_data.len() as u32;
         common_header::write_section(&mut buf, net1_offset, net1_size);
+        buf.push(0x00); // @0x1D: addr_shift (road label addr multiplier)
 
         let net2_offset = net1_offset + net1_size;
         let net2_size = 0u32; // NET2 is empty for now
         common_header::write_section(&mut buf, net2_offset, net2_size);
+        buf.push(0x00); // @0x26: NET2 flags
 
         let net3_offset = net2_offset + net2_size;
         let net3_size = net3_data.len() as u32;
         common_header::write_section(&mut buf, net3_offset, net3_size);
+        buf.push(0x03); // @0x2F: NET3 record size
+
+        // Remaining header fields @0x30-0x36 — mkgmap NETHeader
+        buf.extend_from_slice(&0u32.to_le_bytes()); // @0x30: reserved
+        buf.push(0x00);                              // @0x34: reserved
+        buf.extend_from_slice(&1u16.to_le_bytes());  // @0x35: sort descriptor multiplier
 
         common_header::pad_to(&mut buf, NET_HEADER_LEN as usize);
 

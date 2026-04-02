@@ -133,18 +133,18 @@ impl TreWriter {
 
         // Map properties @63 — mkgmap TREHeader.java
         // bit 0x20 = transparent map (overlay)
-        // bit 0x08 = has routing (NET/NOD present, drive on right)
-        // bit 0x01 = drive on left (combined with 0x08)
+        // bit 0x01 = has routing (NET/NOD present)
         let mut map_props: u8 = 0;
         if self.transparent { map_props |= 0x20; }
-        if self.has_routing { map_props |= 0x08; }
+        if self.has_routing { map_props |= 0x01; }
         buf.push(map_props);
 
         // Display priority @64-66 (3 bytes, mkgmap put3u)
         common_header::write_u24(&mut buf, self.display_priority);
 
-        // Custom/standard marker @67-70 (mkgmap: 0x170401 for POI display, or 0x110301)
-        buf.extend_from_slice(&0x00u32.to_le_bytes());
+        // Routing capability marker @67-70 — mkgmap: 0x00110301 for routable maps
+        let marker: u32 = if self.has_routing { 0x00110301 } else { 0 };
+        buf.extend_from_slice(&marker.to_le_bytes());
 
         // Reserved @71-72 (2 bytes, value 1 in mkgmap)
         buf.extend_from_slice(&1u16.to_le_bytes());
