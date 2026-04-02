@@ -30,6 +30,7 @@
 
 #include "ogrsf_frmts.h"
 #include "ogr_spatialref.h"
+#include "ogrpolishmap_compat.h"
 #include <set>
 #include <string>
 
@@ -181,7 +182,11 @@ public:
      *
      * @return Pointer to OGRFeatureDefn. Ownership remains with the layer.
      */
+#if GDAL_VERSION_NUM >= 3120000
+    const OGRFeatureDefn* GetLayerDefn() const override;
+#else
     OGRFeatureDefn* GetLayerDefn() override;
+#endif
 
     /**
      * @brief Test if the layer supports a specific capability.
@@ -197,7 +202,7 @@ public:
      *       - OLCRandomRead: No
      *       - OLCRandomWrite: No
      */
-    int TestCapability(const char* pszCap) override;
+    int TestCapability(const char* pszCap) OGRPOLISHMAP_CONST override;
 
     /**
      * @brief Set the writer for this layer (enables write mode).

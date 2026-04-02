@@ -412,7 +412,11 @@ OGRFeature* OGRPolishMapLayer::GetNextPolygonFeature() {
 /*                          GetLayerDefn()                              */
 /************************************************************************/
 
+#if GDAL_VERSION_NUM >= 3120000
+const OGRFeatureDefn* OGRPolishMapLayer::GetLayerDefn() const {
+#else
 OGRFeatureDefn* OGRPolishMapLayer::GetLayerDefn() {
+#endif
     // M5 Fix: Assert that feature definition exists (should never be null)
     assert(m_poFeatureDefn != nullptr);
     return m_poFeatureDefn;
@@ -424,7 +428,7 @@ OGRFeatureDefn* OGRPolishMapLayer::GetLayerDefn() {
 /* Story 1.3 Task 6: Report layer capabilities.                         */
 /************************************************************************/
 
-int OGRPolishMapLayer::TestCapability(const char* pszCap) {
+int OGRPolishMapLayer::TestCapability(const char* pszCap) OGRPOLISHMAP_CONST {
     // Task 6.1: OLCRandomRead - GetFeature(FID) not implemented (Post-MVP)
     if (EQUAL(pszCap, OLCRandomRead)) {
         return FALSE;

@@ -476,7 +476,7 @@ static bool Test_Layer_Spatial_Reference() {
             break;
         }
 
-        OGRSpatialReference* poSRS = poLayer->GetSpatialRef();
+        const OGRSpatialReference* poSRS = poLayer->GetSpatialRef();
         if (poSRS == nullptr) {
             std::cout << "FAILED (layer " << i << " has no spatial reference)" << std::endl;
             bSuccess = false;

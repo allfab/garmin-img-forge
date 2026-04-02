@@ -30,6 +30,7 @@
 
 #include "gdal_priv.h"
 #include "ogrsf_frmts.h"
+#include "ogrpolishmap_compat.h"
 #include "polishmapparser.h"
 #include "polishmapfieldmapper.h"
 #include <vector>
@@ -120,7 +121,7 @@ public:
      *
      * @return Always returns 3.
      */
-    int GetLayerCount() override;
+    int GetLayerCount() OGRPOLISHMAP_CONST override;
 
     /**
      * @brief Get a layer by index.
@@ -131,7 +132,7 @@ public:
      * @note Ownership remains with the dataset. Caller must NOT delete the returned pointer.
      * @note The returned layer is valid as long as the dataset is open.
      */
-    OGRLayer* GetLayer(int nLayer) override;
+    OGRLayer* GetLayer(int nLayer) OGRPOLISHMAP_CONST override;
 
     /**
      * @brief Test if the dataset supports a specific capability.
@@ -144,7 +145,7 @@ public:
      *       - ODsCRandomLayerRead: No
      *       - ODsCSingleLayerZip: No
      */
-    int TestCapability(const char* pszCap) override;
+    int TestCapability(const char* pszCap) OGRPOLISHMAP_CONST override;
 
     /**
      * @brief Create a layer (routes to appropriate fixed layer).

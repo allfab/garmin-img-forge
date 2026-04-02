@@ -122,7 +122,7 @@ void OGRPolishMapDataSource::CreateLayers() {
 /* Story 1.3 Task 3: Return the number of layers (should be 3).         */
 /************************************************************************/
 
-int OGRPolishMapDataSource::GetLayerCount() {
+int OGRPolishMapDataSource::GetLayerCount() OGRPOLISHMAP_CONST {
     // Task 3.1: Return size of m_apoLayers vector
     return static_cast<int>(m_apoLayers.size());
 }
@@ -133,7 +133,7 @@ int OGRPolishMapDataSource::GetLayerCount() {
 /* Story 1.3 Task 4: Return layer by index with bounds checking (FR24). */
 /************************************************************************/
 
-OGRLayer* OGRPolishMapDataSource::GetLayer(int nLayer) {
+OGRLayer* OGRPolishMapDataSource::GetLayer(int nLayer) OGRPOLISHMAP_CONST {
     // Task 4.1, 4.2: Bounds checking (FR24)
     if (nLayer < 0 || nLayer >= static_cast<int>(m_apoLayers.size())) {
         return nullptr;  // Return NULL for invalid index
@@ -148,7 +148,7 @@ OGRLayer* OGRPolishMapDataSource::GetLayer(int nLayer) {
 /* Story 1.3 Task 5: Report dataset capabilities (FR25).                */
 /************************************************************************/
 
-int OGRPolishMapDataSource::TestCapability(const char* pszCap) {
+int OGRPolishMapDataSource::TestCapability(const char* pszCap) OGRPOLISHMAP_CONST {
     // Task 5.1: Support ODsCRandomLayerRead capability
     if (EQUAL(pszCap, ODsCRandomLayerRead)) {
         return TRUE;  // Can read layers in random order

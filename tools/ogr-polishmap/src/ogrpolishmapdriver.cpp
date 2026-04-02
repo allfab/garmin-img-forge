@@ -225,7 +225,7 @@ extern "C" void RegisterOGRPolishMap() {
 /* Must be exported with default visibility for dynamic loading.        */
 /************************************************************************/
 
-extern "C" __attribute__((visibility("default"))) void GDALRegisterMe() {
+extern "C" OGR_POLISHMAP_EXPORT void GDALRegisterMe() {
     RegisterOGRPolishMap();
 }
 
@@ -237,6 +237,6 @@ extern "C" __attribute__((visibility("default"))) void GDALRegisterMe() {
 /* Format: GDALRegister_<FormatName> with proper casing.                */
 /************************************************************************/
 
-extern "C" __attribute__((visibility("default"))) void GDALRegister_PolishMap() {
+extern "C" OGR_POLISHMAP_EXPORT void GDALRegister_PolishMap() {
     RegisterOGRPolishMap();
 }
