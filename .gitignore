@@ -27,3 +27,4 @@ pipeline/resources/img/osmmap.tdb
 .claude/
 mpforge-report.*
 *.asc
+data/
