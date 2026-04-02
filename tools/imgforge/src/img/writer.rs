@@ -5,7 +5,8 @@
 
 use crate::error::ImgError;
 use crate::parser::mp_types::MpFile;
-use crate::routing::graph_builder::{self, RouteParams};
+use crate::routing::graph_builder::{self, RouteParams, find_junctions, compute_node_flags};
+use std::collections::{HashMap, HashSet};
 use super::area::Area;
 use super::coord::Coord;
 use super::filesystem::ImgFilesystem;
@@ -130,10 +131,14 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     // 3. Compute bounds
     let bounds = compute_bounds(mp)?;
 
-    // 4. Build multi-level subdivision hierarchy + encode RGN
+    // 4. Pre-compute routing → RoutingContext + net_data + nod_data
+    let (routing_ctx, net_data, nod_data) = pre_compute_routing(mp, &line_labels);
+
+    // 5. Build multi-level subdivision hierarchy + encode RGN (with routing context)
     let mut rgn = RgnWriter::new();
     let (all_subdivisions, tre_levels, ext_type_offsets_data) = build_multilevel_hierarchy(
         mp, &bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
+        routing_ctx.as_ref(),
     );
 
     // 5. Build TRE
@@ -150,6 +155,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     }
     tre.copyright_message = mp.header.copyright.clone();
     tre.codepage = mp.header.codepage;
+    tre.has_routing = net_data.is_some();
     tre.levels = tre_levels;
     tre.subdivisions = all_subdivisions;
     // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body
@@ -193,9 +199,6 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     // Set extended type offsets data
     tre.ext_type_offsets_data = ext_type_offsets_data;
 
-    // 6. Build NET + NOD if routing data present
-    let (net_data, nod_data) = build_routing(mp, &line_labels);
-
     // 7. Package result
     let map_number = format!("{:08}", mp.header.id);
     let description = if mp.header.name.is_empty() {
@@ -232,6 +235,7 @@ fn build_multilevel_hierarchy(
     line_labels: &[u32],
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
+    routing_ctx: Option<&RoutingContext>,
 ) -> (Vec<Subdivision>, Vec<Zoom>, Vec<u8>) {
     if levels.is_empty() {
         return (Vec::new(), Vec::new(), Vec::new());
@@ -309,7 +313,7 @@ fn build_multilevel_hierarchy(
                 let ext_points_before = rgn.ext_points_position();
 
                 let (pts_data, lines_data, polys_data) =
-                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn);
+                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx);
 
                 // Capture ext positions after encoding
                 let ext_areas_after = rgn.ext_areas_position();
@@ -528,6 +532,7 @@ fn encode_subdivision_rgn(
     line_labels: &[u32],
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
+    routing_ctx: Option<&RoutingContext>,
 ) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // Points
     let mut points_data = Vec::new();
@@ -551,6 +556,12 @@ fn encode_subdivision_rgn(
         let mut pl = Polyline::new(mp_line.type_code, split_line.points.clone());
         pl.label_offset = line_labels[split_line.mp_index];
         pl.direction = mp_line.direction;
+
+        // P3 (has_net_info / net_offset) and P4 (extra_bit / node_flags) are
+        // disabled for now — polylines encoded identically to pre-routing code.
+        // NET/NOD are still generated; we test if the graph appears in GPSMapEdit
+        // before activating the RGN→NET link.
+
         let deltas = compute_deltas(&split_line.points, subdiv);
         let is_ext = mp_line.type_code >= 0x100;
         if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
@@ -711,28 +722,42 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
     deltas
 }
 
-fn build_routing(mp: &MpFile, line_labels: &[u32]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+/// Routing context computed before RGN encoding, providing NET1 offsets and node_flags
+/// for each routable polyline (keyed by mp_index into mp.polylines).
+struct RoutingContext {
+    net1_offsets_by_mp_index: HashMap<usize, u32>,
+    /// Junction set for recalculating node_flags on split polylines (P4, currently disabled)
+    #[allow(dead_code)]
+    junctions: HashSet<(i32, i32)>,
+}
+
+fn pre_compute_routing(
+    mp: &MpFile,
+    line_labels: &[u32],
+) -> (Option<RoutingContext>, Option<Vec<u8>>, Option<Vec<u8>>) {
     use crate::parser::mp_types::RoutingMode;
+    use super::nod::build_nod2_bitstream;
 
     // Routing mode check
     match mp.header.routing_mode {
-        RoutingMode::Disabled => return (None, None),
+        RoutingMode::Disabled => return (None, None, None),
         RoutingMode::Auto => {
             if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
-                return (None, None);
+                return (None, None, None);
             }
         }
         RoutingMode::Route | RoutingMode::NetOnly => {
-            // Force routing even if no road_id detected
             if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
                 tracing::warn!("--route/--net specified but no RoadID found in .mp data");
-                return (None, None);
+                return (None, None, None);
             }
         }
     }
 
     let mut net_writer = NetWriter::new();
     let mut road_polylines = Vec::new();
+    // Track mp_index for each road_def (in NET order)
+    let mut mp_indices: Vec<usize> = Vec::new();
 
     for (i, mp_line) in mp.polylines.iter().enumerate() {
         if mp_line.road_id.is_some() {
@@ -745,6 +770,8 @@ fn build_routing(mp: &MpFile, line_labels: &[u32]) -> (Option<Vec<u8>>, Option<V
                 road_def.road_class = p.road_class;
                 road_def.speed = p.speed;
                 road_def.one_way = p.one_way;
+                road_def.toll = p.toll;
+                road_def.access_flags = p.access_flags;
                 p
             } else {
                 RouteParams::default()
@@ -752,20 +779,54 @@ fn build_routing(mp: &MpFile, line_labels: &[u32]) -> (Option<Vec<u8>>, Option<V
 
             let road_idx = net_writer.add_road(road_def);
             road_polylines.push((mp_line.points.clone(), road_idx, params));
+            mp_indices.push(i);
         }
     }
 
+    // Find junctions and compute node_flags
+    let junctions = find_junctions(&road_polylines);
+    let all_node_flags = compute_node_flags(&road_polylines, &junctions);
+
+    // Build NOD2 bitstream
+    let (nod2_data, nod2_offsets) = build_nod2_bitstream(&all_node_flags);
+
+    // Set nod2_offset on each RoadDef
+    for (road_idx, &nod2_off) in nod2_offsets.iter().enumerate() {
+        net_writer.roads[road_idx].nod2_offset = Some(nod2_off);
+    }
+
+    // Build NET → get NET1 offsets
+    let net_data = net_writer.build();
+    let net1_offsets = net_writer.net1_offsets().to_vec();
+
+    // Build RoutingContext
+    let mut net1_offsets_by_mp_index = HashMap::new();
+    for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+        net1_offsets_by_mp_index.insert(mp_idx, net1_offsets[road_idx]);
+    }
+
+    let routing_ctx = RoutingContext {
+        net1_offsets_by_mp_index,
+        junctions,
+    };
+
+    if mp.header.routing_mode == RoutingMode::NetOnly {
+        return (Some(routing_ctx), Some(net_data), None);
+    }
+
+    // Build NOD graph
     let route_nodes = graph_builder::build_graph(&road_polylines);
     let mut nod_writer = NodWriter::new();
     for node in route_nodes {
         nod_writer.add_node(node);
     }
 
-    let net_data = Some(net_writer.build());
-    if mp.header.routing_mode == RoutingMode::NetOnly {
-        return (net_data, None);
-    }
-    (net_data, Some(nod_writer.build()))
+    nod_writer.set_nod2_data(nod2_data);
+    nod_writer.prepare();
+    nod_writer.patch_net1_offsets(&net1_offsets);
+    let nod_data = nod_writer.build();
+
+    (Some(routing_ctx), Some(net_data), Some(nod_data))
 }
 
 #[cfg(test)]

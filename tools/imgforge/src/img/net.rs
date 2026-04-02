@@ -95,11 +95,21 @@ impl RoadDef {
 /// NET file writer
 pub struct NetWriter {
     pub roads: Vec<RoadDef>,
+    /// NET1 byte offsets per road, populated after build()
+    net1_offsets: Vec<u32>,
 }
 
 impl NetWriter {
     pub fn new() -> Self {
-        Self { roads: Vec::new() }
+        Self {
+            roads: Vec::new(),
+            net1_offsets: Vec::new(),
+        }
+    }
+
+    /// NET1 byte offsets per road, available after build().
+    pub fn net1_offsets(&self) -> &[u32] {
+        &self.net1_offsets
     }
 
     pub fn add_road(&mut self, road: RoadDef) -> usize {
@@ -109,7 +119,7 @@ impl NetWriter {
     }
 
     /// Build complete NET subfile
-    pub fn build(&self) -> Vec<u8> {
+    pub fn build(&mut self) -> Vec<u8> {
         let mut buf = Vec::new();
 
         let common = CommonHeader::new(NET_HEADER_LEN, "GARMIN NET");
@@ -122,9 +132,11 @@ impl NetWriter {
             net1_offsets.push(net1_data.len() as u32);
             net1_data.extend_from_slice(&road.write_net1());
         }
-
         // Build NET3 sorted index using precomputed offsets
         let net3_data = self.build_net3(&net1_offsets);
+
+        // Store offsets for external access (patch_net1_offsets)
+        self.net1_offsets = net1_offsets;
 
         // Section descriptors
         let net1_offset = NET_HEADER_LEN as u32;
@@ -206,10 +218,40 @@ mod tests {
 
     #[test]
     fn test_net_header() {
-        let net = NetWriter::new();
+        let mut net = NetWriter::new();
         let data = net.build();
         assert_eq!(&data[2..12], b"GARMIN NET");
         let header_len = u16::from_le_bytes([data[0], data[1]]);
         assert_eq!(header_len, NET_HEADER_LEN);
+    }
+
+    /// AC10: NET1 offsets are accessible after build
+    #[test]
+    fn test_net1_offsets_exposed() {
+        let mut net = NetWriter::new();
+        let mut rd0 = RoadDef::new();
+        rd0.label_offsets.push(10);
+        rd0.road_length_meters = 100;
+        net.add_road(rd0);
+
+        let mut rd1 = RoadDef::new();
+        rd1.label_offsets.push(20);
+        rd1.road_length_meters = 200;
+        rd1.access_flags = NO_CAR; // adds 2 bytes
+        net.add_road(rd1);
+
+        let mut rd2 = RoadDef::new();
+        rd2.label_offsets.push(30);
+        rd2.road_length_meters = 300;
+        net.add_road(rd2);
+
+        net.build();
+
+        assert_eq!(net.net1_offsets().len(), 3);
+        assert_eq!(net.net1_offsets()[0], 0);
+        // road 0: label(3) + flags(1) + length(3) = 7
+        assert_eq!(net.net1_offsets()[1], 7);
+        // road 1: label(3) + flags(1) + access(2) + length(3) = 9
+        assert_eq!(net.net1_offsets()[2], 7 + 9);
     }
 }

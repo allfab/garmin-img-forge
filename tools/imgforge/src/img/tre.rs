@@ -47,6 +47,8 @@ pub struct TreWriter {
     pub copyright_message: String,
     /// Codepage for encoding the copyright blob (0 or 65001 = UTF-8/ASCII)
     pub codepage: u16,
+    /// Whether this map has routing data (NET/NOD subfiles present)
+    pub has_routing: bool,
 }
 
 impl TreWriter {
@@ -72,6 +74,7 @@ impl TreWriter {
             ext_type_offsets_data: Vec::new(),
             copyright_message: String::new(),
             codepage: 0,
+            has_routing: false,
         }
     }
 
@@ -128,8 +131,14 @@ impl TreWriter {
         // Reserved @59-62
         buf.extend_from_slice(&0u32.to_le_bytes());
 
-        // POI display flags @63 — bit 0x20 = transparent map (mkgmap TREHeader)
-        buf.push(if self.transparent { 0x20 } else { 0x00 });
+        // Map properties @63 — mkgmap TREHeader.java
+        // bit 0x20 = transparent map (overlay)
+        // bit 0x08 = has routing (NET/NOD present, drive on right)
+        // bit 0x01 = drive on left (combined with 0x08)
+        let mut map_props: u8 = 0;
+        if self.transparent { map_props |= 0x20; }
+        if self.has_routing { map_props |= 0x08; }
+        buf.push(map_props);
 
         // Display priority @64-66 (3 bytes, mkgmap put3u)
         common_header::write_u24(&mut buf, self.display_priority);

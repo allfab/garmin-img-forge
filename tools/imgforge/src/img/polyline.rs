@@ -76,8 +76,9 @@ impl Polyline {
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 
-        // Bitstream length — Garmin convention: stored as (actual_bytes - 1)
-        // The viewer adds 1 to get the real byte count
+        // Bitstream length — Garmin convention: stored as (actual_bitstream_bytes - 1)
+        // NET offset (3B) is OUTSIDE the blen — the decoder reads blen+1 bytes
+        // as bitstream, then reads 3 more bytes if has_net_info is set.
         let blen = bitstream.len() - 1;
         if blen >= 256 {
             buf.extend_from_slice(&(blen as u16).to_le_bytes());
@@ -87,6 +88,15 @@ impl Polyline {
 
         // Bitstream data
         buf.extend_from_slice(bitstream);
+
+        // NET1 offset (3 bytes, little-endian) — appended AFTER bitstream,
+        // NOT counted in blen. Decoder reads these separately when has_net_info is set.
+        if self.has_net_info {
+            let nb = self.net_offset.to_le_bytes();
+            buf.push(nb[0]);
+            buf.push(nb[1]);
+            buf.push(nb[2]);
+        }
 
         buf
     }
@@ -263,6 +273,42 @@ mod tests {
         assert_eq!(buf.len(), 308);
         let len_encoded = u16::from_le_bytes([buf[6], buf[7]]);
         assert_eq!(len_encoded, (300 << 2) | 2); // = 1202
+    }
+
+    #[test]
+    fn test_write_with_net_info() {
+        let points = vec![Coord::new(100, 200), Coord::new(110, 210)];
+        let mut pl = Polyline::new(0x01, points);
+        pl.has_net_info = true;
+        pl.net_offset = 0x123456;
+        let bitstream = vec![0xAA, 0xBB];
+        let buf = pl.write(0, 0, 0, &bitstream, false);
+
+        // label should have 0x800000 flag
+        let lbl = u32::from_le_bytes([buf[1], buf[2], buf[3], 0]);
+        assert!(lbl & 0x800000 != 0, "has_net_info flag should be set in label");
+
+        // blen should be bitstream only: 2 - 1 = 1 (NET offset is outside blen)
+        assert_eq!(buf[8], 1, "blen should be bitstream(2) - 1 = 1");
+
+        // Last 3 bytes should be net_offset (little-endian)
+        let len = buf.len();
+        assert_eq!(buf[len - 3], 0x56);
+        assert_eq!(buf[len - 2], 0x34);
+        assert_eq!(buf[len - 1], 0x12);
+
+        // Total: type(1) + label(3) + dx(2) + dy(2) + blen(1) + bitstream(2) + net_offset(3) = 14
+        assert_eq!(len, 14);
+    }
+
+    #[test]
+    fn test_write_without_net_info() {
+        let points = vec![Coord::new(100, 200), Coord::new(110, 210)];
+        let pl = Polyline::new(0x01, points);
+        let bitstream = vec![0xAA, 0xBB];
+        let buf_without = pl.write(0, 0, 0, &bitstream, false);
+        // type(1) + label(3) + dx(2) + dy(2) + blen(1) + bitstream(2) = 11
+        assert_eq!(buf_without.len(), 11);
     }
 
     #[test]
