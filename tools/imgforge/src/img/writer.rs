@@ -903,7 +903,8 @@ fn pre_compute_routing(
 }
 
 /// Find the NOD1 offset of the first RouteNode encountered along a road's vertices.
-/// Matches by coordinates AND verifies the node has an arc for `road_def_index`.
+/// Prefers matching by coordinates + road_def_index arc check, falls back to coordinate-only
+/// match for degenerate roads (single-point, no arcs).
 fn find_first_route_node_offset(
     coords: &[Coord],
     junctions: &HashSet<(i32, i32)>,
@@ -911,21 +912,28 @@ fn find_first_route_node_offset(
     node_offsets: &[u32],
     road_def_index: usize,
 ) -> u32 {
+    let mut fallback: Option<u32> = None;
+
     for coord in coords {
         let key = (coord.latitude(), coord.longitude());
         if junctions.contains(&key) {
-            // Find the route node at this position connected to this road
             for (i, rn) in route_nodes.iter().enumerate() {
-                if rn.lat == key.0 && rn.lon == key.1
-                    && rn.arcs.iter().any(|a| a.road_def_index == road_def_index)
-                {
-                    return if i < node_offsets.len() { node_offsets[i] } else { 0 };
+                if rn.lat == key.0 && rn.lon == key.1 {
+                    let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
+                    // Prefer node with an arc for this road
+                    if rn.arcs.iter().any(|a| a.road_def_index == road_def_index) {
+                        return off;
+                    }
+                    // Remember first coordinate-only match as fallback
+                    if fallback.is_none() {
+                        fallback = Some(off);
+                    }
                 }
             }
         }
     }
-    tracing::warn!("NOD2: no RouteNode found for road_def_index {}, using offset 0", road_def_index);
-    0
+
+    fallback.unwrap_or(0)
 }
 
 #[cfg(test)]
