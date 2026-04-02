@@ -28,6 +28,8 @@ pub struct RouteArc {
     pub access: u16,
     pub toll: bool,
     pub one_way: bool,
+    /// Initial heading in Garmin direction units: round(bearing_degrees * 256 / 360) as i8
+    pub initial_heading: i8,
 }
 
 /// A group of nearby route nodes — mkgmap RouteCenter.java
@@ -38,9 +40,122 @@ pub struct RouteCenter {
     pub nodes: Vec<usize>, // indices into the node array
 }
 
-/// Build NOD2 bitstream from node_flags for all roads.
+// ── NOD1 constants (mkgmap RouteNode.java / RouteArc.java) ──────────────
+
+/// Node flags
+const F_LARGE_OFFSETS: u8 = 0x20;
+const F_ARCS: u8 = 0x40;
+const F_BOUNDARY: u8 = 0x08;
+
+/// Arc flagA
+const FLAG_HASNET: u8 = 0x80;
+const FLAG_FORWARD: u8 = 0x40;
+
+/// Arc flagB
+const FLAG_LAST_LINK: u8 = 0x80;
+
+/// Distance multiplier: raw = round(meters / 4.8)
+const DISTANCE_MULT: f64 = 4.8;
+
+/// Encode arc length to variable-length format (mkgmap RouteArc.encodeLength).
+/// Returns (flagA_bits_3_5, length_data_bytes).
+/// `have_curve` is always false for MVP.
+pub fn encode_arc_length(raw_length: u32, have_curve: bool) -> (u8, Vec<u8>) {
+    let threshold = if have_curve { 0x300 } else { 0x400 };
+
+    if raw_length < threshold as u32 {
+        // 10-bit format: flagA bits 3-5 encode top 2 bits, 1 data byte
+        let mut flag_bits: u8 = 0;
+        if have_curve {
+            flag_bits |= 0x20; // curve bit in flagA
+        }
+        flag_bits |= ((raw_length >> 5) as u8) & 0x18; // top 2 bits of length → bits 3-4
+        debug_assert!((flag_bits & 0x38) != 0x38, "10-bit encoding must not set all bits 3-5");
+        let data = vec![(raw_length & 0xFF) as u8];
+        (flag_bits, data)
+    } else {
+        // Extended format: flagA bits 3-5 all set
+        let flag_bits: u8 = 0x38;
+        if raw_length >= (1 << 14) {
+            // 22-bit format: 3 data bytes
+            let data = vec![
+                0xC0 | (raw_length & 0x3F) as u8,
+                ((raw_length >> 6) & 0xFF) as u8,
+                ((raw_length >> 14) & 0xFF) as u8,
+            ];
+            (flag_bits, data)
+        } else if have_curve {
+            // 15-bit format: 2 data bytes
+            let data = vec![
+                (raw_length & 0x7F) as u8,
+                ((raw_length >> 7) & 0xFF) as u8,
+            ];
+            (flag_bits, data)
+        } else {
+            // 14-bit format: 2 data bytes
+            let data = vec![
+                0x80 | (raw_length & 0x3F) as u8,
+                ((raw_length >> 6) & 0xFF) as u8,
+            ];
+            (flag_bits, data)
+        }
+    }
+}
+
+/// Convert meters to raw arc length: round(meters / 4.8)
+pub fn meters_to_raw_length(meters: u32) -> u32 {
+    ((meters as f64) / DISTANCE_MULT).round() as u32
+}
+
+/// Table A entry: one per unique road in a route center (5 bytes each).
+/// Layout: NET1_offset|access_top(3B LE) + tabAInfo(1B) + access_low(1B)
+#[derive(Debug, Clone)]
+pub struct TableAEntry {
+    pub net1_offset: u32,
+    pub road_class: u8,
+    pub speed: u8,
+    pub toll: bool,
+    pub one_way: bool,
+    pub access: u16,
+}
+
+impl TableAEntry {
+    pub fn write(&self, buf: &mut Vec<u8>) {
+        // Bytes 0-2: NET1 offset (22 bits) | access_top (bits 22-23)
+        let access_top = ((self.access as u32) & 0xC000) << 8; // bits 14-15 → 22-23
+        let val = (self.net1_offset & 0x3FFFFF) | access_top;
+        let b = val.to_le_bytes();
+        buf.push(b[0]);
+        buf.push(b[1]);
+        buf.push(b[2]);
+        // Byte 3: tabAInfo = toll(0x80) | (road_class << 4) | oneway(0x08) | speed
+        let mut info: u8 = (self.road_class << 4) | self.speed;
+        if self.toll { info |= 0x80; }
+        if self.one_way { info |= 0x08; }
+        buf.push(info);
+        // Byte 4: access low (with top 2 bits cleared since they're in bytes 0-2)
+        buf.push((self.access & 0x3FFF) as u8);
+    }
+}
+
+/// Table B entry: one per external node in a route center (3 bytes each).
+/// Layout: NOD1 offset (3B LE)
+#[derive(Debug, Clone)]
+pub struct TableBEntry {
+    pub nod1_offset: u32,
+}
+
+impl TableBEntry {
+    pub fn write(&self, buf: &mut Vec<u8>) {
+        let b = self.nod1_offset.to_le_bytes();
+        buf.push(b[0]);
+        buf.push(b[1]);
+        buf.push(b[2]);
+    }
+}
+
+/// Build NOD2 bitstream from node_flags for all roads (legacy format).
 /// Returns (nod2_data, nod2_byte_offset_per_road).
-/// For each road (in order), writes 1 bit per vertex: 1=RouteNode, 0=geometry.
 pub fn build_nod2_bitstream(all_node_flags: &[Vec<bool>]) -> (Vec<u8>, Vec<u32>) {
     use super::bit_writer::BitWriter;
 
@@ -49,11 +164,9 @@ pub fn build_nod2_bitstream(all_node_flags: &[Vec<bool>]) -> (Vec<u8>, Vec<u32>)
     let mut offsets = Vec::with_capacity(all_node_flags.len());
 
     for flags in all_node_flags {
-        // Pad to byte boundary so each road starts at a clean byte offset
         while bw.bit_position() % 8 != 0 {
             bw.put1(false);
         }
-        // Record byte offset at the start of this road's bits
         offsets.push((bw.bit_position() / 8) as u32);
         for &is_node in flags {
             bw.put1(is_node);
@@ -63,18 +176,92 @@ pub fn build_nod2_bitstream(all_node_flags: &[Vec<bool>]) -> (Vec<u8>, Vec<u32>)
     (bw.bytes().to_vec(), offsets)
 }
 
-/// NOD file writer
+/// NOD2 per-road record info for the mkgmap format
+pub struct Nod2RoadInfo {
+    pub road_class: u8,
+    pub speed: u8,
+    pub num_route_nodes: u16,         // count of RouteNodes on this road
+    pub starts_with_node: bool,       // true if first vertex is a RouteNode
+    pub first_node_nod1_offset: u32,  // NOD1 offset of first RouteNode on this road
+}
+
+/// Write NOD2 records in mkgmap per-road format.
+/// Returns (nod2_data, nod2_offset_per_road).
+/// Each record: nod2Flags(1B) + NOD1_ptr(3B LE) + nbits(2B LE) + bitstream
+///
+/// mkgmap semantics: `nbits = nnodes + (startsWithNode ? 0 : 1)`.
+/// All bits are set to 1 (no house number support), except bit 0 = 0 if !startsWithNode.
+pub fn write_nod2_records(roads: &[Nod2RoadInfo]) -> (Vec<u8>, Vec<u32>) {
+    let mut data = Vec::new();
+    let mut offsets = Vec::with_capacity(roads.len());
+
+    for road in roads {
+        offsets.push(data.len() as u32);
+
+        // nod2Flags: bit0=always | (road_class << 4) | (speed << 1)
+        let nod2_flags: u8 = 0x01 | ((road.road_class & 0x07) << 4) | ((road.speed & 0x07) << 1);
+        data.push(nod2_flags);
+
+        // NOD1 offset of first RouteNode (3B LE)
+        let ptr_b = road.first_node_nod1_offset.to_le_bytes();
+        data.push(ptr_b[0]);
+        data.push(ptr_b[1]);
+        data.push(ptr_b[2]);
+
+        // nbits = nnodes + (startsWithNode ? 0 : 1)
+        let nbits: u16 = road.num_route_nodes + if road.starts_with_node { 0 } else { 1 };
+        data.extend_from_slice(&nbits.to_le_bytes());
+
+        // Build bit array: all 1s (no house numbers), with leading 0 if !startsWithNode
+        let mut bits: Vec<bool> = Vec::with_capacity(nbits as usize);
+        if !road.starts_with_node {
+            bits.push(false);
+        }
+        for _ in 0..road.num_route_nodes {
+            bits.push(true);
+        }
+
+        // Pack bits into bytes, LSB first
+        for chunk in bits.chunks(8) {
+            let mut byte: u8 = 0;
+            for (j, &bit) in chunk.iter().enumerate() {
+                if bit {
+                    byte |= 1 << j;
+                }
+            }
+            data.push(byte);
+        }
+    }
+
+    (data, offsets)
+}
+
+/// Info needed to backpatch an arc's dest pointer after all nodes in a center are written
+struct ArcPatchInfo {
+    /// Byte offset in NOD1 data where the 2-byte dest pointer lives (flagB byte)
+    flagb_pos: usize,
+    /// Byte offset in NOD1 data of the source node (for relative offset calc)
+    src_node_offset: usize,
+    /// Global node index of the destination node
+    dest_node_index: usize,
+    /// flagB value (last_link, external, etc.)
+    flag_b: u8,
+}
+
+/// NOD file writer — mkgmap-faithful binary format
 pub struct NodWriter {
     pub nodes: Vec<RouteNode>,
     pub centers: Vec<RouteCenter>,
     pub drive_on_left: bool,
     pub nod2_data: Vec<u8>,
-    /// (byte_position_in_nod1, road_def_index) for each Table A arc
-    arc_net1_positions: Vec<(usize, usize)>,
-    /// Serialized NOD1 data, built by build_nod1(), patched before final build
+    /// (byte_position_in_nod1 of Table A entry, road_def_index) for NET1 patching
+    table_a_positions: Vec<(usize, usize)>,
+    /// Serialized NOD1 data, built by prepare(), patched before final build
     nod1_data: Option<Vec<u8>>,
-    /// Node offsets from build_nod1()
+    /// Node offsets within NOD1 (node_index → byte offset in NOD1 section)
     node_offsets: Vec<u32>,
+    /// Max node offset per class (for NOD header class boundaries)
+    class_boundaries: [u32; 5],
 }
 
 impl NodWriter {
@@ -84,9 +271,10 @@ impl NodWriter {
             centers: Vec::new(),
             drive_on_left: false,
             nod2_data: Vec::new(),
-            arc_net1_positions: Vec::new(),
+            table_a_positions: Vec::new(),
             nod1_data: None,
             node_offsets: Vec::new(),
+            class_boundaries: [0; 5],
         }
     }
 
@@ -102,7 +290,6 @@ impl NodWriter {
         if self.nodes.is_empty() {
             return;
         }
-
         let mut current_nodes = Vec::new();
         for i in 0..self.nodes.len() {
             current_nodes.push(i);
@@ -118,30 +305,32 @@ impl NodWriter {
         }
     }
 
-    /// Set NOD2 bitstream data (1 bit per polyline vertex: 1=RouteNode, 0=geometry)
+    /// Set NOD2 data (populated by caller)
     pub fn set_nod2_data(&mut self, data: Vec<u8>) {
         self.nod2_data = data;
     }
 
-    /// Patch NET1 offsets into Table A arcs after NET subfile is built.
+    /// Patch NET1 offsets into Table A entries after NET subfile is built.
     /// `net1_offsets` maps road_def_index → NET1 byte offset.
-    /// Must be called after prepare() and before build().
     pub fn patch_net1_offsets(&mut self, net1_offsets: &[u32]) {
         let nod1 = self.nod1_data.as_mut()
             .expect("patch_net1_offsets called before prepare()");
 
-        for &(byte_pos, road_idx) in &self.arc_net1_positions {
+        for &(byte_pos, road_idx) in &self.table_a_positions {
             if road_idx >= net1_offsets.len() {
-                tracing::warn!("NOD patch: road_def_index {} out of range (max {}), arc at byte {} left unpatched",
-                    road_idx, net1_offsets.len(), byte_pos);
+                tracing::warn!("NOD patch: road_def_index {} out of range, Table A at byte {} unpatched",
+                    road_idx, byte_pos);
                 continue;
             }
             let offset = net1_offsets[road_idx];
+            if offset > 0x3FFFFF {
+                tracing::warn!("NOD patch: NET1 offset 0x{:X} for road {} exceeds 22-bit limit, truncated",
+                    offset, road_idx);
+            }
             // Read existing 3 bytes (contain access top bits in bits 22-23)
             let existing = (nod1[byte_pos] as u32)
                 | ((nod1[byte_pos + 1] as u32) << 8)
                 | ((nod1[byte_pos + 2] as u32) << 16);
-            // OR the NET1 offset (22 low bits) with existing access bits
             let patched = (offset & 0x3FFFFF) | existing;
             let b = patched.to_le_bytes();
             nod1[byte_pos] = b[0];
@@ -166,145 +355,315 @@ impl NodWriter {
     }
 
     /// Build NOD1 data and store internally for later patching.
-    /// Must be called before patch_net1_offsets() and finalize().
+    /// Node offsets within NOD1, available after prepare().
+    pub fn node_offsets(&self) -> &[u32] {
+        &self.node_offsets
+    }
+
+    /// Table A positions: (byte_offset, road_def_index), available after prepare().
+    pub fn table_a_positions(&self) -> &[(usize, usize)] {
+        &self.table_a_positions
+    }
+
     pub fn prepare(&mut self) {
         if self.centers.is_empty() {
             self.build_centers();
         }
-        let (nod1_data, node_offsets, arc_positions) = self.build_nod1();
+        let (nod1_data, node_offsets, table_a_pos) = self.build_nod1();
         self.nod1_data = Some(nod1_data);
         self.node_offsets = node_offsets;
-        self.arc_net1_positions = arc_positions;
+        self.table_a_positions = table_a_pos;
     }
 
-    /// Build complete NOD subfile.
-    /// Consumes prepared NOD1 data — must not be called twice after patch_net1_offsets().
+    /// Build complete NOD subfile (header + NOD1 + NOD2 + NOD3 + NOD4).
     pub fn build(&mut self) -> Vec<u8> {
-        // If prepare() wasn't called, do it now (no patching needed)
         if self.nod1_data.is_none() {
             self.prepare();
         }
 
         let mut buf = Vec::new();
-
         let common = CommonHeader::new(NOD_HEADER_LEN, "GARMIN NOD");
         common.write(&mut buf);
 
         let nod1_data = self.nod1_data.take().unwrap();
-        let node_offsets = &self.node_offsets;
+        let nod2_data = self.nod2_data.clone();
+        let nod3_data = self.build_nod3(&self.node_offsets);
+        let nod4_data = self.build_nod4(&self.node_offsets);
 
-        // Build NOD2 data (bitstream)
-        let nod2_data = self.build_nod2();
-
-        // Build NOD3 data (boundary nodes with correct NOD1 offsets)
-        let nod3_data = self.build_nod3(&node_offsets);
-
-        // Section descriptors — mkgmap NODHeader.java layout
-        // Each section has property bytes between the offset+size pair
-
+        // ── Section descriptors ──
         // NOD1 section @0x15
         let nod1_offset = NOD_HEADER_LEN as u32;
         let nod1_size = nod1_data.len() as u32;
-        common_header::write_section(&mut buf, nod1_offset, nod1_size); // 8B @0x15-0x1C
-        buf.push(0x27);                                  // @0x1D: NOD1 flags
-        buf.push(0x02);                                  // @0x1E: unknown
-        buf.extend_from_slice(&0u16.to_le_bytes());      // @0x1F-0x20: unknown
-        buf.extend_from_slice(&0x0006u16.to_le_bytes()); // @0x21-0x22: alignment shift (1<<6 = 64)
-        buf.extend_from_slice(&0x0005u16.to_le_bytes()); // @0x23-0x24: Table A record size (5B per arc)
+        common_header::write_section(&mut buf, nod1_offset, nod1_size);
+        // Flags = 0x0227: bit 0 (always) | bit 1 (restrictions) | bits 5-7 (DISTANCE_MULT_SHIFT=1)
+        // | bit 9 (drive-on-left conditional)
+        let mut nod_flags: u32 = 0x0227;
+        if self.drive_on_left { nod_flags |= 0x0100; }
+        let fl = nod_flags.to_le_bytes();
+        buf.push(fl[0]); // @0x1D
+        buf.push(fl[1]); // @0x1E
+        buf.push(fl[2]); // @0x1F
+        buf.push(fl[3]); // @0x20
+        buf.push(0x06);  // @0x21: alignment shift (1<<6 = 64)
+        buf.push(0x00);  // @0x22: pointer multiplier
+        buf.extend_from_slice(&0x0005u16.to_le_bytes()); // @0x23-0x24: Table A record size
 
         // NOD2 section @0x25
         let nod2_offset = nod1_offset + nod1_size;
-        common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32); // 8B @0x25-0x2C
-        buf.extend_from_slice(&0u32.to_le_bytes());      // @0x2D-0x30: flags/reserved
+        common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32);
+        buf.extend_from_slice(&0u32.to_le_bytes()); // @0x2D-0x30: reserved
 
         // NOD3 section @0x31
         let nod3_offset = nod2_offset + nod2_data.len() as u32;
-        common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32); // 8B @0x31-0x38
-        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // @0x39-0x3A: record size (9B per boundary node)
-        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // @0x3B-0x3C: flags
+        common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32);
+        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // record size
+        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // flags
 
-        // Pad remaining header to NOD_HEADER_LEN
+        // NOD4 section (high-class boundary) — mkgmap writes this after NOD3
+        let nod4_offset = nod3_offset + nod3_data.len() as u32;
+        common_header::write_section(&mut buf, nod4_offset, nod4_data.len() as u32);
+        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // record size
+        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // flags
+
+        // Class boundaries: 5 × u32 (first absolute, then deltas)
+        let mut prev: u32 = 0;
+        for i in 0..5 {
+            if i == 0 {
+                buf.extend_from_slice(&self.class_boundaries[i].to_le_bytes());
+                prev = self.class_boundaries[i];
+            } else {
+                let delta = self.class_boundaries[i].wrapping_sub(prev);
+                buf.extend_from_slice(&delta.to_le_bytes());
+                prev = self.class_boundaries[i];
+            }
+        }
+
+        // Pad header
         common_header::pad_to(&mut buf, NOD_HEADER_LEN as usize);
 
         // Section data
         buf.extend_from_slice(&nod1_data);
         buf.extend_from_slice(&nod2_data);
         buf.extend_from_slice(&nod3_data);
+        buf.extend_from_slice(&nod4_data);
 
         buf
     }
 
-    /// Build NOD1 and return (data, node_index→nod1_offset map, arc_net1_positions)
-    fn build_nod1(&self) -> (Vec<u8>, Vec<u32>, Vec<(usize, usize)>) {
+    /// Build NOD1 — mkgmap-faithful route center format.
+    /// Returns (data, node_offsets, table_a_positions_for_net1_patching).
+    fn build_nod1(&mut self) -> (Vec<u8>, Vec<u32>, Vec<(usize, usize)>) {
+        use std::collections::HashMap;
+
         let mut data = Vec::new();
         let mut node_offsets = vec![0u32; self.nodes.len()];
-        let mut arc_positions: Vec<(usize, usize)> = Vec::new();
+        let mut table_a_positions: Vec<(usize, usize)> = Vec::new();
 
         for center in &self.centers {
-            // Center coords (4B + 4B semicircles)
-            data.extend_from_slice(&center.center_lat.to_le_bytes());
-            data.extend_from_slice(&center.center_lon.to_le_bytes());
+            // ── Phase 1: Write nodes + arcs ──
+            // Track per-node info for backpatching
+            struct NodeInfo {
+                offset: usize,        // byte offset of this node in `data`
+                byte0_pos: usize,     // position of the table-pointer placeholder
+            }
+            let mut node_infos: Vec<NodeInfo> = Vec::new();
+            let mut arc_patches: Vec<ArcPatchInfo> = Vec::new();
 
-            // Table B offset placeholder (2B)
-            data.extend_from_slice(&0u16.to_le_bytes());
-
-            // Route nodes with delta coords + Table A arcs
-            for &node_idx in &center.nodes {
-                node_offsets[node_idx] = data.len() as u32;
-                let node = &self.nodes[node_idx];
-                let delta_lat = coord::to_semicircles(node.lat) - center.center_lat;
-                let delta_lon = coord::to_semicircles(node.lon) - center.center_lon;
-                data.extend_from_slice(&(delta_lat as i16).to_le_bytes());
-                data.extend_from_slice(&(delta_lon as i16).to_le_bytes());
-
-                // Number of arcs
-                data.push(node.arcs.len() as u8);
-
-                // Table A arcs (5B each) — mkgmap TableA.java:202-214
-                for arc in &node.arcs {
-                    // Record byte position for NET1 offset patching
-                    let arc_byte_pos = data.len();
-                    arc_positions.push((arc_byte_pos, arc.road_def_index));
-
-                    // Bytes 0-2: NET1 offset placeholder (patched later)
-                    // + top 2 bits of access (NO_EMERGENCY, NO_DELIVERY) packed in bits 22-23
-                    let access_top = ((arc.access as u32) & 0xC000) << 8;
-                    let net1_placeholder = 0u32 | access_top;
-                    let b = net1_placeholder.to_le_bytes();
-                    data.push(b[0]);
-                    data.push(b[1]);
-                    data.push(b[2]);
-                    // Byte 3: tabAInfo = toll(0x80) | (road_class << 4) | oneway(0x08) | speed
-                    let mut tab_a_info: u8 = (arc.road_class << 4) | arc.speed;
-                    if arc.toll { tab_a_info |= 0x80; }
-                    if arc.one_way { tab_a_info |= 0x08; }
-                    data.push(tab_a_info);
-                    // Byte 4: access low byte (bits 8-13 not in Table A,
-                    // full 16-bit access_flags stored in NET1 record)
-                    data.push((arc.access & 0x00FF) as u8);
+            // Build Table A index: unique road_def_index → position in table
+            let mut table_a_index: HashMap<usize, u8> = HashMap::new();
+            let mut table_a_roads: Vec<usize> = Vec::new(); // road_def_index in order
+            for &ni in &center.nodes {
+                for arc in &self.nodes[ni].arcs {
+                    if !table_a_index.contains_key(&arc.road_def_index) {
+                        let idx = table_a_roads.len() as u8;
+                        table_a_index.insert(arc.road_def_index, idx);
+                        table_a_roads.push(arc.road_def_index);
+                    }
                 }
             }
 
-            // Align to 64 bytes
-            while data.len() % NOD_ALIGNMENT != 0 {
+            // Write each node
+            for &node_idx in &center.nodes {
+                let node_start = data.len();
+                node_offsets[node_idx] = node_start as u32;
+
+                // Track class boundaries (cumulative: update classes nc down to 0)
+                // mkgmap: for each node of class N, boundaries[N..0] are updated
+                let nc = (self.nodes[node_idx].node_class as usize).min(4);
+                for c in (0..=nc).rev() {
+                    if node_start as u32 > self.class_boundaries[c] {
+                        self.class_boundaries[c] = node_start as u32;
+                    }
+                }
+
+                let node = &self.nodes[node_idx];
+
+                // Byte 0: placeholder (backpatched with calcLowByte later)
+                let byte0_pos = data.len();
+                data.push(0x00);
+
+                // Byte 1: flags
+                let delta_lat = coord::to_semicircles(node.lat) - center.center_lat;
+                let delta_lon = coord::to_semicircles(node.lon) - center.center_lon;
+                let large = delta_lat.unsigned_abs() > 0x7FF || delta_lon.unsigned_abs() > 0x7FF;
+                let mut flags: u8 = node.node_class & 0x07;
+                if !node.arcs.is_empty() { flags |= F_ARCS; }
+                if large { flags |= F_LARGE_OFFSETS; }
+                if node.is_boundary { flags |= F_BOUNDARY; }
+                data.push(flags);
+
+                // Coords: 3B (12-bit packed) or 4B (16-bit packed)
+                if large {
+                    // 4 bytes: (latOff << 16) | (lonOff & 0xFFFF), written as i32 BE
+                    let packed = ((delta_lat as i32) << 16) | ((delta_lon as i32) & 0xFFFF);
+                    data.extend_from_slice(&packed.to_be_bytes());
+                } else {
+                    // 3 bytes: (latOff << 12) | (lonOff & 0xFFF), signed 24-bit
+                    let packed = ((delta_lat & 0xFFF) << 12) | (delta_lon & 0xFFF);
+                    let b = packed.to_be_bytes(); // i32 → take low 3 bytes
+                    data.push(b[1]);
+                    data.push(b[2]);
+                    data.push(b[3]);
+                }
+
+                // Write arcs
+                let num_arcs = node.arcs.len();
+                let mut last_index_a: Option<u8> = None;
+                for (arc_i, arc) in node.arcs.iter().enumerate() {
+                    let is_last = arc_i == num_arcs - 1;
+                    let raw_len = meters_to_raw_length(arc.length_meters);
+                    let (len_flag_bits, len_data) = encode_arc_length(raw_len, false);
+
+                    // flagA: dest_class(0-2) | length_bits(3-5) | forward(6) | hasnet(7)
+                    let mut flag_a: u8 = arc.road_class & 0x07;
+                    flag_a |= len_flag_bits;
+                    if arc.forward { flag_a |= FLAG_FORWARD; }
+                    flag_a |= FLAG_HASNET; // always set (has Table A)
+                    data.push(flag_a);
+
+                    // Dest pointer (2 bytes big-endian) — placeholder, backpatched later
+                    let flagb_pos = data.len();
+                    let mut flag_b: u8 = 0;
+                    if is_last { flag_b |= FLAG_LAST_LINK; }
+                    // For now, write placeholder
+                    data.push(flag_b);
+                    data.push(0x00);
+
+                    arc_patches.push(ArcPatchInfo {
+                        flagb_pos,
+                        src_node_offset: node_start,
+                        dest_node_index: arc.dest_node_index,
+                        flag_b,
+                    });
+
+                    // indexA (conditional: written if first arc or different from previous)
+                    let index_a = *table_a_index.get(&arc.road_def_index).unwrap();
+                    if last_index_a != Some(index_a) {
+                        data.push(index_a);
+                        last_index_a = Some(index_a);
+                    }
+
+                    // Length data (1-3 bytes)
+                    data.extend_from_slice(&len_data);
+
+                    // Heading (conditional: written if indexA was written or direction changed)
+                    // For simplicity in MVP: always write heading when indexA was written
+                    // (first arc or indexA changed)
+                    if last_index_a == Some(index_a) && arc_i == 0 {
+                        data.push(arc.initial_heading as u8);
+                    } else if arc_i > 0 {
+                        let prev_arc = &node.arcs[arc_i - 1];
+                        let prev_idx_a = *table_a_index.get(&prev_arc.road_def_index).unwrap();
+                        if index_a != prev_idx_a || arc.forward != prev_arc.forward {
+                            data.push(arc.initial_heading as u8);
+                        }
+                    }
+                }
+
+                node_infos.push(NodeInfo {
+                    offset: node_start,
+                    byte0_pos,
+                });
+            }
+
+            // ── Phase 2: Pad to NEXT 64-byte boundary ──
+            // mkgmap: tablesOffset = (writer.position() + alignment) & ~alignMask
+            // Always advances to the next aligned boundary, even if already aligned.
+            let tables_offset = (data.len() + NOD_ALIGNMENT) & !(NOD_ALIGNMENT - 1);
+            while data.len() < tables_offset {
                 data.push(0x00);
             }
+
+            // ── Phase 3: Backpatch byte 0 of each node (calcLowByte) ──
+            for info in &node_infos {
+                let low = calc_low_byte(info.offset, tables_offset);
+                data[info.byte0_pos] = low;
+            }
+
+            // ── Phase 4: Backpatch arc dest pointers ──
+            for patch in &arc_patches {
+                let dest_offset = node_offsets[patch.dest_node_index] as usize;
+                // Check if dest is in this center (internal) or external
+                let is_internal = center.nodes.contains(&patch.dest_node_index);
+                if is_internal {
+                    let diff = (dest_offset as i32) - (patch.src_node_offset as i32);
+                    // 14-bit signed offset, big-endian with flagB in high byte
+                    let val = ((patch.flag_b as u16) << 8) | ((diff as u16) & 0x3FFF);
+                    data[patch.flagb_pos] = (val >> 8) as u8;
+                    data[patch.flagb_pos + 1] = (val & 0xFF) as u8;
+                } else {
+                    // External: flagB | FLAG_EXTERNAL, indexB = Table B index
+                    // For single-tile MVP, all nodes are internal
+                    let val = ((patch.flag_b | 0x40) as u16) << 8;
+                    data[patch.flagb_pos] = (val >> 8) as u8;
+                    data[patch.flagb_pos + 1] = 0;
+                }
+            }
+
+            // ── Phase 5: Tables header ──
+            data.push(0x00); // tabC_format (no Table C)
+            // Center longitude (3B signed LE)
+            let lon_b = center.center_lon.to_le_bytes();
+            data.push(lon_b[0]);
+            data.push(lon_b[1]);
+            data.push(lon_b[2]);
+            // Center latitude (3B signed LE)
+            let lat_b = center.center_lat.to_le_bytes();
+            data.push(lat_b[0]);
+            data.push(lat_b[1]);
+            data.push(lat_b[2]);
+            // Table A count + Table B count
+            data.push(table_a_roads.len() as u8);
+            data.push(0); // Table B count = 0 for single-tile
+
+            // ── Phase 6: Table A (5B per road) ──
+            for &road_idx in &table_a_roads {
+                let ta_pos = data.len();
+                // Find the first arc referencing this road to get its properties
+                let arc = center.nodes.iter()
+                    .flat_map(|&ni| self.nodes[ni].arcs.iter())
+                    .find(|a| a.road_def_index == road_idx)
+                    .unwrap();
+                let entry = TableAEntry {
+                    net1_offset: 0, // patched later
+                    road_class: arc.road_class,
+                    speed: arc.speed,
+                    toll: arc.toll,
+                    one_way: arc.one_way,
+                    access: arc.access,
+                };
+                entry.write(&mut data);
+                table_a_positions.push((ta_pos, road_idx));
+            }
+
+            // ── Phase 7: Table B (empty for single-tile) ──
+            // Nothing to write
         }
 
-        (data, node_offsets, arc_positions)
-    }
-
-    fn build_nod2(&self) -> Vec<u8> {
-        // NOD2: 1 bit per vertex of each road polyline
-        // 1 = vertex is a RouteNode, 0 = geometry-only vertex
-        // For now, generate a bitstream marking all node positions.
-        // Each road's polyline contributes vertex_count bits.
-        // This is populated by the caller via set_nod2_data if available.
-        self.nod2_data.clone()
+        (data, node_offsets, table_a_positions)
     }
 
     fn build_nod3(&self, node_offsets: &[u32]) -> Vec<u8> {
-        // NOD3: boundary nodes 9B each (lon 3B + lat 3B + NOD1 offset 3B)
         let mut data = Vec::new();
         for (i, node) in self.nodes.iter().enumerate() {
             if node.is_boundary {
@@ -316,7 +675,6 @@ impl NodWriter {
                 data.push(lat_b[0]);
                 data.push(lat_b[1]);
                 data.push(lat_b[2]);
-                // NOD1 offset for this node
                 let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
                 let ob = off.to_le_bytes();
                 data.push(ob[0]);
@@ -326,6 +684,37 @@ impl NodWriter {
         }
         data
     }
+
+    fn build_nod4(&self, node_offsets: &[u32]) -> Vec<u8> {
+        let mut data = Vec::new();
+        for (i, node) in self.nodes.iter().enumerate() {
+            if node.is_boundary && node.node_class > 0 {
+                let lon_b = node.lon.to_le_bytes();
+                data.push(lon_b[0]);
+                data.push(lon_b[1]);
+                data.push(lon_b[2]);
+                let lat_b = node.lat.to_le_bytes();
+                data.push(lat_b[0]);
+                data.push(lat_b[1]);
+                data.push(lat_b[2]);
+                let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
+                let ob = off.to_le_bytes();
+                data.push(ob[0]);
+                data.push(ob[1]);
+                data.push(ob[2]);
+            }
+        }
+        data
+    }
+}
+
+/// calcLowByte — mkgmap RouteCenter.java:159-171
+/// Formula: (tables_offset >> 6) - (node_offset >> 6) - 1
+pub fn calc_low_byte(node_offset: usize, tables_offset: usize) -> u8 {
+    let align = 6; // NOD_ALIGNMENT = 1 << 6
+    let low = (tables_offset >> align) as i32 - (node_offset >> align) as i32 - 1;
+    debug_assert!(low >= 0 && low < 256, "calcLowByte out of range: {}", low);
+    low as u8
 }
 
 #[cfg(test)]
@@ -389,7 +778,12 @@ mod tests {
         assert_eq!(NOD_ALIGNMENT, 64);
     }
 
-    /// AC4: Table A byte 3 encodes toll and oneway
+    /// Helper: find Table A entry position in NOD1 data after prepare().
+    fn find_table_a_start(nod: &NodWriter) -> usize {
+        nod.table_a_positions()[0].0
+    }
+
+    /// Table A byte 3 (tabAInfo) encodes toll and oneway
     #[test]
     fn test_table_a_encoding_toll_oneway() {
         let mut nod = NodWriter::new();
@@ -405,6 +799,7 @@ mod tests {
                 access: 0,
                 toll: true,
                 one_way: true,
+                initial_heading: 0,
             }],
             is_boundary: false, node_class: 0,
         });
@@ -414,14 +809,14 @@ mod tests {
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
-        // Find the arc's byte 3 (tabAInfo): after center(8B) + tableB(2B) + delta(4B) + narcs(1B) + bytes0-2(3B)
-        // = 8 + 2 + 4 + 1 + 3 = 18
-        let tab_a_info = nod1[18];
-        // Expected: toll(0x80) | (2 << 4) | oneway(0x08) | 5 = 0x80 | 0x20 | 0x08 | 0x05 = 0xAD
+        let ta_start = find_table_a_start(&nod);
+        // Byte 3 of Table A entry = tabAInfo
+        let tab_a_info = nod1[ta_start + 3];
+        // Expected: toll(0x80) | (2 << 4) | oneway(0x08) | 5 = 0xAD
         assert_eq!(tab_a_info, 0xAD);
     }
 
-    /// AC5: Table A byte 4 encodes access flags low byte
+    /// Table A byte 4 encodes access flags low byte
     #[test]
     fn test_table_a_encoding_access_low() {
         use crate::img::net::{NO_CAR, NO_FOOT, NO_BIKE};
@@ -432,7 +827,7 @@ mod tests {
             arcs: vec![RouteArc {
                 dest_node_index: 1, road_def_index: 0, length_meters: 100,
                 forward: true, road_class: 0, speed: 0,
-                access, toll: false, one_way: false,
+                access, toll: false, one_way: false, initial_heading: 0,
             }],
             is_boundary: false, node_class: 0,
         });
@@ -442,11 +837,11 @@ mod tests {
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
-        // byte 4 = offset 19
-        assert_eq!(nod1[19], 0x31);
+        let ta_start = find_table_a_start(&nod);
+        assert_eq!(nod1[ta_start + 4], 0x31);
     }
 
-    /// AC6: Table A bytes 0-2 encode access flags high bits
+    /// Table A bytes 0-2 encode access flags high bits
     #[test]
     fn test_table_a_encoding_access_high() {
         use crate::img::net::{NO_EMERGENCY, NO_CAR};
@@ -457,7 +852,7 @@ mod tests {
             arcs: vec![RouteArc {
                 dest_node_index: 1, road_def_index: 0, length_meters: 100,
                 forward: true, road_class: 0, speed: 0,
-                access, toll: false, one_way: false,
+                access, toll: false, one_way: false, initial_heading: 0,
             }],
             is_boundary: false, node_class: 0,
         });
@@ -467,24 +862,23 @@ mod tests {
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
-        // bytes 0-2 of arc at offset 15: access_top = (0x8000 << 8) = 0x800000
-        // NET1 placeholder = 0, so bytes = [0x00, 0x00, 0x80]
-        assert_eq!(nod1[15], 0x00);
-        assert_eq!(nod1[16], 0x00);
-        assert_eq!(nod1[17], 0x80);
+        let ta_start = find_table_a_start(&nod);
+        // access_top = (0x8000 << 8) = 0x800000 in bits 22-23
+        assert_eq!(nod1[ta_start], 0x00);
+        assert_eq!(nod1[ta_start + 1], 0x00);
+        assert_eq!(nod1[ta_start + 2], 0x80);
     }
 
-    /// AC7: patch_net1_offsets correctly patches NET1 offsets into NOD1
+    /// patch_net1_offsets correctly patches NET1 offsets into Table A entries
     #[test]
     fn test_patch_net1_offsets() {
         let mut nod = NodWriter::new();
-        // Node 0 has arc to road_def_index 1
         nod.add_node(RouteNode {
             lat: 100000, lon: 200000,
             arcs: vec![RouteArc {
                 dest_node_index: 1, road_def_index: 1, length_meters: 100,
                 forward: true, road_class: 0, speed: 0,
-                access: 0, toll: false, one_way: false,
+                access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
             is_boundary: false, node_class: 0,
         });
@@ -494,12 +888,14 @@ mod tests {
         });
         nod.prepare();
 
-        // Patch: road 0 at offset 0, road 1 at offset 42
+        // Patch: road 1 at offset 42
         nod.patch_net1_offsets(&[0, 42]);
 
         let nod1 = nod.nod1_data.as_ref().unwrap();
-        // Arc bytes 0-2 at offset 15 should now contain offset 42
-        let patched = (nod1[15] as u32) | ((nod1[16] as u32) << 8) | ((nod1[17] as u32) << 16);
+        let ta_start = find_table_a_start(&nod);
+        let patched = (nod1[ta_start] as u32)
+            | ((nod1[ta_start + 1] as u32) << 8)
+            | ((nod1[ta_start + 2] as u32) << 16);
         assert_eq!(patched & 0x3FFFFF, 42);
     }
 
@@ -576,7 +972,7 @@ mod tests {
             arcs: vec![RouteArc {
                 dest_node_index: 1, road_def_index: 1, length_meters: 100,
                 forward: true, road_class: 2, speed: 3,
-                access: 0, toll: false, one_way: false,
+                access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
             is_boundary: false, node_class: 0,
         });
@@ -592,5 +988,201 @@ mod tests {
         // NOD file should be valid (header present)
         assert_eq!(&nod_data[2..12], b"GARMIN NOD");
         assert!(nod_data.len() > NOD_HEADER_LEN as usize);
+    }
+
+    // ── T11: New unit tests for mkgmap-faithful NOD1 format ──
+
+    #[test]
+    fn test_encode_arc_length_short() {
+        // length < 0x300 → 10-bit format, 1 data byte
+        let (flag_bits, data) = encode_arc_length(100, false);
+        assert_eq!(data.len(), 1);
+        assert_ne!(flag_bits & 0x38, 0x38, "10-bit format must not set all bits 3-5");
+        // Reconstruct: top 2 bits from flag_bits[3-4], low 8 bits from data[0]
+        let top = ((flag_bits & 0x18) as u32) << 5;
+        let reconstructed = top | (data[0] as u32);
+        assert_eq!(reconstructed, 100);
+    }
+
+    #[test]
+    fn test_encode_arc_length_medium() {
+        // For no-curve: threshold=0x400. Use length=2000 (>= 0x400, < 16384) → 14-bit format
+        let (flag_bits, data) = encode_arc_length(2000, false);
+        assert_eq!(flag_bits & 0x38, 0x38, "Extended format has all bits 3-5 set");
+        assert_eq!(data.len(), 2);
+        // 14-bit: data[0] = 0x80 | (len & 0x3F), data[1] = (len >> 6)
+        assert!(data[0] & 0x80 != 0, "14-bit format has 0x80 marker");
+        let reconstructed = ((data[0] & 0x3F) as u32) | ((data[1] as u32) << 6);
+        assert_eq!(reconstructed, 2000);
+    }
+
+    #[test]
+    fn test_encode_arc_length_long() {
+        // length >= 16384 → 22-bit format, 3 data bytes
+        let (flag_bits, data) = encode_arc_length(20000, false);
+        assert_eq!(flag_bits & 0x38, 0x38);
+        assert_eq!(data.len(), 3);
+        assert_eq!(data[0] & 0xC0, 0xC0, "22-bit format has 0xC0 marker");
+        let reconstructed = ((data[0] & 0x3F) as u32)
+            | ((data[1] as u32) << 6)
+            | ((data[2] as u32) << 14);
+        assert_eq!(reconstructed, 20000);
+    }
+
+    #[test]
+    fn test_write_node_small_offsets() {
+        // Coords delta ≤ 0x7FF → 3B encoding, no F_LARGE_OFFSETS
+        let mut nod = NodWriter::new();
+        nod.add_node(RouteNode {
+            lat: 100000, lon: 200000, arcs: Vec::new(),
+            is_boundary: false, node_class: 0,
+        });
+        nod.add_node(RouteNode {
+            lat: 100010, lon: 200010, arcs: Vec::new(),
+            is_boundary: false, node_class: 0,
+        });
+        nod.prepare();
+        let nod1 = nod.nod1_data.as_ref().unwrap();
+        // Node 0 starts at offset 0. Byte 1 = flags.
+        let node0_offset = nod.node_offsets()[0] as usize;
+        let flags = nod1[node0_offset + 1];
+        assert_eq!(flags & F_LARGE_OFFSETS, 0, "Small offsets should not have F_LARGE_OFFSETS");
+    }
+
+    #[test]
+    fn test_write_node_large_offsets() {
+        // Force large delta: lat diff > 0x7FF semicircles
+        // Semicircles scale: 1 map unit ≈ 360/2^24 degrees
+        // Need delta_lat in semicircles > 0x7FF = 2047
+        // coord::to_semicircles(x) = x (identity for 24-bit map units)
+        // With center = average, delta = 50000 map units → way above 0x7FF
+        let mut nod = NodWriter::new();
+        nod.add_node(RouteNode {
+            lat: 0, lon: 0, arcs: Vec::new(),
+            is_boundary: false, node_class: 0,
+        });
+        nod.add_node(RouteNode {
+            lat: 100000, lon: 100000, arcs: Vec::new(),
+            is_boundary: false, node_class: 0,
+        });
+        nod.prepare();
+        let nod1 = nod.nod1_data.as_ref().unwrap();
+        // At least one node should have F_LARGE_OFFSETS
+        let n0 = nod.node_offsets()[0] as usize;
+        let n1 = nod.node_offsets()[1] as usize;
+        let f0 = nod1[n0 + 1];
+        let f1 = nod1[n1 + 1];
+        assert!(
+            (f0 & F_LARGE_OFFSETS != 0) || (f1 & F_LARGE_OFFSETS != 0),
+            "At least one node should have F_LARGE_OFFSETS"
+        );
+    }
+
+    #[test]
+    fn test_write_route_center_layout() {
+        // Verify: nodes → padding 64B → tables header → Table A
+        let mut nod = NodWriter::new();
+        nod.add_node(RouteNode {
+            lat: 100000, lon: 200000,
+            arcs: vec![RouteArc {
+                dest_node_index: 1, road_def_index: 0, length_meters: 100,
+                forward: true, road_class: 1, speed: 3,
+                access: 0, toll: false, one_way: false, initial_heading: 0,
+            }],
+            is_boundary: false, node_class: 0,
+        });
+        nod.add_node(RouteNode {
+            lat: 100100, lon: 200100, arcs: Vec::new(),
+            is_boundary: false, node_class: 0,
+        });
+        nod.prepare();
+        let nod1 = nod.nod1_data.as_ref().unwrap();
+        let ta_start = nod.table_a_positions()[0].0;
+
+        // Tables header is 9 bytes before first Table A entry
+        let header_start = ta_start - 9;
+        // Header start should be aligned to 64B (or after 64B-aligned block)
+        assert_eq!(header_start % NOD_ALIGNMENT, 0, "Tables header should follow 64B-aligned padding");
+
+        // Table A entry is 5 bytes
+        assert!(nod1.len() >= ta_start + 5, "NOD1 should contain Table A entry");
+    }
+
+    #[test]
+    fn test_calc_low_byte() {
+        assert_eq!(calc_low_byte(10, 128), 1); // (128>>6) - (10>>6) - 1 = 2 - 0 - 1 = 1
+        assert_eq!(calc_low_byte(0, 64), 0);   // (64>>6) - (0>>6) - 1 = 1 - 0 - 1 = 0
+        assert_eq!(calc_low_byte(0, 128), 1);  // (128>>6) - (0>>6) - 1 = 2 - 0 - 1 = 1
+    }
+
+    #[test]
+    fn test_nod2_record_format() {
+        // Test mkgmap per-road NOD2 format: 3 RouteNodes, starts with node
+        let roads = vec![
+            Nod2RoadInfo {
+                road_class: 2,
+                speed: 5,
+                num_route_nodes: 3,
+                starts_with_node: true,
+                first_node_nod1_offset: 42,
+            },
+        ];
+        let (data, offsets) = write_nod2_records(&roads);
+        assert_eq!(offsets.len(), 1);
+        assert_eq!(offsets[0], 0);
+
+        // nod2Flags = 0x01 | (2 << 4) | (5 << 1) = 0x2B
+        assert_eq!(data[0], 0x2B);
+        // NOD1 offset = 42 in 3B LE
+        assert_eq!(data[1], 42);
+        assert_eq!(data[2], 0);
+        assert_eq!(data[3], 0);
+        // nbits = 3 (starts with node → no extra bit)
+        assert_eq!(u16::from_le_bytes([data[4], data[5]]), 3);
+        // Bitstream: 3 bits all 1 → LSB first = 0b111 = 0x07
+        assert_eq!(data[6] & 0x07, 0x07);
+    }
+
+    #[test]
+    fn test_nod2_record_not_starts_with_node() {
+        // Road doesn't start with a RouteNode → leading 0 bit
+        let roads = vec![
+            Nod2RoadInfo {
+                road_class: 0,
+                speed: 0,
+                num_route_nodes: 2,
+                starts_with_node: false,
+                first_node_nod1_offset: 0,
+            },
+        ];
+        let (data, offsets) = write_nod2_records(&roads);
+        // nbits = 2 + 1 = 3
+        assert_eq!(u16::from_le_bytes([data[4], data[5]]), 3);
+        // Bitstream: bit0=0, bit1=1, bit2=1 → 0b110 = 0x06
+        assert_eq!(data[6] & 0x07, 0x06);
+    }
+
+    #[test]
+    fn test_table_a_entry_direct() {
+        // Direct test of TableAEntry::write
+        let mut buf = Vec::new();
+        let entry = TableAEntry {
+            net1_offset: 0x1234,
+            road_class: 3,
+            speed: 5,
+            toll: true,
+            one_way: false,
+            access: 0x8001, // NO_EMERGENCY | NO_CAR
+        };
+        entry.write(&mut buf);
+        assert_eq!(buf.len(), 5);
+        // Bytes 0-2: 0x1234 | (0x8000 << 8 → bit 23) = 0x1234 | 0x800000
+        let val = (buf[0] as u32) | ((buf[1] as u32) << 8) | ((buf[2] as u32) << 16);
+        assert_eq!(val & 0x3FFFFF, 0x1234);
+        assert_eq!(val & 0xC00000, 0x800000); // access top bit
+        // Byte 3: tabAInfo = toll(0x80) | (3<<4) | 5 = 0x80 | 0x30 | 0x05 = 0xB5
+        assert_eq!(buf[3], 0xB5);
+        // Byte 4: access low = 0x0001 (NO_CAR, with top 2 bits cleared)
+        assert_eq!(buf[4], 0x01);
     }
 }

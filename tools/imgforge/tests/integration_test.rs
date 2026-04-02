@@ -340,6 +340,83 @@ fn test_routing_polylines_in_rgn() {
     }
 }
 
+// ── T12: mkgmap-faithful NOD/NET structural validation ──
+
+#[test]
+fn test_routing_nod1_has_route_centers() {
+    let img = compile_fixture("routing.mp");
+    let (offset, size) = find_subfile(&img, "NOD").expect("Missing NOD");
+    let nod = &img[offset..offset + size];
+    // NOD1 section: offset at 0x15 (4B), size at 0x19 (4B)
+    let nod1_off = read_u32(nod, 0x15) as usize;
+    let nod1_size = read_u32(nod, 0x19) as usize;
+    assert!(nod1_size > 0, "NOD1 section should not be empty");
+    // First byte of a node is the table pointer (backpatched calcLowByte)
+    // It should be a small value (distance to tables in 64B units)
+    let first_byte = nod[nod1_off];
+    assert!(first_byte < 64, "First node byte0 (calcLowByte) should be small: {}", first_byte);
+}
+
+#[test]
+fn test_routing_nod2_per_road_format() {
+    let img = compile_fixture("routing.mp");
+    let (offset, size) = find_subfile(&img, "NOD").expect("Missing NOD");
+    let nod = &img[offset..offset + size];
+    // NOD2 section: offset at 0x25 (4B), size at 0x29 (4B)
+    let nod2_off = read_u32(nod, 0x25) as usize;
+    let nod2_size = read_u32(nod, 0x29) as usize;
+    assert!(nod2_size > 0, "NOD2 section should not be empty");
+    // First byte = nod2Flags, bit 0 should be set
+    let nod2_flags = nod[nod2_off];
+    assert!(nod2_flags & 0x01 != 0, "NOD2 record nod2Flags bit 0 must be set");
+    // Bytes 1-3 = NOD1 offset (should be within NOD1 section range)
+    let nod1_ptr = (nod[nod2_off + 1] as u32)
+        | ((nod[nod2_off + 2] as u32) << 8)
+        | ((nod[nod2_off + 3] as u32) << 16);
+    let nod1_size_u32 = read_u32(nod, 0x19);
+    assert!(nod1_ptr < nod1_size_u32, "NOD2 NOD1 ptr {} should be within NOD1 size {}", nod1_ptr, nod1_size_u32);
+}
+
+#[test]
+fn test_routing_net1_has_nod2_offset() {
+    let img = compile_fixture("routing.mp");
+    let (offset, size) = find_subfile(&img, "NET").expect("Missing NET");
+    let net = &img[offset..offset + size];
+    // NET1 starts at header offset
+    let net1_off = read_u32(net, 0x15) as usize;
+    let net1_size = read_u32(net, 0x19) as usize;
+    assert!(net1_size > 0, "NET1 should not be empty");
+    // First road's flags byte should have 0x44 (UNK1=0x04, NODINFO=0x40)
+    // The first road: label(3B) then flags byte
+    let flags = net[net1_off + 3];
+    assert_eq!(flags & 0x04, 0x04, "NET1 flags should have NET_FLAG_UNK1 (0x04)");
+    assert_eq!(flags & 0x40, 0x40, "NET1 flags should have NET_FLAG_NODINFO (0x40)");
+}
+
+#[test]
+fn test_routing_nod_header_4_sections() {
+    let img = compile_fixture("routing.mp");
+    let (offset, size) = find_subfile(&img, "NOD").expect("Missing NOD");
+    let nod = &img[offset..offset + size];
+    // Verify 4 section descriptors present:
+    // NOD1 @0x15, NOD2 @0x25, NOD3 @0x31, NOD4 after NOD3
+    let nod1_off = read_u32(nod, 0x15);
+    let nod2_off = read_u32(nod, 0x25);
+    let nod3_off = read_u32(nod, 0x31);
+    // NOD1 < NOD2 < NOD3
+    assert!(nod1_off <= nod2_off, "NOD1 offset should be <= NOD2");
+    assert!(nod2_off <= nod3_off, "NOD2 offset should be <= NOD3");
+    // Flags at 0x1D-0x20 should contain 0x0227
+    let flags_lo = nod[0x1D];
+    let flags_hi = nod[0x1E];
+    assert_eq!(flags_lo, 0x27, "NOD flags low byte should be 0x27");
+    assert_eq!(flags_hi, 0x02, "NOD flags high byte should be 0x02");
+    // Alignment at 0x21 should be 6
+    assert_eq!(nod[0x21], 0x06, "NOD alignment shift should be 6");
+    // Table A reclen at 0x23 should be 5
+    assert_eq!(read_u16(nod, 0x23), 5, "Table A record length should be 5");
+}
+
 // ============================================================================
 // 12.4 — Tests intégration multi-tile
 // ============================================================================

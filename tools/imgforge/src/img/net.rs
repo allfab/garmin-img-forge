@@ -61,10 +61,11 @@ impl RoadDef {
             buf.push(b[2]);
         }
 
-        // Flags byte
+        // Flags byte — mkgmap RoadDef.java
         let mut flags: u8 = 0;
         if self.one_way { flags |= 0x02; }
-        if self.nod2_offset.is_some() { flags |= 0x40; }
+        flags |= 0x04; // NET_FLAG_UNK1 — always set in mkgmap
+        if self.nod2_offset.is_some() { flags |= 0x40; } // NET_FLAG_NODINFO
         if self.access_flags != 0 { flags |= 0x80; }
         buf.push(flags);
 
@@ -80,12 +81,18 @@ impl RoadDef {
         buf.push(lb[1]);
         buf.push(lb[2]);
 
-        // NOD2 offset (conditional)
+        // NOD2 offset — variable-length encoding (mkgmap RoadDef.java:296-306)
         if let Some(nod2) = self.nod2_offset {
-            let b = nod2.to_le_bytes();
-            buf.push(b[0]);
-            buf.push(b[1]);
-            buf.push(b[2]);
+            if nod2 < 0x7FFF {
+                buf.push(0x01); // size_indicator = 1 → 2-byte offset
+                buf.extend_from_slice(&(nod2 as u16).to_le_bytes());
+            } else {
+                buf.push(0x02); // size_indicator = 2 → 3-byte offset
+                let b = nod2.to_le_bytes();
+                buf.push(b[0]);
+                buf.push(b[1]);
+                buf.push(b[2]);
+            }
         }
 
         buf
@@ -262,5 +269,37 @@ mod tests {
         assert_eq!(net.net1_offsets()[1], 7);
         // road 1: label(3) + flags(1) + access(2) + length(3) = 9
         assert_eq!(net.net1_offsets()[2], 7 + 9);
+    }
+
+    /// AC7: nod2_offset < 0x7FFF → size_indicator(1) + offset(2) = 3 bytes
+    #[test]
+    fn test_nod2_offset_small() {
+        let mut rd = RoadDef::new();
+        rd.label_offsets.push(100);
+        rd.road_length_meters = 100;
+        rd.nod2_offset = Some(100);
+        let net1 = rd.write_net1();
+        // label(3) + flags(1) + length(3) + nod2[size(1)+offset(2)] = 10
+        assert_eq!(net1.len(), 10);
+        // flags should have 0x40 (NODINFO) and 0x04 (UNK1)
+        assert_eq!(net1[3] & 0x44, 0x44);
+        // Last 3 bytes: size_indicator=1, offset=100 in 2B LE
+        assert_eq!(net1[7], 0x01);
+        assert_eq!(u16::from_le_bytes([net1[8], net1[9]]), 100);
+    }
+
+    /// nod2_offset >= 0x7FFF → size_indicator(2) + offset(3) = 4 bytes
+    #[test]
+    fn test_nod2_offset_large() {
+        let mut rd = RoadDef::new();
+        rd.label_offsets.push(100);
+        rd.road_length_meters = 100;
+        rd.nod2_offset = Some(0x10000);
+        let net1 = rd.write_net1();
+        // label(3) + flags(1) + length(3) + nod2[size(1)+offset(3)] = 11
+        assert_eq!(net1.len(), 11);
+        assert_eq!(net1[7], 0x02);
+        let offset = (net1[8] as u32) | ((net1[9] as u32) << 8) | ((net1[10] as u32) << 16);
+        assert_eq!(offset, 0x10000);
     }
 }

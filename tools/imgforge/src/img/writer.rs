@@ -745,7 +745,7 @@ fn pre_compute_routing(
     line_labels: &[u32],
 ) -> (Option<RoutingContext>, Option<Vec<u8>>, Option<Vec<u8>>) {
     use crate::parser::mp_types::RoutingMode;
-    use super::nod::build_nod2_bitstream;
+    use super::nod::{write_nod2_records, Nod2RoadInfo};
 
     // Routing mode check
     match mp.header.routing_mode {
@@ -763,31 +763,35 @@ fn pre_compute_routing(
         }
     }
 
-    let mut net_writer = NetWriter::new();
     let mut road_polylines = Vec::new();
-    // Track mp_index for each road_def (in NET order)
     let mut mp_indices: Vec<usize> = Vec::new();
+    let mut road_params: Vec<RouteParams> = Vec::new();
+
+    // Collect road data
+    struct RoadInfo {
+        label_offset: u32,
+        road_length: u32,
+        params: RouteParams,
+    }
+    let mut road_infos: Vec<RoadInfo> = Vec::new();
 
     for (i, mp_line) in mp.polylines.iter().enumerate() {
         if mp_line.road_id.is_some() {
-            let mut road_def = RoadDef::new();
-            road_def.label_offsets.push(line_labels[i]);
-            road_def.road_length_meters = estimate_road_length(&mp_line.points);
-
             let params = if let Some(ref rp) = mp_line.route_param {
-                let p = graph_builder::parse_route_param(rp);
-                road_def.road_class = p.road_class;
-                road_def.speed = p.speed;
-                road_def.one_way = p.one_way;
-                road_def.toll = p.toll;
-                road_def.access_flags = p.access_flags;
-                p
+                graph_builder::parse_route_param(rp)
             } else {
                 RouteParams::default()
             };
 
-            let road_idx = net_writer.add_road(road_def);
-            road_polylines.push((mp_line.points.clone(), road_idx, params));
+            road_infos.push(RoadInfo {
+                label_offset: line_labels[i],
+                road_length: estimate_road_length(&mp_line.points),
+                params: params.clone(),
+            });
+
+            let road_idx = road_infos.len() - 1;
+            road_polylines.push((mp_line.points.clone(), road_idx, params.clone()));
+            road_params.push(params);
             mp_indices.push(i);
         }
     }
@@ -796,46 +800,132 @@ fn pre_compute_routing(
     let junctions = find_junctions(&road_polylines);
     let all_node_flags = compute_node_flags(&road_polylines, &junctions);
 
-    // Build NOD2 bitstream
-    let (nod2_data, nod2_offsets) = build_nod2_bitstream(&all_node_flags);
+    // Build routing graph (enriched with heading + node_class)
+    let route_nodes = graph_builder::build_graph_with_junctions(&road_polylines, &junctions);
 
-    // NOD2 offset in RoadDefs is disabled — GPSMapEdit crashes with the 0x40 flag
-    // in NET1 records. The RGN→NET link (has_net_info) works without it.
-    // TODO: investigate the full NET1 record format with nod2_offset
-    let _ = &nod2_offsets; // suppress unused warning
+    // Build NOD writer and prepare NOD1 (needed for NOD2 first_node offsets)
+    let mut nod_writer = NodWriter::new();
+    for node in &route_nodes {
+        nod_writer.add_node(node.clone());
+    }
 
-    // Build NET → get NET1 offsets
+    if mp.header.routing_mode == RoutingMode::NetOnly {
+        // NetOnly: build NET without nod2_offset, no NOD
+        let mut net_writer = NetWriter::new();
+        for info in &road_infos {
+            let mut rd = RoadDef::new();
+            rd.label_offsets.push(info.label_offset);
+            rd.road_length_meters = info.road_length;
+            rd.road_class = info.params.road_class;
+            rd.speed = info.params.speed;
+            rd.one_way = info.params.one_way;
+            rd.toll = info.params.toll;
+            rd.access_flags = info.params.access_flags;
+            net_writer.add_road(rd);
+        }
+        let net_data = net_writer.build();
+        let net1_offsets = net_writer.net1_offsets().to_vec();
+
+        let mut net1_offsets_by_mp_index = HashMap::new();
+        for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+            net1_offsets_by_mp_index.insert(mp_idx, net1_offsets[road_idx]);
+        }
+        let routing_ctx = RoutingContext {
+            net1_offsets_by_mp_index,
+            junctions,
+        };
+        return (Some(routing_ctx), Some(net_data), None);
+    }
+
+    // Full routing pipeline:
+    // 1. Prepare NOD1 → get node offsets
+    nod_writer.prepare();
+
+    // 2. Build NOD2 per-road records → get nod2_offsets
+    let mut nod2_road_infos: Vec<Nod2RoadInfo> = Vec::new();
+    for (road_idx, flags) in all_node_flags.iter().enumerate() {
+        let params = &road_params[road_idx];
+        // Find the first RouteNode on this road to get its NOD1 offset
+        let first_node_offset = find_first_route_node_offset(
+            &road_polylines[road_idx].0,
+            &junctions,
+            &route_nodes,
+            nod_writer.node_offsets(),
+            road_idx,
+        );
+        let num_route_nodes = flags.iter().filter(|&&f| f).count() as u16;
+        let starts_with_node = flags.first().copied().unwrap_or(false);
+        nod2_road_infos.push(Nod2RoadInfo {
+            road_class: params.road_class,
+            speed: params.speed,
+            num_route_nodes,
+            starts_with_node,
+            first_node_nod1_offset: first_node_offset,
+        });
+    }
+    let (nod2_data, nod2_offsets) = write_nod2_records(&nod2_road_infos);
+    nod_writer.set_nod2_data(nod2_data);
+
+    // 3. Build NET with nod2_offsets → get NET1 offsets
+    let mut net_writer = NetWriter::new();
+    for (road_idx, info) in road_infos.iter().enumerate() {
+        let mut rd = RoadDef::new();
+        rd.label_offsets.push(info.label_offset);
+        rd.road_length_meters = info.road_length;
+        rd.road_class = info.params.road_class;
+        rd.speed = info.params.speed;
+        rd.one_way = info.params.one_way;
+        rd.toll = info.params.toll;
+        rd.access_flags = info.params.access_flags;
+        rd.nod2_offset = Some(nod2_offsets[road_idx]);
+        net_writer.add_road(rd);
+    }
     let net_data = net_writer.build();
     let net1_offsets = net_writer.net1_offsets().to_vec();
 
-    // Build RoutingContext
+    // 4. Patch NET1 offsets into NOD1 Table A entries
+    nod_writer.patch_net1_offsets(&net1_offsets);
+
+    // 5. Build final NOD
+    let nod_data = nod_writer.build();
+
+    // Build RoutingContext for RGN
     let mut net1_offsets_by_mp_index = HashMap::new();
     for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
         net1_offsets_by_mp_index.insert(mp_idx, net1_offsets[road_idx]);
     }
-
     let routing_ctx = RoutingContext {
         net1_offsets_by_mp_index,
         junctions,
     };
 
-    if mp.header.routing_mode == RoutingMode::NetOnly {
-        return (Some(routing_ctx), Some(net_data), None);
-    }
-
-    // Build NOD graph
-    let route_nodes = graph_builder::build_graph(&road_polylines);
-    let mut nod_writer = NodWriter::new();
-    for node in route_nodes {
-        nod_writer.add_node(node);
-    }
-
-    nod_writer.set_nod2_data(nod2_data);
-    nod_writer.prepare();
-    nod_writer.patch_net1_offsets(&net1_offsets);
-    let nod_data = nod_writer.build();
-
     (Some(routing_ctx), Some(net_data), Some(nod_data))
+}
+
+/// Find the NOD1 offset of the first RouteNode encountered along a road's vertices.
+/// Matches by coordinates AND verifies the node has an arc for `road_def_index`.
+fn find_first_route_node_offset(
+    coords: &[Coord],
+    junctions: &HashSet<(i32, i32)>,
+    route_nodes: &[super::nod::RouteNode],
+    node_offsets: &[u32],
+    road_def_index: usize,
+) -> u32 {
+    for coord in coords {
+        let key = (coord.latitude(), coord.longitude());
+        if junctions.contains(&key) {
+            // Find the route node at this position connected to this road
+            for (i, rn) in route_nodes.iter().enumerate() {
+                if rn.lat == key.0 && rn.lon == key.1
+                    && rn.arcs.iter().any(|a| a.road_def_index == road_def_index)
+                {
+                    return if i < node_offsets.len() { node_offsets[i] } else { 0 };
+                }
+            }
+        }
+    }
+    tracing::warn!("NOD2: no RouteNode found for road_def_index {}, using offset 0", road_def_index);
+    0
 }
 
 #[cfg(test)]

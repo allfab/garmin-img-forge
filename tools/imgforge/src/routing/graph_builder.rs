@@ -96,16 +96,27 @@ pub fn compute_node_flags(
 /// Build route nodes from routable polylines
 /// Returns a list of RouteNodes with arcs connecting them
 pub fn build_graph(
-    road_polylines: &[(Vec<Coord>, usize, RouteParams)], // (coords, road_def_index, params)
+    road_polylines: &[(Vec<Coord>, usize, RouteParams)],
+) -> Vec<RouteNode> {
+    if road_polylines.is_empty() {
+        return Vec::new();
+    }
+    let junction_set = find_junctions(road_polylines);
+    build_graph_with_junctions(road_polylines, &junction_set)
+}
+
+/// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call)
+pub fn build_graph_with_junctions(
+    road_polylines: &[(Vec<Coord>, usize, RouteParams)],
+    junction_set: &HashSet<(i32, i32)>,
 ) -> Vec<RouteNode> {
     if road_polylines.is_empty() {
         return Vec::new();
     }
 
-    // Find junctions using the shared function
-    let junction_set = find_junctions(road_polylines);
     let junctions: HashMap<(i32, i32), usize> = junction_set
-        .into_iter()
+        .iter()
+        .copied()
         .enumerate()
         .map(|(idx, key)| (key, idx))
         .collect();
@@ -125,6 +136,7 @@ pub fn build_graph(
     // Create arcs between nodes along each road
     for (coords, road_def_idx, params) in road_polylines {
         let mut last_junction_idx: Option<usize> = None;
+        let mut last_junction_coord_idx: usize = 0;
         let mut distance_from_last: f64 = 0.0;
 
         for i in 0..coords.len() {
@@ -137,6 +149,14 @@ pub fn build_graph(
             if let Some(&node_idx) = junctions.get(&key) {
                 if let Some(prev_idx) = last_junction_idx {
                     let len = distance_from_last as u32;
+                    // Forward heading: bearing from prev junction to next vertex
+                    let fwd_heading = direction_from_degrees(
+                        coords[last_junction_coord_idx].bearing_to(&coords[last_junction_coord_idx + 1])
+                    );
+                    // Reverse heading: bearing from current junction to previous vertex
+                    let rev_heading = direction_from_degrees(
+                        coords[i].bearing_to(&coords[i - 1])
+                    );
                     // Forward arc
                     nodes[prev_idx].arcs.push(RouteArc {
                         dest_node_index: node_idx,
@@ -148,6 +168,7 @@ pub fn build_graph(
                         access: params.access_flags,
                         toll: params.toll,
                         one_way: params.one_way,
+                        initial_heading: fwd_heading,
                     });
                     // Reverse arc (unless one-way)
                     if !params.one_way {
@@ -161,13 +182,20 @@ pub fn build_graph(
                             access: params.access_flags,
                             toll: params.toll,
                             one_way: false,
+                            initial_heading: rev_heading,
                         });
                     }
                 }
                 last_junction_idx = Some(node_idx);
+                last_junction_coord_idx = i;
                 distance_from_last = 0.0;
             }
         }
+    }
+
+    // Calculate node_class for each node based on connected arcs
+    for node in &mut nodes {
+        node.node_class = calculate_node_class(&node.arcs);
     }
 
     nodes
@@ -181,6 +209,49 @@ pub fn haversine_distance(a: &Coord, b: &Coord) -> f64 {
 /// Calculate bearing from a to b in degrees
 pub fn bearing(a: &Coord, b: &Coord) -> f64 {
     a.bearing_to(b)
+}
+
+/// Convert bearing in degrees to Garmin direction byte: round(deg * 256 / 360) as i8.
+/// Uses wrapping cast to match Java's `(byte)` behavior.
+pub fn direction_from_degrees(deg: f64) -> i8 {
+    ((deg * 256.0 / 360.0).round() as i32) as i8
+}
+
+/// Calculate node_class using mkgmap's getGroup() algorithm.
+/// Returns the highest road class used by 2+ roads at this node;
+/// if only one class, use that; otherwise, the 2nd highest.
+pub fn calculate_node_class(arcs: &[RouteArc]) -> u8 {
+    if arcs.is_empty() {
+        return 0;
+    }
+    // Count roads per class (unique road_def_index per class)
+    let mut class_roads: [HashSet<usize>; 8] = Default::default();
+    for arc in arcs {
+        class_roads[arc.road_class as usize].insert(arc.road_def_index);
+    }
+
+    // Find distinct classes used
+    let used_classes: Vec<u8> = (0..8u8)
+        .rev()
+        .filter(|&c| !class_roads[c as usize].is_empty())
+        .collect();
+
+    if used_classes.is_empty() {
+        return 0;
+    }
+    if used_classes.len() == 1 {
+        return used_classes[0];
+    }
+
+    // Highest class with 2+ roads
+    for &c in &used_classes {
+        if class_roads[c as usize].len() >= 2 {
+            return c;
+        }
+    }
+
+    // Fallback: 2nd highest class
+    used_classes[1]
 }
 
 #[cfg(test)]
@@ -326,5 +397,51 @@ mod tests {
         assert_eq!(flags[0], vec![true, true, true]);
         // Road2: endpoint(true), junction(true), endpoint(true)
         assert_eq!(flags[1], vec![true, true, true]);
+    }
+
+    #[test]
+    fn test_initial_heading() {
+        // direction_from_degrees: 0°→0, 90°→64, 180°→-128, 270°→-64
+        assert_eq!(direction_from_degrees(0.0), 0);
+        assert_eq!(direction_from_degrees(90.0), 64);
+        assert_eq!(direction_from_degrees(180.0), -128);
+        assert_eq!(direction_from_degrees(270.0), -64);
+    }
+
+    #[test]
+    fn test_node_class_calculation() {
+        use crate::img::nod::RouteArc;
+        // 2 roads class 3, 1 road class 4 → highest with 2+ = class 3
+        let arcs = vec![
+            RouteArc {
+                dest_node_index: 1, road_def_index: 0, length_meters: 100,
+                forward: true, road_class: 3, speed: 0, access: 0,
+                toll: false, one_way: false, initial_heading: 0,
+            },
+            RouteArc {
+                dest_node_index: 2, road_def_index: 1, length_meters: 100,
+                forward: true, road_class: 3, speed: 0, access: 0,
+                toll: false, one_way: false, initial_heading: 0,
+            },
+            RouteArc {
+                dest_node_index: 3, road_def_index: 2, length_meters: 100,
+                forward: true, road_class: 4, speed: 0, access: 0,
+                toll: false, one_way: false, initial_heading: 0,
+            },
+        ];
+        assert_eq!(calculate_node_class(&arcs), 3);
+
+        // Only one class (2) → use that
+        let arcs_single = vec![
+            RouteArc {
+                dest_node_index: 1, road_def_index: 0, length_meters: 100,
+                forward: true, road_class: 2, speed: 0, access: 0,
+                toll: false, one_way: false, initial_heading: 0,
+            },
+        ];
+        assert_eq!(calculate_node_class(&arcs_single), 2);
+
+        // No arcs → 0
+        assert_eq!(calculate_node_class(&[]), 0);
     }
 }
