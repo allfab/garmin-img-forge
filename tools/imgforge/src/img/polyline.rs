@@ -46,12 +46,19 @@ impl Polyline {
     ) -> Vec<u8> {
         let mut buf = Vec::with_capacity(8 + bitstream.len());
 
+        // Total data after blen field: bitstream + NET offset (3B) if has_net_info
+        let total_len = if self.has_net_info {
+            bitstream.len() + 3
+        } else {
+            bitstream.len()
+        };
+
         // Type byte with flags
         let mut type_byte = (self.type_code & 0xFF) as u8;
         if self.direction {
             type_byte |= 0x40;
         }
-        if bitstream.len() > 256 {
+        if total_len > 256 {
             type_byte |= 0x80; // 2-byte length
         }
         buf.push(type_byte);
@@ -76,11 +83,9 @@ impl Polyline {
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 
-        // Bitstream length — Garmin convention: stored as (bitstream_bytes - 1)
-        // NET offset (3B) is SEPARATE — decoder reads blen+1 as bitstream,
-        // then 3 more bytes if has_net_info. Confirmed by OTM Andorra analysis
-        // where has_net polylines have blen=0 (total bitstream=1 byte).
-        let blen = bitstream.len() - 1;
+        // Bitstream length — includes NET offset when has_net_info.
+        // Decoder reads blen+1 bytes; last 3 are NET offset if has_net_info.
+        let blen = total_len - 1;
         if blen >= 256 {
             buf.extend_from_slice(&(blen as u16).to_le_bytes());
         } else {
@@ -289,8 +294,8 @@ mod tests {
         let lbl = u32::from_le_bytes([buf[1], buf[2], buf[3], 0]);
         assert!(lbl & 0x800000 != 0, "has_net_info flag should be set in label");
 
-        // blen is bitstream only: 2 - 1 = 1 (NET offset is separate, outside blen)
-        assert_eq!(buf[8], 1, "blen should be bitstream(2) - 1 = 1");
+        // blen includes NET offset: (2 + 3) - 1 = 4
+        assert_eq!(buf[8], 4, "blen should be bitstream(2) + net_offset(3) - 1 = 4");
 
         // Last 3 bytes should be net_offset (little-endian)
         let len = buf.len();

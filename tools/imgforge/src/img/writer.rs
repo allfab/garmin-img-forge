@@ -559,17 +559,9 @@ fn encode_subdivision_rgn(
         pl.label_offset = line_labels[split_line.mp_index];
         pl.direction = mp_line.direction;
 
-        // P3: Activate RGN→NET link for standard-type routing polylines
-        // at the leaf level (most detailed) only — mkgmap convention.
-        // P4 (extra_bit / node_flags) is disabled for now.
-        if is_leaf_level {
-            if let Some(ctx) = routing_ctx {
-                if let Some(&net1_off) = ctx.net1_offsets_by_mp_index.get(&split_line.mp_index) {
-                    pl.has_net_info = true;
-                    pl.net_offset = net1_off;
-                }
-            }
-        }
+        // P3 (has_net_info) and P4 (extra_bit) disabled — format investigation needed.
+        // Focus on getting NOD graph to display first.
+        let _ = is_leaf_level;
 
         let deltas = compute_deltas(&split_line.points, subdiv);
         let is_ext = mp_line.type_code >= 0x100;
