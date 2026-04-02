@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod dem;
 pub mod error;
 pub mod img;
 pub mod parser;

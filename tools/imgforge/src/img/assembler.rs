@@ -13,6 +13,7 @@ pub struct TileSubfiles {
     pub lbl: Vec<u8>,
     pub net: Option<Vec<u8>>,
     pub nod: Option<Vec<u8>>,
+    pub dem: Option<Vec<u8>>,
 }
 
 /// Metadata for the gmapsupp assembly
@@ -83,6 +84,9 @@ pub fn build_gmapsupp_with_meta_and_typ(
         }
         if let Some(ref nod) = tile.nod {
             fs.add_file(&name, "NOD", nod.clone());
+        }
+        if let Some(ref dem) = tile.dem {
+            fs.add_file(&name, "DEM", dem.clone());
         }
     }
 
@@ -252,6 +256,7 @@ fn extract_subfiles(img_data: &[u8], map_number: &str) -> Result<TileSubfiles, I
         lbl,
         net,
         nod,
+        dem: None,
     })
 }
 
@@ -275,6 +280,7 @@ mod tests {
             lbl: vec![0x03; 150],
             net: None,
             nod: None,
+            dem: None,
         };
         let result = build_gmapsupp(&[tile], "Test Map");
         assert!(result.is_ok());

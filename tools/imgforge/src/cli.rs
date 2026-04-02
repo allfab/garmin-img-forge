@@ -98,6 +98,22 @@ pub enum Commands {
         /// TYP file for custom map styling/symbology
         #[arg(long, value_name = "FILE")]
         typ_file: Option<PathBuf>,
+
+        /// DEM elevation data paths (directories or files, .hgt/.asc)
+        #[arg(long, value_name = "PATH", value_delimiter = ',')]
+        dem: Option<Vec<PathBuf>>,
+
+        /// DEM distances between points per zoom level
+        #[arg(long, value_name = "DISTS", value_delimiter = ',')]
+        dem_dists: Option<Vec<i32>>,
+
+        /// DEM interpolation method: auto, bicubic, bilinear
+        #[arg(long, value_name = "METHOD", default_value = "auto")]
+        dem_interpolation: String,
+
+        /// Source SRS for ASC files (e.g. EPSG:2154 for Lambert 93)
+        #[arg(long, value_name = "SRS")]
+        dem_source_srs: Option<String>,
     },
 
     /// Build multi-tile gmapsupp.img from a directory of .mp files
@@ -228,5 +244,21 @@ pub enum Commands {
         /// TYP file for custom map styling/symbology
         #[arg(long, value_name = "FILE")]
         typ_file: Option<PathBuf>,
+
+        /// DEM elevation data paths (directories or files, .hgt/.asc)
+        #[arg(long, value_name = "PATH", value_delimiter = ',')]
+        dem: Option<Vec<PathBuf>>,
+
+        /// DEM distances between points per zoom level
+        #[arg(long, value_name = "DISTS", value_delimiter = ',')]
+        dem_dists: Option<Vec<i32>>,
+
+        /// DEM interpolation method: auto, bicubic, bilinear
+        #[arg(long, value_name = "METHOD", default_value = "auto")]
+        dem_interpolation: String,
+
+        /// Source SRS for ASC files (e.g. EPSG:2154 for Lambert 93)
+        #[arg(long, value_name = "SRS")]
+        dem_source_srs: Option<String>,
     },
 }

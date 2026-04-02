@@ -16,7 +16,12 @@
 - **Métadonnées complètes** : Copyright, pays, région, version produit dans le TDB
 - **Résilience** : Mode `--keep-going` pour continuer malgré les tuiles en erreur
 - **Symbologie TYP** : Intégration d'un fichier `.typ` personnalisé pour le rendu des cartes
-- **Format Garmin complet** : Génération des sous-fichiers TRE, RGN, LBL, NET, NOD
+- **DEM / Hill Shading** : Génération du sous-fichier DEM Garmin pour l'ombrage du relief et les profils d'altitude
+  - Lecture native HGT (SRTM 1/3 arc-sec) et ASC (ESRI ASCII Grid, BDAltiv2)
+  - Reprojection intégrée via proj4rs (Lambert 93, UTM, LAEA — zéro dépendance système)
+  - Interpolation bilinéaire / bicubique (Catmull-Rom)
+  - Encodage multi-niveaux, tuiles 64×64, compression bitstream delta+hybrid+plateau
+- **Format Garmin complet** : Génération des sous-fichiers TRE, RGN, LBL, NET, NOD, DEM
 - **Fichier TDB** : Génération automatique du fichier compagnon `.tdb`
 - **Rapport JSON** : Statistiques de compilation en sortie structurée
 - **Zéro dépendance** : Binaire autonome, pas besoin de GDAL ni de librairie externe
@@ -116,6 +121,15 @@ imgforge compile tile_0_0.mp --no-route
 
 # Avec un fichier TYP personnalisé pour la symbologie
 imgforge compile tile_0_0.mp --typ-file style.typ
+
+# Avec DEM (hill shading) depuis des fichiers HGT SRTM
+imgforge compile tile_0_0.mp --dem ./srtm_hgt/
+
+# Avec DEM depuis des fichiers ASC BDAltiv2 en Lambert 93
+imgforge compile tile_0_0.mp --dem ./bdaltiv2/ --dem-source-srs EPSG:2154
+
+# DEM avec résolutions personnalisées et interpolation bicubique
+imgforge compile tile_0_0.mp --dem ./hgt/ --dem-dists 3312,13248,26512 --dem-interpolation bicubic
 ```
 
 ### Commande `build` : Multi-tile gmapsupp
@@ -152,6 +166,12 @@ imgforge build tiles/ --unicode --reduce-point-density 3.0 --min-size-polygon 8
 
 # Build avec fichier TYP personnalisé pour la symbologie
 imgforge build tiles/ --jobs 8 --typ-file bdtopo.typ
+
+# Build avec DEM (hill shading sur GPS Garmin)
+imgforge build tiles/ --jobs 8 --dem ./srtm_hgt/
+
+# Build avec DEM BDAltiv2 Lambert 93
+imgforge build tiles/ --jobs 8 --dem ./bdaltiv2/ --dem-source-srs EPSG:2154
 ```
 
 ## Options CLI
@@ -216,6 +236,21 @@ Les options suivantes sont disponibles sur les deux commandes. Elles sont appliq
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `--typ-file <FILE>` | Fichier `.typ` de symbologie personnalisée (couleurs, motifs, icônes) | - |
+
+#### DEM / Hill Shading
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--dem <PATH,...>` | Chemins vers répertoires/fichiers d'élévation (`.hgt`, `.asc`), séparés par virgules | - |
+| `--dem-dists <DISTS,...>` | Résolutions DEM par niveau de zoom (distances entre points). Ex: `3312,13248,26512` | auto |
+| `--dem-interpolation <METHOD>` | Méthode d'interpolation : `auto`, `bilinear`, `bicubic` | `auto` |
+| `--dem-source-srs <SRS>` | SRS source pour les fichiers ASC (ex: `EPSG:2154` pour Lambert 93) | WGS84 |
+
+> **Formats supportés** : HGT SRTM (1/3 arc-sec, binaire big-endian i16) et ASC ESRI ASCII Grid (BDAltiv2, etc.)
+>
+> **EPSG supportés** : 2154 (Lambert 93), 4326 (WGS84), 32631-32633 (UTM), 25831-25833 (ETRS89/UTM), 3035 (LAEA), 3857 (Web Mercator), ou toute chaîne proj4.
+>
+> **Distances typiques** : 3312 (≈1 arc-sec), 9936 (≈3 arc-sec), 13248, 26512, 53024
 
 ### Commande `compile`
 
@@ -327,6 +362,7 @@ imgforge build tiles/ --output gmapsupp.img --jobs 8 \
   --reduce-point-density 3.0 \
   --min-size-polygon 8 \
   --typ-file bdtopo.typ \
+  --dem ./srtm_hgt/ \
   --keep-going
 
 # Vérifier le résultat
@@ -339,19 +375,19 @@ ls -lh gmapsupp.img
 imgforge s'inscrit dans le pipeline de création de cartes Garmin :
 
 ```
-Données SIG (Shapefile, GPKG, PostGIS)
+Données SIG (Shapefile, GPKG, PostGIS)      Données d'élévation
+    │                                         │
+    ▼                                         │  HGT (SRTM)
+ mpforge build     ← Tuilage spatial          │  ASC (BDAltiv2)
+    │                                         │
+    ▼                                         │
+ tiles/*.mp        ← Fichiers Polish Map      │
+    │                                         │
+    ▼                                         ▼
+ imgforge build    ← Compilation Garmin IMG + DEM hill shading
     │
     ▼
- mpforge build     ← Tuilage spatial + export Polish Map
-    │
-    ▼
- tiles/*.mp        ← Fichiers Polish Map par tuile
-    │
-    ▼
- imgforge build    ← Compilation Garmin IMG
-    │
-    ▼
- gmapsupp.img      ← Carte Garmin prête pour le GPS
+ gmapsupp.img      ← Carte Garmin avec relief (prête pour GPS)
 ```
 
 ## Architecture Garmin IMG
@@ -365,6 +401,7 @@ imgforge génère les sous-fichiers standards du format Garmin IMG :
 | **LBL** | Labels (noms, encodage Format 6/9/10 — ASCII, codepage, UTF-8) |
 | **NET** | Réseau routier (topologie) |
 | **NOD** | Noeuds de routage |
+| **DEM** | Données d'élévation (hill shading, profils altitude sur GPS Garmin) |
 | **TYP** | Symbologie personnalisée (couleurs, motifs, icônes de points/lignes/polygones) |
 | **TDB** | Table de description (métadonnées de la carte) |
 
@@ -380,6 +417,11 @@ imgforge/
 │   ├── lib.rs               # Exports publics
 │   ├── error.rs             # Types d'erreurs
 │   ├── report.rs            # Rapport JSON d'exécution
+│   ├── dem/
+│   │   ├── mod.rs           # Types partagés, détection format, chargement multi-fichiers
+│   │   ├── hgt.rs           # Lecteur HGT (SRTM, big-endian i16)
+│   │   ├── asc.rs           # Lecteur ASC (ESRI ASCII Grid, reprojection proj4rs)
+│   │   └── converter.rs     # Interpolation bilinéaire/bicubique, resampling
 │   ├── img/
 │   │   ├── writer.rs        # Génération IMG (orchestration)
 │   │   ├── assembler.rs     # Assemblage gmapsupp multi-tile
@@ -388,6 +430,7 @@ imgforge/
 │   │   ├── lbl.rs           # Sous-fichier LBL
 │   │   ├── net.rs           # Sous-fichier NET
 │   │   ├── nod.rs           # Sous-fichier NOD
+│   │   ├── dem.rs           # Sous-fichier DEM (encodeur Garmin, compression bitstream)
 │   │   ├── tdb.rs           # Fichier compagnon TDB
 │   │   ├── splitter.rs      # Découpage en subdivisions
 │   │   ├── coord.rs         # Encodage coordonnées Garmin

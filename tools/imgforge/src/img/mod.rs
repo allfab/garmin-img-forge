@@ -1,5 +1,6 @@
 pub mod coord;
 pub mod area;
+pub mod dem;
 pub mod bit_writer;
 pub mod bit_reader;
 pub mod common_header;

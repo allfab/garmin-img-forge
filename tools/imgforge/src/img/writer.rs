@@ -46,10 +46,34 @@ pub fn build_img_with_typ(mp: &MpFile, typ_data: Option<&[u8]>) -> Result<Vec<u8
     if let Some(ref nod) = result.nod {
         fs.add_file(&result.map_number, "NOD", nod.clone());
     }
+    if let Some(ref dem) = result.dem {
+        fs.add_file(&result.map_number, "DEM", dem.clone());
+    }
     if let Some(typ) = typ_data {
         fs.add_file(&result.map_number, "TYP", typ.to_vec());
     }
 
+    fs.sync()
+}
+
+/// Build a single-tile IMG from a pre-built TileResult with optional TYP
+pub fn build_img_with_typ_from_result(result: &TileResult, typ_data: Option<&[u8]>) -> Result<Vec<u8>, ImgError> {
+    let mut fs = ImgFilesystem::new(&result.description);
+    fs.add_file(&result.map_number, "TRE", result.tre.clone());
+    fs.add_file(&result.map_number, "RGN", result.rgn.clone());
+    fs.add_file(&result.map_number, "LBL", result.lbl.clone());
+    if let Some(ref net) = result.net {
+        fs.add_file(&result.map_number, "NET", net.clone());
+    }
+    if let Some(ref nod) = result.nod {
+        fs.add_file(&result.map_number, "NOD", nod.clone());
+    }
+    if let Some(ref dem) = result.dem {
+        fs.add_file(&result.map_number, "DEM", dem.clone());
+    }
+    if let Some(typ) = typ_data {
+        fs.add_file(&result.map_number, "TYP", typ.to_vec());
+    }
     fs.sync()
 }
 
@@ -62,6 +86,7 @@ pub struct TileResult {
     pub lbl: Vec<u8>,
     pub net: Option<Vec<u8>>,
     pub nod: Option<Vec<u8>>,
+    pub dem: Option<Vec<u8>>,
 }
 
 /// Build subfiles from a parsed .mp without assembling into IMG
@@ -187,6 +212,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         lbl: lbl_writer.build(),
         net: net_data,
         nod: nod_data,
+        dem: None,
     })
 }
 

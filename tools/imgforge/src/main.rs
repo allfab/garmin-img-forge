@@ -5,6 +5,7 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use imgforge::cli::{Cli, Commands};
+use imgforge::dem;
 use imgforge::img::writer;
 use imgforge::parser;
 use imgforge::report::BuildReport;
@@ -53,6 +54,7 @@ fn main() -> Result<()> {
             transparent, draw_priority, levels, order_by_decreasing_area,
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             route, net, no_route, copyright_message, typ_file,
+            dem, dem_dists, dem_interpolation, dem_source_srs,
         } => {
             let start = Instant::now();
             let mut report = BuildReport::new();
@@ -79,7 +81,28 @@ fn main() -> Result<()> {
 
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            let img_data = writer::build_img_with_typ(&mp, typ_data.as_deref())
+            // Build DEM if --dem provided
+            let dem_config = dem.as_ref().map(|paths| {
+                imgforge::dem::DemConfig {
+                    paths: paths.clone(),
+                    dists: dem_dists.clone().unwrap_or_default(),
+                    interpolation: imgforge::dem::InterpolationMethod::from_str(&dem_interpolation),
+                    source_srs: dem_source_srs.clone(),
+                }
+            });
+
+            let mut result = writer::build_subfiles(&mp)
+                .with_context(|| "Failed to build subfiles")?;
+
+            // Add DEM subfile if configured
+            if let Some(ref config) = dem_config {
+                match build_dem_subfile(&mp, config) {
+                    Ok(dem_data) => { result.dem = Some(dem_data); }
+                    Err(e) => { tracing::warn!("DEM generation failed: {:#}", e); }
+                }
+            }
+
+            let img_data = writer::build_img_with_typ_from_result(&result, typ_data.as_deref())
                 .with_context(|| "Failed to build IMG")?;
 
             let out_path = output.unwrap_or_else(|| {
@@ -108,6 +131,7 @@ fn main() -> Result<()> {
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going, typ_file,
+            dem, dem_dists, dem_interpolation, dem_source_srs,
         } => {
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
@@ -129,10 +153,33 @@ fn main() -> Result<()> {
                 anyhow::bail!("No .mp files found in {}", input);
             }
 
+            // Build DEM config if --dem provided
+            let dem_config = dem.as_ref().map(|paths| {
+                dem::DemConfig {
+                    paths: paths.clone(),
+                    dists: dem_dists.clone().unwrap_or_default(),
+                    interpolation: dem::InterpolationMethod::from_str(&dem_interpolation),
+                    source_srs: dem_source_srs.clone(),
+                }
+            });
+
+            // Pre-load DEM grids once, share via Arc (F6 fix)
+            let shared_dem = dem_config.as_ref().map(|config| {
+                match dem::load_elevation_sources(&config.paths, config.source_srs.as_deref()) {
+                    Ok(grids) => Some(std::sync::Arc::new(grids)),
+                    Err(e) => {
+                        tracing::warn!("DEM loading failed: {:#}", e);
+                        None
+                    }
+                }
+            }).flatten();
+
             // Clone CLI values for parallel closure
             let levels_clone = levels.clone();
             let simplify_clone = simplify_polygons.clone();
             let copyright_clone = copyright_message.clone();
+            let dem_config_clone = dem_config.clone();
+            let shared_dem_clone = shared_dem.clone();
 
             use rayon::prelude::*;
 
@@ -152,8 +199,17 @@ fn main() -> Result<()> {
                     route, net, no_route, copyright_clone.as_deref(),
                 );
 
-                let tile = writer::build_subfiles(&mp)
+                let mut tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
+
+                // Add DEM subfile using pre-loaded grids
+                if let (Some(ref config), Some(ref grids)) = (&dem_config_clone, &shared_dem_clone) {
+                    match build_dem_subfile_with_grids(&mp, config, grids) {
+                        Ok(dem_data) => { tile.dem = Some(dem_data); }
+                        Err(e) => { tracing::warn!("DEM generation failed for {}: {:#}", path.display(), e); }
+                    }
+                }
+
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
                 Ok((tile, counts, path.display().to_string()))
             }).collect();
@@ -178,6 +234,7 @@ fn main() -> Result<()> {
                             lbl: tile.lbl,
                             net: tile.net,
                             nod: tile.nod,
+                            dem: tile.dem,
                         });
                     }
                     Err(e) => {
@@ -317,6 +374,84 @@ fn apply_tile_overrides(
     // Copyright override
     if let Some(cm) = copyright_message {
         mp.header.copyright = cm.to_string();
+    }
+}
+
+/// Build DEM subfile from DEM config and map bounds (loads grids from disk)
+fn build_dem_subfile(
+    mp: &imgforge::parser::mp_types::MpFile,
+    config: &dem::DemConfig,
+) -> Result<Vec<u8>> {
+    let grids = dem::load_elevation_sources(&config.paths, config.source_srs.as_deref())?;
+    build_dem_subfile_with_grids(mp, config, &grids)
+}
+
+/// Build DEM subfile using pre-loaded grids (for parallel builds — F6 fix)
+fn build_dem_subfile_with_grids(
+    mp: &imgforge::parser::mp_types::MpFile,
+    config: &dem::DemConfig,
+    grids: &[dem::ElevationGrid],
+) -> Result<Vec<u8>> {
+    use imgforge::img::dem::DemWriter;
+    use imgforge::img::zoom::Zoom;
+
+    let converter = dem::converter::DemConverter::new(grids.to_vec(), config.interpolation.clone());
+
+    let bounds = compute_mp_bounds(mp);
+
+    let levels: Vec<Zoom> = mp.header.levels.iter().enumerate().map(|(i, &res)| {
+        Zoom::new(i as u8, res)
+    }).collect();
+
+    let mut writer = DemWriter::new();
+    writer.calc(&bounds, config, &converter, &levels);
+
+    Ok(writer.build())
+}
+
+/// Compute WGS84 bounds from mp file features
+fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds {
+    let mut min_lat = f64::INFINITY;
+    let mut max_lat = f64::NEG_INFINITY;
+    let mut min_lon = f64::INFINITY;
+    let mut max_lon = f64::NEG_INFINITY;
+
+    let mut update = |coord: &imgforge::img::coord::Coord| {
+        let lat = coord.lat_degrees();
+        let lon = coord.lon_degrees();
+        if lat < min_lat { min_lat = lat; }
+        if lat > max_lat { max_lat = lat; }
+        if lon < min_lon { min_lon = lon; }
+        if lon > max_lon { max_lon = lon; }
+    };
+
+    for pt in &mp.points {
+        update(&pt.coord);
+    }
+    for pl in &mp.polylines {
+        for coord in &pl.points {
+            update(coord);
+        }
+    }
+    for pg in &mp.polygons {
+        for coord in &pg.points {
+            update(coord);
+        }
+    }
+
+    if min_lat > max_lat {
+        // No features — use a default 1-degree box
+        min_lat = 45.0;
+        max_lat = 46.0;
+        min_lon = 5.0;
+        max_lon = 6.0;
+    }
+
+    dem::GeoBounds {
+        north: max_lat,
+        south: min_lat,
+        east: max_lon,
+        west: min_lon,
     }
 }
 

@@ -570,12 +570,12 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
         TileSubfiles {
             map_number: tile_a.map_number, description: tile_a.description,
             tre: tile_a.tre, rgn: tile_a.rgn, lbl: tile_a.lbl,
-            net: tile_a.net, nod: tile_a.nod,
+            net: tile_a.net, nod: tile_a.nod, dem: tile_a.dem,
         },
         TileSubfiles {
             map_number: tile_b.map_number, description: tile_b.description,
             tre: tile_b.tre, rgn: tile_b.rgn, lbl: tile_b.lbl,
-            net: tile_b.net, nod: tile_b.nod,
+            net: tile_b.net, nod: tile_b.nod, dem: tile_b.dem,
         },
     ];
 
@@ -686,4 +686,116 @@ fn test_img_file_size_reasonable() {
     // A minimal map should be between 2KB and 100KB
     assert!(img.len() > 2048, "IMG too small: {} bytes", img.len());
     assert!(img.len() < 100_000, "IMG unexpectedly large: {} bytes", img.len());
+}
+
+// ============================================================================
+// DEM integration tests
+// ============================================================================
+
+#[test]
+fn test_compile_without_dem_no_dem_subfile() {
+    // AC 5: Without --dem, IMG should NOT contain a DEM subfile
+    let img = compile_fixture("minimal.mp");
+    let dem = find_subfile(&img, "DEM");
+    assert!(dem.is_none(), "IMG without --dem should NOT contain a DEM subfile");
+}
+
+#[test]
+fn test_dem_writer_produces_valid_header() {
+    use imgforge::img::dem::DemWriter;
+
+    let writer = DemWriter::new();
+    let data = writer.build();
+
+    // Minimum: 41-byte header
+    assert!(data.len() >= 41, "DEM data too small: {} bytes", data.len());
+
+    // CommonHeader: header_length at offset 0-1
+    let header_len = u16::from_le_bytes([data[0], data[1]]);
+    assert_eq!(header_len, 41, "DEM header length should be 41");
+
+    // Type string: "GARMIN DEM" at offset 2-11
+    assert_eq!(&data[2..12], b"GARMIN DEM");
+
+    // Unknown byte (0x01) at offset 12
+    assert_eq!(data[12], 0x01);
+
+    // Lock byte (0x00) at offset 13
+    assert_eq!(data[13], 0x00);
+}
+
+#[test]
+fn test_dem_tile_encoding_roundtrip() {
+    use imgforge::img::dem::encode_dem_tile;
+
+    // Flat tile: should produce empty bitstream
+    let flat = vec![500i16; 64 * 64];
+    let result = encode_dem_tile(&flat, 64, 64);
+    assert_eq!(result.base_height, 500);
+    assert_eq!(result.max_delta, 0);
+    assert!(result.bitstream.is_empty());
+
+    // Gradient tile: should produce non-empty bitstream
+    let mut gradient = Vec::with_capacity(64 * 64);
+    for r in 0..64 {
+        for c in 0..64 {
+            gradient.push((100 + r + c) as i16);
+        }
+    }
+    let result = encode_dem_tile(&gradient, 64, 64);
+    assert_eq!(result.base_height, 100);
+    assert_eq!(result.max_delta, 126); // max = 100 + 63 + 63 = 226, delta = 126
+    assert!(!result.bitstream.is_empty());
+}
+
+#[test]
+fn test_dem_section_with_converter() {
+    use imgforge::dem::{ElevationGrid, GeoBounds, InterpolationMethod};
+    use imgforge::dem::converter::DemConverter;
+    use imgforge::img::dem::DemSection;
+
+    // Create a simple elevation grid covering the minimal.mp area
+    let width = 10u32;
+    let height = 10u32;
+    let mut data = Vec::with_capacity((width * height) as usize);
+    for r in 0..height {
+        for c in 0..width {
+            data.push((200 + r * 10 + c * 5) as f64);
+        }
+    }
+
+    let grid = ElevationGrid {
+        width,
+        height,
+        data,
+        nodata: -99999.0,
+        bounds: GeoBounds {
+            south: 48.0,
+            west: 7.0,
+            north: 49.0,
+            east: 8.0,
+        },
+        cellsize_lat: 1.0 / 9.0,
+        cellsize_lon: 1.0 / 9.0,
+    };
+
+    let converter = DemConverter::new(vec![grid], InterpolationMethod::Bilinear);
+
+    let bounds = GeoBounds {
+        south: 48.57,
+        west: 7.75,
+        north: 48.58,
+        east: 7.76,
+    };
+
+    let section = DemSection::new(0, &bounds, 3312, &converter);
+
+    // Should have at least 1 tile
+    assert!(section.tiles_lat >= 1);
+    assert!(section.tiles_lon >= 1);
+    assert!(!section.tile_results.is_empty());
+
+    // Section header should be 60 bytes
+    let header = section.build_header(0, 0);
+    assert_eq!(header.len(), 60);
 }
