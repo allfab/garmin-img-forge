@@ -33,7 +33,9 @@ SKIP_EXISTING=true
 AUTO_EXTRACT=true
 DEBUG=false
 JSON_OUTPUT=""          # chemin fichier pour résumé JSON (vide = stdout)
-SCRIPT_VERSION="1.1.0"
+WITH_CONTOURS=false
+CONTOURS_DATA_ROOT="./pipeline/data/courbes"
+SCRIPT_VERSION="1.2.0"
 
 # Métriques téléchargement — collecte pour résumé JSON (AC6)
 _LAST_DOWNLOAD_SIZE=0
@@ -90,6 +92,27 @@ declare -A REGIONS=(
     [FXX]="R11 R24 R27 R28 R32 R44 R52 R53 R75 R76 R84 R93 R94" # France métro (13 fichiers)
 )
 
+# Mapping région → départements INSEE (pour les courbes de niveau, livrées par département)
+declare -A REGIONS_TO_DEPARTMENTS=(
+    [ARA]="D001 D003 D007 D015 D026 D038 D042 D043 D063 D069 D073 D074"
+    [BFC]="D021 D025 D039 D058 D070 D071 D089 D090"
+    [BRE]="D022 D029 D035 D056"
+    [CVL]="D018 D028 D036 D037 D041 D045"
+    [COR]="D02A D02B"
+    [GES]="D008 D010 D051 D052 D054 D055 D057 D067 D068 D088"
+    [HDF]="D002 D059 D060 D062 D080"
+    [IDF]="D075 D077 D078 D091 D092 D093 D094 D095"
+    [NOR]="D014 D027 D050 D061 D076"
+    [NAQ]="D016 D017 D019 D023 D024 D033 D040 D047 D064 D079 D086 D087"
+    [OCC]="D009 D011 D012 D030 D031 D032 D034 D046 D048 D065 D066 D081 D082"
+    [PDL]="D044 D049 D053 D072 D085"
+    [PAC]="D004 D005 D006 D013 D083 D084"
+    # Groupements multi-régions
+    [FRANCE-SUD]="D009 D011 D012 D016 D017 D019 D023 D024 D030 D031 D032 D033 D034 D040 D046 D047 D048 D064 D065 D066 D079 D081 D082 D086 D087 D004 D005 D006 D013 D083 D084 D001 D003 D007 D015 D026 D038 D042 D043 D063 D069 D073 D074 D02A D02B"
+    [FRANCE-NORD]="D075 D077 D078 D091 D092 D093 D094 D095 D018 D028 D036 D037 D041 D045 D021 D025 D039 D058 D070 D071 D089 D090 D014 D027 D050 D061 D076 D002 D059 D060 D062 D080 D044 D049 D053 D072 D085 D022 D029 D035 D056 D008 D010 D051 D052 D054 D055 D057 D067 D068 D088"
+    [FXX]="D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D012 D013 D014 D015 D016 D017 D018 D019 D02A D02B D021 D022 D023 D024 D025 D026 D027 D028 D029 D030 D031 D032 D033 D034 D035 D036 D037 D038 D039 D040 D041 D042 D043 D044 D045 D046 D047 D048 D049 D050 D051 D052 D053 D054 D055 D056 D057 D058 D059 D060 D061 D062 D063 D064 D065 D066 D067 D068 D069 D070 D071 D072 D073 D074 D075 D076 D077 D078 D079 D080 D081 D082 D083 D084 D085 D086 D087 D088 D089 D090 D091 D092 D093 D094 D095"
+)
+
 # ---------------------------------------------------------------------------
 # Aide
 # ---------------------------------------------------------------------------
@@ -119,6 +142,8 @@ OPTIONS :
     --no-skip           Re-télécharger même si déjà présent
     --dry-run           Simuler sans télécharger
     --json-output FILE  Écrire le résumé JSON dans un fichier (défaut: stdout)
+    --with-contours     Télécharger aussi les courbes de niveau IGN (par département)
+    --contours-root DIR Racine données courbes (défaut: ./pipeline/data/courbes)
     --debug             Afficher les requêtes API et réponses
     --version           Version du script
     -h, --help          Aide
@@ -134,6 +159,8 @@ EXEMPLES :
     ./download-bdtopo.sh --product EXPRESS                  # Express France entière (GPKG)
     ./download-bdtopo.sh --zones D038 --date 2025-12-15     # Date forcée
     DEBUG=1 ./download-bdtopo.sh --zones D038               # Mode debug
+    ./download-bdtopo.sh --zones D038 --with-contours      # BDTOPO + courbes de niveau D038
+    ./download-bdtopo.sh --region ARA --with-contours      # BDTOPO R84 + courbes 12 départements ARA
 EOF
     exit 0
 }
@@ -157,6 +184,8 @@ parse_args() {
             --no-skip)    SKIP_EXISTING=false; shift ;;
             --dry-run)    DRY_RUN=true; shift ;;
             --json-output) JSON_OUTPUT="$2"; shift 2 ;;
+            --with-contours) WITH_CONTOURS=true; shift ;;
+            --contours-root) CONTOURS_DATA_ROOT="$2"; shift 2 ;;
             --debug)      DEBUG=true; shift ;;
             --version)    echo "download-bdtopo.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)    show_help ;;
@@ -747,6 +776,254 @@ show_next_steps() {
 }
 
 # =============================================================================
+# COURBES DE NIVEAU
+# =============================================================================
+
+# Résoudre les zones BDTOPO (régions/départements) en D-codes pour les courbes
+resolve_contour_zones() {
+    declare -ga CONTOUR_ZONES=()
+
+    # Si --region est défini, utiliser REGIONS_TO_DEPARTMENTS
+    if [[ -n "$REGION" ]]; then
+        if [[ -z "${REGIONS_TO_DEPARTMENTS[$REGION]+x}" ]]; then
+            log_error "Région inconnue pour courbes : $REGION"
+            exit 1
+        fi
+        IFS=' ' read -ra CONTOUR_ZONES <<< "${REGIONS_TO_DEPARTMENTS[$REGION]}"
+        log_info "Courbes — Région $REGION → ${#CONTOUR_ZONES[@]} département(s)"
+        return
+    fi
+
+    # Si --zones est défini, résoudre chaque zone
+    for zone in "${ZONES[@]}"; do
+        if [[ "$zone" =~ ^D ]]; then
+            # Déjà un D-code
+            CONTOUR_ZONES+=("$zone")
+        elif [[ -n "${REGIONS_TO_DEPARTMENTS[$zone]+x}" ]]; then
+            # Zone multi-régions (FRANCE-NORD, FRANCE-SUD, FXX) ou raccourci région (ARA, etc.)
+            IFS=' ' read -ra dept_list <<< "${REGIONS_TO_DEPARTMENTS[$zone]}"
+            CONTOUR_ZONES+=("${dept_list[@]}")
+            log_debug "Courbes — $zone → ${#dept_list[@]} département(s)"
+        elif [[ "$zone" =~ ^R ]]; then
+            # Code région → trouver la clé REGIONS correspondante et résoudre en départements
+            # Word-boundary match pour éviter que R84 matche aussi FRANCE-SUD contenant "R84"
+            local found=false
+            for key in "${!REGIONS[@]}"; do
+                if [[ " ${REGIONS[$key]} " == *" $zone "* ]]; then
+                    if [[ -n "${REGIONS_TO_DEPARTMENTS[$key]+x}" ]]; then
+                        IFS=' ' read -ra dept_list <<< "${REGIONS_TO_DEPARTMENTS[$key]}"
+                        CONTOUR_ZONES+=("${dept_list[@]}")
+                        log_debug "Courbes — $zone (via $key) → ${#dept_list[@]} département(s)"
+                        found=true
+                        break
+                    fi
+                fi
+            done
+            if [[ "$found" == false ]]; then
+                log_warn "Courbes — impossible de résoudre $zone en départements, ignoré"
+            fi
+        else
+            log_warn "Courbes — zone $zone non supportée (attendu D-code ou R-code)"
+        fi
+    done
+
+    if [[ ${#CONTOUR_ZONES[@]} -eq 0 ]]; then
+        log_error "Courbes — aucune zone à télécharger. Utilisez --zones D038 ou --region ARA avec --with-contours"
+        exit 1
+    fi
+
+    # Dédupliquer
+    local -A seen
+    local unique=()
+    for z in "${CONTOUR_ZONES[@]}"; do
+        if [[ -z "${seen[$z]+x}" ]]; then
+            seen[$z]=1
+            unique+=("$z")
+        fi
+    done
+    CONTOUR_ZONES=("${unique[@]}")
+
+    log_info "Courbes — ${#CONTOUR_ZONES[@]} département(s) : ${CONTOUR_ZONES[*]}"
+}
+
+# Découverte des datasets COURBES via l'API
+discover_contour_downloads() {
+    log_step "Découverte des courbes de niveau via l'API"
+
+    declare -ga CONTOUR_DOWNLOAD_URLS=()
+    declare -ga CONTOUR_DOWNLOAD_DIRS=()
+    declare -ga CONTOUR_DOWNLOAD_NAMES=()
+    declare -ga CONTOUR_DOWNLOAD_MD5S=()
+
+    for zone in "${CONTOUR_ZONES[@]}"; do
+        log_info "Recherche courbes : $zone / SHP ..."
+
+        local dataset_name=""
+
+        # Les courbes ont une date fixe 2021-01-01 et un seul entry par département
+        local probe_url="${API_BASE}/resource/COURBES?zone=${zone}&format=SHP&page=1&limit=1"
+        local probe_response
+        probe_response=$(api_fetch "$probe_url") || {
+            log_warn "  API indisponible pour courbes $zone — ignoré"
+            continue
+        }
+
+        if [[ -z "$probe_response" ]]; then
+            log_warn "  Réponse vide pour courbes $zone — ignoré"
+            continue
+        fi
+
+        # Extraire le titre du dataset
+        dataset_name=$(echo "$probe_response" | grep -oP '<title>\K[^<]+' | grep -i "COURBE" | head -1 || true)
+
+        if [[ -z "$dataset_name" ]]; then
+            log_warn "  Aucun dataset courbes trouvé pour $zone"
+            continue
+        fi
+
+        log_debug "  Dataset courbes : $dataset_name"
+
+        # Récupérer la page détail
+        local detail_url="${API_BASE}/resource/COURBES/${dataset_name}"
+        local detail_response
+        detail_response=$(api_fetch "$detail_url") || {
+            log_warn "  Dataset courbes introuvable : $dataset_name"
+            continue
+        }
+
+        if [[ -z "$detail_response" ]]; then
+            log_warn "  Réponse vide pour le détail de $dataset_name"
+            continue
+        fi
+
+        local download_url
+        download_url=$(xml_get_download_links "$detail_response" | head -1)
+
+        if [[ -z "$download_url" ]]; then
+            log_warn "  Aucune URL de download pour courbes $dataset_name"
+            continue
+        fi
+
+        local md5_hash
+        md5_hash=$(echo "$detail_response" | grep -oP '<entry>[\s\S]*?<content>\K[a-f0-9]{32}' | head -1 || true)
+        if [[ -z "$md5_hash" ]]; then
+            md5_hash=$(echo "$detail_response" | grep -oP '<content>[a-f0-9]{32}</content>' | grep -oP '>[a-f0-9]{32}<' | grep -oP '[a-f0-9]{32}' | head -1 || true)
+        fi
+
+        local file_size
+        file_size=$(xml_get_link_length "$detail_response")
+
+        local filename
+        filename=$(basename "$download_url")
+
+        local target_dir="${CONTOURS_DATA_ROOT}/${zone}"
+
+        CONTOUR_DOWNLOAD_URLS+=("$download_url")
+        CONTOUR_DOWNLOAD_DIRS+=("$target_dir")
+        CONTOUR_DOWNLOAD_NAMES+=("$filename")
+        CONTOUR_DOWNLOAD_MD5S+=("$md5_hash")
+
+        local size_info=""
+        if [[ -n "$file_size" && "$file_size" -gt 0 ]]; then
+            size_info=" ($(numfmt --to=iec "$file_size" 2>/dev/null || echo "${file_size} o"))"
+        fi
+
+        log_ok "  $zone → $filename${size_info}"
+    done
+
+    echo ""
+    if [[ ${#CONTOUR_DOWNLOAD_URLS[@]} -eq 0 ]]; then
+        log_warn "Aucun dataset courbes trouvé."
+    else
+        log_ok "${#CONTOUR_DOWNLOAD_URLS[@]} fichier(s) courbes à télécharger"
+    fi
+}
+
+# Téléchargement des courbes de niveau
+download_contours() {
+    if [[ ${#CONTOUR_DOWNLOAD_URLS[@]} -eq 0 ]]; then return 0; fi
+
+    log_step "Téléchargement des courbes de niveau"
+    local total=${#CONTOUR_DOWNLOAD_URLS[@]} success=0 failed=0
+
+    for i in "${!CONTOUR_DOWNLOAD_URLS[@]}"; do
+        _LAST_DOWNLOAD_SIZE=0
+        _LAST_DOWNLOAD_STATUS="failed"
+        echo -e "\n${BOLD}[$((i+1))/$total]${NC} ${CONTOUR_DOWNLOAD_NAMES[$i]}"
+        if download_file "${CONTOUR_DOWNLOAD_URLS[$i]}" "${CONTOUR_DOWNLOAD_DIRS[$i]}" "${CONTOUR_DOWNLOAD_NAMES[$i]}" "${CONTOUR_DOWNLOAD_MD5S[$i]:-}"; then
+            success=$((success + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    echo ""
+    log_ok "Courbes : $success/$total fichiers téléchargés"
+    if [[ $failed -gt 0 ]]; then log_warn "Courbes : $failed en échec"; fi
+}
+
+# Extraction des archives courbes (structure différente de BDTOPO — pas de 1_DONNEES_LIVRAISON_*)
+extract_contour_archives() {
+    if [[ "$AUTO_EXTRACT" != true || "$DRY_RUN" == true ]]; then return 0; fi
+    if [[ ${#CONTOUR_DOWNLOAD_URLS[@]} -eq 0 ]]; then return 0; fi
+
+    log_step "Extraction des archives courbes de niveau"
+    local extracted=0
+
+    # Itérer seulement sur les répertoires téléchargés dans ce run (pas tout CONTOURS_DATA_ROOT)
+    for dir in "${CONTOUR_DOWNLOAD_DIRS[@]}"; do
+    while IFS= read -r archive; do
+        local bn dir
+        bn=$(basename "$archive")
+        dir=$(dirname "$archive")
+
+        # Pour les splits, ne traiter que .7z.001
+        if [[ "$bn" =~ \.7z\.[0-9]+$ && ! "$bn" =~ \.7z\.001$ ]]; then continue; fi
+
+        log_info "Extraction courbes : $bn"
+        local tmp_extract="${dir}/_extract_tmp"
+        rm -rf "$tmp_extract"
+        mkdir -p "$tmp_extract"
+        _CURRENT_TMP_EXTRACT="$tmp_extract"
+
+        if 7z x -o"$tmp_extract" -y "$archive" &>/dev/null; then
+            # Les courbes n'ont pas de 1_DONNEES_LIVRAISON — déplacer tous les SHP
+            # vers le répertoire cible directement
+            local shp_count=0
+            while IFS= read -r shp_file; do
+                local shp_name
+                shp_name=$(basename "$shp_file")
+                local shp_base="${shp_name%.*}"
+                # Déplacer tous les fichiers associés (.shp, .dbf, .shx, .prj, .cpg)
+                local src_dir
+                src_dir=$(dirname "$shp_file")
+                for ext in shp dbf shx prj cpg; do
+                    if [[ -f "${src_dir}/${shp_base}.${ext}" ]]; then
+                        mv "${src_dir}/${shp_base}.${ext}" "${dir}/"
+                    fi
+                done
+                shp_count=$((shp_count + 1))
+            done < <(find "$tmp_extract" -name "*.shp" -type f 2>/dev/null)
+
+            if [[ $shp_count -gt 0 ]]; then
+                log_ok "  → ${dir}/ ($shp_count fichiers SHP)"
+                extracted=$((extracted + 1))
+            else
+                log_warn "  Aucun SHP trouvé dans l'archive courbes $bn"
+            fi
+            rm -rf "$tmp_extract"
+        else
+            log_error "  Échec extraction : $bn"
+            rm -rf "$tmp_extract"
+        fi
+        _CURRENT_TMP_EXTRACT=""
+    done < <(find "$dir" \( -name "*.7z" -o -name "*.7z.001" \) -type f 2>/dev/null | sort -u)
+    done
+
+    log_ok "$extracted archive(s) courbes extraite(s)"
+}
+
+# =============================================================================
 # MAIN
 # =============================================================================
 main() {
@@ -764,6 +1041,16 @@ main() {
     show_summary
     download_all
     extract_archives
+
+    # Passe 2 : Courbes de niveau (si --with-contours)
+    if [[ "$WITH_CONTOURS" == true ]]; then
+        resolve_contour_zones
+        discover_contour_downloads
+        download_contours
+        extract_contour_archives
+        log_ok "Courbes de niveau dans : $CONTOURS_DATA_ROOT"
+    fi
+
     show_next_steps
     if [[ "$DRY_RUN" == false ]]; then show_json_summary; fi
     log_ok "Terminé — données dans : $DATA_ROOT"

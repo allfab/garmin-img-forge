@@ -23,6 +23,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SCRIPT_VERSION="2.0.0"
 DATA_ROOT="./pipeline/data/bdtopo"
+CONTOURS_DATA_ROOT="./pipeline/data/courbes"
 OUTPUT_DIR="./pipeline/output"
 REPORT_FILE=""              # calculé après parse_args (dépend de OUTPUT_DIR)
 IMGFORGE_REPORT_FILE=""     # calculé après parse_args
@@ -104,6 +105,7 @@ OPTIONS :
     --description STR       Description de la carte (défaut: "BDTOPO Garmin")
     --typ FILE              Fichier TYP styles personnalisés (optionnel)
     --data-root DIR         Racine des données BDTOPO (défaut: ./pipeline/data/bdtopo)
+    --contours-root DIR     Racine des courbes de niveau (défaut: ./pipeline/data/courbes)
     --skip-existing         Passer les tuiles déjà présentes (idempotence)
     --dry-run               Simuler sans exécuter les commandes
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
@@ -146,6 +148,7 @@ parse_args() {
             --description)   DESCRIPTION="$2"; shift 2 ;;
             --typ)           TYP_FILE="$2"; shift 2 ;;
             --data-root)     DATA_ROOT="$2"; shift 2 ;;
+            --contours-root) CONTOURS_DATA_ROOT="$2"; shift 2 ;;
             --skip-existing) SKIP_EXISTING=true; shift ;;
             --dry-run)       DRY_RUN=true; shift ;;
             -v|--verbose)    VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
@@ -412,7 +415,7 @@ prepare_config() {
             local tmp_expanded
             tmp_expanded=$(mktemp /tmp/mpforge-config-expanded-XXXXXX.yaml)
             _TMP_CONFIG="$tmp_expanded"
-            export DATA_ROOT OUTPUT_DIR RULES_FILE
+            export DATA_ROOT CONTOURS_DATA_ROOT OUTPUT_DIR RULES_FILE
             envsubst < "$CONFIG_FILE" > "$tmp_expanded"
             if grep -qE '\$\{[A-Z_]+\}' "$tmp_expanded" 2>/dev/null; then
                 log_warn "Des placeholders non résolus subsistent — vérifiez vos variables d'environnement (DATA_ROOT, OUTPUT_DIR…)"

@@ -92,27 +92,21 @@ fn test_load_config_no_inputs() {
 
 #[test]
 fn test_load_config_with_wildcard_expansion() {
-    // This test verifies wildcard resolution works:
-    // 1. Config loads successfully (no error from wildcard resolution)
-    // 2. Pattern is preserved in config structure
-    // 3. Actual files (file1.shp, file2.shp) exist in test_data/ and are resolved
-    // 4. Logs show resolved files (via tracing debug)
-    // 5. New validation (M4 fix) ensures at least one file was resolved
+    // Wildcard patterns are expanded into N InputSource clones,
+    // one per resolved file. test_data/ has file1.shp + file2.shp.
     let config = load_config(fixture_path("wildcard_pattern.yaml")).unwrap();
 
-    assert_eq!(config.inputs.len(), 1);
-    assert_eq!(
-        config.inputs[0].path,
-        Some("tests/integration/fixtures/test_data/*.shp".to_string())
-    );
-
-    // If wildcard matched zero files, load_config would fail with validation error
-    // (due to M4 fix: no connections + zero resolved files = error)
-    // Success here proves files were resolved successfully
+    assert_eq!(config.inputs.len(), 2, "Wildcard should expand to 2 inputs (file1.shp, file2.shp)");
+    // Expanded paths should be concrete (no glob characters)
+    for input in &config.inputs {
+        let path = input.path.as_ref().unwrap();
+        assert!(!path.contains('*'), "Expanded path should not contain wildcard: {}", path);
+        assert!(path.ends_with(".shp"), "Expanded path should end with .shp: {}", path);
+    }
 }
 
 #[test]
-fn test_load_config_wildcard_no_match_warning() {
+fn test_load_config_wildcard_no_match_fails_validation() {
     // Create config with wildcard that matches no files
     let yaml = r#"
 version: 1
@@ -128,9 +122,14 @@ output:
     let config_path = temp_dir.path().join("wildcard_no_match.yaml");
     fs::write(&config_path, yaml).unwrap();
 
-    // Should succeed (warning is logged, not error)
-    let config = load_config(&config_path).unwrap();
-    assert_eq!(config.inputs.len(), 1);
+    // No match → 0 inputs after expansion → validation fails
+    let result = load_config(&config_path);
+    assert!(result.is_err(), "Config with only unresolvable wildcard should fail validation");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Config validation failed") || err_msg.contains("At least one input"),
+        "Expected validation error, got: {}", err_msg
+    );
 }
 
 #[test]
@@ -153,6 +152,89 @@ fn test_load_config_with_bbox_filter() {
     assert!(config.filters.is_some());
     let filters = config.filters.unwrap();
     assert_eq!(filters.bbox, [-5.0, 41.0, 10.0, 51.5]);
+}
+
+#[test]
+fn test_input_with_attribute_filter() {
+    let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/courbes.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) % 10 = 0"
+output:
+  directory: "tiles/"
+"#;
+
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("attr_filter.yaml");
+    fs::write(&config_path, yaml).unwrap();
+
+    let config = load_config(&config_path).unwrap();
+    assert_eq!(config.inputs.len(), 1);
+    assert_eq!(
+        config.inputs[0].attribute_filter,
+        Some("CAST(ALTITUDE AS INTEGER) % 10 = 0".to_string())
+    );
+}
+
+#[test]
+fn test_input_with_layer_alias() {
+    let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/COURBE_0840_6440.shp"
+    layer_alias: "COURBE"
+output:
+  directory: "tiles/"
+"#;
+
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("layer_alias.yaml");
+    fs::write(&config_path, yaml).unwrap();
+
+    let config = load_config(&config_path).unwrap();
+    assert_eq!(config.inputs.len(), 1);
+    assert_eq!(
+        config.inputs[0].layer_alias,
+        Some("COURBE".to_string())
+    );
+}
+
+#[test]
+fn test_wildcard_expansion_inherits_properties() {
+    // Wildcard expansion must clone attribute_filter, layer_alias, source_srs, target_srs
+    let yaml = format!(r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "{}/*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "ALTITUDE > 0"
+    layer_alias: "COURBE"
+output:
+  directory: "tiles/"
+"#, fixture_path("test_data").display());
+
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("wildcard_inherit.yaml");
+    fs::write(&config_path, yaml).unwrap();
+
+    let config = load_config(&config_path).unwrap();
+    assert_eq!(config.inputs.len(), 2, "Should expand to 2 inputs");
+    for input in &config.inputs {
+        assert_eq!(input.source_srs, Some("EPSG:2154".to_string()));
+        assert_eq!(input.target_srs, Some("EPSG:4326".to_string()));
+        assert_eq!(input.attribute_filter, Some("ALTITUDE > 0".to_string()));
+        assert_eq!(input.layer_alias, Some("COURBE".to_string()));
+    }
 }
 
 #[test]

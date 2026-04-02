@@ -46,7 +46,7 @@ pub struct GridConfig {
     pub origin: Option<[f64; 2]>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct InputSource {
     pub path: Option<String>,
     pub connection: Option<String>,
@@ -58,6 +58,14 @@ pub struct InputSource {
     /// Target SRS for reprojection (e.g., "EPSG:4326"). Defaults to WGS84 if source_srs is set.
     #[serde(default)]
     pub target_srs: Option<String>,
+    /// OGR SQL attribute filter applied via GDAL before loading features into memory.
+    /// Example: "CAST(ALTITUDE AS INTEGER) % 10 = 0"
+    #[serde(default)]
+    pub attribute_filter: Option<String>,
+    /// Override GDAL layer name for rules engine matching.
+    /// When set, replaces the native layer.name() so multiple SHP tiles match the same ruleset.
+    #[serde(default)]
+    pub layer_alias: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -448,21 +456,36 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     let mut config: Config = serde_yml::from_str(&content)
         .with_context(|| format!("Failed to parse YAML config: {}", path.display()))?;
 
-    // Validation error context
+    // Wildcard resolution for file inputs: expand glob patterns into N InputSource clones
+    // Must happen BEFORE validation so that "at least one input" check works correctly
+    let mut expanded_inputs = Vec::new();
+    for input in config.inputs {
+        if let Some(pattern) = &input.path {
+            if pattern.contains('*') || pattern.contains('?') {
+                let resolved = resolve_wildcard_paths(pattern)?;
+                if resolved.is_empty() {
+                    warn!(pattern, "Wildcard pattern matched 0 files — input dropped");
+                }
+                debug!(pattern, resolved = ?resolved, "Wildcard expanded");
+                for resolved_path in resolved {
+                    let mut cloned = input.clone();
+                    cloned.path = Some(resolved_path.to_string_lossy().to_string());
+                    expanded_inputs.push(cloned);
+                }
+                continue;
+            }
+        }
+        expanded_inputs.push(input);
+    }
+    config.inputs = expanded_inputs;
+
+    // Validation error context (after wildcard expansion so input count is accurate)
     config
         .validate()
         .with_context(|| format!("Config validation failed for: {}", path.display()))?;
 
-    // Wildcard resolution for file inputs
-    for input in &mut config.inputs {
-        if let Some(pattern) = &input.path {
-            if pattern.contains('*') || pattern.contains('?') {
-                let resolved = resolve_wildcard_paths(pattern)?;
-                debug!(pattern, resolved = ?resolved, "Wildcard expanded");
-            }
-        }
-
-        // Log source type for each input
+    // Log source type for each input
+    for input in &config.inputs {
         let source_type = input.source_type();
         match source_type {
             SourceType::File => {
@@ -745,6 +768,8 @@ output:
                 layers: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -844,6 +869,8 @@ filters:
             layers: None,
             source_srs: None,
             target_srs: None,
+            attribute_filter: None,
+            layer_alias: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -855,6 +882,8 @@ filters:
             layers: None,
             source_srs: None,
             target_srs: None,
+            attribute_filter: None,
+            layer_alias: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -866,6 +895,8 @@ filters:
             layers: None,
             source_srs: None,
             target_srs: None,
+            attribute_filter: None,
+            layer_alias: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -877,6 +908,8 @@ filters:
             layers: None,
             source_srs: None,
             target_srs: None,
+            attribute_filter: None,
+            layer_alias: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -1440,5 +1473,26 @@ header:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         // Soft validation: warns but does not fail
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_input_source_clone_preserves_all_fields() {
+        let input = InputSource {
+            path: Some("data/COURBE_0840.shp".to_string()),
+            connection: None,
+            layer: None,
+            layers: Some(vec!["layer1".to_string()]),
+            source_srs: Some("EPSG:2154".to_string()),
+            target_srs: Some("EPSG:4326".to_string()),
+            attribute_filter: Some("ALTITUDE > 100".to_string()),
+            layer_alias: Some("COURBE".to_string()),
+        };
+        let cloned = input.clone();
+        assert_eq!(cloned.path, input.path);
+        assert_eq!(cloned.layers, input.layers);
+        assert_eq!(cloned.source_srs, input.source_srs);
+        assert_eq!(cloned.target_srs, input.target_srs);
+        assert_eq!(cloned.attribute_filter, input.attribute_filter);
+        assert_eq!(cloned.layer_alias, input.layer_alias);
     }
 }

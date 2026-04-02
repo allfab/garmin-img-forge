@@ -142,6 +142,16 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
+  # ==========================================================================
+  # COURBES DE NIVEAU (produit IGN séparé)
+  # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
+  # ==========================================================================
+  - path: "${CONTOURS_DATA_ROOT}/**/*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
+    layer_alias: "COURBE"
+
 output:
   directory: "${OUTPUT_DIR}/tiles/"
   filename_pattern: "tile_{col:03}_{row:03}.mp"

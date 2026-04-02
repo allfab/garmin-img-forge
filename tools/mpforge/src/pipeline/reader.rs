@@ -428,7 +428,7 @@ impl SourceReader {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
                 let (features, unsupported, multi_geom) =
-                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref())?;
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref())?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -437,7 +437,7 @@ impl SourceReader {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
-                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref()) {
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref()) {
                         Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
@@ -470,7 +470,7 @@ impl SourceReader {
         } else {
             // None: default behavior (load layer 0 only, no warning)
             let (features, unsupported, multi_geom) =
-                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref())?;
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref())?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -512,6 +512,8 @@ impl SourceReader {
         wgs84: &SpatialRef,
         source_srs: Option<&str>,
         target_srs: Option<&str>,
+        attribute_filter: Option<&str>,
+        layer_alias: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset.layer(layer_index).with_context(|| {
             format!(
@@ -520,7 +522,7 @@ impl SourceReader {
             )
         })?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias)
     }
 
     /// Load features from a layer by name.
@@ -536,12 +538,14 @@ impl SourceReader {
         wgs84: &SpatialRef,
         source_srs: Option<&str>,
         target_srs: Option<&str>,
+        attribute_filter: Option<&str>,
+        layer_alias: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset
             .layer_by_name(layer_name)
             .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias)
     }
 
     /// Load all features from a given layer with SRS transformation.
@@ -557,7 +561,14 @@ impl SourceReader {
         wgs84: &SpatialRef,
         source_srs: Option<&str>,
         target_srs: Option<&str>,
+        attribute_filter: Option<&str>,
+        layer_alias: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
+        // Apply OGR SQL attribute filter if configured
+        if let Some(attr_filter) = attribute_filter {
+            layer.set_attribute_filter(attr_filter)
+                .with_context(|| format!("Failed to set attribute filter '{}' on: {}", attr_filter, path))?;
+        }
         // Story 9.4: Build coordinate transform based on explicit SRS or auto-detect
         // Priority: 1) source_srs + target_srs explicit  2) source_srs + default WGS84  3) auto-detect
         let coord_transform: Option<CoordTransform> = if let Some(src_def) = source_srs {
@@ -638,7 +649,8 @@ impl SourceReader {
         let mut multi_geom_stats = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
 
         // Story 9.3 - Subtask 1.2/1.3: Capture layer name for rules engine matching
-        let layer_name = layer.name();
+        // Use layer_alias if configured to override GDAL native layer name
+        let layer_name = layer_alias.map(|s| s.to_string()).unwrap_or_else(|| layer.name());
 
         // Story 6.6 - Code Review H2 Fix: Extract source name properly for PostGIS, URLs, etc.
         let source_name = extract_source_name(path);
@@ -811,7 +823,7 @@ impl SourceReader {
                 };
 
             for selector in &layer_indices_or_names {
-                let layer = match selector {
+                let mut layer = match selector {
                     LayerSelector::Index(i) => match dataset.layer(*i) {
                         Ok(l) => l,
                         Err(e) => {
@@ -837,6 +849,11 @@ impl SourceReader {
                         }
                     },
                 };
+
+                // Apply attribute filter if configured (affects get_extent() fallback path)
+                if let Some(ref attr_filter) = input.attribute_filter {
+                    let _ = layer.set_attribute_filter(attr_filter);
+                }
 
                 // Try fast extent first, fallback to full scan
                 let envelope = match layer.try_get_extent() {
@@ -1139,6 +1156,12 @@ impl SourceReader {
                     );
                 }
 
+                // Apply attribute filter if configured on this InputSource
+                if let Some(ref attr_filter) = input.attribute_filter {
+                    layer.set_attribute_filter(attr_filter)
+                        .with_context(|| format!("Failed to set attribute filter '{}' on: {}", attr_filter, path))?;
+                }
+
                 // Story 9.4: Propagate explicit SRS from InputSource
                 let (features, unsupported, multi_geom) =
                     Self::load_features_from_layer(
@@ -1147,8 +1170,15 @@ impl SourceReader {
                         &wgs84,
                         input.source_srs.as_deref(),
                         input.target_srs.as_deref(),
+                        None, // attribute_filter already set on layer above
+                        input.layer_alias.as_deref(),
                     )?;
 
+                // Clear attribute filter before clearing spatial filter
+                if input.attribute_filter.is_some() {
+                    layer.set_attribute_filter("")
+                        .ok(); // Ignore error on cleanup
+                }
                 layer.clear_spatial_filter();
 
                 all_features.extend(features);

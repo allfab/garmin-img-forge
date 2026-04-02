@@ -27,6 +27,8 @@ fn test_read_shapefile_source() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -67,6 +69,8 @@ fn test_read_geopackage_with_layer() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -90,6 +94,8 @@ fn test_read_source_file_not_found() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -108,6 +114,8 @@ fn test_coordinates_wgs84() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -141,6 +149,8 @@ fn test_attribute_extraction() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -179,6 +189,8 @@ fn test_attribute_extraction_garmin_fields() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -212,6 +224,8 @@ fn test_read_multiple_sources() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // LineStrings
@@ -220,6 +234,8 @@ fn test_read_multiple_sources() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("roads.gpkg")), // Polygons
@@ -228,6 +244,8 @@ fn test_read_multiple_sources() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
         ],
         grid: GridConfig {
@@ -306,6 +324,8 @@ fn test_read_all_sources_continue_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
@@ -314,6 +334,8 @@ fn test_read_all_sources_continue_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid
@@ -322,6 +344,8 @@ fn test_read_all_sources_continue_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
         ],
         grid: GridConfig {
@@ -370,6 +394,8 @@ fn test_read_all_sources_fail_fast_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
@@ -378,6 +404,8 @@ fn test_read_all_sources_fail_fast_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid (won't be reached)
@@ -386,6 +414,8 @@ fn test_read_all_sources_fail_fast_mode() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
         ],
         grid: GridConfig {
@@ -432,6 +462,8 @@ fn test_geopackage_multi_layers_integration() {
         layer: None,
         source_srs: None,
         target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -490,6 +522,8 @@ fn test_multi_source_with_multi_layer_geopackage() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("multi_layers.gpkg")), // 23 features (3 layers)
@@ -502,6 +536,8 @@ fn test_multi_source_with_multi_layer_geopackage() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // 2 linestrings
@@ -510,6 +546,8 @@ fn test_multi_source_with_multi_layer_geopackage() {
                 layer: None,
                 source_srs: None,
                 target_srs: None,
+                attribute_filter: None,
+                layer_alias: None,
             },
         ],
         grid: GridConfig {
