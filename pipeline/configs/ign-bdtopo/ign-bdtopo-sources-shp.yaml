@@ -146,7 +146,7 @@ inputs:
   # COURBES DE NIVEAU (produit IGN séparé)
   # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
   # ==========================================================================
-  - path: "${CONTOURS_DATA_ROOT}/**/*.shp"
+  - path: "${CONTOURS_DATA_ROOT}/**/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
