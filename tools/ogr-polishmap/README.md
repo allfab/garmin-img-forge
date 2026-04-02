@@ -94,7 +94,7 @@ OSGeo4W Shell écrase le PATH système. Il faut charger les deux environnements 
 
 ```cmd
 call "C:\OSGeo4W\bin\o4w_env.bat"
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 ```
 
 **Option B — Ajouter CMake au PATH d'OSGeo4W Shell :**
@@ -108,7 +108,7 @@ set PATH=%PATH%;C:\Program Files\CMake\bin
 Puis charger MSVC depuis OSGeo4W Shell :
 
 ```cmd
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 ```
 
 > **Note :** Adapter le chemin de `vcvars64.bat` selon l'édition installée (BuildTools, Community, etc.) et la version (2022, 2026...).
