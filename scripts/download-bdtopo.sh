@@ -873,8 +873,13 @@ discover_contour_downloads() {
             continue
         fi
 
-        # Extraire le titre du dataset
-        dataset_name=$(echo "$probe_response" | grep -oP '<title>\K[^<]+' | grep -i "COURBE" | head -1 || true)
+        # Extraire le titre du dataset depuis le bloc <entry> (pas le <title> du feed)
+        dataset_name=$(echo "$probe_response" | grep -oP '<entry>[\s\S]*?</entry>' | grep -oP '<title>\K[^<]+' | head -1 || true)
+
+        # Fallback : chercher un titre contenant la zone
+        if [[ -z "$dataset_name" ]]; then
+            dataset_name=$(echo "$probe_response" | grep -oP '<title>[^<]*'"${zone}"'[^<]*</title>' | grep -oP '>\K[^<]+' | head -1 || true)
+        fi
 
         if [[ -z "$dataset_name" ]]; then
             log_warn "  Aucun dataset courbes trouvé pour $zone"
