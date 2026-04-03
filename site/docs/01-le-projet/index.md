@@ -8,25 +8,28 @@
 
 Les GPS Garmin de randonnée (fenix, Oregon, eTrex, Montana, Alpha...) utilisent un format de carte propriétaire : le **Garmin IMG**. Pour charger vos propres données géographiques sur un GPS Garmin, il faut produire un fichier `gmapsupp.img` — un binaire opaque, non documenté publiquement, que seuls quelques outils savent générer.
 
-Historiquement, la chaîne de production reposait sur des logiciels propriétaires (FME, GPSMapEdit) ou sur l'outil Java open-source **mkgmap**. Notre ambition : **remplacer l'intégralité de cette chaîne par des outils FOSS modernes, écrits en Rust et C++**, capables de traiter les données massives de la BD TOPO IGN (35 Go+) de manière automatisée et reproductible.
+Historiquement, la chaîne de production reposait sur des logiciels propriétaires (FME, Global Mapper, GPSMapEdit), des freeware (cGPSmapper, GMapTool) ou sur l'outil Java open-source **mkgmap**. Ces outils existent et ont permis de faire avancer le sujet — ce projet ne prétend pas être une solution miracle, mais propose une **alternative libre et reproductible** à cette chaîne hétérogène.
+
+!!! warning "Limitations connues"
+    Ce projet est un travail personnel en évolution. Limitations actuelles : routing expérimental (codé en dur, non configurable), pas de gestion des restrictions complexes (tonnage, hauteur), couverture limitée aux données BD TOPO IGN. Les contributions et retours sont les bienvenus.
 
 ## La démarche FOSS
 
 Ce projet incarne une démarche de bout en bout :
 
 1. **Les données sont ouvertes** — La BD TOPO IGN est disponible sous licence Etalab 2.0 depuis le 1er janvier 2021
-2. **Les outils sont open-source** — Chaque maillon du pipeline est développé et publié sous licence MIT
+2. **Les outils sont open-source** — ogr-polishmap sous licence MIT (compatibilité GDAL), mpforge et imgforge sous licence GPL v3 (copyleft)
 3. **Le processus est reproductible** — Un script, une configuration YAML, et n'importe qui peut reconstruire la carte
-4. **Zéro dépendance propriétaire** — Ni FME, ni GPSMapEdit, ni même Java
+4. **Zéro dépendance propriétaire** — Ni FME, ni Global Mapper, ni GPSMapEdit, ni même Java
 
 ### Avant / Après
 
 | Critère | Ancien pipeline | Nouveau pipeline |
 |---------|----------------|-----------------|
-| Licence | FME propriétaire + mkgmap (Java) | 100 % open-source (MIT) |
+| Licence | FME propriétaire + mkgmap (Java) | 100 % open-source (MIT / GPL v3) |
 | Automatisation | Manuelle, étape par étape | Complète (scripts + CI/CD) |
 | Reproductibilité | Faible (dépend de l'opérateur) | Totale (configuration déclarative) |
-| Performance | Lente (Java, mono-thread) | Parallélisée (Rust, rayon) |
+| Performance | Java, overhead JVM | Binaire natif, parallélisée (Rust, rayon) |
 | Dépendances système | FME, Java JRE, GPSMapEdit | Rust, GDAL (ou binaire statique) |
 | Format intermédiaire | Édition manuelle dans GPSMapEdit | Polish Map généré automatiquement |
 
@@ -88,7 +91,12 @@ Une carte Garmin topographique de la France (ou d'une région) incluant :
 - **Végétation** — forêts, haies, vergers, vignes
 - **Relief** — courbes de niveau et ombrage (DEM/hill shading)
 - **Toponymie** — noms de lieux, communes, massifs, sommets
-- **Routing** — calcul d'itinéraire turn-by-turn sur le GPS
+- **Routing** — calcul d'itinéraire turn-by-turn sur le GPS *(expérimental — voir avertissement ci-dessous)*
+
+!!! danger "Routing expérimental"
+    Le réseau routier est **routable à titre expérimental uniquement**. Les itinéraires calculés sont **indicatifs et non prescriptifs** — ne vous y fiez pas pour la navigation, quel que soit le mode de déplacement.
+
+    Le réseau routable est actuellement **codé en dur** en fonction des données de la BD TOPO. La configuration dynamique basée sur les attributs routables de la source n'est pas encore supportée.
 
 !!! info "Données sources"
     Les cartes sont générées depuis la **BD TOPO IGN** — mise à jour semestrielle, précision métrique, couvrant l'ensemble du territoire français. Licence ouverte [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).

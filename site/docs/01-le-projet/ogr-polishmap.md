@@ -1,10 +1,10 @@
 # ogr-polishmap — Le Driver GDAL/OGR
 
-## Le problème : un format orphelin
+## Le problème : un format mal supporté
 
 Le format **Polish Map** (`.mp`) est le format intermédiaire indispensable pour créer des cartes Garmin. C'est un format texte de type INI, inventé par le logiciel cGPSmapper dans les années 2000, qui décrit des points d'intérêt (POI), des lignes (routes, rivières) et des polygones (forêts, lacs, bâtiments) avec leurs codes types Garmin.
 
-**Le problème** : aucun outil SIG professionnel ne sait lire ou écrire ce format. Ni QGIS, ni ArcGIS, ni aucun des 200+ formats supportés par GDAL/OGR. Pour produire un fichier `.mp`, il fallait soit utiliser GPSMapEdit (propriétaire, Windows uniquement), soit écrire des scripts ad hoc fragiles.
+**Le problème** : aucun outil SIG majeur — ni open-source (QGIS), ni propriétaire (ArcGIS) — ne sait lire ou écrire ce format nativement, et aucun des 200+ formats supportés par GDAL/OGR ne le couvre. Seul **Global Mapper** (propriétaire, licence payante) sait lire et enregistrer le format Polish Map — c'est d'ailleurs grâce à cet outil que l'auteur de ce projet a pu appréhender la structure du format `.mp`. Pour le reste, il fallait utiliser GPSMapEdit (propriétaire, Windows uniquement) ou écrire des scripts ad hoc fragiles.
 
 ## La solution : un driver GDAL natif
 

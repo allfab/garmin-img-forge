@@ -40,9 +40,17 @@ Ce travail s'appuie sur les fondations posées par la communauté cartographique
 - Le projet **mkgmap** — compilateur Java open-source qui a démontré qu'il était possible de produire des fichiers IMG sans outils propriétaires
 - La documentation de **cGPSmapper** — qui a défini le format Polish Map comme standard intermédiaire
 
-### Licence
+### Licences
 
-L'ensemble du projet est distribué sous **licence MIT**. Les cartes produites sont sous **licence Etalab 2.0** (héritée des données IGN).
+Le projet adopte un modèle de licences hybride, adapté à la nature de chaque composant :
+
+| Composant | Licence | Raison |
+|-----------|---------|--------|
+| **ogr-polishmap** | MIT | Driver GDAL — compatibilité avec l'écosystème GDAL (MIT/X), facilite une éventuelle intégration upstream |
+| **mpforge** | GPL v3 | Outil standalone — copyleft, les dérivés doivent rester open-source |
+| **imgforge** | GPL v3 | Compilateur Garmin IMG — alignement avec mkgmap (GPL v2), les dérivés doivent rester ouverts |
+| **Documentation / site** | CC BY-SA 4.0 | Standard pour la documentation, avec attribution obligatoire |
+| **Cartes produites** | Etalab 2.0 | Héritée des données IGN (BD TOPO) |
 
 ### Contribuer
 

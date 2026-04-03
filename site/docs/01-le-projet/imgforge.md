@@ -103,6 +103,11 @@ imgforge build tiles/ --min-size-polygon 8
 
 ## Contrôle du routing
 
+!!! danger "Routing expérimental"
+    Le réseau routier est **routable à titre expérimental uniquement**. Les itinéraires calculés sont **indicatifs et non prescriptifs** — ne vous y fiez pas pour la navigation, quel que soit le mode de déplacement.
+
+    Le réseau routable est actuellement **codé en dur** en fonction des données de la BD TOPO. La configuration dynamique basée sur les attributs routables de la source n'est pas encore supportée.
+
 imgforge gère trois modes de routing :
 
 | Mode | Option | Génère | Usage |

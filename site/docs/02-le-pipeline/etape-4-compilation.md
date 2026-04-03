@@ -150,6 +150,9 @@ Si non spécifié, imgforge utilise les niveaux définis dans le header de chaqu
 
 ## Contrôle du routing
 
+!!! danger "Routing expérimental"
+    Le réseau routier est **routable à titre expérimental uniquement**. Les itinéraires calculés sont **indicatifs et non prescriptifs** — ne vous y fiez pas pour la navigation, quel que soit le mode de déplacement.
+
 ```bash
 # Navigation turn-by-turn complète (NET + NOD)
 imgforge build tiles/ --route
