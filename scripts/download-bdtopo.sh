@@ -178,7 +178,12 @@ parse_args() {
             --format)     FORMAT="${2^^}"; shift 2 ;;
             --product)    PRODUCT="${2^^}"; shift 2 ;;
             --themes)     THEMES="$2"; shift 2 ;;
-            --date)       EDITION_DATE="$2"; shift 2 ;;
+            --date)
+                if [[ ! "$2" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                    log_error "Format de date invalide : $2 (attendu YYYY-MM-DD)"
+                    exit 1
+                fi
+                EDITION_DATE="$2"; shift 2 ;;
             --data-root)  DATA_ROOT="$2"; shift 2 ;;
             --no-extract) AUTO_EXTRACT=false; shift ;;
             --no-skip)    SKIP_EXISTING=false; shift ;;

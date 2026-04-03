@@ -2871,3 +2871,28 @@ rulesets:
       #     CLASSE: "Voie ferrée"
       #     NATURE: "*"
       #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+
+  # ==========================================================================
+  # COURBES DE NIVEAU — Contour lines (POLYLINE)
+  # Source : Produit IGN "Courbes de niveau" v1.0
+  # 2 règles : maîtresses (25m) et intermédiaires (10m)
+  # Le filtrage au pas de 10m est fait côté GDAL (attribute_filter)
+  # Features non-matchées = ignorées silencieusement
+  # ==========================================================================
+  - name: "Courbes de niveau"
+    source_layer: "COURBE"
+    rules:
+      # 1. Courbes maîtresses (altitude multiple de 25m)
+      - match:
+          IMPORTANCE: "1"
+        set:
+          Type: "0x22"
+          EndLevel: "4"
+          Label: "${ALTITUDE}"
+
+      # 2. Courbes intermédiaires (multiples de 10m, non-maîtresses)
+      - match:
+          IMPORTANCE: "0"
+        set:
+          Type: "0x21"
+          EndLevel: "2"

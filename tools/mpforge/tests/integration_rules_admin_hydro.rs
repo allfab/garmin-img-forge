@@ -31,9 +31,9 @@ fn test_ac1_commune_country_cityname_zip() {
         .unwrap();
 
     assert_eq!(
-        result.get("Country").unwrap(),
+        result.get("CountryName").unwrap(),
         "France~[0x1d]FRA",
-        "Country should contain shield separator"
+        "CountryName should contain shield separator"
     );
     assert_eq!(
         result.get("CityName").unwrap(),
@@ -177,19 +177,15 @@ fn test_ac8_detail_hydro_citerne_catchall() {
 }
 
 // ============================================================================
-// Task 2.10: Negative test — ZONE_D_HABITATION NATURE="Château" → pas de match
-// FME: seule "Lieu-dit habité" est traitée, autres NATURE ignorées
+// Task 2.10: ZONE_D_HABITATION NATURE="Château" → Type=0x10f0a (POI château)
+// Expanded rulesets: Château, Grange, Habitat temporaire, Moulin, Quartier, Ruines, *
 // ============================================================================
 
 #[test]
-fn test_negative_zone_habitation_chateau_no_match() {
+fn test_zone_habitation_chateau_match() {
     let ruleset = load_ruleset("ZONE_D_HABITATION");
     let feature = attrs(&[("NATURE", "Château"), ("TOPONYME", "Château de Vizille")]);
-    let result = rules::evaluate_feature(&ruleset, &feature).unwrap();
-    assert!(
-        result.is_none(),
-        "NATURE='Château' should not match (FME only processes 'Lieu-dit habité')"
-    );
+    assert_transform(&ruleset, &feature, "0x10f0a", "4", Some("Château de Vizille"));
 }
 
 // ============================================================================
@@ -210,7 +206,7 @@ fn test_fme_coverage_commune_1_branch() {
     assert_eq!(result.get("Type").unwrap(), "0x54");
     assert_eq!(result.get("EndLevel").unwrap(), "7");
     assert_eq!(result.get("Label").unwrap(), "Vizille");
-    assert_eq!(result.get("Country").unwrap(), "France~[0x1d]FRA");
+    assert_eq!(result.get("CountryName").unwrap(), "France~[0x1d]FRA");
     assert_eq!(result.get("CityName").unwrap(), "Vizille");
     assert_eq!(result.get("Zip").unwrap(), "38220");
 }
@@ -432,7 +428,7 @@ fn test_total_admin_hydro_rules_count() {
     // Count only the 5 admin/hydro rulesets (no assertion on total — other stories add more)
     let admin_hydro_layers = [
         ("COMMUNE", 1),
-        ("ZONE_D_HABITATION", 1),
+        ("ZONE_D_HABITATION", 8),
         ("TRONCON_HYDROGRAPHIQUE", 2),
         ("SURFACE_HYDROGRAPHIQUE", 4),
         ("DETAIL_HYDROGRAPHIQUE", 13),
@@ -458,7 +454,7 @@ fn test_total_admin_hydro_rules_count() {
         .map(|rs| rs.rules.len())
         .sum();
     assert_eq!(
-        total_admin_hydro, 21,
-        "Total admin/hydro rules should be 21"
+        total_admin_hydro, 28,
+        "Total admin/hydro rules should be 28"
     );
 }

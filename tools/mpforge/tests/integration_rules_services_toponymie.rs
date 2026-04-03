@@ -777,10 +777,10 @@ fn test_total_story_10_4_rules_count() {
         "Total Story 10.4 rules should be 165 (168 - 3 Cimetière optimization)"
     );
 
-    // Grand total: Stories 10.1-10.3 (109) + Story 10.4 (165) = 274
+    // Grand total: Stories 10.1-10.3 (116) + Story 10.4 (165) + Courbes (2) = 283
     let grand_total: usize = rules_file.rulesets.iter().map(|rs| rs.rules.len()).sum();
     assert_eq!(
-        grand_total, 274,
-        "Grand total rules should be 274 (109 + 165)"
+        grand_total, 283,
+        "Grand total rules should be 283 (116 + 165 + 2)"
     );
 }

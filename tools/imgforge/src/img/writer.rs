@@ -156,7 +156,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         }
     }
 
-    // 5. Build TRE
+    // 6. Build TRE
     let mut tre = TreWriter::new();
     tre.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
     tre.display_priority = mp.header.draw_priority;
@@ -574,10 +574,14 @@ fn encode_subdivision_rgn(
     }
 
     // Polylines
+    // polyline_counter tracks the index of standard polylines within this subdivision's
+    // RGN data. Extended polylines (type >= 0x100) go to a separate RGN section and must
+    // NOT be counted, otherwise NET1 level/div polyline_num would be off.
     let mut polylines_data = Vec::new();
     for split_line in &area.lines {
         if split_line.points.len() < 2 { continue; }
         let mp_line = &mp.polylines[split_line.mp_index];
+        let is_ext = mp_line.type_code >= 0x100;
         let mut pl = Polyline::new(mp_line.type_code, split_line.points.clone());
         pl.label_offset = line_labels[split_line.mp_index];
         pl.direction = mp_line.direction;
@@ -585,7 +589,7 @@ fn encode_subdivision_rgn(
         // P3: RGN→NET link at leaf level. The label field is REPLACED by
         // NET1 offset (mkgmap patches LBL→NET after NET is built).
         // No extra bytes after bitstream — blen is bitstream only.
-        if is_leaf_level {
+        if is_leaf_level && !is_ext {
             if let Some(ctx) = routing_ctx {
                 if let Some(&net1_off) = ctx.net1_offsets_by_mp_index.get(&split_line.mp_index) {
                     pl.has_net_info = true;
@@ -598,10 +602,8 @@ fn encode_subdivision_rgn(
                 }
             }
         }
-        polyline_counter += 1;
 
         let deltas = compute_deltas(&split_line.points, subdiv);
-        let is_ext = mp_line.type_code >= 0x100;
         if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
             if is_ext {
                 rgn.write_ext_polyline(
@@ -611,6 +613,7 @@ fn encode_subdivision_rgn(
                 polylines_data.extend_from_slice(
                     &pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, false),
                 );
+                polyline_counter += 1;
             }
         }
     }

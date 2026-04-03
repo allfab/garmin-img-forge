@@ -133,8 +133,8 @@ impl TableAEntry {
         if self.toll { info |= 0x80; }
         if self.one_way { info |= 0x08; }
         buf.push(info);
-        // Byte 4: access low (with top 2 bits cleared since they're in bytes 0-2)
-        buf.push((self.access & 0x3FFF) as u8);
+        // Byte 4: access low byte (top 2 bits are in bytes 0-2, bits 8-13 unused in format)
+        buf.push(self.access as u8);
     }
 }
 
@@ -292,7 +292,9 @@ impl NodWriter {
         idx
     }
 
-    /// Group nodes into route centers (max 256 nodes per center)
+    /// Group nodes into route centers (max 256 nodes per center).
+    /// TODO: mkgmap uses spatial clustering (K-nearest) for better locality.
+    /// Sequential batching can produce large coordinate deltas within a center.
     pub fn build_centers(&mut self) {
         self.centers.clear();
         if self.nodes.is_empty() {
@@ -650,6 +652,9 @@ impl NodWriter {
             }
 
             // ── Phase 4: Backpatch internal arc dest pointers ──
+            // Internal arc format: 2 bytes = flagB (high) | signed offset (low 14 bits).
+            // flagB bits 0-5 are always 0 for internal arcs (bit 6 = external flag,
+            // bit 7 = last_link), so the OR with diff bits 8-13 is safe.
             for patch in &arc_patches {
                 let dest_offset = node_offsets[patch.dest_node_index] as usize;
                 let diff = (dest_offset as i32) - (patch.src_node_offset as i32);

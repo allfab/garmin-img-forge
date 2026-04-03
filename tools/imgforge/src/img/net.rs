@@ -194,6 +194,8 @@ impl NetWriter {
         buf.extend_from_slice(&net1_data);
         buf.extend_from_slice(&net3_data);
 
+        // TODO: callers in writer.rs discard the return value and read built_data instead.
+        // Consider returning &[u8] or removing the return to avoid this clone.
         self.built_data = Some(buf.clone());
         buf
     }

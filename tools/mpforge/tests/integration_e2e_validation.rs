@@ -1,7 +1,7 @@
 //! Integration tests: end-to-end validation of the complete rules file (Story 10.5)
 //!
 //! Validates structural integrity of bdtopo-garmin-rules.yaml:
-//!   - All 21 rulesets parse without error
+//!   - All 22 rulesets parse without error
 //!   - Each ruleset has valid source_layer and at least 1 rule
 //!   - Total rule count matches expected (≥ 274)
 //!   - All Type values are valid hex format
@@ -13,7 +13,7 @@ use common::rules_path;
 use mpforge::rules;
 
 // ============================================================================
-// Task 2.1: Load all 21 rulesets and verify structural integrity
+// Task 2.1: Load all 22 rulesets and verify structural integrity
 // ============================================================================
 
 #[test]
@@ -22,8 +22,8 @@ fn test_rules_file_loads_without_error() {
     assert_eq!(rules_file.version, 1, "Rules file version should be 1");
     assert_eq!(
         rules_file.rulesets.len(),
-        21,
-        "Should have exactly 21 rulesets"
+        22,
+        "Should have exactly 22 rulesets"
     );
 }
 
@@ -89,12 +89,14 @@ fn test_source_layer_coverage_all_21_bdtopo_layers() {
         "FORET_PUBLIQUE",
         // Toponymie (FME 08)
         "TOPONYMIE",
+        // Courbes de niveau (produit IGN séparé)
+        "COURBE",
     ];
 
     assert_eq!(
         expected_layers.len(),
-        21,
-        "Expected layers list should have 21 entries"
+        22,
+        "Expected layers list should have 22 entries"
     );
 
     for layer in &expected_layers {
@@ -205,7 +207,7 @@ fn test_per_ruleset_rule_counts() {
         ("PISTE_D_AERODROME", 2),
         ("TRANSPORT_PAR_CABLE", 1),
         ("COMMUNE", 1),
-        ("ZONE_D_HABITATION", 1),
+        ("ZONE_D_HABITATION", 8),
         ("TRONCON_HYDROGRAPHIQUE", 2),
         ("SURFACE_HYDROGRAPHIQUE", 4),
         ("DETAIL_HYDROGRAPHIQUE", 13),
@@ -221,6 +223,7 @@ fn test_per_ruleset_rule_counts() {
         ("LIGNE_ELECTRIQUE", 1),
         ("FORET_PUBLIQUE", 1),
         ("TOPONYMIE", 162),
+        ("COURBE", 2),
     ];
 
     for (layer, expected) in &expected_counts {

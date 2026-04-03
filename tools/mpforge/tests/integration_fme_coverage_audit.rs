@@ -750,16 +750,16 @@ fn test_fme08_toponymie_sample_branches() {
 }
 
 // ============================================================================
-// Global: Total 274 rules across 8 FME projects = 100% coverage
+// Global: Total 283 rules across 8 FME projects + courbes de niveau = 100% coverage
 // ============================================================================
 
 #[test]
-fn test_global_274_rules_total_fme_100_percent() {
+fn test_global_283_rules_total_fme_100_percent() {
     let rules_file = rules::load_rules(&rules_path()).expect("Failed to load rules");
     let total: usize = rules_file.rulesets.iter().map(|rs| rs.rules.len()).sum();
     assert_eq!(
-        total, 274,
-        "Total rules should be exactly 274 (FME 100% coverage), got {}",
+        total, 283,
+        "Total rules should be exactly 283 (FME 100% + courbes de niveau), got {}",
         total
     );
 }
