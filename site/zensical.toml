@@ -36,46 +36,48 @@ code = "Roboto Mono"
 Accueil = "index.md"
 
 [[nav]]
-Introduction = "01-introduction/index.md"
-
-[[nav]]
-"Pile technologique" = [
-  { "Vue d'ensemble" = "02-pile-technologique/index.md" },
-  { "Logiciels et outils" = "02-pile-technologique/logiciels-outils.md" },
-  { Arborescence = "02-pile-technologique/arborescence.md" },
-  { "Socle de données" = "02-pile-technologique/socle-donnees.md" }
+"Le Projet" = [
+  { "Vue d'ensemble" = "01-le-projet/index.md" },
+  { "ogr-polishmap" = "01-le-projet/ogr-polishmap.md" },
+  { "mpforge" = "01-le-projet/mpforge.md" },
+  { "imgforge" = "01-le-projet/imgforge.md" },
+  { "Réussites et écueils" = "01-le-projet/reussites-ecueils.md" }
 ]
 
 [[nav]]
-Processus = [
-  { "Vue d'ensemble" = "03-processus/index.md" },
-  { "Diagramme de flux" = "03-processus/diagramme.md" },
-  { "Détail des étapes" = "03-processus/details-processus.md" }
+"Le Pipeline" = [
+  { "Vue d'ensemble" = "02-le-pipeline/index.md" },
+  { "1. Téléchargement" = "02-le-pipeline/etape-1-telechargement.md" },
+  { "2. Configuration" = "02-le-pipeline/etape-2-configuration.md" },
+  { "3. Tuilage (mpforge)" = "02-le-pipeline/etape-3-tuilage.md" },
+  { "4. Compilation (imgforge)" = "02-le-pipeline/etape-4-compilation.md" },
+  { "5. Installation GPS" = "02-le-pipeline/etape-5-installation.md" }
 ]
 
 [[nav]]
-"Guide pas à pas" = [
-  { Introduction = "04-guide-pas-a-pas/index.md" },
-  { "Préambule" = "04-guide-pas-a-pas/preambule.md" },
-  { "Format Polish Map" = "04-guide-pas-a-pas/polish-map-format.md" },
-  { "Compilation Garmin IMG" = "04-guide-pas-a-pas/compilation-garmin-img.md" },
-  { "Limites des formats" = "04-guide-pas-a-pas/limites-formats.md" }
+"Référence" = [
+  { "Vue d'ensemble" = "03-reference/index.md" },
+  { "Types Garmin" = "03-reference/types-garmin.md" },
+  { "Correspondances BD TOPO" = "03-reference/correspondances-bdtopo.md" },
+  { "Limites des formats" = "03-reference/limites-formats.md" }
 ]
 
 [[nav]]
 Installation = [
-  { "Vue d'ensemble" = "05-installation/index.md" },
-  { "Assemblage des données" = "05-installation/assemblage-donnees.md" },
-  { "Procédure d'installation" = "05-installation/procedure-installation.md" }
+  { "Prérequis" = "04-prerequis-installation/index.md" },
+  { "Procédure d'installation" = "04-prerequis-installation/procedure-installation.md" }
 ]
 
 [[nav]]
 "Téléchargements" = [
-  { "Vue d'ensemble" = "06-telechargements/index.md" },
-  { "France métropolitaine" = "06-telechargements/france.md" },
-  { "Par région" = "06-telechargements/regions.md" },
-  { "Outre-mer" = "06-telechargements/outre-mer.md" }
+  { "Vue d'ensemble" = "05-telechargements/index.md" },
+  { "France métropolitaine" = "05-telechargements/france.md" },
+  { "Par région" = "05-telechargements/regions.md" },
+  { "Outre-mer" = "05-telechargements/outre-mer.md" }
 ]
+
+[[nav]]
+"À propos" = "06-a-propos/index.md"
 
 
 [extra]
@@ -85,4 +87,3 @@ generator = false
 icon = "fontawesome/brands/git-alt"
 link = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
 name = "Dépôt source"
-
