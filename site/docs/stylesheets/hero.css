@@ -1,59 +1,211 @@
-/* --- Hero Section --- */
+/* ============================================================
+   Hero Section — Topographic Background
+   ============================================================ */
+
+/* --- Custom properties --- */
 .zn-hero {
-  position: relative;
+  --hero-bg: #0f172a;
+  --hero-line: rgba(76, 175, 80, 0.07);
+  --hero-accent: rgba(76, 175, 80, 0.28);
+  --hero-text: #f1f5f9;
+  --hero-text-muted: rgba(241, 245, 249, 0.85);
+  --hero-accent-color: #FF8A65;
+  --hero-btn-bg: rgba(255, 255, 255, 0.08);
+  --hero-btn-bg-hover: rgba(255, 255, 255, 0.15);
+  --hero-btn-primary-from: rgba(76, 175, 80, 0.9);
+  --hero-btn-primary-to: rgba(255, 138, 101, 0.85);
+  --hero-overlay-from: rgba(15, 23, 42, 0.3);
+  --hero-overlay-to: rgba(15, 23, 42, 0.7);
+}
+
+/* --- Hero container --- */
+.zn-hero {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
   overflow: hidden;
-  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--md-primary-fg-color);
-  color: var(--md-primary-bg-color);
+  background: var(--hero-bg);
+  color: var(--hero-text);
 }
 
+/* --- SVG Background layer --- */
 .zn-hero__background {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.18;
+  opacity: 0;
+  transition: opacity 1.2s ease;
 }
 
-.zn-hero__contours {
+.zn-hero__background.zn-topo-loaded {
+  opacity: 1;
+}
+
+.zn-hero__background .zn-topo {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
-/* Contour lines base style */
-.zn-contour {
-  stroke: var(--md-primary-bg-color);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  fill: none;
-  will-change: transform, stroke-dashoffset;
+/* --- Radial gradient overlay for depth --- */
+.zn-hero__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 45%,
+    var(--hero-overlay-from),
+    var(--hero-overlay-to)
+  );
+  z-index: 1;
 }
 
-.zn-contour--1 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.1s, zn-drift 20s ease-in-out infinite 4.1s; }
-.zn-contour--2 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.3s, zn-drift 22s ease-in-out infinite 4.3s; stroke-width: 1.2; }
-.zn-contour--3 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.5s, zn-drift 18s ease-in-out infinite 4.5s; stroke-width: 2; }
-.zn-contour--4 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.7s, zn-drift 24s ease-in-out infinite 4.7s; stroke-width: 1; }
-.zn-contour--5 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.9s, zn-drift 19s ease-in-out infinite 4.9s; stroke-width: 2.2; }
-.zn-contour--6 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 1.1s, zn-drift 21s ease-in-out infinite 5.1s; stroke-width: 0.8; }
-.zn-contour--7 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 1.3s, zn-drift 25s ease-in-out infinite 5.3s; stroke-width: 1.5; }
-.zn-contour--8 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.2s, zn-drift 23s ease-in-out infinite 4.2s; stroke-width: 1.3; }
-.zn-contour--9 { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: zn-draw 4s ease forwards 0.4s, zn-drift 17s ease-in-out infinite 4.4s; stroke-width: 0.9; }
+/* ============================================================
+   SVG Path Colors — 3 layers
+   ============================================================ */
 
-@keyframes zn-draw {
-  to { stroke-dashoffset: 0; }
+/* Background fill */
+.topo-bg {
+  fill: var(--hero-bg);
 }
 
-@keyframes zn-drift {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(30px); }
+/* Subtle contour lines (54 paths) */
+.topo-line {
+  fill: var(--hero-line);
+  opacity: 0;
+  will-change: opacity;
 }
 
-/* Hero content */
+/* Accent contour lines (9 paths) */
+.topo-accent {
+  fill: var(--hero-accent);
+  opacity: 0;
+  will-change: opacity;
+}
+
+/* ============================================================
+   Staggered Fade-In Animations
+   ============================================================ */
+
+.zn-topo-loaded .topo-line {
+  animation: topo-fade-in 1.8s ease forwards;
+}
+
+.zn-topo-loaded .topo-accent {
+  animation:
+    topo-fade-in 2s ease forwards,
+    topo-glow 6s ease-in-out infinite;
+}
+
+/* Stagger subtle lines in 6 waves */
+.zn-topo-loaded .topo-l-1,
+.zn-topo-loaded .topo-l-2,
+.zn-topo-loaded .topo-l-3,
+.zn-topo-loaded .topo-l-4,
+.zn-topo-loaded .topo-l-5,
+.zn-topo-loaded .topo-l-6,
+.zn-topo-loaded .topo-l-7,
+.zn-topo-loaded .topo-l-8,
+.zn-topo-loaded .topo-l-9 { animation-delay: 0.1s; }
+
+.zn-topo-loaded .topo-l-10,
+.zn-topo-loaded .topo-l-11,
+.zn-topo-loaded .topo-l-12,
+.zn-topo-loaded .topo-l-13,
+.zn-topo-loaded .topo-l-14,
+.zn-topo-loaded .topo-l-15,
+.zn-topo-loaded .topo-l-16,
+.zn-topo-loaded .topo-l-17,
+.zn-topo-loaded .topo-l-18 { animation-delay: 0.5s; }
+
+.zn-topo-loaded .topo-l-19,
+.zn-topo-loaded .topo-l-20,
+.zn-topo-loaded .topo-l-21,
+.zn-topo-loaded .topo-l-22,
+.zn-topo-loaded .topo-l-23,
+.zn-topo-loaded .topo-l-24,
+.zn-topo-loaded .topo-l-25,
+.zn-topo-loaded .topo-l-26,
+.zn-topo-loaded .topo-l-27 { animation-delay: 0.9s; }
+
+.zn-topo-loaded .topo-l-28,
+.zn-topo-loaded .topo-l-29,
+.zn-topo-loaded .topo-l-30,
+.zn-topo-loaded .topo-l-31,
+.zn-topo-loaded .topo-l-32,
+.zn-topo-loaded .topo-l-33,
+.zn-topo-loaded .topo-l-34,
+.zn-topo-loaded .topo-l-35,
+.zn-topo-loaded .topo-l-36 { animation-delay: 1.3s; }
+
+.zn-topo-loaded .topo-l-37,
+.zn-topo-loaded .topo-l-38,
+.zn-topo-loaded .topo-l-39,
+.zn-topo-loaded .topo-l-40,
+.zn-topo-loaded .topo-l-41,
+.zn-topo-loaded .topo-l-42,
+.zn-topo-loaded .topo-l-43,
+.zn-topo-loaded .topo-l-44,
+.zn-topo-loaded .topo-l-45 { animation-delay: 1.7s; }
+
+.zn-topo-loaded .topo-l-46,
+.zn-topo-loaded .topo-l-47,
+.zn-topo-loaded .topo-l-48,
+.zn-topo-loaded .topo-l-49,
+.zn-topo-loaded .topo-l-50,
+.zn-topo-loaded .topo-l-51,
+.zn-topo-loaded .topo-l-52,
+.zn-topo-loaded .topo-l-53,
+.zn-topo-loaded .topo-l-54,
+.zn-topo-loaded .topo-l-subtle { animation-delay: 2.1s; }
+
+/* Stagger accent lines individually */
+.zn-topo-loaded .topo-a-1 { animation-delay: 0.6s, 3.2s; }
+.zn-topo-loaded .topo-a-2 { animation-delay: 0.9s, 3.5s; }
+.zn-topo-loaded .topo-a-3 { animation-delay: 1.2s, 3.8s; }
+.zn-topo-loaded .topo-a-4 { animation-delay: 1.5s, 4.1s; }
+.zn-topo-loaded .topo-a-5 { animation-delay: 1.8s, 4.4s; }
+.zn-topo-loaded .topo-a-6 { animation-delay: 2.1s, 4.7s; }
+.zn-topo-loaded .topo-a-7 { animation-delay: 2.4s, 5.0s; }
+.zn-topo-loaded .topo-a-8 { animation-delay: 2.7s, 5.3s; }
+.zn-topo-loaded .topo-a-9 { animation-delay: 3.0s, 5.6s; }
+
+/* ============================================================
+   Keyframe Animations
+   ============================================================ */
+
+@keyframes topo-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes topo-glow {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* Slow background drift */
+.zn-topo-loaded .zn-topo {
+  animation: topo-drift 45s ease-in-out infinite;
+}
+
+@keyframes topo-drift {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  25%      { transform: translate(-8px, 4px) scale(1.05); }
+  50%      { transform: translate(4px, -6px) scale(1.05); }
+  75%      { transform: translate(6px, 2px) scale(1.05); }
+}
+
+/* ============================================================
+   Hero Content
+   ============================================================ */
+
 .zn-hero__inner {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   padding: 4rem 1rem;
   text-align: center;
 }
@@ -68,21 +220,24 @@
   font-weight: 700;
   line-height: 1.2;
   margin: 0 0 1.5rem;
-  color: var(--md-primary-bg-color);
+  color: var(--hero-text);
 }
 
 .zn-hero__tagline {
   font-size: clamp(1rem, 2.5vw, 1.25rem);
   line-height: 1.6;
   margin: 0 0 2.5rem;
-  opacity: 0.9;
+  color: var(--hero-text-muted);
 }
 
 .zn-hero__tagline strong {
-  color: var(--md-accent-fg-color);
+  color: var(--hero-accent-color);
 }
 
-/* CTA Buttons */
+/* ============================================================
+   CTA Buttons
+   ============================================================ */
+
 .zn-hero__actions {
   display: flex;
   gap: 1.25rem;
@@ -95,89 +250,74 @@
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.5rem;
-  backdrop-filter: blur(4px);
-  background-color: hsla(0, 0%, 100%, 0.12);
-  color: #fff;
-  transition: all 0.25s;
+  backdrop-filter: blur(12px);
+  background-color: var(--hero-btn-bg);
+  color: var(--hero-text);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .zn-hero__actions .md-button:hover {
-  background-color: hsla(0, 0%, 100%, 0.22);
+  background-color: var(--hero-btn-bg-hover);
   color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
 }
 
 .zn-hero__actions .md-button:focus-visible {
-  outline: 2px solid var(--md-accent-fg-color);
+  outline: 2px solid var(--hero-accent-color);
   outline-offset: 2px;
 }
 
 .zn-hero__actions .md-button--primary {
-  backdrop-filter: blur(4px);
-  background: linear-gradient(35deg, rgba(76, 175, 80, 0.95), rgba(255, 138, 101, 0.9));
+  background: linear-gradient(135deg, var(--hero-btn-primary-from), var(--hero-btn-primary-to));
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: #fff;
-  border: none;
 }
 
 .zn-hero__actions .md-button--primary:hover {
-  background: linear-gradient(35deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
+  background: linear-gradient(135deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
   color: #fff;
-  box-shadow: 0 4px 24px rgba(76, 175, 80, 0.35);
+  box-shadow: 0 8px 32px rgba(76, 175, 80, 0.3);
 }
 
-/* --- Dark mode --- */
+/* ============================================================
+   Dark Mode
+   ============================================================ */
+
 [data-md-color-scheme="slate"] .zn-hero {
-  background: var(--md-default-bg-color);
-  color: var(--md-default-fg-color);
+  --hero-bg: #0b1120;
+  --hero-line: rgba(76, 175, 80, 0.06);
+  --hero-accent: rgba(76, 175, 80, 0.22);
+  --hero-overlay-from: rgba(11, 17, 32, 0.2);
+  --hero-overlay-to: rgba(11, 17, 32, 0.65);
 }
 
-[data-md-color-scheme="slate"] .zn-hero__title {
-  color: var(--md-default-fg-color);
-}
+/* ============================================================
+   Transparent Header & Tabs on Hero Page
+   ============================================================ */
 
-[data-md-color-scheme="slate"] .zn-contour {
-  stroke: var(--md-default-fg-color);
-}
-
-[data-md-color-scheme="slate"] .zn-hero__actions .md-button {
-  background-color: hsla(0, 0%, 100%, 0.08);
-  color: #fff;
-}
-
-[data-md-color-scheme="slate"] .zn-hero__actions .md-button:hover {
-  background-color: hsla(0, 0%, 100%, 0.16);
-  color: #fff;
-}
-
-[data-md-color-scheme="slate"] .zn-hero__actions .md-button--primary {
-  background: linear-gradient(35deg, rgba(76, 175, 80, 0.95), rgba(255, 138, 101, 0.9));
-  color: #fff;
-}
-
-[data-md-color-scheme="slate"] .zn-hero__actions .md-button--primary:hover {
-  background: linear-gradient(35deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
-  color: #fff;
-  box-shadow: 0 4px 24px rgba(76, 175, 80, 0.35);
-}
-
-/* --- Prevent vertical scroll on hero page --- */
 body:has(.zn-hero) {
   overflow: hidden;
   height: 100vh;
 }
 
-/* --- Transparent header & tabs on hero page --- */
 body:has(.zn-hero) .md-header {
+  position: relative;
+  z-index: 2;
   backdrop-filter: none;
-  background-color: transparent;
   box-shadow: none;
   color: #fff;
 }
 
 body:has(.zn-hero) .md-tabs {
-  background-color: transparent;
-  box-shadow: inset 0 -0.05rem 0 hsla(0, 0%, 100%, 0.15);
+  box-shadow: inset 0 -0.05rem 0 hsla(0, 0%, 100%, 0.12);
+}
+
+body:has(.zn-hero) .md-main {
+  display: none;
 }
 
 body:has(.zn-hero) .md-header__topic,
@@ -186,7 +326,7 @@ body:has(.zn-hero) .md-header__title {
 }
 
 body:has(.zn-hero) .md-tabs__item {
-  color: hsla(0, 0%, 100%, 0.7);
+  color: hsla(0, 0%, 100%, 0.6);
 }
 
 body:has(.zn-hero) .md-tabs__item:hover,
@@ -199,15 +339,18 @@ body:has(.zn-hero) .md-header__button {
 }
 
 body:has(.zn-hero) .md-search__input {
-  background-color: hsla(0, 0%, 100%, 0.1);
+  background-color: hsla(0, 0%, 100%, 0.08);
   color: #fff;
 }
 
 body:has(.zn-hero) .md-search__input::placeholder {
-  color: hsla(0, 0%, 100%, 0.6);
+  color: hsla(0, 0%, 100%, 0.5);
 }
 
-/* Responsive */
+/* ============================================================
+   Responsive
+   ============================================================ */
+
 @media (max-width: 600px) {
   .zn-hero__inner {
     padding: 3rem 1rem;
@@ -219,12 +362,24 @@ body:has(.zn-hero) .md-search__input::placeholder {
   }
 }
 
-/* Prefers reduced motion */
+/* ============================================================
+   Reduced Motion
+   ============================================================ */
+
 @media (prefers-reduced-motion: reduce) {
-  .zn-contour {
-    stroke-dasharray: 0;
-    stroke-dashoffset: 0;
-    animation: none;
+  .zn-hero__background {
+    opacity: 1;
+    transition: none;
+  }
+
+  .topo-line,
+  .topo-accent {
+    opacity: 1;
+    animation: none !important;
     will-change: auto;
+  }
+
+  .zn-topo-loaded .zn-topo {
+    animation: none;
   }
 }
