@@ -28,6 +28,8 @@ pub struct RoadDef {
     pub road_length_meters: u32,
     pub net1_offset: u32,
     pub nod2_offset: Option<u32>,
+    /// Per-level subdivision references: Vec<Vec<(polyline_num: u8, subdiv_num: u16)>>
+    pub subdiv_refs: Vec<Vec<(u8, u16)>>,
 }
 
 impl RoadDef {
@@ -42,11 +44,14 @@ impl RoadDef {
             road_length_meters: 0,
             net1_offset: 0,
             nod2_offset: None,
+            subdiv_refs: Vec::new(),
         }
     }
 
-    /// Write NET1 record — variable length
-    pub fn write_net1(&self) -> Vec<u8> {
+    /// Write NET1 record — variable length.
+    /// Returns (data, level_div_offset) where level_div_offset is the byte position
+    /// of the polyline_num placeholder within the returned data.
+    pub fn write_net1(&self) -> (Vec<u8>, usize) {
         let mut buf = Vec::new();
 
         // Labels (3B each, MSB set on last)
@@ -62,17 +67,12 @@ impl RoadDef {
         }
 
         // Flags byte — mkgmap RoadDef.java
+        // Access is NOT in NET1 flags — it's in NOD Table A
         let mut flags: u8 = 0;
         if self.one_way { flags |= 0x02; }
         flags |= 0x04; // NET_FLAG_UNK1 — always set in mkgmap
         if self.nod2_offset.is_some() { flags |= 0x40; } // NET_FLAG_NODINFO
-        if self.access_flags != 0 { flags |= 0x80; }
         buf.push(flags);
-
-        // Access mask (2B, conditional)
-        if self.access_flags != 0 {
-            buf.extend_from_slice(&self.access_flags.to_le_bytes());
-        }
 
         // Road length (3B = meters / 4.8)
         let encoded_len = (self.road_length_meters as f64 / 4.8) as u32;
@@ -80,6 +80,14 @@ impl RoadDef {
         buf.push(lb[0]);
         buf.push(lb[1]);
         buf.push(lb[2]);
+
+        // Level counts + level divs (mkgmap RoadDef.writeLevelCount + writeLevelDivs)
+        // Always reserve 4 bytes: level_count(1B=0x81) + polyline_num(1B) + subdiv_num(2B)
+        // This ensures NET1 offsets are stable and can be patched after RGN encoding.
+        buf.push(0x81); // 1 polyline at level 0, last level
+        let level_div_offset = buf.len(); // position of polyline_num placeholder
+        buf.push(0x00); // polyline_num placeholder (patched later)
+        buf.extend_from_slice(&0u16.to_le_bytes()); // subdiv_num placeholder (patched later)
 
         // NOD2 offset — variable-length encoding (mkgmap RoadDef.java:296-306)
         if let Some(nod2) = self.nod2_offset {
@@ -95,7 +103,7 @@ impl RoadDef {
             }
         }
 
-        buf
+        (buf, level_div_offset)
     }
 }
 
@@ -104,6 +112,11 @@ pub struct NetWriter {
     pub roads: Vec<RoadDef>,
     /// NET1 byte offsets per road, populated after build()
     net1_offsets: Vec<u32>,
+    /// Built NET data (available after build() for patching)
+    pub built_data: Option<Vec<u8>>,
+    /// Per-road: byte offset within NET data of the level div placeholder (polyline_num byte)
+    /// = NET_HEADER_LEN + NET1 offset + (label bytes + flags + length + level_count_byte)
+    level_div_positions: Vec<usize>,
 }
 
 impl NetWriter {
@@ -111,6 +124,8 @@ impl NetWriter {
         Self {
             roads: Vec::new(),
             net1_offsets: Vec::new(),
+            built_data: None,
+            level_div_positions: Vec::new(),
         }
     }
 
@@ -135,15 +150,21 @@ impl NetWriter {
         // Build NET1 data + precompute per-road offsets for NET3
         let mut net1_data = Vec::new();
         let mut net1_offsets = Vec::with_capacity(self.roads.len());
+        let mut level_div_positions = Vec::with_capacity(self.roads.len());
         for road in &self.roads {
-            net1_offsets.push(net1_data.len() as u32);
-            net1_data.extend_from_slice(&road.write_net1());
+            let record_start = net1_data.len();
+            net1_offsets.push(record_start as u32);
+            let (record_data, level_div_off) = road.write_net1();
+            // Position within final NET data = header_len + record_start + level_div_off
+            level_div_positions.push(NET_HEADER_LEN as usize + record_start + level_div_off);
+            net1_data.extend_from_slice(&record_data);
         }
         // Build NET3 sorted index using precomputed offsets
         let net3_data = self.build_net3(&net1_offsets);
 
-        // Store offsets for external access (patch_net1_offsets)
+        // Store offsets for external access
         self.net1_offsets = net1_offsets;
+        self.level_div_positions = level_div_positions;
 
         // Section descriptors — mkgmap NETHeader.java layout:
         // Each section = offset(4B) + size(4B) + flag(1B)
@@ -173,7 +194,28 @@ impl NetWriter {
         buf.extend_from_slice(&net1_data);
         buf.extend_from_slice(&net3_data);
 
+        self.built_data = Some(buf.clone());
         buf
+    }
+
+    /// Patch level div entries in the built NET data.
+    /// `subdiv_refs` maps road_index → (polyline_num, subdiv_num).
+    /// Call after RGN encoding has determined which subdivision each road is in.
+    /// Returns the patched NET data.
+    pub fn patch_level_divs(&mut self, subdiv_refs: &[(u8, u16)]) -> Vec<u8> {
+        let data = self.built_data.as_mut()
+            .expect("patch_level_divs called before build()");
+
+        for (road_idx, &(polyline_num, subdiv_num)) in subdiv_refs.iter().enumerate() {
+            if road_idx >= self.level_div_positions.len() { break; }
+            let pos = self.level_div_positions[road_idx];
+            data[pos] = polyline_num;
+            let sb = subdiv_num.to_le_bytes();
+            data[pos + 1] = sb[0];
+            data[pos + 2] = sb[1];
+        }
+
+        data.clone()
     }
 
     /// Build NET3 sorted index — 3B per road = NET1 offset, sorted by label
@@ -204,9 +246,11 @@ mod tests {
         let mut rd = RoadDef::new();
         rd.label_offsets.push(100);
         rd.road_length_meters = 480;
-        let net1 = rd.write_net1();
-        // label(3) + flags(1) + length(3) = 7
-        assert_eq!(net1.len(), 7);
+        let (net1, level_div_pos) = rd.write_net1();
+        // label(3) + flags(1) + length(3) + levelCount(1) + levelDiv(3) = 11
+        assert_eq!(net1.len(), 11);
+        assert_eq!(net1[7], 0x81); // 1 polyline at level 0, last level
+        assert_eq!(level_div_pos, 8); // polyline_num placeholder at byte 8
     }
 
     #[test]
@@ -215,10 +259,11 @@ mod tests {
         rd.label_offsets.push(100);
         rd.access_flags = NO_CAR | NO_TRUCK;
         rd.road_length_meters = 100;
-        let net1 = rd.write_net1();
-        // label(3) + flags(1) + access(2) + length(3) = 9
-        assert_eq!(net1.len(), 9);
-        assert!(net1[3] & 0x80 != 0); // access flag present
+        let (net1, _) = rd.write_net1();
+        // label(3) + flags(1) + length(3) + levelCount(1) + levelDiv(3) = 11
+        // Access is NOT in NET1 (it's in NOD Table A)
+        assert_eq!(net1.len(), 11);
+        assert_eq!(net1[3] & 0x80, 0); // no access flag in NET1
     }
 
     #[test]
@@ -227,7 +272,7 @@ mod tests {
         rd.label_offsets.push(100);
         rd.label_offsets.push(200);
         rd.road_length_meters = 0;
-        let net1 = rd.write_net1();
+        let (net1, _) = rd.write_net1();
         // Second label should have MSB set
         assert!(net1[5] & 0x80 != 0);
     }
@@ -253,7 +298,7 @@ mod tests {
         let mut rd1 = RoadDef::new();
         rd1.label_offsets.push(20);
         rd1.road_length_meters = 200;
-        rd1.access_flags = NO_CAR; // adds 2 bytes
+        rd1.access_flags = NO_CAR;
         net.add_road(rd1);
 
         let mut rd2 = RoadDef::new();
@@ -265,10 +310,10 @@ mod tests {
 
         assert_eq!(net.net1_offsets().len(), 3);
         assert_eq!(net.net1_offsets()[0], 0);
-        // road 0: label(3) + flags(1) + length(3) = 7
-        assert_eq!(net.net1_offsets()[1], 7);
-        // road 1: label(3) + flags(1) + access(2) + length(3) = 9
-        assert_eq!(net.net1_offsets()[2], 7 + 9);
+        // road 0: label(3) + flags(1) + length(3) + levelCount(1) + levelDiv(3) = 11
+        assert_eq!(net.net1_offsets()[1], 11);
+        // road 1: same layout (no access in NET1) = 11
+        assert_eq!(net.net1_offsets()[2], 11 + 11);
     }
 
     /// AC7: nod2_offset < 0x7FFF → size_indicator(1) + offset(2) = 3 bytes
@@ -278,14 +323,14 @@ mod tests {
         rd.label_offsets.push(100);
         rd.road_length_meters = 100;
         rd.nod2_offset = Some(100);
-        let net1 = rd.write_net1();
-        // label(3) + flags(1) + length(3) + nod2[size(1)+offset(2)] = 10
-        assert_eq!(net1.len(), 10);
-        // flags should have 0x40 (NODINFO) and 0x04 (UNK1)
+        let (net1, _) = rd.write_net1();
+        // label(3) + flags(1) + length(3) + levelCount(1) + levelDiv(3) + nod2[size(1)+offset(2)] = 14
+        assert_eq!(net1.len(), 14);
         assert_eq!(net1[3] & 0x44, 0x44);
-        // Last 3 bytes: size_indicator=1, offset=100 in 2B LE
-        assert_eq!(net1[7], 0x01);
-        assert_eq!(u16::from_le_bytes([net1[8], net1[9]]), 100);
+        assert_eq!(net1[7], 0x81); // 1 polyline, last level
+        // nod2_offset after level div placeholder (3B)
+        assert_eq!(net1[11], 0x01); // size indicator
+        assert_eq!(u16::from_le_bytes([net1[12], net1[13]]), 100);
     }
 
     /// nod2_offset >= 0x7FFF → size_indicator(2) + offset(3) = 4 bytes
@@ -295,11 +340,12 @@ mod tests {
         rd.label_offsets.push(100);
         rd.road_length_meters = 100;
         rd.nod2_offset = Some(0x10000);
-        let net1 = rd.write_net1();
-        // label(3) + flags(1) + length(3) + nod2[size(1)+offset(3)] = 11
-        assert_eq!(net1.len(), 11);
-        assert_eq!(net1[7], 0x02);
-        let offset = (net1[8] as u32) | ((net1[9] as u32) << 8) | ((net1[10] as u32) << 16);
+        let (net1, _) = rd.write_net1();
+        // label(3) + flags(1) + length(3) + levelCount(1) + levelDiv(3) + nod2[size(1)+offset(3)] = 15
+        assert_eq!(net1.len(), 15);
+        assert_eq!(net1[7], 0x81); // 1 polyline, last level
+        assert_eq!(net1[11], 0x02); // size indicator
+        let offset = (net1[12] as u32) | ((net1[13] as u32) << 8) | ((net1[14] as u32) << 16);
         assert_eq!(offset, 0x10000);
     }
 }

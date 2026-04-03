@@ -131,15 +131,30 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     // 3. Compute bounds
     let bounds = compute_bounds(mp)?;
 
-    // 4. Pre-compute routing → RoutingContext + net_data + nod_data
-    let (routing_ctx, net_data, nod_data) = pre_compute_routing(mp, &line_labels);
+    // 4. Pre-compute routing → RoutingContext + net_writer + nod_data
+    let (routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);
 
     // 5. Build multi-level subdivision hierarchy + encode RGN (with routing context)
     let mut rgn = RgnWriter::new();
-    let (all_subdivisions, tre_levels, ext_type_offsets_data) = build_multilevel_hierarchy(
+    let (all_subdivisions, tre_levels, ext_type_offsets_data, subdiv_road_refs) = build_multilevel_hierarchy(
         mp, &bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
         routing_ctx.as_ref(),
     );
+
+    // 5b. Patch NET1 level/div entries with subdivision references collected during RGN encoding
+    if let Some(ref mut net_writer) = net_writer_opt {
+        if !subdiv_road_refs.is_empty() {
+            // Build per-road refs: (polyline_num, subdiv_num) — use the first ref for each road
+            let num_roads = net_writer.roads.len();
+            let mut road_refs: Vec<(u8, u16)> = vec![(0, 0); num_roads];
+            for &(road_idx, polyline_num, subdiv_num) in &subdiv_road_refs {
+                if road_idx < num_roads {
+                    road_refs[road_idx] = (polyline_num, subdiv_num);
+                }
+            }
+            net_writer.patch_level_divs(&road_refs);
+        }
+    }
 
     // 5. Build TRE
     let mut tre = TreWriter::new();
@@ -155,7 +170,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     }
     tre.copyright_message = mp.header.copyright.clone();
     tre.codepage = mp.header.codepage;
-    tre.has_routing = net_data.is_some();
+    tre.has_routing = net_writer_opt.is_some();
     tre.levels = tre_levels;
     tre.subdivisions = all_subdivisions;
     // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body
@@ -213,7 +228,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         tre: tre.build(),
         rgn: rgn.build(),
         lbl: lbl_writer.build(),
-        net: net_data,
+        net: net_writer_opt.as_ref().and_then(|nw| nw.built_data.clone()),
         nod: nod_data,
         dem: None,
     })
@@ -236,9 +251,12 @@ fn build_multilevel_hierarchy(
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
     routing_ctx: Option<&RoutingContext>,
-) -> (Vec<Subdivision>, Vec<Zoom>, Vec<u8>) {
+) -> (Vec<Subdivision>, Vec<Zoom>, Vec<u8>, Vec<(usize, u8, u16)>) {
+    // 4th return: subdiv_road_refs = (road_idx, polyline_num, subdiv_num) for NET1 level/div patching
+    let mut all_subdiv_road_refs: Vec<(usize, u8, u16)> = Vec::new();
+
     if levels.is_empty() {
-        return (Vec::new(), Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     }
 
     let num_levels = levels.len();
@@ -313,8 +331,9 @@ fn build_multilevel_hierarchy(
                 let ext_points_before = rgn.ext_points_position();
 
                 let is_leaf = level_idx == 0;
-                let (pts_data, lines_data, polys_data) =
+                let (pts_data, lines_data, polys_data, road_refs) =
                     encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx, is_leaf);
+                all_subdiv_road_refs.extend(road_refs);
 
                 // Capture ext positions after encoding
                 let ext_areas_after = rgn.ext_areas_position();
@@ -407,7 +426,7 @@ fn build_multilevel_hierarchy(
         Vec::new()
     };
 
-    (all_subdivisions, tre_levels_build, ext_type_offsets_data)
+    (all_subdivisions, tre_levels_build, ext_type_offsets_data, all_subdiv_road_refs)
 }
 
 // ── Feature filtering per level ────────────────────────────────────────────
@@ -535,7 +554,11 @@ fn encode_subdivision_rgn(
     rgn: &mut RgnWriter,
     routing_ctx: Option<&RoutingContext>,
     is_leaf_level: bool,
-) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<(usize, u8, u16)>) {
+    // subdiv_road_refs: (road_idx, polyline_num_in_subdiv, subdiv_number)
+    let mut subdiv_road_refs: Vec<(usize, u8, u16)> = Vec::new();
+    let mut polyline_counter: usize = 0;
+
     // Points
     let mut points_data = Vec::new();
     for split_pt in &area.points {
@@ -567,9 +590,15 @@ fn encode_subdivision_rgn(
                 if let Some(&net1_off) = ctx.net1_offsets_by_mp_index.get(&split_line.mp_index) {
                     pl.has_net_info = true;
                     pl.net_offset = net1_off;
+                    // Track subdiv ref for NET1 level/div patching
+                    if let Some(&road_idx) = ctx.mp_index_to_road_idx.get(&split_line.mp_index) {
+                        let polyline_num = polyline_counter as u8;
+                        subdiv_road_refs.push((road_idx, polyline_num, subdiv.number));
+                    }
                 }
             }
         }
+        polyline_counter += 1;
 
         let deltas = compute_deltas(&split_line.points, subdiv);
         let is_ext = mp_line.type_code >= 0x100;
@@ -608,7 +637,7 @@ fn encode_subdivision_rgn(
         }
     }
 
-    (points_data, polylines_data, polygons_data)
+    (points_data, polylines_data, polygons_data, subdiv_road_refs)
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -735,6 +764,8 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
 /// for each routable polyline (keyed by mp_index into mp.polylines).
 struct RoutingContext {
     net1_offsets_by_mp_index: HashMap<usize, u32>,
+    /// mp_index → road_idx (index in the NET writer's road list)
+    mp_index_to_road_idx: HashMap<usize, usize>,
     /// Junction set for recalculating node_flags on split polylines (P4, currently disabled)
     #[allow(dead_code)]
     junctions: HashSet<(i32, i32)>,
@@ -743,7 +774,7 @@ struct RoutingContext {
 fn pre_compute_routing(
     mp: &MpFile,
     line_labels: &[u32],
-) -> (Option<RoutingContext>, Option<Vec<u8>>, Option<Vec<u8>>) {
+) -> (Option<RoutingContext>, Option<NetWriter>, Option<Vec<u8>>) {
     use crate::parser::mp_types::RoutingMode;
     use super::nod::{write_nod2_records, Nod2RoadInfo};
 
@@ -823,18 +854,23 @@ fn pre_compute_routing(
             rd.access_flags = info.params.access_flags;
             net_writer.add_road(rd);
         }
-        let net_data = net_writer.build();
+        let _net_data = net_writer.build();
         let net1_offsets = net_writer.net1_offsets().to_vec();
 
         let mut net1_offsets_by_mp_index = HashMap::new();
         for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
             net1_offsets_by_mp_index.insert(mp_idx, net1_offsets[road_idx]);
         }
+        let mut mp_index_to_road_idx = HashMap::new();
+        for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+            mp_index_to_road_idx.insert(mp_idx, road_idx);
+        }
         let routing_ctx = RoutingContext {
             net1_offsets_by_mp_index,
+            mp_index_to_road_idx,
             junctions,
         };
-        return (Some(routing_ctx), Some(net_data), None);
+        return (Some(routing_ctx), Some(net_writer), None);
     }
 
     // Full routing pipeline:
@@ -880,7 +916,7 @@ fn pre_compute_routing(
         rd.nod2_offset = Some(nod2_offsets[road_idx]);
         net_writer.add_road(rd);
     }
-    let net_data = net_writer.build();
+    let _net_data = net_writer.build();
     let net1_offsets = net_writer.net1_offsets().to_vec();
 
     // 4. Patch NET1 offsets into NOD1 Table A entries
@@ -894,12 +930,17 @@ fn pre_compute_routing(
     for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
         net1_offsets_by_mp_index.insert(mp_idx, net1_offsets[road_idx]);
     }
+    let mut mp_index_to_road_idx = HashMap::new();
+    for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+        mp_index_to_road_idx.insert(mp_idx, road_idx);
+    }
     let routing_ctx = RoutingContext {
         net1_offsets_by_mp_index,
+        mp_index_to_road_idx,
         junctions,
     };
 
-    (Some(routing_ctx), Some(net_data), Some(nod_data))
+    (Some(routing_ctx), Some(net_writer), Some(nod_data))
 }
 
 /// Find the NOD1 offset of the first RouteNode encountered along a road's vertices.

@@ -236,7 +236,7 @@ pub fn write_nod2_records(roads: &[Nod2RoadInfo]) -> (Vec<u8>, Vec<u32>) {
     (data, offsets)
 }
 
-/// Info needed to backpatch an arc's dest pointer after all nodes in a center are written
+/// Info needed to backpatch an internal arc's dest pointer after all nodes in a center are written
 struct ArcPatchInfo {
     /// Byte offset in NOD1 data where the 2-byte dest pointer lives (flagB byte)
     flagb_pos: usize,
@@ -244,8 +244,16 @@ struct ArcPatchInfo {
     src_node_offset: usize,
     /// Global node index of the destination node
     dest_node_index: usize,
-    /// flagB value (last_link, external, etc.)
+    /// flagB value (last_link, etc.)
     flag_b: u8,
+}
+
+/// Info needed to backpatch a Table B entry's NOD1 offset after all centers are written
+struct TableBPatchInfo {
+    /// Byte offset in NOD1 data where the 3-byte NOD1 offset is
+    byte_pos: usize,
+    /// Global node index of the external node
+    node_index: usize,
 }
 
 /// NOD file writer — mkgmap-faithful binary format
@@ -274,7 +282,7 @@ impl NodWriter {
             table_a_positions: Vec::new(),
             nod1_data: None,
             node_offsets: Vec::new(),
-            class_boundaries: [0; 5],
+            class_boundaries: [u32::MAX; 5], // mkgmap: Integer.MAX_VALUE
         }
     }
 
@@ -340,11 +348,13 @@ impl NodWriter {
     }
 
     fn make_center(&self, node_indices: &[usize]) -> RouteCenter {
+        // Center coordinates in 24-bit map units (NOT semicircles!)
+        // mkgmap stores center in map units and writes with put3s/put3sLongitude
         let mut sum_lat: i64 = 0;
         let mut sum_lon: i64 = 0;
         for &idx in node_indices {
-            sum_lat += coord::to_semicircles(self.nodes[idx].lat) as i64;
-            sum_lon += coord::to_semicircles(self.nodes[idx].lon) as i64;
+            sum_lat += self.nodes[idx].lat as i64;
+            sum_lon += self.nodes[idx].lon as i64;
         }
         let n = node_indices.len() as i64;
         RouteCenter {
@@ -413,17 +423,17 @@ impl NodWriter {
         common_header::write_section(&mut buf, nod2_offset, nod2_data.len() as u32);
         buf.extend_from_slice(&0u32.to_le_bytes()); // @0x2D-0x30: reserved
 
-        // NOD3 section @0x31
+        // NOD3 section @0x31 — boundary nodes
+        // mkgmap layout: writeSectionInfo (offset+size+itemSize = 10B) + put4(2) (4B)
         let nod3_offset = nod2_offset + nod2_data.len() as u32;
         common_header::write_section(&mut buf, nod3_offset, nod3_data.len() as u32);
-        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // record size
-        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // flags
+        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // @0x39: itemSize = 9 (boundary record)
+        buf.extend_from_slice(&0x00000002u32.to_le_bytes()); // @0x3B: mystery field (always 2 in mkgmap)
 
-        // NOD4 section (high-class boundary) — mkgmap writes this after NOD3
+        // NOD4 section @0x3F — high-class boundary nodes
+        // mkgmap layout: writeSectionInfo (offset+size only = 8B), no itemSize
         let nod4_offset = nod3_offset + nod3_data.len() as u32;
         common_header::write_section(&mut buf, nod4_offset, nod4_data.len() as u32);
-        buf.extend_from_slice(&0x0009u16.to_le_bytes()); // record size
-        buf.extend_from_slice(&0x0002u16.to_le_bytes()); // flags
 
         // Class boundaries: 5 × u32 (first absolute, then deltas)
         let mut prev: u32 = 0;
@@ -453,25 +463,45 @@ impl NodWriter {
     /// Build NOD1 — mkgmap-faithful route center format.
     /// Returns (data, node_offsets, table_a_positions_for_net1_patching).
     fn build_nod1(&mut self) -> (Vec<u8>, Vec<u32>, Vec<(usize, usize)>) {
-        use std::collections::HashMap;
+        use std::collections::{HashMap, HashSet};
 
         let mut data = Vec::new();
         let mut node_offsets = vec![0u32; self.nodes.len()];
         let mut table_a_positions: Vec<(usize, usize)> = Vec::new();
+        let mut table_b_patches: Vec<TableBPatchInfo> = Vec::new();
 
         for center in &self.centers {
+            let center_start = data.len();
+
+            // ── Phase 0: Determine internal/external nodes ──
+            let center_node_set: HashSet<usize> = center.nodes.iter().copied().collect();
+
+            // Build Table B index: external dest nodes → position in Table B
+            let mut table_b_index: HashMap<usize, u8> = HashMap::new();
+            let mut table_b_nodes: Vec<usize> = Vec::new();
+            for &ni in &center.nodes {
+                for arc in &self.nodes[ni].arcs {
+                    if !center_node_set.contains(&arc.dest_node_index)
+                        && !table_b_index.contains_key(&arc.dest_node_index)
+                    {
+                        let idx = table_b_nodes.len() as u8;
+                        table_b_index.insert(arc.dest_node_index, idx);
+                        table_b_nodes.push(arc.dest_node_index);
+                    }
+                }
+            }
+
             // ── Phase 1: Write nodes + arcs ──
-            // Track per-node info for backpatching
             struct NodeInfo {
-                offset: usize,        // byte offset of this node in `data`
-                byte0_pos: usize,     // position of the table-pointer placeholder
+                offset: usize,
+                byte0_pos: usize,
             }
             let mut node_infos: Vec<NodeInfo> = Vec::new();
             let mut arc_patches: Vec<ArcPatchInfo> = Vec::new();
 
             // Build Table A index: unique road_def_index → position in table
             let mut table_a_index: HashMap<usize, u8> = HashMap::new();
-            let mut table_a_roads: Vec<usize> = Vec::new(); // road_def_index in order
+            let mut table_a_roads: Vec<usize> = Vec::new();
             for &ni in &center.nodes {
                 for arc in &self.nodes[ni].arcs {
                     if !table_a_index.contains_key(&arc.road_def_index) {
@@ -487,12 +517,13 @@ impl NodWriter {
                 let node_start = data.len();
                 node_offsets[node_idx] = node_start as u32;
 
-                // Track class boundaries (cumulative: update classes nc down to 0)
-                // mkgmap: for each node of class N, boundaries[N..0] are updated
+                // Track class boundaries: mkgmap uses center_start (min semantics)
                 let nc = (self.nodes[node_idx].node_class as usize).min(4);
-                for c in (0..=nc).rev() {
-                    if node_start as u32 > self.class_boundaries[c] {
-                        self.class_boundaries[c] = node_start as u32;
+                if nc > 0 {
+                    for c in (0..nc).rev() {
+                        if (center_start as u32) < self.class_boundaries[c] {
+                            self.class_boundaries[c] = center_start as u32;
+                        }
                     }
                 }
 
@@ -503,8 +534,9 @@ impl NodWriter {
                 data.push(0x00);
 
                 // Byte 1: flags
-                let delta_lat = coord::to_semicircles(node.lat) - center.center_lat;
-                let delta_lon = coord::to_semicircles(node.lon) - center.center_lon;
+                // Deltas in 24-bit map units (same units as center)
+                let delta_lat = node.lat - center.center_lat;
+                let delta_lon = node.lon - center.center_lon;
                 let large = delta_lat.unsigned_abs() > 0x7FF || delta_lon.unsigned_abs() > 0x7FF;
                 let mut flags: u8 = node.node_class & 0x07;
                 if !node.arcs.is_empty() { flags |= F_ARCS; }
@@ -512,18 +544,16 @@ impl NodWriter {
                 if node.is_boundary { flags |= F_BOUNDARY; }
                 data.push(flags);
 
-                // Coords: 3B (12-bit packed) or 4B (16-bit packed)
+                // Coords: 3B (12-bit packed) or 4B (16-bit packed), LE
                 if large {
-                    // 4 bytes: (latOff << 16) | (lonOff & 0xFFFF), written as i32 BE
                     let packed = ((delta_lat as i32) << 16) | ((delta_lon as i32) & 0xFFFF);
-                    data.extend_from_slice(&packed.to_be_bytes());
+                    data.extend_from_slice(&packed.to_le_bytes());
                 } else {
-                    // 3 bytes: (latOff << 12) | (lonOff & 0xFFF), signed 24-bit
                     let packed = ((delta_lat & 0xFFF) << 12) | (delta_lon & 0xFFF);
-                    let b = packed.to_be_bytes(); // i32 → take low 3 bytes
+                    let b = packed.to_le_bytes();
+                    data.push(b[0]);
                     data.push(b[1]);
                     data.push(b[2]);
-                    data.push(b[3]);
                 }
 
                 // Write arcs
@@ -531,6 +561,7 @@ impl NodWriter {
                 let mut last_index_a: Option<u8> = None;
                 for (arc_i, arc) in node.arcs.iter().enumerate() {
                     let is_last = arc_i == num_arcs - 1;
+                    let is_internal = center_node_set.contains(&arc.dest_node_index);
                     let raw_len = meters_to_raw_length(arc.length_meters);
                     let (len_flag_bits, len_data) = encode_arc_length(raw_len, false);
 
@@ -538,25 +569,47 @@ impl NodWriter {
                     let mut flag_a: u8 = arc.road_class & 0x07;
                     flag_a |= len_flag_bits;
                     if arc.forward { flag_a |= FLAG_FORWARD; }
-                    flag_a |= FLAG_HASNET; // always set (has Table A)
+                    // FLAG_HASNET (mkgmap RouteArc.java:237-246):
+                    // First arc: only if useCompactDirs (false for MVP)
+                    // Subsequent arcs: only if road_def changed
+                    if arc_i > 0 {
+                        let prev_arc = &node.arcs[arc_i - 1];
+                        if arc.road_def_index != prev_arc.road_def_index {
+                            flag_a |= FLAG_HASNET;
+                        }
+                    }
                     data.push(flag_a);
 
-                    // Dest pointer (2 bytes big-endian) — placeholder, backpatched later
-                    let flagb_pos = data.len();
+                    // Dest pointer — format depends on internal vs external
                     let mut flag_b: u8 = 0;
                     if is_last { flag_b |= FLAG_LAST_LINK; }
-                    // For now, write placeholder
-                    data.push(flag_b);
-                    data.push(0x00);
 
-                    arc_patches.push(ArcPatchInfo {
-                        flagb_pos,
-                        src_node_offset: node_start,
-                        dest_node_index: arc.dest_node_index,
-                        flag_b,
-                    });
+                    if is_internal {
+                        // Internal: 2 bytes (flagB + placeholder), backpatched later
+                        let flagb_pos = data.len();
+                        data.push(flag_b);
+                        data.push(0x00);
+                        arc_patches.push(ArcPatchInfo {
+                            flagb_pos,
+                            src_node_offset: node_start,
+                            dest_node_index: arc.dest_node_index,
+                            flag_b,
+                        });
+                    } else {
+                        // External (mkgmap RouteArc.java:266-273):
+                        // flagB has bit 6 set (external marker)
+                        // Low 6 bits = Table B index (or 0x3F + extra byte)
+                        let index_b = *table_b_index.get(&arc.dest_node_index).unwrap();
+                        flag_b |= 0x40; // external flag
+                        if index_b >= 0x3F {
+                            data.push(flag_b | 0x3F);
+                            data.push(index_b);
+                        } else {
+                            data.push(flag_b | index_b);
+                        }
+                    }
 
-                    // indexA (conditional: written if first arc or different from previous)
+                    // indexA (conditional: first arc or different from previous)
                     let index_a = *table_a_index.get(&arc.road_def_index).unwrap();
                     if last_index_a != Some(index_a) {
                         data.push(index_a);
@@ -566,12 +619,10 @@ impl NodWriter {
                     // Length data (1-3 bytes)
                     data.extend_from_slice(&len_data);
 
-                    // Heading (conditional: written if indexA was written or direction changed)
-                    // For simplicity in MVP: always write heading when indexA was written
-                    // (first arc or indexA changed)
-                    if last_index_a == Some(index_a) && arc_i == 0 {
+                    // Heading (conditional: first arc, or indexA/forward changed)
+                    if arc_i == 0 {
                         data.push(arc.initial_heading as u8);
-                    } else if arc_i > 0 {
+                    } else {
                         let prev_arc = &node.arcs[arc_i - 1];
                         let prev_idx_a = *table_a_index.get(&prev_arc.road_def_index).unwrap();
                         if index_a != prev_idx_a || arc.forward != prev_arc.forward {
@@ -587,8 +638,6 @@ impl NodWriter {
             }
 
             // ── Phase 2: Pad to NEXT 64-byte boundary ──
-            // mkgmap: tablesOffset = (writer.position() + alignment) & ~alignMask
-            // Always advances to the next aligned boundary, even if already aligned.
             let tables_offset = (data.len() + NOD_ALIGNMENT) & !(NOD_ALIGNMENT - 1);
             while data.len() < tables_offset {
                 data.push(0x00);
@@ -600,52 +649,37 @@ impl NodWriter {
                 data[info.byte0_pos] = low;
             }
 
-            // ── Phase 4: Backpatch arc dest pointers ──
+            // ── Phase 4: Backpatch internal arc dest pointers ──
             for patch in &arc_patches {
                 let dest_offset = node_offsets[patch.dest_node_index] as usize;
-                // Check if dest is in this center (internal) or external
-                let is_internal = center.nodes.contains(&patch.dest_node_index);
-                if is_internal {
-                    let diff = (dest_offset as i32) - (patch.src_node_offset as i32);
-                    // 14-bit signed offset, big-endian with flagB in high byte
-                    let val = ((patch.flag_b as u16) << 8) | ((diff as u16) & 0x3FFF);
-                    data[patch.flagb_pos] = (val >> 8) as u8;
-                    data[patch.flagb_pos + 1] = (val & 0xFF) as u8;
-                } else {
-                    // External: flagB | FLAG_EXTERNAL, indexB = Table B index
-                    // For single-tile MVP, all nodes are internal
-                    let val = ((patch.flag_b | 0x40) as u16) << 8;
-                    data[patch.flagb_pos] = (val >> 8) as u8;
-                    data[patch.flagb_pos + 1] = 0;
-                }
+                let diff = (dest_offset as i32) - (patch.src_node_offset as i32);
+                let val = ((patch.flag_b as u16) << 8) | ((diff as u16) & 0x3FFF);
+                data[patch.flagb_pos] = (val >> 8) as u8;
+                data[patch.flagb_pos + 1] = (val & 0xFF) as u8;
             }
 
             // ── Phase 5: Tables header ──
             data.push(0x00); // tabC_format (no Table C)
-            // Center longitude (3B signed LE)
             let lon_b = center.center_lon.to_le_bytes();
             data.push(lon_b[0]);
             data.push(lon_b[1]);
             data.push(lon_b[2]);
-            // Center latitude (3B signed LE)
             let lat_b = center.center_lat.to_le_bytes();
             data.push(lat_b[0]);
             data.push(lat_b[1]);
             data.push(lat_b[2]);
-            // Table A count + Table B count
             data.push(table_a_roads.len() as u8);
-            data.push(0); // Table B count = 0 for single-tile
+            data.push(table_b_nodes.len() as u8);
 
             // ── Phase 6: Table A (5B per road) ──
             for &road_idx in &table_a_roads {
                 let ta_pos = data.len();
-                // Find the first arc referencing this road to get its properties
                 let arc = center.nodes.iter()
                     .flat_map(|&ni| self.nodes[ni].arcs.iter())
                     .find(|a| a.road_def_index == road_idx)
                     .unwrap();
                 let entry = TableAEntry {
-                    net1_offset: 0, // patched later
+                    net1_offset: 0, // patched later by patch_net1_offsets()
                     road_class: arc.road_class,
                     speed: arc.speed,
                     toll: arc.toll,
@@ -656,8 +690,26 @@ impl NodWriter {
                 table_a_positions.push((ta_pos, road_idx));
             }
 
-            // ── Phase 7: Table B (empty for single-tile) ──
-            // Nothing to write
+            // ── Phase 7: Table B (3B per external node) — placeholders ──
+            for &ext_node_idx in &table_b_nodes {
+                let pos = data.len();
+                data.push(0x00);
+                data.push(0x00);
+                data.push(0x00);
+                table_b_patches.push(TableBPatchInfo {
+                    byte_pos: pos,
+                    node_index: ext_node_idx,
+                });
+            }
+        }
+
+        // ── Final: Backpatch all Table B entries with NOD1 offsets ──
+        for patch in &table_b_patches {
+            let off = node_offsets[patch.node_index];
+            let b = off.to_le_bytes();
+            data[patch.byte_pos] = b[0];
+            data[patch.byte_pos + 1] = b[1];
+            data[patch.byte_pos + 2] = b[2];
         }
 
         (data, node_offsets, table_a_positions)
