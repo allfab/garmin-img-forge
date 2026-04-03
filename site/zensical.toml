@@ -11,6 +11,7 @@ extra_css = ["stylesheets/hero.css"]
 name = "classic"
 custom_dir = "overrides"
 favicon = "assets/images/garmin-favicon.png"
+logo = "assets/images/garmin-favicon.png"
 language = "fr"
 palette = [
   { media = "(prefers-color-scheme: light)", scheme = "default", primary = "green", accent = "deep-orange", toggle = { icon = "material/brightness-7", name = "Mode sombre" } },
