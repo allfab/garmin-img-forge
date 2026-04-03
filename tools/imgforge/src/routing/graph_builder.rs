@@ -123,12 +123,14 @@ pub fn build_graph_with_junctions(
 
     // Create route nodes — indexed by enumeration index, NOT HashMap iteration order.
     // nodes[idx] must correspond to the junction with enumeration index idx.
+    // All nodes are marked as boundary (required for NOD3 — GPSMapEdit needs
+    // non-empty NOD3 to display routing nodes).
     let mut nodes: Vec<RouteNode> = vec![
         RouteNode { lat: 0, lon: 0, arcs: Vec::new(), is_boundary: false, node_class: 0 };
         junctions.len()
     ];
     for (&(lat, lon), &idx) in &junctions {
-        nodes[idx] = RouteNode { lat, lon, arcs: Vec::new(), is_boundary: false, node_class: 0 };
+        nodes[idx] = RouteNode { lat, lon, arcs: Vec::new(), is_boundary: true, node_class: 0 };
     }
 
     // Create arcs between nodes along each road
