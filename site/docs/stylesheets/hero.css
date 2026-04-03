@@ -161,9 +161,10 @@
   box-shadow: 0 4px 24px rgba(76, 175, 80, 0.35);
 }
 
-/* --- Hide footer on hero page (prevents vertical scroll) --- */
-body:has(.zn-hero) .md-footer {
-  display: none;
+/* --- Prevent vertical scroll on hero page --- */
+body:has(.zn-hero) {
+  overflow: hidden;
+  height: 100vh;
 }
 
 /* --- Transparent header & tabs on hero page --- */
