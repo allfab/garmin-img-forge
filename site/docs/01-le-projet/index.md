@@ -19,8 +19,11 @@ Ce projet incarne une démarche de bout en bout :
 
 1. **Les données sont ouvertes** — La BD TOPO IGN est disponible sous licence Etalab 2.0 depuis le 1er janvier 2021
 2. **Les outils sont open-source** — ogr-polishmap sous licence MIT (compatibilité GDAL), mpforge et imgforge sous licence GPL v3 (copyleft)
-3. **Le processus est reproductible** — Un script, une configuration YAML, et n'importe qui peut reconstruire la carte
+3. **Le processus est reproductible et extensible** — Un script, une configuration YAML, et n'importe qui peut reconstruire la carte. Le pipeline n'est pas limité à la BD TOPO : il suffit d'adapter les fichiers YAML pour utiliser d'autres sources de données géographiques
 4. **Zéro dépendance propriétaire** — Ni FME, ni Global Mapper, ni GPSMapEdit, ni même Java
+
+!!! note "Plateforme supportée"
+    Les binaires sont actuellement compilés pour **Linux x86_64 uniquement**. Une compilation pour Windows est envisageable pour imgforge (pur Rust), mais reste complexe pour mpforge (liaison statique GDAL).
 
 ### Avant / Après
 
@@ -51,7 +54,7 @@ Le pipeline repose sur trois outils développés spécifiquement pour ce projet 
 
     ---
 
-    Un CLI Rust qui découpe des données géospatiales massives (Shapefile, GeoPackage, PostGIS) en tuiles Polish Map, avec parallélisation, field mapping YAML et rapports JSON pour l'intégration CI/CD.
+    Un CLI Rust qui découpe des données géospatiales massives (Shapefile, GeoPackage) en tuiles Polish Map, avec parallélisation, field mapping YAML et rapports JSON pour l'intégration CI/CD.
 
     [:octicons-arrow-right-24: En savoir plus](mpforge.md)
 
@@ -65,9 +68,15 @@ Le pipeline repose sur trois outils développés spécifiquement pour ce projet 
 
 </div>
 
+### Roadmap
+
+!!! info "ogr-garminimg — Driver Garmin IMG *(à venir)*"
+    Un futur driver GDAL/OGR C++ pour **lire** nativement les fichiers Garmin IMG (`.img`). Il permettra d'ouvrir directement un `gmapsupp.img` dans QGIS, ogr2ogr ou tout outil GDAL — rendant le format binaire Garmin enfin accessible à l'écosystème SIG. Ce projet est au stade de conception.
+
 ## Le flux de données
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666', 'secondaryColor': '#ff9800', 'tertiaryColor': '#2196f3'}}}%%
 flowchart LR
     A["BD TOPO IGN<br/>.gpkg / .shp"] --> B["mpforge build<br/>tuilage spatial"]
     B --> C["tiles/*.mp<br/>Polish Map"]
@@ -75,10 +84,12 @@ flowchart LR
     D --> E["gmapsupp.img<br/>Carte Garmin"]
     E --> F["GPS Garmin"]
 
-    style A fill:#e8f5e9,stroke:#4caf50
-    style C fill:#fff3e0,stroke:#ff9800
-    style E fill:#e3f2fd,stroke:#2196f3
-    style F fill:#fce4ec,stroke:#e91e63
+    style A fill:#4caf50,stroke:#2e7d32,color:#fff
+    style B fill:#78909c,stroke:#546e7a,color:#fff
+    style C fill:#ff9800,stroke:#e65100,color:#fff
+    style D fill:#78909c,stroke:#546e7a,color:#fff
+    style E fill:#2196f3,stroke:#1565c0,color:#fff
+    style F fill:#e91e63,stroke:#c2185b,color:#fff
 ```
 
 ## Ce que produisent les cartes
@@ -99,4 +110,4 @@ Une carte Garmin topographique de la France (ou d'une région) incluant :
     Le réseau routable est actuellement **codé en dur** en fonction des données de la BD TOPO. La configuration dynamique basée sur les attributs routables de la source n'est pas encore supportée.
 
 !!! info "Données sources"
-    Les cartes sont générées depuis la **BD TOPO IGN** — mise à jour semestrielle, précision métrique, couvrant l'ensemble du territoire français. Licence ouverte [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).
+    Les cartes sont générées depuis la **BD TOPO IGN** — mise à jour trimestrielle, précision métrique, couvrant l'ensemble du territoire français. Licence ouverte [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).

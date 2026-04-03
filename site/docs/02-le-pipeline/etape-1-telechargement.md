@@ -10,8 +10,8 @@ La **BD TOPO IGN** est la base de données topographique de référence de l'IGN
 | Formats disponibles | GeoPackage (`.gpkg`) ou Shapefile (`.shp`) |
 | Projection | Lambert-93 (EPSG:2154) |
 | Licence | Etalab 2.0 (ouverte et gratuite) |
-| Mise à jour | Semestrielle (janvier/juillet) |
-| Taille | ~35 Go pour la France entière |
+| Mise à jour | Trimestrielle |
+| Taille | ~40 Go pour la moitié sud de la France |
 
 ### Données complémentaires optionnelles
 
@@ -113,3 +113,18 @@ Les fichiers HGT sont directement utilisables par imgforge (`--dem ./srtm_hgt/`)
 ### BDAltiv2 (IGN) — haute résolution France
 
 Les fichiers ASC au format ESRI ASCII Grid, en projection Lambert 93, sont supportés nativement par imgforge avec reprojection intégrée (`--dem ./bdaltiv2/ --dem-source-srs EPSG:2154`).
+
+## Courbes de niveau vectorielles
+
+!!! note "DEM et courbes de niveau : ne pas confondre"
+    Les **courbes de niveau** (isolignes au pas de 10 m) sont des **données vectorielles** issues des couches altimétriques de l'IGN. Elles sont intégrées au pipeline comme n'importe quelle source de données via la configuration YAML de mpforge. Le **DEM** (BDAltiv2, SRTM) est un modèle numérique de terrain en raster, utilisé par imgforge (`--dem`) pour l'**ombrage du relief** (hill shading) et les **profils d'altitude**. Ce sont deux données complémentaires mais distinctes.
+
+Les courbes de niveau au pas de 10 m sont disponibles sous forme de données vectorielles (Shapefile ou GeoPackage) auprès de l'IGN. Elles peuvent être intégrées au pipeline comme n'importe quelle autre source de données : il suffit de les déclarer dans le fichier de configuration YAML de mpforge.
+
+```yaml
+inputs:
+  # Courbes de niveau vectorielles IGN
+  - path: "data/courbes_niveau/*.shp"
+```
+
+Les courbes de niveau seront alors découpées en tuiles Polish Map et compilées dans la carte Garmin finale, indépendamment du DEM utilisé par imgforge pour le hill shading.

@@ -4,7 +4,7 @@
 
 Le format **Polish Map** (`.mp`) est le format intermédiaire indispensable pour créer des cartes Garmin. C'est un format texte de type INI, inventé par le logiciel cGPSmapper dans les années 2000, qui décrit des points d'intérêt (POI), des lignes (routes, rivières) et des polygones (forêts, lacs, bâtiments) avec leurs codes types Garmin.
 
-**Le problème** : aucun outil SIG majeur — ni open-source (QGIS), ni propriétaire (ArcGIS) — ne sait lire ou écrire ce format nativement, et aucun des 200+ formats supportés par GDAL/OGR ne le couvre. Seul **Global Mapper** (propriétaire, licence payante) sait lire et enregistrer le format Polish Map — c'est d'ailleurs grâce à cet outil que l'auteur de ce projet a pu appréhender la structure du format `.mp`. Pour le reste, il fallait utiliser GPSMapEdit (propriétaire, Windows uniquement) ou écrire des scripts ad hoc fragiles.
+**Le problème** : aucun outil SIG majeur — ni open-source (QGIS), ni propriétaire (ArcGIS) — ne sait lire ou écrire ce format nativement, et aucun des 200+ formats supportés par GDAL/OGR ne le couvre. Seul **Global Mapper** (propriétaire, licence payante) sait lire et enregistrer le format Polish Map — c'est d'ailleurs grâce à cet outil que j'ai pu appréhender la structure du format `.mp`. Pour le reste, il fallait utiliser GPSMapEdit (propriétaire, Windows uniquement) ou écrire des scripts ad hoc fragiles.
 
 ## La solution : un driver GDAL natif
 
@@ -99,15 +99,18 @@ Data0=(45.35,5.78),(45.36,5.79),(45.35,5.80),(45.35,5.78)
 
 Le format Garmin IMG est un binaire opaque et complexe. Le Polish Map sert de **représentation lisible** entre les données SIG et le binaire final :
 
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666'}}}%%
+flowchart LR
+    A["Données SIG<br/>.shp, .gpkg"] -->|ogr-polishmap| B["Polish Map<br/>.mp"]
+    B -->|imgforge| C["Garmin IMG<br/>.img"]
+
+    style A fill:#4caf50,stroke:#2e7d32,color:#fff
+    style B fill:#ff9800,stroke:#e65100,color:#fff
+    style C fill:#2196f3,stroke:#1565c0,color:#fff
 ```
-Données SIG (.shp, .gpkg)     ← format professionnel, multi-projections
-         |
-         v
-    Polish Map (.mp)           ← format texte, lisible, vérifiable
-         |
-         v
-    Garmin IMG (.img)          ← binaire propriétaire, optimisé GPS
-```
+
+Le rôle d'ogr-polishmap se situe sur la **première flèche** : la conversion des données SIG vers le format Polish Map. La seconde étape (Polish Map → Garmin IMG) est assurée par imgforge.
 
 C'est cette architecture en deux étapes qui rend le pipeline modulaire et débogable. On peut inspecter les fichiers `.mp` à tout moment pour vérifier que les données sont correctement transformées avant la compilation finale.
 

@@ -7,7 +7,7 @@ Le format **Garmin IMG** est un système de fichiers propriétaire contenant plu
 - **cGPSmapper** — propriétaire, abandonné, Windows uniquement
 - **mkgmap** — open-source mais écrit en Java, volumineux, lent sur les gros datasets
 
-Notre objectif : un **compilateur Garmin IMG natif en Rust**, sans dépendance, capable de remplacer mkgmap tout en ajoutant des fonctionnalités modernes.
+Mon objectif : un **compilateur Garmin IMG natif en Rust**, sans dépendance, capable de remplacer mkgmap tout en ajoutant des fonctionnalités modernes.
 
 ## La solution : imgforge
 

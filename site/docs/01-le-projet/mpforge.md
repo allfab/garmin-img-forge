@@ -2,7 +2,7 @@
 
 ## Le problème : des données massives à découper
 
-La BD TOPO IGN pèse plus de **35 Go** pour la France entière, avec des dizaines de couches géographiques (routes, bâtiments, hydrographie, végétation...). Un GPS Garmin ne peut pas digérer un fichier Polish Map monolithique de cette taille. Il faut **découper** les données en tuiles spatiales — des morceaux géographiques gérables — puis les recombiner à la compilation.
+La BD TOPO IGN représente environ **40 Go** de données pour la moitié sud de la France (régions Nouvelle-Aquitaine, Auvergne-Rhône-Alpes, Provence-Alpes-Côte d'Azur, Corse et Occitanie), avec des dizaines de couches géographiques (routes, bâtiments, hydrographie, végétation...). Un GPS Garmin ne peut pas digérer un fichier Polish Map monolithique de cette taille. Il faut **découper** les données en tuiles spatiales — des morceaux géographiques gérables — puis les recombiner à la compilation.
 
 Ce tuilage spatial est une opération complexe :
 
@@ -24,8 +24,9 @@ En sortie : des centaines (voire des milliers) de fichiers `.mp`, chacun couvran
 ## Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666'}}}%%
 flowchart TD
-    A["Sources GDAL<br/>(.shp, .gpkg, PostGIS)"] --> B["Lecture OGR<br/>+ filtrage spatial"]
+    A["Sources GDAL<br/>(.shp, .gpkg)"] --> B["Lecture OGR<br/>+ filtrage spatial"]
     B --> C["R-tree spatial<br/>indexation"]
     C --> D["Grille de tuilage<br/>cell_size + overlap"]
     D --> E["Workers parallèles<br/>(rayon)"]
@@ -33,8 +34,14 @@ flowchart TD
     F --> G["Export Polish Map<br/>via ogr-polishmap"]
     G --> H["tiles/*.mp"]
 
-    style A fill:#e8f5e9,stroke:#4caf50
-    style H fill:#fff3e0,stroke:#ff9800
+    style A fill:#4caf50,stroke:#2e7d32,color:#fff
+    style B fill:#78909c,stroke:#546e7a,color:#fff
+    style C fill:#78909c,stroke:#546e7a,color:#fff
+    style D fill:#78909c,stroke:#546e7a,color:#fff
+    style E fill:#78909c,stroke:#546e7a,color:#fff
+    style F fill:#78909c,stroke:#546e7a,color:#fff
+    style G fill:#78909c,stroke:#546e7a,color:#fff
+    style H fill:#ff9800,stroke:#e65100,color:#fff
 ```
 
 ### Ce qui se passe en interne
@@ -70,9 +77,9 @@ inputs:
       - "cours_d_eau"
       - "zone_vegetation"
 
-  # PostGIS
-  - connection: "PG:host=localhost dbname=gis"
-    layers: ["roads", "buildings"]
+  # PostGIS (non implémenté — prévu dans une future version)
+  # - connection: "PG:host=localhost dbname=gis"
+  #   layers: ["roads", "buildings"]
 
 output:
   directory: "tiles/"
@@ -179,15 +186,17 @@ mpforge utilise la bibliothèque **rayon** (Rust) pour distribuer le traitement 
 
 ## Sources supportées
 
-mpforge lit **tous les formats GDAL/OGR** :
+mpforge lit **tous les formats fichier GDAL/OGR** :
 
 | Format | Type | Exemple |
 |--------|------|---------|
 | ESRI Shapefile | Fichier | `data/routes.shp` |
 | GeoPackage | Fichier | `data/bdtopo.gpkg` |
-| PostGIS | Base de données | `PG:host=localhost dbname=gis` |
 | GeoJSON | Fichier | `data/features.geojson` |
 | KML/KMZ | Fichier | `data/map.kml` |
+
+!!! note "PostGIS"
+    Les chaînes de connexion PostGIS sont reconnues par le parseur de configuration, mais la lecture effective des données n'est pas encore implémentée dans le pipeline. Prévu dans une future version.
 
 ## Gestion d'erreurs
 

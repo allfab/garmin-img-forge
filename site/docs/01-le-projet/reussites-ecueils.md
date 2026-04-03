@@ -57,13 +57,13 @@ Le passage UTF-8 (données sources) vers CP1252 (format Polish Map par défaut) 
 
 ### La taille des données BD TOPO
 
-35 Go de données vectorielles pour la France entière, c'est massif. Les premiers prototypes de mpforge prenaient des heures. L'ajout de la parallélisation (rayon), de l'indexation spatiale (R-tree) et de l'option `--skip-existing` a été nécessaire pour rendre le pipeline viable en production.
+~40 Go de données vectorielles pour la moitié sud de la France, c'est massif. Les premiers prototypes de mpforge prenaient des heures. L'ajout de la parallélisation (rayon), de l'indexation spatiale (R-tree) et de l'option `--skip-existing` a été nécessaire pour rendre le pipeline viable en production.
 
 ---
 
 ## Leçons apprises
 
-1. **Commencer par le driver GDAL** a été le bon choix. En s'intégrant dans l'écosystème existant plutôt que de tout réinventer, on a immédiatement bénéficié de toute la puissance de GDAL.
+1. **Commencer par le driver GDAL** a été le bon choix. En m'intégrant dans l'écosystème existant plutôt que de tout réinventer, j'ai immédiatement bénéficié de toute la puissance de GDAL.
 
 2. **Le format intermédiaire Polish Map** est essentiel pour le débogage. Pouvoir inspecter les fichiers texte `.mp` avant la compilation binaire a sauvé des centaines d'heures de débogage.
 

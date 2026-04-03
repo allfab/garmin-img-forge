@@ -83,5 +83,7 @@ Certaines couches BD TOPO ne sont pas encore intégrées dans le pipeline :
 | Zones réglementées détaillées | Complexité des attributs |
 | Limites administratives fines | Redondance avec les données cadastrales |
 
-!!! note "Courbes de niveau"
-    Les courbes de niveau ne proviennent pas de la BD TOPO mais du **RGE ALTI** (données altimétriques IGN) ou du **SRTM** (NASA). Elles sont intégrées via l'option DEM d'imgforge.
+!!! note "Courbes de niveau et DEM : ne pas confondre"
+    Les **courbes de niveau** (isolignes au pas de 10 m) sont des **données vectorielles** issues des couches altimétriques de l'IGN. Elles sont intégrées au pipeline comme n'importe quelle source de données via la configuration YAML de mpforge.
+
+    Le **DEM** (BDAltiv2 IGN ou SRTM NASA) est un modèle numérique de terrain en raster, utilisé par imgforge (`--dem`) pour l'**ombrage du relief** (hill shading) et les **profils d'altitude** sur le GPS. Ce sont deux données complémentaires mais distinctes.
