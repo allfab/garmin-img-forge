@@ -42,10 +42,10 @@ Tout ce qu'il faut pour mettre en place l'environnement de production de cartes 
 
 #### Utilisation avec binaires pré-compilés (le plus simple)
 
-| Logiciel | Version | Usage |
-|----------|---------|-------|
-| **mpforge** (binaire statique) | v0.2.0+ | Tuilage — inclut GDAL et ogr-polishmap |
-| **imgforge** (binaire statique) | v0.1.0+ | Compilation Garmin IMG |
+| Logiciel | Version | Téléchargement | Usage |
+|----------|---------|----------------|-------|
+| **mpforge** (binaire statique) | v0.2.1+ | [:material-download: mpforge](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.1/mpforge) | Tuilage — inclut GDAL et ogr-polishmap |
+| **imgforge** (binaire statique) | v0.2.0+ | [:material-download: imgforge](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.2.0/imgforge) | Compilation Garmin IMG |
 
 C'est tout ! Les binaires pré-compilés de mpforge embarquent GDAL, PROJ, GEOS et le driver ogr-polishmap. Aucune installation de bibliothèque système n'est nécessaire.
 

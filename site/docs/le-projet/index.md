@@ -1,4 +1,4 @@
-# Le Projet MPForge
+# Le Projet
 
 **Des cartes topographiques Garmin gratuites, précises et à jour — forgées depuis les données ouvertes de l'IGN, avec un pipeline 100 % open-source.**
 
