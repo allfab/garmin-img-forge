@@ -2,6 +2,8 @@ site_name = "GARMIN IGN BDTOPO MAP"
 site_url = "https://maps.garmin.allfabox.fr"
 site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
 site_author = "allfab"
+repo_url = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
+repo_name = "allfab/garmin-ign-bdtopo-map"
 docs_dir = "docs"
 site_dir = "_site"
 use_directory_urls = true
@@ -26,7 +28,8 @@ features = [
   "search.suggest",
   "search.highlight",
   "content.code.annotate",
-  "content.code.copy"
+  "content.code.copy",
+  "navigation.footer"
 ]
 
 [theme.font]
