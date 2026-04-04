@@ -212,7 +212,7 @@ Deux modes pour s'adapter au contexte :
 Les binaires incluent **GDAL 3.10.1 et le driver ogr-polishmap intégrés**. Zéro configuration requise :
 
 ```bash
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-linux-x64-static.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.0/mpforge-linux-x64-static.tar.gz
 tar xzf mpforge-linux-x64-static.tar.gz
 sudo mv mpforge /usr/local/bin/
 mpforge --version

@@ -10,7 +10,7 @@ Deux approches : **binaires pré-compilés** (rapide, recommandé) ou **compilat
 
 ```bash
 # Télécharger
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-linux-x64-static.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.0/mpforge-linux-x64-static.tar.gz
 
 # Extraire
 tar xzf mpforge-linux-x64-static.tar.gz
@@ -20,7 +20,7 @@ sudo mv mpforge /usr/local/bin/
 
 # Vérifier
 mpforge --version
-# → mpforge v0.2.0
+# → mpforge 0.2.0
 ```
 
 !!! success "Zéro configuration"
