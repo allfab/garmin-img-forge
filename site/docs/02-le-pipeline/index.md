@@ -13,11 +13,11 @@ flowchart TD
     C --> D["4. Compilation<br/>imgforge build"]
     D --> E["5. Installation<br/>GPS Garmin"]
 
-    style A fill:#e8f5e9,stroke:#4caf50
-    style B fill:#f3e5f5,stroke:#9c27b0
-    style C fill:#fff3e0,stroke:#ff9800
-    style D fill:#e3f2fd,stroke:#2196f3
-    style E fill:#fce4ec,stroke:#e91e63
+    style A fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
+    style B fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style C fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style D fill:#e3f2fd,stroke:#2196f3,color:#0d47a1
+    style E fill:#fce4ec,stroke:#e91e63,color:#880e4f
 ```
 
 | Étape | Outil | Entrée | Sortie | Durée typique |

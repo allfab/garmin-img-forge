@@ -5,7 +5,7 @@ site_author = "allfab"
 docs_dir = "docs"
 site_dir = "_site"
 use_directory_urls = true
-extra_css = ["stylesheets/hero.css"]
+extra_css = ["stylesheets/hero.css", "stylesheets/extra.css"]
 
 [theme]
 name = "classic"

@@ -24,7 +24,7 @@ En sortie : des centaines (voire des milliers) de fichiers `.mp`, chacun couvran
 ## Architecture
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'lineColor': '#90a4ae'}}}%%
 flowchart TD
     A["Sources GDAL<br/>(.shp, .gpkg)"] --> B["Lecture OGR<br/>+ filtrage spatial"]
     B --> C["R-tree spatial<br/>indexation"]

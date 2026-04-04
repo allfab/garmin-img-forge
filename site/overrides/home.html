@@ -4,15 +4,12 @@
 
 {% block hero %}
 <style>
-  :root, html, body,
-  [data-md-color-scheme="default"],
-  [data-md-color-scheme="slate"] {
-    background-color: #0f172a !important;
-    --md-default-bg-color: #0f172a;
-    --md-default-bg-color--light: transparent;
-  }
-  .md-header, .md-tabs, .md-container, .md-main,
-  .md-header__inner, .md-tabs__list {
+  /* Transparent header/tabs so the hero shows through */
+  body:has(.zn-hero) .md-header,
+  body:has(.zn-hero) .md-tabs,
+  body:has(.zn-hero) .md-container,
+  body:has(.zn-hero) .md-header__inner,
+  body:has(.zn-hero) .md-tabs__list {
     background-color: transparent !important;
     background: transparent !important;
   }

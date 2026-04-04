@@ -1,0 +1,28 @@
+/* ============================================================
+   Dark Mode — Mermaid Diagram Overrides
+   ============================================================ */
+
+/* Edge labels: readable text on dark backgrounds */
+[data-md-color-scheme="slate"] .md-content .mermaid .edgeLabel {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+[data-md-color-scheme="slate"] .md-content .mermaid .edgeLabel p {
+  color: #e2e8f0;
+}
+
+/* Arrow/line colors — brighter for dark backgrounds */
+[data-md-color-scheme="slate"] .md-content .mermaid .flowchart-link {
+  stroke: #90a4ae;
+}
+
+[data-md-color-scheme="slate"] .md-content .mermaid marker path,
+[data-md-color-scheme="slate"] .md-content .mermaid marker polygon {
+  fill: #90a4ae;
+}
+
+/* Cluster/subgraph labels */
+[data-md-color-scheme="slate"] .md-content .mermaid .cluster-label .nodeLabel {
+  color: #e2e8f0;
+}

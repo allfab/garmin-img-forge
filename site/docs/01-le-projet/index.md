@@ -76,7 +76,7 @@ Le pipeline repose sur trois outils développés spécifiquement pour ce projet 
 ## Le flux de données
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666', 'secondaryColor': '#ff9800', 'tertiaryColor': '#2196f3'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'lineColor': '#90a4ae', 'secondaryColor': '#ff9800', 'tertiaryColor': '#2196f3'}}}%%
 flowchart LR
     A["BD TOPO IGN<br/>.gpkg / .shp"] --> B["mpforge build<br/>tuilage spatial"]
     B --> C["tiles/*.mp<br/>Polish Map"]

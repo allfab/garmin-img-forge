@@ -2,20 +2,20 @@
    Hero Section — Topographic Background
    ============================================================ */
 
-/* --- Custom properties --- */
+/* --- Custom properties (light mode — white background) --- */
 .zn-hero {
-  --hero-bg: #0f172a;
-  --hero-line: rgba(76, 175, 80, 0.07);
-  --hero-accent: rgba(76, 175, 80, 0.28);
-  --hero-text: #f1f5f9;
-  --hero-text-muted: rgba(241, 245, 249, 0.85);
-  --hero-accent-color: #FF8A65;
-  --hero-btn-bg: rgba(255, 255, 255, 0.08);
-  --hero-btn-bg-hover: rgba(255, 255, 255, 0.15);
+  --hero-bg: #fff;
+  --hero-line: rgba(76, 175, 80, 0.12);
+  --hero-accent: rgba(76, 175, 80, 0.35);
+  --hero-text: #1a1a1a;
+  --hero-text-muted: rgba(26, 26, 26, 0.75);
+  --hero-accent-color: #e65100;
+  --hero-btn-bg: rgba(0, 0, 0, 0.06);
+  --hero-btn-bg-hover: rgba(0, 0, 0, 0.12);
   --hero-btn-primary-from: rgba(76, 175, 80, 0.9);
   --hero-btn-primary-to: rgba(255, 138, 101, 0.85);
-  --hero-overlay-from: rgba(15, 23, 42, 0.3);
-  --hero-overlay-to: rgba(15, 23, 42, 0.7);
+  --hero-overlay-from: rgba(255, 255, 255, 0.2);
+  --hero-overlay-to: rgba(255, 255, 255, 0.5);
 }
 
 /* --- Hero container --- */
@@ -250,7 +250,7 @@
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 0.5rem;
   backdrop-filter: blur(12px);
   background-color: var(--hero-btn-bg);
@@ -260,9 +260,9 @@
 
 .zn-hero__actions .md-button:hover {
   background-color: var(--hero-btn-bg-hover);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  color: var(--hero-text);
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   transform: translateY(-1px);
 }
 
@@ -273,7 +273,7 @@
 
 .zn-hero__actions .md-button--primary {
   background: linear-gradient(135deg, var(--hero-btn-primary-from), var(--hero-btn-primary-to));
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   color: #fff;
 }
 
@@ -287,12 +287,18 @@
    Dark Mode
    ============================================================ */
 
+/* --- Dark mode — black background --- */
 [data-md-color-scheme="slate"] .zn-hero {
-  --hero-bg: #0b1120;
-  --hero-line: rgba(76, 175, 80, 0.06);
-  --hero-accent: rgba(76, 175, 80, 0.22);
-  --hero-overlay-from: rgba(11, 17, 32, 0.2);
-  --hero-overlay-to: rgba(11, 17, 32, 0.65);
+  --hero-bg: #000;
+  --hero-line: rgba(76, 175, 80, 0.08);
+  --hero-accent: rgba(76, 175, 80, 0.25);
+  --hero-text: #f1f5f9;
+  --hero-text-muted: rgba(241, 245, 249, 0.85);
+  --hero-accent-color: #FF8A65;
+  --hero-btn-bg: rgba(255, 255, 255, 0.08);
+  --hero-btn-bg-hover: rgba(255, 255, 255, 0.15);
+  --hero-overlay-from: rgba(0, 0, 0, 0.2);
+  --hero-overlay-to: rgba(0, 0, 0, 0.6);
 }
 
 /* ============================================================
@@ -309,42 +315,10 @@ body:has(.zn-hero) .md-header {
   z-index: 2;
   backdrop-filter: none;
   box-shadow: none;
-  color: #fff;
-}
-
-body:has(.zn-hero) .md-tabs {
-  box-shadow: inset 0 -0.05rem 0 hsla(0, 0%, 100%, 0.12);
 }
 
 body:has(.zn-hero) .md-main {
   display: none;
-}
-
-body:has(.zn-hero) .md-header__topic,
-body:has(.zn-hero) .md-header__title {
-  color: #fff;
-}
-
-body:has(.zn-hero) .md-tabs__item {
-  color: hsla(0, 0%, 100%, 0.6);
-}
-
-body:has(.zn-hero) .md-tabs__item:hover,
-body:has(.zn-hero) .md-tabs__item--active {
-  color: #fff;
-}
-
-body:has(.zn-hero) .md-header__button {
-  color: #fff;
-}
-
-body:has(.zn-hero) .md-search__input {
-  background-color: hsla(0, 0%, 100%, 0.08);
-  color: #fff;
-}
-
-body:has(.zn-hero) .md-search__input::placeholder {
-  color: hsla(0, 0%, 100%, 0.5);
 }
 
 /* ============================================================

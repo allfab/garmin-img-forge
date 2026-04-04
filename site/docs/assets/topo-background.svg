@@ -1,6 +1,7 @@
 <svg class="zn-topo" aria-hidden="true"
    xmlns="http://www.w3.org/2000/svg"
-   viewBox="0 0 4000 2000"><g
+   viewBox="0 0 4000 2000"
+   preserveAspectRatio="xMidYMid slice"><g
      transform="matrix(1.3333333,0,0,-1.3333333,0,2000)"><g
        transform="scale(0.1)"><g
          transform="scale(1.84049)"><path

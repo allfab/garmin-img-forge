@@ -100,7 +100,7 @@ Data0=(45.35,5.78),(45.36,5.79),(45.35,5.80),(45.35,5.78)
 Le format Garmin IMG est un binaire opaque et complexe. Le Polish Map sert de **représentation lisible** entre les données SIG et le binaire final :
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'primaryTextColor': '#000', 'lineColor': '#666'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'lineColor': '#90a4ae'}}}%%
 flowchart LR
     A["Données SIG<br/>.shp, .gpkg"] -->|ogr-polishmap| B["Polish Map<br/>.mp"]
     B -->|imgforge| C["Garmin IMG<br/>.img"]
