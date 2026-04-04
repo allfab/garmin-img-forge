@@ -242,15 +242,41 @@ Les options suivantes sont disponibles sur les deux commandes. Elles sont appliq
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `--dem <PATH,...>` | Chemins vers répertoires/fichiers d'élévation (`.hgt`, `.asc`), séparés par virgules | - |
-| `--dem-dists <DISTS,...>` | Résolutions DEM par niveau de zoom (distances entre points). Ex: `3312,13248,26512` | auto |
+| `--dem-dists <DISTS,...>` | Distances entre points DEM par niveau de zoom. Ex: `3,3,4,6,8,12,16,24,32` | auto |
 | `--dem-interpolation <METHOD>` | Méthode d'interpolation : `auto`, `bilinear`, `bicubic` | `auto` |
 | `--dem-source-srs <SRS>` | SRS source pour les fichiers ASC (ex: `EPSG:2154` pour Lambert 93) | WGS84 |
 
 > **Formats supportés** : HGT SRTM (1/3 arc-sec, binaire big-endian i16) et ASC ESRI ASCII Grid (BDAltiv2, etc.)
 >
 > **EPSG supportés** : 2154 (Lambert 93), 4326 (WGS84), 32631-32633 (UTM), 25831-25833 (ETRS89/UTM), 3035 (LAEA), 3857 (Web Mercator), ou toute chaîne proj4.
+
+##### Comprendre `--dem-dists`
+
+Ce paramètre contrôle la **densité des points d'élévation** encodés dans le fichier Garmin pour chaque niveau de zoom. Plus la valeur est élevée, moins il y a de points = fichier plus petit mais relief moins détaillé.
+
+Chaque valeur correspond à un niveau de zoom (dans l'ordre de `--levels`). Si vous fournissez moins de valeurs que de niveaux, les niveaux restants sont calculés automatiquement en doublant la dernière valeur.
+
+**Exemples de configurations** (pour `--levels "24,23,22,21,20,19,18,17,16"`) :
+
+| Profil | `--dem-dists` | Taille | Qualité |
+|--------|---------------|--------|---------|
+| Haute résolution | `1,1,2,3,4,6,8,12,16` | Grande | Détail max |
+| Équilibré | `3,3,4,6,8,12,16,24,32` | Moyenne | Bon compromis |
+| Compact | `4,6,8,12,16,24,32` | Petite | Suffisant pour randonnée |
+
+> **Sans `--dem-dists`**, imgforge utilise une densité élevée par défaut sur tous les niveaux, ce qui peut produire des fichiers très volumineux (ex: 500+ Mo pour un département).
 >
-> **Distances typiques** : 3312 (≈1 arc-sec), 9936 (≈3 arc-sec), 13248, 26512, 53024
+> **Recommandation** : Commencez par le profil « Équilibré » et ajustez selon vos besoins.
+
+##### Interpolation
+
+| Méthode | Description | Usage |
+|---------|-------------|-------|
+| `auto` | Bilinéaire par défaut | Recommandé |
+| `bilinear` | 4 points voisins, rapide | Données basse résolution (SRTM 3") |
+| `bicubic` | 16 points (Catmull-Rom), lissé | Données haute résolution (BDAltiv2 25m) |
+
+`bicubic` produit un relief plus lisse mais retombe automatiquement sur `bilinear` si le voisinage 4×4 n'est pas disponible (bords de grille).
 
 ### Commande `compile`
 

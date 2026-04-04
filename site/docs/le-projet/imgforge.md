@@ -129,9 +129,10 @@ imgforge build tiles/ --dem ./srtm_hgt/
 # Depuis des fichiers ASC (BDAltiv2 IGN, Lambert 93)
 imgforge build tiles/ --dem ./bdaltiv2/ --dem-source-srs EPSG:2154
 
-# Avec résolutions personnalisées et interpolation bicubique
-imgforge build tiles/ --dem ./hgt/ \
-    --dem-dists 3312,13248,26512 \
+# Avec contrôle de la résolution DEM et interpolation bicubique
+imgforge build tiles/ --dem ./bdaltiv2/ \
+    --dem-source-srs EPSG:2154 \
+    --dem-dists 3,3,4,6,8,12,16,24,32 \
     --dem-interpolation bicubic
 ```
 
@@ -143,6 +144,36 @@ imgforge build tiles/ --dem ./hgt/ \
 | ASC | `.asc` | ESRI ASCII Grid (BDAltiv2 IGN) |
 
 La reprojection est intégrée via **proj4rs** (zéro dépendance système) : Lambert 93, UTM, LAEA, Web Mercator et toute chaîne proj4 sont supportés.
+
+### Options DEM
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--dem <PATH,...>` | Répertoires ou fichiers d'élévation (`.hgt`, `.asc`) | - |
+| `--dem-dists <DISTS>` | Distances entre points DEM par niveau de zoom | auto |
+| `--dem-interpolation` | `auto`, `bilinear` ou `bicubic` | `auto` |
+| `--dem-source-srs` | SRS source pour fichiers ASC (ex: `EPSG:2154`) | WGS84 |
+
+### Contrôler la taille du fichier avec `--dem-dists`
+
+Le paramètre `--dem-dists` est le **levier principal** pour maîtriser la taille du fichier généré. Il contrôle la densité des points d'élévation encodés pour chaque niveau de zoom. Plus la valeur est grande, moins il y a de points d'élévation dans le fichier final.
+
+Chaque valeur correspond à un niveau de zoom (dans l'ordre de `--levels`). Si vous fournissez moins de valeurs que de niveaux de zoom, les niveaux restants sont calculés automatiquement en doublant la dernière valeur.
+
+| Profil | `--dem-dists` | Résultat |
+|--------|---------------|----------|
+| Haute résolution | `1,1,2,3,4,6,8,12,16` | Fichier volumineux, détail maximum |
+| Équilibré | `3,3,4,6,8,12,16,24,32` | Bon compromis taille/qualité |
+| Compact | `4,6,8,12,16,24,32` | Fichier léger, suffisant pour la randonnée |
+
+!!! warning "Impact sur la taille"
+    Sans `--dem-dists`, imgforge utilise une densité élevée par défaut sur tous les niveaux de zoom, ce qui peut produire des fichiers très volumineux (ex: 500+ Mo pour un seul département). Spécifiez toujours ce paramètre en production.
+
+### Interpolation
+
+- **`bilinear`** — Utilise 4 points voisins. Rapide, adapté aux données basse résolution (SRTM 3 arc-sec).
+- **`bicubic`** — Utilise 16 points (Catmull-Rom). Produit un relief plus lisse, idéal pour les données haute résolution (BDAltiv2 25m). Retombe automatiquement sur `bilinear` en bord de grille.
+- **`auto`** — Bilinéaire par défaut (recommandé).
 
 ## Symbologie TYP
 

@@ -95,6 +95,52 @@ Le fichier TYP définit le rendu visuel : couleurs des routes, motifs de remplis
 
 Active l'ombrage du relief et les profils d'altitude sur les GPS compatibles.
 
+#### Contrôler la résolution DEM avec `--dem-dists`
+
+Le DEM peut représenter une part très importante de la taille du fichier final. Le paramètre `--dem-dists` contrôle la densité des points d'élévation encodés pour chaque niveau de zoom :
+
+```bash
+# Profil équilibré (recommandé) — bon compromis taille/qualité
+--dem-dists 3,3,4,6,8,12,16,24,32
+
+# Profil compact — fichier léger, suffisant pour la randonnée
+--dem-dists 4,6,8,12,16,24,32
+
+# Profil haute résolution — détail maximum, fichier volumineux
+--dem-dists 1,1,2,3,4,6,8,12,16
+```
+
+Chaque valeur correspond à un niveau de zoom (dans l'ordre de `--levels`). Plus la valeur est grande, moins il y a de points d'élévation. Si vous fournissez moins de valeurs que de niveaux, les restants sont calculés en doublant la dernière valeur.
+
+!!! warning "Impact sur la taille"
+    Sans `--dem-dists`, imgforge utilise une densité élevée par défaut, ce qui peut produire des fichiers très volumineux (ex: 500+ Mo pour un seul département). **Spécifiez toujours ce paramètre en production.**
+
+#### Interpolation
+
+```bash
+--dem-interpolation bilinear   # Rapide, 4 points (défaut via auto)
+--dem-interpolation bicubic    # Lissé, 16 points (Catmull-Rom)
+```
+
+`bicubic` est recommandé avec des données haute résolution (BDAltiv2 25m) pour un relief plus lisse. `bilinear` suffit pour les données SRTM.
+
+#### Exemple complet avec DEM optimisé
+
+```bash
+imgforge build output/tiles/ \
+    --output output/gmapsupp.img \
+    --jobs 8 \
+    --dem ./data/bdaltiv2/D038/ \
+    --dem-source-srs EPSG:2154 \
+    --dem-dists 3,3,4,6,8,12,16,24,32 \
+    --dem-interpolation bicubic \
+    --latin1 \
+    --levels "24,23,22,21,20,19,18,17,16" \
+    --typ-file resources/bdtopo.typ \
+    --keep-going \
+    -vv
+```
+
 ### Résilience
 
 ```bash
