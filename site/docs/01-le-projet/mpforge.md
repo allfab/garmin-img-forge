@@ -95,6 +95,28 @@ filters:
 error_handling: "continue"
 ```
 
+### Variables d'environnement
+
+Les fichiers de configuration supportent les **variables d'environnement** avec la syntaxe `${VAR}`. Elles sont substituées avant le parsing YAML, ce qui permet de paramétrer les chemins et valeurs numériques sans modifier le fichier :
+
+```yaml
+inputs:
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/*.shp"
+
+output:
+  directory: "${OUTPUT_DIR}/tiles/"
+  base_id: ${BASE_ID}   # Fonctionne aussi pour les champs numériques
+```
+
+```bash
+# Les variables sont résolues au lancement
+DATA_ROOT=/data/bdtopo OUTPUT_DIR=/output BASE_ID=38 \
+  mpforge build --config config.yaml --jobs 8
+```
+
+Seuls les noms de variables POSIX valides sont reconnus (`[A-Za-z_][A-Za-z0-9_]*`). Les variables non définies dans l'environnement sont laissées telles quelles — la commande `validate` les signale comme warnings.
+
 ### Le field mapping : la passerelle entre deux mondes
 
 Les données BD TOPO utilisent des noms de champs comme `MP_TYPE`, `NAME`, `MPBITLEVEL`. Le format Polish Map attend `Type`, `Label`, `Levels`. Le field mapping fait le pont :
@@ -129,6 +151,52 @@ TreeSize=3000
 RgnLimit=1024
 LBLcoding=9
 ```
+
+## Validation de la configuration
+
+Avant de lancer un long export, la sous-commande `validate` vérifie la configuration sans exécuter le pipeline :
+
+```bash
+mpforge validate --config config.yaml
+```
+
+Six vérifications sont effectuées :
+
+| # | Check | Description |
+|---|-------|-------------|
+| 1 | `yaml_syntax` | Syntaxe YAML valide et types corrects |
+| 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, base_id, header) |
+| 3 | `input_files` | Existence des fichiers sources (après résolution des wildcards) |
+| 4 | `rules_file` | Parsing et validation du fichier de règles |
+| 5 | `field_mapping` | Parsing du fichier de field mapping |
+| 6 | `header_template` | Existence du template header |
+
+Exemple de sortie :
+
+```
+✓ yaml_syntax          — Parsed successfully
+✓ semantic_validation  — All validations passed
+✓ input_files          — 21/21 files found
+✓ rules_file           — 22 rulesets, 283 rules total
+- field_mapping        — Not configured
+- header_template      — No template configured
+
+Config valid. (4/4 checks passed)
+```
+
+Les variables d'environnement non définies sont signalées :
+
+```
+  ⚠ Unresolved environment variable: ${DATA_ROOT} (not set)
+```
+
+Le rapport peut être exporté en JSON pour intégration CI/CD :
+
+```bash
+mpforge validate --config config.yaml --report validation.json
+```
+
+Code de sortie : `0` si valide, `1` si invalide.
 
 ## Utilisation
 

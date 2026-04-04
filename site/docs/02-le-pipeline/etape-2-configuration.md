@@ -66,6 +66,37 @@ filters:
 error_handling: "continue"   # "continue" ou "fail-fast"
 ```
 
+### Variables d'environnement
+
+Tous les champs du YAML acceptent la syntaxe `${VAR}` pour injecter des variables d'environnement. Les variables sont substituées **avant** le parsing YAML, ce qui fonctionne aussi pour les champs numériques :
+
+```yaml
+inputs:
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  - path: "${CONTOURS_DATA_ROOT}/**/COURBE_*.shp"
+
+output:
+  directory: "${OUTPUT_DIR}/tiles/"
+  base_id: ${BASE_ID}      # u32 — la variable doit contenir un nombre
+```
+
+```bash
+export DATA_ROOT=/data/bdtopo/2026/v3.0/D038
+export CONTOURS_DATA_ROOT=/data/contours
+export OUTPUT_DIR=/output
+export BASE_ID=38
+
+mpforge build --config config.yaml --jobs 8
+```
+
+!!! tip "Validation des variables"
+    Utilisez `mpforge validate` pour vérifier que toutes les variables sont bien définies avant de lancer un long export. Les variables non résolues sont signalées par un warning :
+    ```
+    ⚠ Unresolved environment variable: ${DATA_ROOT} (not set)
+    ```
+
+Seuls les noms POSIX valides sont reconnus : lettres, chiffres et underscores, commençant par une lettre ou un underscore (ex: `DATA_ROOT`, `_MY_VAR`). Les patterns comme `${123}` ou `${foo bar}` sont ignorés.
+
 ### Paramètres de la grille
 
 | Paramètre | Description | Valeur recommandée |
@@ -177,3 +208,65 @@ header:
 
 !!! info "Précédence"
     Si `template` ET champs individuels sont spécifiés, le template prend le dessus.
+
+## Valider la configuration
+
+Avant de lancer un tuilage qui peut durer plusieurs heures, vérifiez la configuration avec `mpforge validate` :
+
+```bash
+mpforge validate --config configs/france-bdtopo.yaml
+```
+
+Six vérifications sont effectuées en chaîne :
+
+| # | Check | Ce qui est vérifié |
+|---|-------|--------------------|
+| 1 | `yaml_syntax` | Syntaxe YAML valide, types corrects (ex: `base_id` est bien un nombre) |
+| 2 | `semantic_validation` | Règles métier : grille cohérente, inputs non vides, bbox valide, SRS, base_id dans 1..9999, filename pattern |
+| 3 | `input_files` | Existence de chaque fichier source sur disque (après résolution des wildcards) |
+| 4 | `rules_file` | Parsing et validation du fichier de règles de catégorisation |
+| 5 | `field_mapping` | Parsing du fichier de field mapping |
+| 6 | `header_template` | Existence du fichier template header |
+
+Exemple de sortie :
+
+```
+✓ yaml_syntax          — Parsed successfully
+✓ semantic_validation  — All validations passed
+✓ input_files          — 21/21 files found
+✓ rules_file           — 22 rulesets, 283 rules total
+✓ field_mapping        — 6 field mappings loaded
+- header_template      — No template configured
+
+Config valid. (5/5 checks passed)
+```
+
+### Rapport JSON
+
+Pour une intégration CI/CD, exportez le résultat en JSON :
+
+```bash
+mpforge validate --config configs/france-bdtopo.yaml --report validation.json
+```
+
+### Diagnostiquer les erreurs courantes
+
+Les variables d'environnement non définies sont signalées :
+
+```
+  ⚠ Unresolved environment variable: ${DATA_ROOT} (not set)
+```
+
+Un champ avec un type incorrect produit une erreur explicite :
+
+```
+✗ yaml_syntax — YAML syntax error: output.base_id: invalid type: string "${BASE_ID}", expected u32
+```
+
+!!! tip "Workflow recommandé"
+    1. Écrire/modifier la configuration
+    2. `mpforge validate --config config.yaml` pour vérifier
+    3. `mpforge build --config config.yaml --dry-run` pour prévisualiser les tuiles
+    4. `mpforge build --config config.yaml --jobs 8` pour lancer la production
+
+Code de sortie : `0` si la configuration est valide, `1` si invalide.
