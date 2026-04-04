@@ -28,3 +28,5 @@ pipeline/resources/img/osmmap.tdb
 mpforge-report.*
 *.asc
 data/
+# Build artifacts (CMake)
+**/build/
