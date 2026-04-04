@@ -18,6 +18,20 @@ struct FieldMappingConfig {
     field_mapping: HashMap<String, String>,
 }
 
+/// Validate a field mapping YAML file without loading it into GDAL.
+///
+/// Reads the file, parses it as `FieldMappingConfig`, and returns the number of mappings.
+/// The struct `FieldMappingConfig` remains private — only this validation function is exposed.
+pub fn validate_field_mapping(path: &Path) -> Result<usize> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read field mapping file: {}", path.display()))?;
+
+    let mapping_config: FieldMappingConfig = serde_yml::from_str(&content)
+        .with_context(|| format!("Failed to parse field mapping YAML: {}", path.display()))?;
+
+    Ok(mapping_config.field_mapping.len())
+}
+
 /// Statistics for export operations.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExportStats {

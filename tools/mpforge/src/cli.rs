@@ -50,6 +50,27 @@ pub enum Commands {
                             mpforge build --config config.yaml --dry-run"
     )]
     Build(BuildArgs),
+
+    /// Validate configuration files without running the pipeline
+    ///
+    /// Checks YAML syntax, semantic rules, referenced files (rules, field mapping,
+    /// header template), and input file existence after wildcard resolution.
+    #[command(
+        long_about = "Validate configuration files without running the pipeline.\n\n\
+                            Checks performed:\n  \
+                            1. YAML syntax validation\n  \
+                            2. Semantic rules (grid, inputs, bbox, SRS, base_id, filename pattern, header)\n  \
+                            3. Input files existence (after wildcard resolution)\n  \
+                            4. Rules file parsing and validation\n  \
+                            5. Field mapping file parsing\n  \
+                            6. Header template file existence\n\n\
+                            Exit code: 0 if valid, 1 if invalid.\n\n\
+                            Example:\n  \
+                            mpforge validate --config config.yaml\n  \
+                            mpforge validate --config config.yaml --report report.json\n  \
+                            mpforge validate --config config.yaml -v"
+    )]
+    Validate(ValidateArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -89,6 +110,21 @@ pub struct BuildArgs {
     /// Simulate export without writing files (preview mode)
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+}
+
+#[derive(Parser, Debug)]
+pub struct ValidateArgs {
+    /// Path to configuration YAML file
+    #[arg(short, long)]
+    pub config: String,
+
+    /// Path to export JSON validation report
+    #[arg(short, long)]
+    pub report: Option<String>,
 
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -146,7 +182,9 @@ mod tests {
         let args = Cli::try_parse_from(["mpforge", "build", "--config", "test.yaml"]);
         assert!(args.is_ok());
 
-        let Commands::Build(build_args) = args.unwrap().command;
+        let Commands::Build(build_args) = args.unwrap().command else {
+            panic!("Expected Build command");
+        };
         assert_eq!(build_args.config, "test.yaml");
         assert_eq!(build_args.jobs, 1);
         assert!(!build_args.fail_fast);
@@ -185,7 +223,9 @@ mod tests {
         ]);
         assert!(args.is_ok());
 
-        let Commands::Build(build_args) = args.unwrap().command;
+        let Commands::Build(build_args) = args.unwrap().command else {
+            panic!("Expected Build command");
+        };
         assert_eq!(build_args.config, "test.yaml");
         assert_eq!(build_args.input, Some("input/".to_string()));
         assert_eq!(build_args.output, Some("output/".to_string()));
@@ -195,5 +235,48 @@ mod tests {
         assert!(build_args.skip_existing);
         assert!(build_args.dry_run);
         assert_eq!(build_args.verbose, 2);
+    }
+
+    #[test]
+    fn test_validate_args_defaults() {
+        use clap::Parser;
+        let args = Cli::try_parse_from(["mpforge", "validate", "--config", "test.yaml"]);
+        assert!(args.is_ok());
+
+        let Commands::Validate(validate_args) = args.unwrap().command else {
+            panic!("Expected Validate command");
+        };
+        assert_eq!(validate_args.config, "test.yaml");
+        assert!(validate_args.report.is_none());
+        assert_eq!(validate_args.verbose, 0);
+    }
+
+    #[test]
+    fn test_validate_args_all_options() {
+        use clap::Parser;
+        let args = Cli::try_parse_from([
+            "mpforge",
+            "validate",
+            "--config",
+            "test.yaml",
+            "--report",
+            "report.json",
+            "-vv",
+        ]);
+        assert!(args.is_ok());
+
+        let Commands::Validate(validate_args) = args.unwrap().command else {
+            panic!("Expected Validate command");
+        };
+        assert_eq!(validate_args.config, "test.yaml");
+        assert_eq!(validate_args.report, Some("report.json".to_string()));
+        assert_eq!(validate_args.verbose, 2);
+    }
+
+    #[test]
+    fn test_validate_args_missing_config() {
+        use clap::Parser;
+        let args = Cli::try_parse_from(["mpforge", "validate"]);
+        assert!(args.is_err());
     }
 }

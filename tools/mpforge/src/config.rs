@@ -504,6 +504,279 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     Ok(config)
 }
 
+/// Run configuration validation and produce a `ValidationReport`.
+///
+/// Orchestrates all checks:
+/// 1. YAML syntax + semantic validation via `load_config()`
+/// 2. Input file existence (non-wildcard paths after resolution)
+/// 3. Rules file loading and validation
+/// 4. Field mapping file parsing
+/// 5. Header template existence
+///
+/// If `load_config()` fails (YAML syntax or semantic error), remaining checks are skipped.
+pub fn run_validate(
+    config_path: &str,
+) -> anyhow::Result<crate::report::ValidationReport> {
+    use crate::report::*;
+
+    let mut checks = Vec::new();
+    let mut errors = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    // Step 1a: Read + parse YAML (syntax check)
+    let content = match std::fs::read_to_string(config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            let err_msg = format!("Failed to read config file: {}", e);
+            checks.push(ValidationCheck {
+                name: "yaml_syntax".to_string(),
+                status: CheckStatus::Fail,
+                details: err_msg.clone(),
+            });
+            errors.push(err_msg);
+            return Ok(ValidationReport {
+                status: ValidationStatus::Invalid,
+                config_file: config_path.to_string(),
+                checks,
+                errors,
+                warnings,
+                summary: None,
+            });
+        }
+    };
+
+    let mut config: Config = match serde_yml::from_str(&content) {
+        Ok(c) => {
+            checks.push(ValidationCheck {
+                name: "yaml_syntax".to_string(),
+                status: CheckStatus::Pass,
+                details: "Parsed successfully".to_string(),
+            });
+            c
+        }
+        Err(e) => {
+            let err_msg = format!("YAML syntax error: {}", e);
+            checks.push(ValidationCheck {
+                name: "yaml_syntax".to_string(),
+                status: CheckStatus::Fail,
+                details: err_msg.clone(),
+            });
+            errors.push(err_msg);
+            return Ok(ValidationReport {
+                status: ValidationStatus::Invalid,
+                config_file: config_path.to_string(),
+                checks,
+                errors,
+                warnings,
+                summary: None,
+            });
+        }
+    };
+
+    // Step 1b: Wildcard resolution (before validation so input count is accurate)
+    let mut expanded_inputs = Vec::new();
+    for input in config.inputs {
+        if let Some(pattern) = &input.path {
+            if pattern.contains('*') || pattern.contains('?') {
+                let resolved = resolve_wildcard_paths(pattern)?;
+                if resolved.is_empty() {
+                    warnings.push(format!("Wildcard pattern '{}' matched 0 files", pattern));
+                }
+                for resolved_path in resolved {
+                    let mut cloned = input.clone();
+                    cloned.path = Some(resolved_path.to_string_lossy().to_string());
+                    expanded_inputs.push(cloned);
+                }
+                continue;
+            }
+        }
+        expanded_inputs.push(input);
+    }
+    config.inputs = expanded_inputs;
+
+    // Step 1c: Semantic validation (structurally separate from YAML parsing)
+    if let Err(e) = config.validate() {
+        let err_msg = format!("{:#}", e);
+        checks.push(ValidationCheck {
+            name: "semantic_validation".to_string(),
+            status: CheckStatus::Fail,
+            details: err_msg.clone(),
+        });
+        errors.push(err_msg);
+        return Ok(ValidationReport {
+            status: ValidationStatus::Invalid,
+            config_file: config_path.to_string(),
+            checks,
+            errors,
+            warnings,
+            summary: None,
+        });
+    }
+    checks.push(ValidationCheck {
+        name: "semantic_validation".to_string(),
+        status: CheckStatus::Pass,
+        details: "All validations passed".to_string(),
+    });
+
+    // Step 2: Input file existence
+    let mut input_count = 0usize;
+    let mut missing_inputs = Vec::new();
+    for input in &config.inputs {
+        if let Some(ref path_str) = input.path {
+            input_count += 1;
+            if !Path::new(path_str).exists() {
+                missing_inputs.push(path_str.clone());
+            }
+        }
+    }
+
+    if missing_inputs.is_empty() {
+        checks.push(ValidationCheck {
+            name: "input_files".to_string(),
+            status: CheckStatus::Pass,
+            details: format!("{} files found", input_count),
+        });
+    } else {
+        let detail = format!(
+            "{}/{} files missing: {}",
+            missing_inputs.len(),
+            input_count,
+            missing_inputs.join(", ")
+        );
+        checks.push(ValidationCheck {
+            name: "input_files".to_string(),
+            status: CheckStatus::Fail,
+            details: detail.clone(),
+        });
+        errors.push(detail);
+    }
+
+    if input_count == 0 {
+        warnings.push("No input file paths to check (all inputs may be PostGIS connections)".to_string());
+    }
+
+    // Step 3: Rules file (optional)
+    if let Some(ref rules_path) = config.rules {
+        match crate::rules::load_rules(rules_path) {
+            Ok(rules_file) => {
+                let total_rules: usize = rules_file.rulesets.iter().map(|rs| rs.rules.len()).sum();
+                checks.push(ValidationCheck {
+                    name: "rules_file".to_string(),
+                    status: CheckStatus::Pass,
+                    details: format!(
+                        "{} rulesets, {} rules total",
+                        rules_file.rulesets.len(),
+                        total_rules
+                    ),
+                });
+            }
+            Err(e) => {
+                let err_msg = format!("Rules file error: {:#}", e);
+                checks.push(ValidationCheck {
+                    name: "rules_file".to_string(),
+                    status: CheckStatus::Fail,
+                    details: err_msg.clone(),
+                });
+                errors.push(err_msg);
+            }
+        }
+    } else {
+        checks.push(ValidationCheck {
+            name: "rules_file".to_string(),
+            status: CheckStatus::Skipped,
+            details: "Not configured".to_string(),
+        });
+    }
+
+    // Step 4: Field mapping (optional)
+    if let Some(ref mapping_path) = config.output.field_mapping_path {
+        match crate::pipeline::writer::validate_field_mapping(mapping_path) {
+            Ok(count) => {
+                checks.push(ValidationCheck {
+                    name: "field_mapping".to_string(),
+                    status: CheckStatus::Pass,
+                    details: format!("{} mappings defined", count),
+                });
+            }
+            Err(e) => {
+                let err_msg = format!("Field mapping error: {:#}", e);
+                checks.push(ValidationCheck {
+                    name: "field_mapping".to_string(),
+                    status: CheckStatus::Fail,
+                    details: err_msg.clone(),
+                });
+                errors.push(err_msg);
+            }
+        }
+    } else {
+        checks.push(ValidationCheck {
+            name: "field_mapping".to_string(),
+            status: CheckStatus::Skipped,
+            details: "Not configured".to_string(),
+        });
+    }
+
+    // Step 5: Header template existence (optional)
+    if let Some(ref header) = config.header {
+        if let Some(ref template_path) = header.template {
+            if template_path.exists() {
+                checks.push(ValidationCheck {
+                    name: "header_template".to_string(),
+                    status: CheckStatus::Pass,
+                    details: "File exists".to_string(),
+                });
+            } else {
+                let err_msg = format!(
+                    "Header template file does not exist: {}",
+                    template_path.display()
+                );
+                checks.push(ValidationCheck {
+                    name: "header_template".to_string(),
+                    status: CheckStatus::Fail,
+                    details: err_msg.clone(),
+                });
+                errors.push(err_msg);
+            }
+        } else {
+            checks.push(ValidationCheck {
+                name: "header_template".to_string(),
+                status: CheckStatus::Skipped,
+                details: "No template configured".to_string(),
+            });
+        }
+    } else {
+        checks.push(ValidationCheck {
+            name: "header_template".to_string(),
+            status: CheckStatus::Skipped,
+            details: "Not configured".to_string(),
+        });
+    }
+
+    // Build summary
+    let status = if errors.is_empty() {
+        ValidationStatus::Valid
+    } else {
+        ValidationStatus::Invalid
+    };
+
+    let summary = Some(crate::report::ValidationSummary {
+        grid_cell_size: config.grid.cell_size,
+        grid_overlap: config.grid.overlap,
+        input_sources: config.inputs.len(),
+        output_directory: config.output.directory.clone(),
+        filename_pattern: config.output.filename_pattern.clone(),
+    });
+
+    Ok(ValidationReport {
+        status,
+        config_file: config_path.to_string(),
+        checks,
+        errors,
+        warnings,
+        summary,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1494,5 +1767,110 @@ header:
         assert_eq!(cloned.target_srs, input.target_srs);
         assert_eq!(cloned.attribute_filter, input.attribute_filter);
         assert_eq!(cloned.layer_alias, input.layer_alias);
+    }
+
+    // -- run_validate tests --
+
+    #[test]
+    fn test_run_validate_valid_minimal_config() {
+        use crate::report::{CheckStatus, ValidationStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        // Create a minimal valid YAML config with an existing file as input
+        let mut input_file = NamedTempFile::new().unwrap();
+        write!(input_file, "dummy").unwrap();
+        let input_path = input_file.path().to_str().unwrap().to_string();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "{}"
+output:
+  directory: "tiles/"
+"#,
+            input_path
+        );
+
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        assert_eq!(report.status, ValidationStatus::Valid);
+        assert!(report.errors.is_empty());
+        assert!(report.is_valid());
+
+        // Should have yaml_syntax (pass), semantic (pass), input_files (pass),
+        // plus skipped checks for rules, field_mapping, header_template
+        let passed: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Pass).collect();
+        assert!(passed.len() >= 3, "Expected at least 3 passed checks, got {}", passed.len());
+
+        let skipped: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Skipped).collect();
+        assert_eq!(skipped.len(), 3, "Expected 3 skipped checks (rules, field_mapping, header_template)");
+    }
+
+    #[test]
+    fn test_run_validate_invalid_yaml_syntax() {
+        use crate::report::{CheckStatus, ValidationStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let yaml = "grid:\n  cell_size: [invalid yaml\n  broken:";
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        assert_eq!(report.status, ValidationStatus::Invalid);
+        assert!(!report.errors.is_empty());
+
+        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        assert_eq!(yaml_check.status, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_run_validate_semantic_error() {
+        use crate::report::{CheckStatus, ValidationStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        // Valid YAML but invalid semantics (negative cell_size)
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: -1.0
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        assert_eq!(report.status, ValidationStatus::Invalid);
+
+        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        assert_eq!(yaml_check.status, CheckStatus::Pass);
+
+        let semantic_check = report.checks.iter().find(|c| c.name == "semantic_validation").unwrap();
+        assert_eq!(semantic_check.status, CheckStatus::Fail);
+        assert!(semantic_check.details.contains("cell_size must be positive"));
+    }
+
+    #[test]
+    fn test_run_validate_missing_config_file() {
+        use crate::report::{CheckStatus, ValidationStatus};
+
+        let report = run_validate("/nonexistent/path/config.yaml").unwrap();
+        assert_eq!(report.status, ValidationStatus::Invalid);
+
+        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        assert_eq!(yaml_check.status, CheckStatus::Fail);
     }
 }

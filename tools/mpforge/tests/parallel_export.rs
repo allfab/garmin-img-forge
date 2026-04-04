@@ -28,7 +28,9 @@ fn test_jobs_default_is_1() {
     let args = Cli::try_parse_from(["mpforge", "build", "--config", "test.yaml"]);
     assert!(args.is_ok());
 
-    let Commands::Build(build_args) = args.unwrap().command;
+    let Commands::Build(build_args) = args.unwrap().command else {
+        panic!("Expected Build command");
+    };
     assert_eq!(build_args.jobs, 1);
 }
 

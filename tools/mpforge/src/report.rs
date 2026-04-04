@@ -88,6 +88,96 @@ pub struct TileError {
     pub error: String,
 }
 
+// ---------------------------------------------------------------------------
+// Validation report (mpforge validate)
+// ---------------------------------------------------------------------------
+
+/// Validation status: valid or invalid.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ValidationStatus {
+    Valid,
+    Invalid,
+}
+
+/// Status of a single validation check.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckStatus {
+    Pass,
+    Fail,
+    Skipped,
+}
+
+/// A single validation check result.
+#[derive(Debug, Serialize, Clone)]
+pub struct ValidationCheck {
+    pub name: String,
+    pub status: CheckStatus,
+    pub details: String,
+}
+
+/// Summary of the validated configuration.
+#[derive(Debug, Serialize, Clone)]
+pub struct ValidationSummary {
+    pub grid_cell_size: f64,
+    pub grid_overlap: f64,
+    pub input_sources: usize,
+    pub output_directory: String,
+    pub filename_pattern: String,
+}
+
+/// Validation report schema for JSON output (`mpforge validate --report`).
+#[derive(Debug, Serialize, Clone)]
+pub struct ValidationReport {
+    pub status: ValidationStatus,
+    pub config_file: String,
+    pub checks: Vec<ValidationCheck>,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ValidationSummary>,
+}
+
+impl ValidationReport {
+    /// Returns true if the overall status is valid.
+    pub fn is_valid(&self) -> bool {
+        self.status == ValidationStatus::Valid
+    }
+
+    /// Count passed checks.
+    pub fn passed_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Pass)
+            .count()
+    }
+
+    /// Count failed checks.
+    pub fn failed_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Fail)
+            .count()
+    }
+}
+
+/// Write validation report to JSON file with pretty formatting.
+pub fn write_validation_report(report: &ValidationReport, path: &str) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(report)
+        .context("Failed to serialize validation report to JSON")?;
+
+    let mut file = File::create(path)
+        .with_context(|| format!("Failed to create validation report file: {}", path))?;
+
+    file.write_all(json.as_bytes())
+        .with_context(|| format!("Failed to write validation report to file: {}", path))?;
+    file.write_all(b"\n")
+        .with_context(|| format!("Failed to write trailing newline to file: {}", path))?;
+
+    Ok(())
+}
+
 /// Write execution report to JSON file with pretty formatting.
 /// Story 7.3 - Task 2: JSON report writer.
 ///
@@ -108,6 +198,8 @@ pub fn write_json_report(report: &ExecutionReport, path: &str) -> anyhow::Result
 
     file.write_all(json.as_bytes())
         .with_context(|| format!("Failed to write report to file: {}", path))?;
+    file.write_all(b"\n")
+        .with_context(|| format!("Failed to write trailing newline to file: {}", path))?;
 
     Ok(())
 }
@@ -228,5 +320,103 @@ mod tests {
 
         // Verify pretty print (has indentation)
         assert!(content.contains("  "));
+    }
+
+    // -- ValidationReport tests --
+
+    #[test]
+    fn test_validation_report_valid() {
+        let report = ValidationReport {
+            status: ValidationStatus::Valid,
+            config_file: "config.yaml".to_string(),
+            checks: vec![
+                ValidationCheck {
+                    name: "yaml_syntax".to_string(),
+                    status: CheckStatus::Pass,
+                    details: "Parsed successfully".to_string(),
+                },
+                ValidationCheck {
+                    name: "semantic_validation".to_string(),
+                    status: CheckStatus::Pass,
+                    details: "All rules passed".to_string(),
+                },
+            ],
+            errors: vec![],
+            warnings: vec![],
+            summary: Some(ValidationSummary {
+                grid_cell_size: 0.15,
+                grid_overlap: 0.01,
+                input_sources: 12,
+                output_directory: "tiles/".to_string(),
+                filename_pattern: "{col}_{row}.mp".to_string(),
+            }),
+        };
+
+        assert!(report.is_valid());
+        assert_eq!(report.passed_count(), 2);
+        assert_eq!(report.failed_count(), 0);
+
+        let json = serde_json::to_string_pretty(&report).unwrap();
+        assert!(json.contains("\"status\": \"valid\""));
+        assert!(json.contains("\"yaml_syntax\""));
+        assert!(json.contains("\"grid_cell_size\": 0.15"));
+    }
+
+    #[test]
+    fn test_validation_report_invalid() {
+        let report = ValidationReport {
+            status: ValidationStatus::Invalid,
+            config_file: "broken.yaml".to_string(),
+            checks: vec![
+                ValidationCheck {
+                    name: "yaml_syntax".to_string(),
+                    status: CheckStatus::Pass,
+                    details: "Parsed successfully".to_string(),
+                },
+                ValidationCheck {
+                    name: "semantic_validation".to_string(),
+                    status: CheckStatus::Fail,
+                    details: "grid.cell_size must be positive".to_string(),
+                },
+            ],
+            errors: vec!["grid.cell_size must be positive, got: -1".to_string()],
+            warnings: vec![],
+            summary: None,
+        };
+
+        assert!(!report.is_valid());
+        assert_eq!(report.passed_count(), 1);
+        assert_eq!(report.failed_count(), 1);
+
+        let json = serde_json::to_string_pretty(&report).unwrap();
+        assert!(json.contains("\"status\": \"invalid\""));
+        assert!(json.contains("\"fail\""));
+    }
+
+    #[test]
+    fn test_write_validation_report() {
+        use tempfile::NamedTempFile;
+
+        let report = ValidationReport {
+            status: ValidationStatus::Valid,
+            config_file: "test.yaml".to_string(),
+            checks: vec![ValidationCheck {
+                name: "yaml_syntax".to_string(),
+                status: CheckStatus::Pass,
+                details: "OK".to_string(),
+            }],
+            errors: vec![],
+            warnings: vec![],
+            summary: None,
+        };
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        write_validation_report(&report, path).unwrap();
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("\"status\": \"valid\""));
+        assert!(content.contains("\"yaml_syntax\""));
     }
 }
