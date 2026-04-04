@@ -10,21 +10,21 @@ Deux approches : **binaires pré-compilés** (rapide, recommandé) ou **compilat
 
 ```bash
 # Télécharger
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.0/mpforge-linux-x64-static.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.1/mpforge
 
-# Extraire
-tar xzf mpforge-linux-x64-static.tar.gz
+# Rendre exécutable
+chmod +x mpforge
 
 # Installer
 sudo mv mpforge /usr/local/bin/
 
 # Vérifier
 mpforge --version
-# → mpforge 0.2.0
+# → mpforge 0.2.1
 ```
 
 !!! success "Zéro configuration"
-    Le binaire statique de mpforge inclut GDAL 3.10.1, PROJ, GEOS et le driver ogr-polishmap. Aucune dépendance système requise.
+    Le binaire statique de mpforge inclut PROJ 9.3.1, GEOS 3.13.0, GDAL 3.10.1 et le driver ogr-polishmap. Aucune dépendance système requise.
 
 ### imgforge
 
