@@ -2,11 +2,18 @@
 
 use crate::pipeline::tile_naming;
 use anyhow::Context;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::LazyLock;
 use tracing::{debug, info, warn};
+
+/// Matches `${VAR_NAME}` placeholders (POSIX-valid variable names only).
+static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap()
+});
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -444,13 +451,38 @@ fn resolve_wildcard_paths(pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+/// Expand `${VAR}` placeholders in a string with environment variable values.
+///
+/// Only POSIX-valid variable names (`[A-Za-z_][A-Za-z0-9_]*`) are matched.
+/// Variables that are not set in the environment are left as-is.
+///
+/// # Safety note
+/// Values are substituted verbatim into the YAML text before parsing.
+/// Env vars containing YAML metacharacters (`:`, `\n`, `{`) could alter
+/// the document structure. Typed fields (e.g. `u32`) are protected by
+/// serde deserialization; string fields accept any value.
+fn expand_env_vars(content: &str) -> String {
+    ENV_VAR_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let var_name = &caps[1];
+            match std::env::var(var_name) {
+                Ok(val) => val,
+                Err(_) => caps[0].to_string(),
+            }
+        })
+        .into_owned()
+}
+
 /// Load and parse configuration from YAML file.
 pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     let path = path.as_ref();
 
     // I/O error context
-    let content = std::fs::read_to_string(path)
+    let raw_content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+
+    // Expand environment variables before parsing
+    let content = expand_env_vars(&raw_content);
 
     // YAML parsing error context
     let mut config: Config = serde_yml::from_str(&content)
@@ -524,7 +556,7 @@ pub fn run_validate(
     let mut warnings: Vec<String> = Vec::new();
 
     // Step 1a: Read + parse YAML (syntax check)
-    let content = match std::fs::read_to_string(config_path) {
+    let raw_content = match std::fs::read_to_string(config_path) {
         Ok(c) => c,
         Err(e) => {
             let err_msg = format!("Failed to read config file: {}", e);
@@ -544,6 +576,21 @@ pub fn run_validate(
             });
         }
     };
+
+    // Expand environment variables before parsing
+    let content = expand_env_vars(&raw_content);
+
+    // Warn about unresolved env var placeholders (deduplicated)
+    let mut seen_vars = std::collections::HashSet::new();
+    for caps in ENV_VAR_RE.captures_iter(&content) {
+        let var_name = caps[1].to_string();
+        if seen_vars.insert(var_name.clone()) {
+            warnings.push(format!(
+                "Unresolved environment variable: ${{{}}} (not set)",
+                var_name
+            ));
+        }
+    }
 
     let mut config: Config = match serde_yml::from_str(&content) {
         Ok(c) => {
@@ -1872,5 +1919,56 @@ output:
 
         let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
         assert_eq!(yaml_check.status, CheckStatus::Fail);
+    }
+
+    // --- expand_env_vars tests ---
+
+    #[test]
+    fn test_expand_env_vars_replaces_defined_var() {
+        std::env::set_var("TEST_EXPAND_FOO", "/data/files");
+        let result = expand_env_vars("path: ${TEST_EXPAND_FOO}/sub");
+        assert_eq!(result, "path: /data/files/sub");
+        std::env::remove_var("TEST_EXPAND_FOO");
+    }
+
+    #[test]
+    fn test_expand_env_vars_leaves_undefined_var() {
+        std::env::remove_var("TEST_EXPAND_MISSING");
+        let result = expand_env_vars("path: ${TEST_EXPAND_MISSING}/sub");
+        assert_eq!(result, "path: ${TEST_EXPAND_MISSING}/sub");
+    }
+
+    #[test]
+    fn test_expand_env_vars_multiple_vars_same_line() {
+        std::env::set_var("TEST_EXPAND_A", "alpha");
+        std::env::set_var("TEST_EXPAND_B", "beta");
+        let result = expand_env_vars("${TEST_EXPAND_A}/${TEST_EXPAND_B}");
+        assert_eq!(result, "alpha/beta");
+        std::env::remove_var("TEST_EXPAND_A");
+        std::env::remove_var("TEST_EXPAND_B");
+    }
+
+    #[test]
+    fn test_expand_env_vars_no_placeholders() {
+        let input = "plain string without variables";
+        assert_eq!(expand_env_vars(input), input);
+    }
+
+    #[test]
+    fn test_expand_env_vars_numeric_value() {
+        std::env::set_var("TEST_EXPAND_NUM", "42");
+        let result = expand_env_vars("base_id: ${TEST_EXPAND_NUM}");
+        assert_eq!(result, "base_id: 42");
+        std::env::remove_var("TEST_EXPAND_NUM");
+    }
+
+    #[test]
+    fn test_expand_env_vars_ignores_invalid_var_names() {
+        // ${123} does not match POSIX var name pattern — should be left as-is
+        let result = expand_env_vars("val: ${123}");
+        assert_eq!(result, "val: ${123}");
+
+        let result = expand_env_vars("val: ${foo bar}");
+        assert_eq!(result, "val: ${foo bar}");
     }
 }
