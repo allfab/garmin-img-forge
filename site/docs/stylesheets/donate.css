@@ -1,0 +1,159 @@
+/* ============================================================
+   Bouton de don flottant — LemonSqueezy
+   ============================================================ */
+
+/* --- Custom properties (light mode) --- */
+.zn-donate-fab {
+  --donate-bg-from: rgba(76, 175, 80, 0.9);
+  --donate-bg-to: rgba(255, 138, 101, 0.85);
+  --donate-text: #fff;
+  --donate-shadow: rgba(76, 175, 80, 0.3);
+  --donate-shadow-hover: rgba(76, 175, 80, 0.45);
+}
+
+/* --- Dark mode --- */
+[data-md-color-scheme="slate"] .zn-donate-fab {
+  --donate-bg-from: rgba(76, 175, 80, 0.85);
+  --donate-bg-to: rgba(255, 138, 101, 0.75);
+  --donate-text: #f1f5f9;
+  --donate-shadow: rgba(76, 175, 80, 0.2);
+  --donate-shadow-hover: rgba(76, 175, 80, 0.35);
+}
+
+/* --- Bouton flottant (FAB) --- */
+.zn-donate-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: none;
+  border-radius: 28px;
+  background: linear-gradient(135deg, var(--donate-bg-from), var(--donate-bg-to));
+  color: var(--donate-text);
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--donate-shadow);
+  transition:
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  animation: none;
+}
+
+/* --- Icone --- */
+.zn-donate-fab__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* --- Texte (caché par défaut, révélé au survol) --- */
+.zn-donate-fab__text {
+  opacity: 0;
+  max-width: 0;
+  padding-right: 0;
+  transition:
+    opacity 0.25s ease 0.1s,
+    max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Hover : expansion du texte (desktop) --- */
+@media (hover: hover) and (min-width: 768px) {
+  .zn-donate-fab:hover {
+    width: auto;
+    transform: scale(1.05);
+    box-shadow: 0 8px 32px var(--donate-shadow-hover);
+  }
+
+  .zn-donate-fab:hover .zn-donate-fab__text {
+    opacity: 1;
+    max-width: 200px;
+    padding-right: 1.25rem;
+  }
+}
+
+/* --- Focus visible --- */
+.zn-donate-fab:focus-visible {
+  outline: 2px solid var(--donate-text);
+  outline-offset: 2px;
+}
+
+/* --- Animation pulsation subtile --- */
+@keyframes donate-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 16px var(--donate-shadow);
+  }
+  50% {
+    box-shadow: 0 4px 24px var(--donate-shadow-hover), 0 0 0 8px rgba(76, 175, 80, 0.08);
+  }
+}
+
+/* ============================================================
+   Responsive mobile
+   ============================================================ */
+
+@media (max-width: 767px) {
+  .zn-donate-fab {
+    bottom: 1rem;
+    right: 1rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+  }
+
+  .zn-donate-fab__icon {
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+  }
+
+  .zn-donate-fab__text {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Reduced Motion
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .zn-donate-fab {
+    animation: none;
+    transition: none;
+  }
+
+  .zn-donate-fab__text {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   Page Soutenir — Bouton inline
+   ============================================================ */
+
+.zn-donate-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zn-donate-inline .twemoji {
+  font-size: 1.25rem;
+}

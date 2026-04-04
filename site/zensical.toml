@@ -7,7 +7,8 @@ repo_name = "allfab/garmin-ign-bdtopo-map"
 docs_dir = "docs"
 site_dir = "_site"
 use_directory_urls = true
-extra_css = ["stylesheets/hero.css", "stylesheets/extra.css"]
+extra_css = ["stylesheets/hero.css", "stylesheets/extra.css", "stylesheets/donate.css"]
+extra_javascript = ["javascripts/lemonsqueezy.js"]
 
 [theme]
 name = "classic"
@@ -79,6 +80,9 @@ Installation = [
   { "Par région" = "telechargements/regions.md" },
   { "Outre-mer" = "telechargements/outre-mer.md" }
 ]
+
+[[nav]]
+"Soutenir le projet" = "soutenir/index.md"
 
 [[nav]]
 "À propos" = "a-propos/index.md"
