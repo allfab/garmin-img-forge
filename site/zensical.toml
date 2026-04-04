@@ -38,47 +38,47 @@ Accueil = "index.md"
 
 [[nav]]
 "Le Projet" = [
-  { "Vue d'ensemble" = "01-le-projet/index.md" },
-  { "ogr-polishmap" = "01-le-projet/ogr-polishmap.md" },
-  { "mpforge" = "01-le-projet/mpforge.md" },
-  { "imgforge" = "01-le-projet/imgforge.md" },
-  { "Réussites et écueils" = "01-le-projet/reussites-ecueils.md" }
+  { "Vue d'ensemble" = "le-projet/index.md" },
+  { "ogr-polishmap" = "le-projet/ogr-polishmap.md" },
+  { "mpforge" = "le-projet/mpforge.md" },
+  { "imgforge" = "le-projet/imgforge.md" },
+  { "Réussites et écueils" = "le-projet/reussites-ecueils.md" }
 ]
 
 [[nav]]
 "Le Pipeline" = [
-  { "Vue d'ensemble" = "02-le-pipeline/index.md" },
-  { "1. Téléchargement" = "02-le-pipeline/etape-1-telechargement.md" },
-  { "2. Configuration" = "02-le-pipeline/etape-2-configuration.md" },
-  { "3. Tuilage (mpforge)" = "02-le-pipeline/etape-3-tuilage.md" },
-  { "4. Compilation (imgforge)" = "02-le-pipeline/etape-4-compilation.md" },
-  { "5. Installation GPS" = "02-le-pipeline/etape-5-installation.md" }
+  { "Vue d'ensemble" = "le-pipeline/index.md" },
+  { "1. Téléchargement" = "le-pipeline/etape-1-telechargement.md" },
+  { "2. Configuration" = "le-pipeline/etape-2-configuration.md" },
+  { "3. Tuilage (mpforge)" = "le-pipeline/etape-3-tuilage.md" },
+  { "4. Compilation (imgforge)" = "le-pipeline/etape-4-compilation.md" },
+  { "5. Installation GPS" = "le-pipeline/etape-5-installation.md" }
 ]
 
 [[nav]]
 "Référence" = [
-  { "Vue d'ensemble" = "03-reference/index.md" },
-  { "Types Garmin" = "03-reference/types-garmin.md" },
-  { "Correspondances BD TOPO" = "03-reference/correspondances-bdtopo.md" },
-  { "Limites des formats" = "03-reference/limites-formats.md" }
+  { "Vue d'ensemble" = "reference/index.md" },
+  { "Types Garmin" = "reference/types-garmin.md" },
+  { "Correspondances BD TOPO" = "reference/correspondances-bdtopo.md" },
+  { "Limites des formats" = "reference/limites-formats.md" }
 ]
 
 [[nav]]
 Installation = [
-  { "Prérequis" = "04-prerequis-installation/index.md" },
-  { "Procédure d'installation" = "04-prerequis-installation/procedure-installation.md" }
+  { "Prérequis" = "prerequis-installation/index.md" },
+  { "Procédure d'installation" = "prerequis-installation/procedure-installation.md" }
 ]
 
 [[nav]]
 "Téléchargements" = [
-  { "Vue d'ensemble" = "05-telechargements/index.md" },
-  { "France métropolitaine" = "05-telechargements/france.md" },
-  { "Par région" = "05-telechargements/regions.md" },
-  { "Outre-mer" = "05-telechargements/outre-mer.md" }
+  { "Vue d'ensemble" = "telechargements/index.md" },
+  { "France métropolitaine" = "telechargements/france.md" },
+  { "Par région" = "telechargements/regions.md" },
+  { "Outre-mer" = "telechargements/outre-mer.md" }
 ]
 
 [[nav]]
-"À propos" = "06-a-propos/index.md"
+"À propos" = "a-propos/index.md"
 
 
 [extra]
