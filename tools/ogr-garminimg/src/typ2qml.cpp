@@ -29,7 +29,7 @@ static bool WriteQMLFile(const std::string& osPath,
     return true;
 }
 
-CPL_UNUSED static std::string GenerateQML(
+static std::string GenerateQML(
     const std::map<uint32_t, TypStyleDef>& aoStyles,
     const std::string& osSymbolType,
     const std::string& osColorField) {
@@ -136,32 +136,20 @@ bool ConvertTypToQML(GarminIMGTYPParser& parser,
                      const std::string& /* osPalette */) {
     bool bOk = true;
 
-    // Access internal style maps via GetTypInfo iteration
-    // Since we can't directly access private maps, we generate QML
-    // by iterating over known type ranges
-
-    // For now, use a simplified approach with the parser
-    // The full implementation would iterate internal style maps
-
-    // Generate POI QML
+    // Generate POI QML from point styles
     std::string osPOIPath = osOutputDir + "/" + osBaseName + "_poi.qml";
-    std::string osPOIContent =
-        "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
-        "<qgis version=\"3.28\">\n"
-        "  <renderer-v2 type=\"categorizedSymbol\" attr=\"Type\">\n"
-        "    <categories/>\n"
-        "    <symbols/>\n"
-        "  </renderer-v2>\n"
-        "</qgis>\n";
-    bOk &= WriteQMLFile(osPOIPath, osPOIContent);
+    bOk &= WriteQMLFile(osPOIPath,
+        GenerateQML(parser.GetPointStyles(), "marker", "fill"));
 
-    // Generate POLYLINE QML
+    // Generate POLYLINE QML from polyline styles
     std::string osLinePath = osOutputDir + "/" + osBaseName + "_polyline.qml";
-    bOk &= WriteQMLFile(osLinePath, osPOIContent);
+    bOk &= WriteQMLFile(osLinePath,
+        GenerateQML(parser.GetPolylineStyles(), "line", "line"));
 
-    // Generate POLYGON QML
+    // Generate POLYGON QML from polygon styles
     std::string osPolyPath = osOutputDir + "/" + osBaseName + "_polygon.qml";
-    bOk &= WriteQMLFile(osPolyPath, osPOIContent);
+    bOk &= WriteQMLFile(osPolyPath,
+        GenerateQML(parser.GetPolygonStyles(), "fill", "fill"));
 
     if (bOk) {
         CPLDebug("OGR_GARMINIMG", "typ2qml: Generated 3 QML files in %s",

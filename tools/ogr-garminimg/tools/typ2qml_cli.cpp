@@ -85,8 +85,11 @@ int main(int argc, char* argv[]) {
                     osInput.c_str());
             return 1;
         }
+    } else if (EQUAL(pszExt, "txt")) {
+        // Parse decompiled TYP text format
+        bOk = oParser.ParseTextFile(osInput.c_str());
     } else {
-        // Parse TYP file directly
+        // Parse binary TYP file directly
         bOk = oParser.ParseFile(osInput.c_str());
     }
 

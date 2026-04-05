@@ -58,6 +58,7 @@ public:
 
     bool Parse(const uint8_t* pabyData, uint32_t nSize);
     bool ParseFile(const char* pszFilename);
+    bool ParseTextFile(const char* pszFilename);
 
     // Get style info for a type+subtype combination
     // Key = (type << 16) | subtype
@@ -66,6 +67,10 @@ public:
     bool HasStyles() const { return !m_aoPointStyles.empty() ||
                                     !m_aoPolylineStyles.empty() ||
                                     !m_aoPolygonStyles.empty(); }
+
+    const std::map<uint32_t, TypStyleDef>& GetPointStyles() const { return m_aoPointStyles; }
+    const std::map<uint32_t, TypStyleDef>& GetPolylineStyles() const { return m_aoPolylineStyles; }
+    const std::map<uint32_t, TypStyleDef>& GetPolygonStyles() const { return m_aoPolygonStyles; }
 
 private:
     const uint8_t* m_pabyData = nullptr;
@@ -77,12 +82,19 @@ private:
     std::map<uint32_t, TypStyleDef> m_aoPolylineStyles;
     std::map<uint32_t, TypStyleDef> m_aoPolygonStyles;
 
-    bool ParseSection(uint32_t nOffset, uint32_t nSize, uint16_t nRecordSize,
-                      std::map<uint32_t, TypStyleDef>& aoStyles, int nGeomType);
+    // Binary parsing helpers
+    bool ParseIndexSection(uint32_t nIdxOffset, uint32_t nIdxSize,
+                           uint16_t nIdxRecordSize,
+                           uint32_t nDataOffset, uint32_t nDataSize,
+                           std::map<uint32_t, TypStyleDef>& aoStyles,
+                           int nGeomType);
+    bool ParseStyleData(const uint8_t* pData, uint32_t nAvail,
+                        int nGeomType, TypStyleDef& oStyle);
     std::string ColorToHex(uint8_t r, uint8_t g, uint8_t b) const;
 
     static uint16_t ReadLE16(const uint8_t* p);
     static uint32_t ReadLE32(const uint8_t* p);
+    static uint32_t ReadLE24(const uint8_t* p);
 };
 
 #endif /* GARMINIMGTYPPARSER_H_INCLUDED */
