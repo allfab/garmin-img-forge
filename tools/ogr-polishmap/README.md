@@ -306,50 +306,78 @@ Data0=(48.8500,2.3400),(48.8550,2.3500),(48.8600,2.3450)
 - Latitude : [-90, +90], Longitude : [-180, +180]
 - POI : 1 coordonnée, POLYLINE : min. 2, POLYGON : min. 3 uniques + fermeture
 
-### Types Garmin
+### Types Garmin — Mapping BDTOPO
 
-Les codes types (`Type=0xNNNN`) déterminent le rendu sur les appareils Garmin.
-
-**POI :**
-
-| Plage | Catégorie |
-|-------|-----------|
-| 0x2A00-0x2AFF | Attractions (musées, parcs, écoles) |
-| 0x2B00-0x2BFF | Loisirs (théâtres, bars, cinémas) |
-| 0x2C00-0x2CFF | Restauration |
-| 0x2D00-0x2DFF | Hébergement |
-| 0x2E00-0x2EFF | Shopping |
-| 0x2F00-0x2FFF | Services (stations-service, gares, aéroports) |
-| 0x3000-0x30FF | Santé/Communauté |
-| 0x6400-0x6416 | Géographie |
+Les codes types (`Type=0xNNNN`) déterminent le rendu sur les appareils Garmin. Les codes `0x0001`–`0x00FF` sont des types standard, les codes `0x10000`–`0x1FFFF` sont personnalisés (nécessitent un fichier TYP).
 
 **Routes (Polylines) :**
 
-| Code | Description |
-|------|-------------|
-| 0x0001 | Autoroute |
-| 0x0002 | Route nationale |
-| 0x0003 | Route régionale |
-| 0x0004 | Route artérielle |
-| 0x0005 | Route collectrice |
-| 0x0006 | Rue résidentielle |
-| 0x000A | Route non revêtue |
-| 0x000C | Rond-point |
-| 0x000E | Piste 4x4 |
-| 0x0014 | Chemin de fer |
-| 0x001A | Rivière/Canal |
+| CL_ADMIN / NATURE | Type | EndLevel |
+|--------------------|------|----------|
+| Autoroute | `0x01` | 7 |
+| Nationale | `0x04` | 7 |
+| Départementale | `0x05` | 7 |
+| Route intercommunale | `0x05` | 7 |
+| Route à 1/2 chaussées, Rond-point | `0x06` | 2 |
+| Route empierrée | `0x07` | 1 |
+| Bretelle, Type autoroutier | `0x09` | 7 |
+| Chemin | `0x0a` | 1 |
+| Piste cyclable | `0x0e` | 1 |
+| Escalier | `0x0f` | 1 |
+| Sentier | `0x10` | 1 |
+| Bac ou liaison maritime | `0x1b` | 1 |
+
+**Voies ferrées (Polylines) :**
+
+| NATURE | Type | EndLevel |
+|--------|------|----------|
+| Voie ferrée principale | `0x10c00` | 5 |
+| LGV | `0x10e02` | 5 |
+| Voie de service | `0x10e03` | 5 |
+| Tramway | `0x10e04` | 5 |
+| Funiculaire ou crémaillère | `0x10e05` | 5 |
+| Souterrain (POS_SOL=-1) | `0x10e06` | 5 |
+
+**Hydrographie (Polylines) :**
+
+| NATURE | Type | EndLevel |
+|--------|------|----------|
+| Cours d'eau (permanent) | `0x18` | 2 |
+| Cours d'eau (intermittent) | `0x26` | 2 |
+| Ruisseau, Canal | `0x18` | 2 |
 
 **Polygones :**
 
-| Plage | Catégorie |
-|-------|-----------|
-| 0x0001-0x000E | Zones urbaines |
-| 0x0010-0x0019 | Parcs et loisirs |
-| 0x003C-0x0048 | Lacs et rivières |
-| 0x004C-0x004F | Forêts, marais, toundra |
-| 0x0050-0x0056 | Couverture du sol |
+| Catégorie | Type | EndLevel |
+|-----------|------|----------|
+| Zone d'habitation | `0x03` / `0x10f0a` | 4 |
+| Zone d'activité | `0x0c` | 2 |
+| Cimetière civil | `0x1a` | 4 |
+| Cimetière militaire | `0x10f13` | 4 |
+| Eau libre (grande/moyenne/petite) | `0x3c` / `0x3f` / `0x41` | 2-5 |
+| Glacier, névé | `0x4d` | 4 |
+| Lac intermittent | `0x4c` | 2 |
+| Forêt fermée mixte | `0x4e` | 6 |
+| Commune | `0x54` | 7 |
+| Bâtiment (15 types) | `0x10f04`–`0x1101c` | 2 |
+| Végétation (10 types) | `0x10f1e`–`0x11005` | 4-6 |
+| Terrain de sport (5 types) | `0x10f1b`–`0x1100a` | 2 |
+| Forêt publique | `0x10a03` | 3 |
 
-Types personnalisés : 0x10000-0x1FFFF (nécessite un fichier TYP).
+**POI (extraits) :**
+
+| Catégorie | Exemples de types |
+|-----------|-------------------|
+| Aérodromes | `0x02d0b` (aérodrome), `0x15500` (altiport/héliport) |
+| Transport par câble | `0x15501` (télécabine, télésiège, téléski) |
+| Zones d'activité | `0x02900`–`0x11601` (90+ natures BDTOPO) |
+| Hydrographie | `0x06414`–`0x06513` (sources, lacs, cascades, etc.) |
+| Toponymie | `0x06601`–`0x11515` (cols, sommets, grottes, etc.) |
+| Pylônes/constructions | `0x10101`–`0x11506` (phare, clocher, éolienne, etc.) |
+| Cimetières | `0x06403` |
+| Equipement transport | `0x06401`–`0x1100b` (parking, port, stations) |
+
+La référence complète avec les 26 catégories et toutes les correspondances NATURE → Type est disponible dans la [documentation du site](../../site/docs/reference/types-garmin.md).
 
 ---
 
