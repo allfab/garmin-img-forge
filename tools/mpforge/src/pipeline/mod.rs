@@ -330,8 +330,7 @@ fn process_single_tile(
             ctx.error_mode,
             &mut tile_validation_stats,
         ) {
-            Ok(Some(clipped)) => clipped_features.push(clipped),
-            Ok(None) => { /* outside tile or empty intersection */ }
+            Ok(clipped) => clipped_features.extend(clipped),
             Err(e) => {
                 clip_errors.push(TileExportError {
                     tile_id: tile_id.clone(),

@@ -403,8 +403,7 @@ fn test_pipeline_with_invalid_features_mixed() {
 
     for feature in &features {
         match clip_feature_to_tile(feature, &tile_bbox, ErrorMode::Continue, &mut stats) {
-            Ok(Some(_)) => clipped_count += 1,
-            Ok(None) => {}
+            Ok(clipped_vec) => clipped_count += clipped_vec.len(),
             Err(_) => {}
         }
     }

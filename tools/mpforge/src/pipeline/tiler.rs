@@ -400,14 +400,18 @@ pub struct TileData {
 /// a tile's boundaries while preserving all attribute fields. Invalid or degenerate
 /// geometries are handled according to the error_mode parameter.
 ///
+/// When clipping produces multi-geometries (e.g. a polygon split into multiple
+/// fragments by the tile boundary), ALL sub-geometries are emitted as separate
+/// features to avoid silently dropping fragments.
+///
 /// # Arguments
 /// * `feature` - Source feature with original geometry (internal Feature representation)
 /// * `tile_bbox` - Tile bounding box as GDAL Polygon (WGS84)
 /// * `error_mode` - How to handle invalid/degenerate geometries
 ///
 /// # Returns
-/// * `Ok(Some(Feature))` - Clipped feature with preserved attributes
-/// * `Ok(None)` - Feature outside tile, intersection empty, or invalid (continue mode)
+/// * `Ok(vec![...])` - One or more clipped features with preserved attributes
+/// * `Ok(vec![])` - Feature outside tile, intersection empty, or invalid (continue mode)
 /// * `Err(_)` - Invalid geometry in fail-fast mode
 ///
 /// # Performance
@@ -417,9 +421,9 @@ pub struct TileData {
 /// # Examples
 /// ```ignore
 /// let tile_bbox = tile.to_gdal_polygon()?;
-/// let clipped_feature = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::Continue)?;
-/// if let Some(clipped) = clipped_feature {
-///     // Process clipped feature with preserved attributes
+/// let clipped_features = clip_feature_to_tile(&feature, &tile_bbox, ErrorMode::Continue)?;
+/// for clipped in clipped_features {
+///     // Process each clipped fragment with preserved attributes
 /// }
 /// ```
 #[instrument(skip(feature, tile_bbox, validation_stats))]
@@ -428,7 +432,7 @@ pub fn clip_feature_to_tile(
     tile_bbox: &Geometry,
     error_mode: ErrorMode,
     validation_stats: &mut ValidationStats,
-) -> anyhow::Result<Option<Feature>> {
+) -> anyhow::Result<Vec<Feature>> {
     // Story 6.5: Validate and optionally repair geometry before clipping
     let src_geom = match validate_and_repair(feature, validation_stats) {
         ValidationResult::Valid(geom) => geom,
@@ -437,23 +441,21 @@ pub fn clip_feature_to_tile(
             geom
         }
         ValidationResult::Rejected(reason) => {
-            // Logging already done by validate_and_repair() — no duplicate error log
             warn!("Feature rejected during validation: {}", reason);
-            return handle_invalid_geometry(error_mode);
+            return handle_invalid_geometry_vec(error_mode);
         }
     };
 
     // Early exit: Check if geometry intersects tile (O(1) bbox check)
     if !src_geom.intersects(tile_bbox) {
         debug!("Feature outside tile, skipping");
-        return Ok(None);
+        return Ok(Vec::new());
     }
 
     // Special case: Points don't need clipping (overlap handles boundaries)
     if feature.geometry_type == GeometryType::Point {
         debug!("Point geometry, no clipping needed");
-        // Return clone of original feature
-        return Ok(Some(feature.clone()));
+        return Ok(vec![feature.clone()]);
     }
 
     // Perform GDAL Intersection
@@ -462,52 +464,54 @@ pub fn clip_feature_to_tile(
             // Check for empty result
             if geom.is_empty() {
                 debug!("Intersection empty, skipping");
-                return Ok(None);
+                return Ok(Vec::new());
             }
 
             // Validate result
             if !geom.is_valid() {
                 warn!("Intersection produced invalid geometry");
-                return handle_invalid_geometry(error_mode);
+                return handle_invalid_geometry_vec(error_mode);
             }
 
             geom
         }
         None => {
-            // None indicates GDAL error during intersection (not empty result)
-            // Empty intersections return Some(empty_geom) with is_empty() = true
             warn!("GDAL intersection operation failed");
-            return handle_invalid_geometry(error_mode);
+            return handle_invalid_geometry_vec(error_mode);
         }
     };
 
-    // Convert clipped GDAL Geometry back to internal coordinates
-    let clipped_coords = gdal_geometry_to_coords(&clipped_geom)?;
+    // Convert clipped GDAL Geometry back to internal coordinates.
+    // Multi-geometries (MultiPolygon, MultiLineString, etc.) are decomposed
+    // into individual coordinate sets so each fragment becomes its own Feature.
+    let all_coords = gdal_geometry_to_multi_coords(&clipped_geom)?;
 
-    // Create new Feature with clipped geometry + preserved attributes
-    let clipped_feature = Feature {
-        geometry_type: feature.geometry_type,
-        geometry: clipped_coords,
-        attributes: feature.attributes.clone(), // Preserve all attributes (Type, Label, etc.)
-        source_layer: feature.source_layer.clone(),
-    };
+    let mut result = Vec::with_capacity(all_coords.len());
+    for coords in all_coords {
+        result.push(Feature {
+            geometry_type: feature.geometry_type,
+            geometry: coords,
+            attributes: feature.attributes.clone(),
+            source_layer: feature.source_layer.clone(),
+        });
+    }
 
     debug!(
         geom_type = ?feature.geometry_type,
         original_coords = feature.geometry.len(),
-        clipped_coords = clipped_feature.geometry.len(),
+        fragments = result.len(),
         "Feature clipped successfully"
     );
 
-    Ok(Some(clipped_feature))
+    Ok(result)
 }
 
-/// Handle invalid geometry based on error mode.
-fn handle_invalid_geometry(error_mode: ErrorMode) -> anyhow::Result<Option<Feature>> {
+/// Handle invalid geometry based on error mode (returns Vec).
+fn handle_invalid_geometry_vec(error_mode: ErrorMode) -> anyhow::Result<Vec<Feature>> {
     match error_mode {
         ErrorMode::Continue => {
             debug!("Skipping invalid geometry (continue mode)");
-            Ok(None)
+            Ok(Vec::new())
         }
         ErrorMode::FailFast => {
             anyhow::bail!("Invalid geometry encountered in fail-fast mode")
@@ -573,79 +577,115 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
 
 /// Extract coordinates from GDAL Geometry to internal format using GDAL native API.
 ///
-/// Handles simple geometries (Point, LineString, Polygon) and multi-geometries
-/// (MultiPolygon, MultiLineString) by extracting the largest sub-geometry.
-/// For Polygons, only the exterior ring is extracted.
-fn gdal_geometry_to_coords(geom: &Geometry) -> anyhow::Result<Vec<(f64, f64)>> {
+/// Returns a Vec of coordinate sets. Simple geometries (Point, LineString, Polygon)
+/// produce a single entry. Multi-geometries (MultiPolygon, MultiLineString, MultiPoint)
+/// are decomposed into one entry per sub-geometry so that no fragment is lost during
+/// tile clipping.
+fn gdal_geometry_to_multi_coords(geom: &Geometry) -> anyhow::Result<Vec<Vec<(f64, f64)>>> {
     use gdal::vector::OGRwkbGeometryType;
 
     let geom_type = geom.geometry_type();
 
     match geom_type {
-        // Point
+        // Point — single coordinate set
         OGRwkbGeometryType::wkbPoint | OGRwkbGeometryType::wkbPoint25D => {
             let (x, y, _) = geom.get_point(0);
             validate_coords(x, y)?;
-            Ok(vec![(x, y)])
+            Ok(vec![vec![(x, y)]])
         }
-        // LineString
+        // LineString — single coordinate set
         OGRwkbGeometryType::wkbLineString | OGRwkbGeometryType::wkbLineString25D => {
-            extract_linestring_coords(geom)
+            Ok(vec![extract_linestring_coords(geom)?])
         }
-        // Polygon — extract exterior ring only
+        // Polygon — single coordinate set (exterior ring)
         OGRwkbGeometryType::wkbPolygon | OGRwkbGeometryType::wkbPolygon25D => {
-            extract_polygon_exterior_coords(geom)
+            Ok(vec![extract_polygon_exterior_coords(geom)?])
         }
-        // MultiPolygon — extract largest sub-polygon's exterior ring
+        // MultiPoint — one coordinate set per sub-point
+        OGRwkbGeometryType::wkbMultiPoint | OGRwkbGeometryType::wkbMultiPoint25D => {
+            let count = geom.geometry_count();
+            if count == 0 {
+                anyhow::bail!("MultiPoint has no sub-geometries");
+            }
+            let mut result = Vec::with_capacity(count);
+            for i in 0..count {
+                let sub = geom.get_geometry(i);
+                let (x, y, _) = sub.get_point(0);
+                validate_coords(x, y)?;
+                result.push(vec![(x, y)]);
+            }
+            debug!(sub_count = count, "MultiPoint: extracted all sub-points");
+            Ok(result)
+        }
+        // MultiPolygon — one coordinate set per sub-polygon
         OGRwkbGeometryType::wkbMultiPolygon | OGRwkbGeometryType::wkbMultiPolygon25D => {
             let count = geom.geometry_count();
             if count == 0 {
                 anyhow::bail!("MultiPolygon has no sub-geometries");
             }
-            // Find the sub-polygon with the most points (largest component)
-            let mut best_coords = Vec::new();
+            let mut result = Vec::with_capacity(count);
             for i in 0..count {
                 let sub = geom.get_geometry(i);
                 if let Ok(coords) = extract_polygon_exterior_coords(&sub) {
-                    if coords.len() > best_coords.len() {
-                        best_coords = coords;
-                    }
+                    result.push(coords);
                 }
             }
-            if best_coords.is_empty() {
+            if result.is_empty() {
                 anyhow::bail!("MultiPolygon: no valid sub-polygon found");
             }
             debug!(
                 sub_count = count,
-                coords = best_coords.len(),
-                "MultiPolygon: extracted largest sub-polygon"
+                emitted = result.len(),
+                "MultiPolygon: extracted all sub-polygons"
             );
-            Ok(best_coords)
+            Ok(result)
         }
-        // MultiLineString — extract longest sub-linestring
+        // MultiLineString — one coordinate set per sub-linestring
         OGRwkbGeometryType::wkbMultiLineString | OGRwkbGeometryType::wkbMultiLineString25D => {
             let count = geom.geometry_count();
             if count == 0 {
                 anyhow::bail!("MultiLineString has no sub-geometries");
             }
-            let mut best_coords = Vec::new();
+            let mut result = Vec::with_capacity(count);
             for i in 0..count {
                 let sub = geom.get_geometry(i);
                 if let Ok(coords) = extract_linestring_coords(&sub) {
-                    if coords.len() > best_coords.len() {
-                        best_coords = coords;
-                    }
+                    result.push(coords);
                 }
             }
-            if best_coords.is_empty() {
+            if result.is_empty() {
                 anyhow::bail!("MultiLineString: no valid sub-linestring found");
             }
             debug!(
                 sub_count = count,
-                coords = best_coords.len(),
-                "MultiLineString: extracted longest sub-linestring"
+                emitted = result.len(),
+                "MultiLineString: extracted all sub-linestrings"
             );
-            Ok(best_coords)
+            Ok(result)
+        }
+        // GeometryCollection — recurse into each sub-geometry
+        OGRwkbGeometryType::wkbGeometryCollection
+        | OGRwkbGeometryType::wkbGeometryCollection25D => {
+            let count = geom.geometry_count();
+            if count == 0 {
+                anyhow::bail!("GeometryCollection has no sub-geometries");
+            }
+            let mut result = Vec::new();
+            for i in 0..count {
+                let sub = geom.get_geometry(i);
+                if let Ok(mut sub_coords) = gdal_geometry_to_multi_coords(&sub) {
+                    result.append(&mut sub_coords);
+                }
+            }
+            if result.is_empty() {
+                anyhow::bail!("GeometryCollection: no valid sub-geometry found");
+            }
+            debug!(
+                sub_count = count,
+                emitted = result.len(),
+                "GeometryCollection: extracted all sub-geometries"
+            );
+            Ok(result)
         }
         other => {
             anyhow::bail!("Unsupported geometry type from intersection: {:?}", other);

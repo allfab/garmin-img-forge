@@ -197,18 +197,17 @@ error_handling: continue
 
             match clip_feature_to_tile(feature, &tile_bbox_geom, error_mode, &mut validation_stats)
             {
-                Ok(Some(clipped)) => {
-                    // Subtask 9.3: Verify clipped geometry is valid
-                    let clipped_geom = match feature_to_test_geometry(&clipped) {
-                        Ok(g) => g,
-                        Err(_) => continue,
-                    };
-                    assert!(clipped_geom.is_valid(), "Clipped geometry should be valid");
+                Ok(clipped_vec) => {
+                    for clipped in &clipped_vec {
+                        // Subtask 9.3: Verify clipped geometry is valid
+                        let clipped_geom = match feature_to_test_geometry(clipped) {
+                            Ok(g) => g,
+                            Err(_) => continue,
+                        };
+                        assert!(clipped_geom.is_valid(), "Clipped geometry should be valid");
 
-                    total_clipped += 1;
-                }
-                Ok(None) => {
-                    // Feature skipped (outside tile or invalid in continue mode)
+                        total_clipped += 1;
+                    }
                 }
                 Err(_) => {
                     total_invalid += 1;
@@ -267,36 +266,38 @@ fn test_clipping_with_boundary_features() {
 
     // Clip to left tile
     let tile_left_bbox = tile_left.to_gdal_polygon().unwrap();
-    let clipped_left = clip_feature_to_tile(
+    let clipped_left_vec = clip_feature_to_tile(
         &feature,
         &tile_left_bbox,
         error_mode,
         &mut ValidationStats::default(),
     )
-    .unwrap()
-    .expect("Should clip to left tile");
+    .unwrap();
+    assert!(!clipped_left_vec.is_empty(), "Should clip to left tile");
+    let clipped_left = &clipped_left_vec[0];
 
     // Clip to right tile
     let tile_right_bbox = tile_right.to_gdal_polygon().unwrap();
-    let clipped_right = clip_feature_to_tile(
+    let clipped_right_vec = clip_feature_to_tile(
         &feature,
         &tile_right_bbox,
         error_mode,
         &mut ValidationStats::default(),
     )
-    .unwrap()
-    .expect("Should clip to right tile");
+    .unwrap();
+    assert!(!clipped_right_vec.is_empty(), "Should clip to right tile");
+    let clipped_right = &clipped_right_vec[0];
 
     // Both tiles should have clipped fragments
     assert!(!clipped_left.geometry.is_empty());
     assert!(!clipped_right.geometry.is_empty());
 
-    // Verify left fragment ends at boundary (x ≤ 1.0)
+    // Verify left fragment ends at boundary (x <= 1.0)
     for (x, _) in &clipped_left.geometry {
         assert!(*x <= 1.0 + 1e-6, "Left fragment should not exceed x=1.0");
     }
 
-    // Verify right fragment starts at boundary (x ≥ 1.0)
+    // Verify right fragment starts at boundary (x >= 1.0)
     for (x, _) in &clipped_right.geometry {
         assert!(*x >= 1.0 - 1e-6, "Right fragment should start at x=1.0");
     }
@@ -370,13 +371,13 @@ fn test_clipping_performance_1000_features() {
     let mut clipped_count = 0;
 
     for feature in &features {
-        if let Ok(Some(_)) = clip_feature_to_tile(
+        if let Ok(clipped_vec) = clip_feature_to_tile(
             feature,
             &tile_bbox,
             ErrorMode::Continue,
             &mut ValidationStats::default(),
         ) {
-            clipped_count += 1;
+            clipped_count += clipped_vec.len();
         }
     }
 

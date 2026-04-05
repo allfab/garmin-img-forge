@@ -314,6 +314,7 @@ fn test_invalid_geometry_continue_mode() {
     assert!(result.is_ok(), "Continue mode should not propagate errors");
 }
 
+
 #[test]
 fn test_invalid_geometry_failfast_mode() {
     // Story 6.5: Self-intersecting polygon is now REPAIRED via make_valid().
@@ -376,9 +377,9 @@ fn test_degenerate_linestring_skipped() {
         &mut ValidationStats::default(),
     );
 
-    // In continue mode, should handle gracefully (either Ok(None) or Err handled)
+    // In continue mode, should handle gracefully (either Ok(empty vec) or Err handled)
     // Implementation returns Err from feature_to_gdal_geometry, which is fine
-    assert!(result.is_err() || (result.is_ok() && result.unwrap().is_none()));
+    assert!(result.is_err() || (result.is_ok() && result.unwrap().is_empty()));
 }
 
 // ============================================================================
@@ -420,7 +421,9 @@ fn test_clip_preserves_all_attributes() {
     );
 
     assert!(result.is_ok());
-    let clipped = result.unwrap().expect("Should return clipped feature");
+    let clipped_vec = result.unwrap();
+    assert!(!clipped_vec.is_empty(), "Should return clipped feature(s)");
+    let clipped = &clipped_vec[0];
 
     // Verify ALL attributes preserved
     assert_eq!(
@@ -493,7 +496,9 @@ fn test_point_feature_attributes_preserved() {
     );
 
     assert!(result.is_ok());
-    let clipped = result.unwrap().expect("Point should be returned");
+    let clipped_vec = result.unwrap();
+    assert!(!clipped_vec.is_empty(), "Point should be returned");
+    let clipped = &clipped_vec[0];
 
     // Attributes preserved
     assert_eq!(clipped.attributes, attributes);
