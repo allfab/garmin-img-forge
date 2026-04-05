@@ -285,6 +285,14 @@ fn build_multilevel_hierarchy(
     // Topdiv has no extended data
     ext_offsets.push((0, 0, 0, 0, 0, 0));
 
+    // ── Pre-compute bounding boxes for polylines and polygons (avoid O(n) per filter call) ──
+    let line_bboxes: Vec<Area> = mp.polylines.iter()
+        .map(|l| if l.points.is_empty() { Area::new(0, 0, 0, 0) } else { Area::from_coords(&l.points) })
+        .collect();
+    let shape_bboxes: Vec<Area> = mp.polygons.iter()
+        .map(|s| if s.points.is_empty() { Area::new(0, 0, 0, 0) } else { Area::from_coords(&s.points) })
+        .collect();
+
     // ── Process each level from most zoomed-out to most detailed ──
     // Skip the highest level (it's the inherited topdiv level)
     let process_levels = if num_levels > 1 { num_levels - 1 } else { num_levels };
@@ -297,7 +305,7 @@ fn build_multilevel_hierarchy(
 
         for (parent_bounds, parent_num) in &parent_areas {
             let (split_points, split_lines, split_shapes) =
-                filter_features_for_level(mp, level_num, parent_bounds);
+                filter_features_for_level(mp, level_num, parent_bounds, &line_bboxes, &shape_bboxes);
 
             if split_points.is_empty() && split_lines.is_empty() && split_shapes.is_empty() {
                 continue;
@@ -445,6 +453,8 @@ fn filter_features_for_level(
     mp: &MpFile,
     level: u8,
     parent_bounds: &Area,
+    line_bboxes: &[Area],
+    shape_bboxes: &[Area],
 ) -> (Vec<SplitPoint>, Vec<SplitLine>, Vec<SplitShape>) {
     // Expand bounds by 1 unit to catch boundary features (F6 fix)
     let expanded = Area::new(
@@ -469,12 +479,9 @@ fn filter_features_for_level(
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
-        .filter(|(_, l)| {
+        .filter(|(i, l)| {
             if l.points.is_empty() { return false; }
-            // Use bounding box intersection for polylines too — a line starting
-            // outside this parent but crossing into it must still be included.
-            let bbox = Area::from_coords(&l.points);
-            expanded.intersects(&bbox)
+            expanded.intersects(&line_bboxes[*i])
         })
         .map(|(i, l)| {
             let mut pts = l.points.clone();
@@ -493,13 +500,12 @@ fn filter_features_for_level(
 
     let mut shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
-        .filter(|(_, s)| {
-            if s.points.is_empty() { return false; }
-            // Use bounding box intersection instead of first-point containment.
-            // A polygon may span multiple parent subdivisions; filtering by first
-            // point alone would lose coverage outside the parent that contains it.
-            let bbox = Area::from_coords(&s.points);
-            expanded.intersects(&bbox)
+        .filter(|(i, _)| {
+            // Use pre-computed bounding box intersection instead of first-point
+            // containment. A polygon may span multiple parent subdivisions;
+            // filtering by first point alone would lose coverage outside the
+            // parent that contains it.
+            expanded.intersects(&shape_bboxes[*i])
         })
         .filter_map(|(i, s)| {
             // Min-size filtering
