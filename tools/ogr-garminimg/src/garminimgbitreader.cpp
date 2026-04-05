@@ -104,20 +104,29 @@ int32_t GarminIMGBitReader::SGet(int nBits) {
 
 int32_t GarminIMGBitReader::SGet2(int nBits) {
     if (nBits <= 0) return 0;
+    if (nBits == 1) return SGet(1);  // nMask would be 0, overflow loop can't progress
 
-    int32_t nTotal = 0;
-    int32_t nOverflow = 1 << (nBits - 1);
+    // Faithful to mkgmap BitReader.sget2() / imgforge bit_reader.rs sget2():
+    // Read unsigned chunks. If chunk == top (overflow marker), accumulate
+    // mask into base and read next chunk. Sign-extend only the final chunk.
+    uint32_t nTop = 1u << (nBits - 1);
+    uint32_t nMask = nTop - 1;
+    uint32_t nBase = 0;
 
-    while (true) {
-        int32_t nVal = SGet(nBits);
-        nTotal += nVal;
-
-        if (nVal != nOverflow && nVal != -nOverflow) {
-            break;
-        }
+    uint32_t nRes = Get(nBits);
+    while (nRes == nTop) {
+        nBase += nMask;
+        nRes = Get(nBits);
     }
 
-    return nTotal;
+    if ((nRes & nTop) == 0) {
+        // Positive: final value + accumulated base
+        return static_cast<int32_t>(nRes + nBase);
+    } else {
+        // Negative: sign-extend final chunk, subtract accumulated base
+        int32_t nSigned = static_cast<int32_t>(nRes | ~nMask);
+        return nSigned - static_cast<int32_t>(nBase);
+    }
 }
 
 /************************************************************************/

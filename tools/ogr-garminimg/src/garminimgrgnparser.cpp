@@ -132,22 +132,23 @@ bool GarminIMGRGNParser::DecodePolyBitstream(
     std::vector<RGNPoint>& aoPoints) {
 
     if (nBitstreamLen == 0) return true;
+    if (nBitstreamLen < 2) return true;  // Need at least 10 bits for header (4+4+1+1)
 
     GarminIMGBitReader oBits(pabyBits, nBitstreamLen);
 
-    // Read bitstream header (first 16 bits)
-    uint32_t nHeader = oBits.Get(16);
-    int nXBase = nHeader & 0x0F;
-    int nYBase = (nHeader >> 4) & 0x0F;
-    bool bXSameSign = (nHeader >> 8) & 1;
+    // Read bitstream header sequentially (variable length 10-12 bits)
+    // Faithful to mkgmap LinePreparer / imgforge line_preparer.rs
+    int nXBase = static_cast<int>(oBits.Get(4));
+    int nYBase = static_cast<int>(oBits.Get(4));
+    bool bXSameSign = oBits.Get1();
     bool bXSign = false;
     if (bXSameSign) {
-        bXSign = (nHeader >> 9) & 1;
+        bXSign = oBits.Get1();
     }
-    bool bYSameSign = (nHeader >> 10) & 1;
+    bool bYSameSign = oBits.Get1();
     bool bYSign = false;
     if (bYSameSign) {
-        bYSign = (nHeader >> 11) & 1;
+        bYSign = oBits.Get1();
     }
 
     int nXBits = GarminIMGBitReader::Base2Bits(nXBase);
@@ -209,18 +210,20 @@ bool GarminIMGRGNParser::DecodePOIs(
 
     if (nStart >= m_nSize || nEnd > m_nSize) return false;
 
-    // Skip internal pointers (2 bytes each for polyline/polygon sections)
+    // Skip internal pointers (2 bytes each)
+    // Faithful to imgforge rgn.rs: pointers are only written if the target
+    // section exists AND at least one earlier section also exists.
+    // Order: points → indexed_points → polylines → polygons
     uint32_t nPos = nStart;
+    bool bHasStdPoints = (oSubdiv.nContentFlags & 0x10) != 0;
+    bool bHasIdxPoints = (oSubdiv.nContentFlags & 0x20) != 0;
     bool bHasPolylines = (oSubdiv.nContentFlags & 0x40) != 0;
     bool bHasPolygons  = (oSubdiv.nContentFlags & 0x80) != 0;
-    bool bHasIdxPoints = (oSubdiv.nContentFlags & 0x20) != 0;
 
-    // Internal pointers at start of block (2B each)
     int nPointers = 0;
-    if (bHasPolylines) nPointers++;
-    if (bHasPolygons)  nPointers++;
-    if (bHasIdxPoints) nPointers++;
-    // Points don't have a pointer (they're first)
+    if (bHasIdxPoints && bHasStdPoints) nPointers++;
+    if (bHasPolylines && (bHasStdPoints || bHasIdxPoints)) nPointers++;
+    if (bHasPolygons && (bHasStdPoints || bHasIdxPoints || bHasPolylines)) nPointers++;
 
     // The order in the block is: points, indexed_points, polylines, polygons
     // Pointers point to: indexed_points, polylines, polygons
@@ -295,31 +298,63 @@ bool GarminIMGRGNParser::DecodePolylines(
 
     if (nStart >= m_nSize || nEnd > m_nSize) return false;
 
-    // Find polyline section offset via internal pointers
+    // Find polyline section via internal pointers
+    // Faithful to imgforge rgn.rs write_subdivision():
+    //   ptr to ind_points: if has_ind_points && has_points
+    //   ptr to polylines:  if has_polylines && (has_points || has_ind_points)
+    //   ptr to polygons:   if has_polygons && (has_points || has_ind_points || has_polylines)
     uint32_t nPos = nStart;
-    bool bHasPolygons = (oSubdiv.nContentFlags & 0x80) != 0;
+    bool bHasStdPoints = (oSubdiv.nContentFlags & 0x10) != 0;
     bool bHasIdxPoints = (oSubdiv.nContentFlags & 0x20) != 0;
-    // Count pointers before polyline section
-    int nPointerIdx = 0;
-    if (bHasIdxPoints) nPointerIdx++;
-    // Polyline pointer is next
-    uint32_t nPolylineStart = nPos;
+    bool bHasPolygons  = (oSubdiv.nContentFlags & 0x80) != 0;
+    bool bHasPreceding = (bHasStdPoints || bHasIdxPoints);
 
+    // Count all pointers in this subdivision block
     int nTotalPointers = 0;
-    if (bHasIdxPoints) nTotalPointers++;
-    nTotalPointers++;  // polyline itself
+    if (bHasIdxPoints && bHasStdPoints) nTotalPointers++;
+    if (bHasPreceding) nTotalPointers++;  // polyline pointer
+    // Polygon pointer: polylines exist (we're in DecodePolylines), so preceding is true
     if (bHasPolygons) nTotalPointers++;
 
-    if (nPos + nTotalPointers * 2 <= nEnd) {
-        // Skip to polyline pointer
-        nPolylineStart = nStart + ReadLE16(m_pabyData + nPos + nPointerIdx * 2);
+    uint32_t nPolylineStart = nStart;
+    uint32_t nPolylineEnd = nEnd;
+
+    if (bHasPreceding) {
+        // Polyline pointer exists — it's right after the ind_points pointer (if any)
+        int nPolylinePtrIdx = (bHasIdxPoints && bHasStdPoints) ? 1 : 0;
+        if (nPos + nTotalPointers * 2 <= nEnd) {
+            nPolylineStart = nStart + ReadLE16(m_pabyData + nPos + nPolylinePtrIdx * 2);
+        } else {
+            return false;
+        }
+        // Polyline end = polygon pointer value, or block end
+        if (bHasPolygons) {
+            int nPolygonPtrIdx = nPolylinePtrIdx + 1;
+            if (nPos + (nPolygonPtrIdx + 1) * 2 <= nEnd) {
+                nPolylineEnd = nStart + ReadLE16(m_pabyData + nPos + nPolygonPtrIdx * 2);
+            }
+        }
+    } else {
+        // No points/indexed: polylines are the first section, no polyline pointer
+        // But if polygons exist, there's 1 pointer (to polygons, since polylines precede)
+        if (bHasPolygons) {
+            if (nPos + 2 <= nEnd) {
+                nPolylineEnd = nStart + ReadLE16(m_pabyData + nPos);
+                nPolylineStart = nStart + 2;  // after the polygon pointer
+            } else {
+                return false;
+            }
+        } else {
+            // Only polylines in this subdivision, no pointers at all
+            nPolylineStart = nStart;
+            nPolylineEnd = nEnd;
+        }
     }
 
-    // Find polyline end (either polygon start or block end)
-    uint32_t nPolylineEnd = nEnd;
-    if (bHasPolygons && nPos + (nPointerIdx + 1) * 2 + 2 <= nEnd) {
-        nPolylineEnd = nStart + ReadLE16(m_pabyData + nPos + (nPointerIdx + 1) * 2);
-    }
+    // Bounds validation on pointer-derived offsets
+    if (nPolylineStart > nEnd) nPolylineStart = nEnd;
+    if (nPolylineEnd > nEnd) nPolylineEnd = nEnd;
+    if (nPolylineStart > nPolylineEnd) return false;
 
     int nShift = 24 - oSubdiv.nResolution;
     nPos = nPolylineStart;
@@ -405,20 +440,32 @@ bool GarminIMGRGNParser::DecodePolygons(
     if (nStart >= m_nSize || nEnd > m_nSize) return false;
 
     // Find polygon section via internal pointers
+    // Faithful to imgforge rgn.rs: polygon pointer exists only if preceding sections exist
     uint32_t nPos = nStart;
+    bool bHasStdPoints = (oSubdiv.nContentFlags & 0x10) != 0;
     bool bHasIdxPoints = (oSubdiv.nContentFlags & 0x20) != 0;
     bool bHasPolylines = (oSubdiv.nContentFlags & 0x40) != 0;
+    bool bHasPreceding = (bHasStdPoints || bHasIdxPoints || bHasPolylines);
 
-    int nPointerIdx = 0;
-    if (bHasIdxPoints) nPointerIdx++;
-    if (bHasPolylines) nPointerIdx++;
+    uint32_t nPolygonStart = nStart;
 
-    int nTotalPointers = nPointerIdx + 1;  // +1 for polygon pointer
-    uint32_t nPolygonStart = nPos;
+    if (bHasPreceding) {
+        // Count pointers before the polygon pointer
+        int nPointerIdx = 0;
+        if (bHasIdxPoints && bHasStdPoints) nPointerIdx++;
+        if (bHasPolylines && (bHasStdPoints || bHasIdxPoints)) nPointerIdx++;
+        // Polygon pointer is next
+        int nTotalPointers = nPointerIdx + 1;
 
-    if (nPos + nTotalPointers * 2 <= nEnd) {
-        nPolygonStart = nStart + ReadLE16(m_pabyData + nPos + nPointerIdx * 2);
+        if (nPos + nTotalPointers * 2 <= nEnd) {
+            nPolygonStart = nStart + ReadLE16(m_pabyData + nPos + nPointerIdx * 2);
+        } else {
+            return false;
+        }
     }
+
+    // Bounds validation on pointer-derived offset
+    if (nPolygonStart > nEnd) nPolygonStart = nEnd;
 
     int nShift = 24 - oSubdiv.nResolution;
     nPos = nPolygonStart;

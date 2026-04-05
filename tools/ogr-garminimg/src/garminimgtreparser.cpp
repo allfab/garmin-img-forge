@@ -264,9 +264,15 @@ bool GarminIMGTREParser::ParseSubdivisions(uint32_t nOffset, uint32_t nSize) {
     }
 
     // Read terminator (4 bytes LE32 = lastRgnPos)
+    // Faithful to mkgmap/imgforge: this is the end offset of the last subdivision's RGN data
     if (nPos + 4 <= nOffset + nSize) {
-        // uint32_t nTerminator = ReadLE32(m_pabyData + nPos);
-        // Used for calculating end offset of last subdivision
+        uint32_t nTerminator = ReadLE32(m_pabyData + nPos);
+        // Sanity: terminator must be >= last subdivision's offset to be valid
+        if (!m_aoSubdivisions.empty() &&
+            nTerminator >= m_aoSubdivisions.back().nRGNOffset &&
+            nTerminator > 0) {
+            m_nLastRGNPos = nTerminator;
+        }
     }
 
     return true;
@@ -309,12 +315,11 @@ void GarminIMGTREParser::CalculateEndOffsets() {
     // Calculate end RGN offsets: each subdivision's data ends where the next starts
     for (size_t i = 0; i < m_aoSubdivisions.size(); i++) {
         if (i + 1 < m_aoSubdivisions.size()) {
-            // Same level: next subdiv's offset is our end
             m_aoSubdivisions[i].nEndRGNOffset =
                 m_aoSubdivisions[i + 1].nRGNOffset;
         } else {
-            // Last subdivision: use a large value
-            m_aoSubdivisions[i].nEndRGNOffset = 0xFFFFFFFF;
+            // Last subdivision: use the TRE terminator (lastRgnPos)
+            m_aoSubdivisions[i].nEndRGNOffset = m_nLastRGNPos;
         }
     }
 }

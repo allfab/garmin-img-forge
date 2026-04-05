@@ -113,6 +113,7 @@ private:
     bool m_bTransparent = false;
     uint32_t m_nMapID = 0;
     uint32_t m_nRGNHeaderLength = 125;  // Default RGN header size
+    uint32_t m_nLastRGNPos = 0xFFFFFFFF;  // Terminator from TRE subdivisions section
 
     bool ParseLevels(uint32_t nOffset, uint32_t nSize);
     bool ParseSubdivisions(uint32_t nOffset, uint32_t nSize);
