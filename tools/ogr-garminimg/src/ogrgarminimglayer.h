@@ -30,8 +30,10 @@
 
 #include "ogrsf_frmts.h"
 #include "ogrgarminimg_compat.h"
+#include "garminimgrgnparser.h"
 
 #include <string>
+#include <vector>
 
 class OGRGarminIMGDataSource;
 
@@ -101,6 +103,13 @@ private:
     int m_nCurrentTile = 0;
     int m_nCurrentSubdiv = 0;
     int m_nCurrentFeatureInSubdiv = 0;
+
+    // Cached decoded features for current subdivision (avoids O(N²) re-decode)
+    std::vector<RGNPOIFeature> m_aoCachedPOIs;
+    std::vector<RGNPolyFeature> m_aoCachedPolylines;
+    std::vector<RGNPolyFeature> m_aoCachedPolygons;
+    int m_nCachedTile = -1;
+    int m_nCachedSubdiv = -1;
 
     void InitializeLayerDefn();
     OGRFeature* GetNextPOIFeature();

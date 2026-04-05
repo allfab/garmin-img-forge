@@ -85,9 +85,12 @@ bool GarminIMGRGNParser::Parse(const uint8_t* pabyData, uint32_t nSize) {
     // Common header
     m_nHeaderLength = ReadLE16(pabyData);
 
-    // Validate header length against actual data size
+    // Reject if header claims to be larger than actual data
     if (m_nHeaderLength > nSize) {
-        m_nHeaderLength = static_cast<uint32_t>(nSize);
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "GarminIMG RGN: Header length %u exceeds data size %u",
+                 m_nHeaderLength, nSize);
+        return false;
     }
 
     // Standard data section: offset at 0x15 (LE32), size at 0x19 (LE32)
@@ -547,11 +550,21 @@ bool GarminIMGRGNParser::DecodeExtendedPOIs(
         uint8_t nTypeHigh = m_pabyData[nPos];
         uint8_t nTypeLow  = m_pabyData[nPos + 1];
         bool bHasLabel = (nTypeLow & 0x20) != 0;
+        bool bHasExtraBytes = (nTypeLow & 0x40) != 0;
         uint16_t nType = (static_cast<uint16_t>(nTypeHigh) << 8) | (nTypeLow & 0x1F);
 
         int16_t nDeltaLon = ReadLE16Signed(m_pabyData + nPos + 2);
         int16_t nDeltaLat = ReadLE16Signed(m_pabyData + nPos + 4);
         nPos += 6;
+
+        // Skip extra bytes if unknown flags are set (avoid misalignment)
+        if (bHasExtraBytes) {
+            if (nPos < nAbsEnd) {
+                uint8_t nExtraLen = m_pabyData[nPos];
+                nPos += 1 + nExtraLen;
+            }
+            if (nPos > nAbsEnd) break;
+        }
 
         RGNPOIFeature oPOI;
         oPOI.nType = nType;

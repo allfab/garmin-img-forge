@@ -114,7 +114,7 @@ int32_t GarminIMGBitReader::SGet2(int nBits) {
     uint32_t nBase = 0;
 
     uint32_t nRes = Get(nBits);
-    while (nRes == nTop) {
+    while (nRes == nTop && nBase < 0x7FFFFFu) {
         nBase += nMask;
         nRes = Get(nBits);
     }
@@ -156,7 +156,7 @@ int GarminIMGBitReader::Bits2Base(int nBits) {
 /************************************************************************/
 
 double GarminIMGBitReader::MapUnitsToDegrees(int32_t nMU) {
-    return static_cast<double>(nMU) * 360.0 / (1 << 24);
+    return static_cast<double>(nMU) * 360.0 / (1u << 24);
 }
 
 /************************************************************************/
@@ -164,5 +164,5 @@ double GarminIMGBitReader::MapUnitsToDegrees(int32_t nMU) {
 /************************************************************************/
 
 int32_t GarminIMGBitReader::DegreesToMapUnits(double dfDeg) {
-    return static_cast<int32_t>(std::round(dfDeg * (1 << 24) / 360.0));
+    return static_cast<int32_t>(std::round(dfDeg * (1u << 24) / 360.0));
 }

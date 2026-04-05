@@ -120,6 +120,11 @@ void OGRGarminIMGLayer::ResetReading() {
     m_nCurrentSubdiv = 0;
     m_nCurrentFeatureInSubdiv = 0;
     m_bEOF = false;
+    m_nCachedTile = -1;
+    m_nCachedSubdiv = -1;
+    m_aoCachedPOIs.clear();
+    m_aoCachedPolylines.clear();
+    m_aoCachedPolygons.clear();
 }
 
 /************************************************************************/
@@ -285,13 +290,15 @@ OGRFeature* OGRGarminIMGLayer::GetNextPOIFeature() {
         const auto& oTile = aoTiles[m_nCurrentTile];
         const auto& aoSubdivs = oTile.poTRE->GetSubdivisions();
         const auto& aoExtOffsets = oTile.poTRE->GetExtTypeOffsets();
+        int nFinestLevel = oTile.poTRE->GetFinestLevel();
 
         while (m_nCurrentSubdiv < static_cast<int>(aoSubdivs.size())) {
             const auto& oSubdiv = aoSubdivs[m_nCurrentSubdiv];
 
-            // Check if this subdivision has standard or extended points
-            bool bHasStdPoints = (oSubdiv.nContentFlags & 0x30) != 0;
-            // ExtTypeOffsets index: subdiv index + 1 (topdiv at index 0)
+            // Standard POIs: only at finest level to avoid duplicates
+            bool bHasStdPoints = (oSubdiv.nContentFlags & 0x30) != 0
+                                 && oSubdiv.nLevel == nFinestLevel;
+            // Extended POIs: use extTypeOffsets (index = subdiv + 1 for topdiv)
             int nExtIdx = m_nCurrentSubdiv + 1;
             bool bHasExtPoints = false;
             uint32_t nExtPtStart = 0, nExtPtEnd = 0;
@@ -308,22 +315,22 @@ OGRFeature* OGRGarminIMGLayer::GetNextPOIFeature() {
                 continue;
             }
 
-            // Decode standard POIs
-            std::vector<RGNPOIFeature> aoPOIs;
-            if (bHasStdPoints) {
-                oTile.poRGN->DecodePOIs(oSubdiv, oTile.poLBL.get(), aoPOIs);
+            // Cache: decode only when subdivision changes
+            if (m_nCachedTile != m_nCurrentTile || m_nCachedSubdiv != m_nCurrentSubdiv) {
+                m_aoCachedPOIs.clear();
+                if (bHasStdPoints) {
+                    oTile.poRGN->DecodePOIs(oSubdiv, oTile.poLBL.get(), m_aoCachedPOIs);
+                }
+                if (bHasExtPoints) {
+                    oTile.poRGN->DecodeExtendedPOIs(oSubdiv, oTile.poLBL.get(),
+                                                     nExtPtStart, nExtPtEnd, m_aoCachedPOIs);
+                }
+                m_nCachedTile = m_nCurrentTile;
+                m_nCachedSubdiv = m_nCurrentSubdiv;
             }
 
-            // Decode extended POIs
-            if (bHasExtPoints) {
-                std::vector<RGNPOIFeature> aoExtPOIs;
-                oTile.poRGN->DecodeExtendedPOIs(oSubdiv, oTile.poLBL.get(),
-                                                 nExtPtStart, nExtPtEnd, aoExtPOIs);
-                aoPOIs.insert(aoPOIs.end(), aoExtPOIs.begin(), aoExtPOIs.end());
-            }
-
-            if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPOIs.size())) {
-                const auto& oPOI = aoPOIs[m_nCurrentFeatureInSubdiv];
+            if (m_nCurrentFeatureInSubdiv < static_cast<int>(m_aoCachedPOIs.size())) {
+                const auto& oPOI = m_aoCachedPOIs[m_nCurrentFeatureInSubdiv];
                 m_nCurrentFeatureInSubdiv++;
 
                 OGRFeature* poFeature = new OGRFeature(m_poFeatureDefn);
@@ -395,16 +402,17 @@ OGRFeature* OGRGarminIMGLayer::GetNextPolylineFeature() {
                 continue;
             }
 
-            std::vector<RGNPolyFeature> aoPolylines;
-            oTile.poRGN->DecodePolylines(oSubdiv, oTile.poLBL.get(), aoPolylines);
+            // Cache: decode only when subdivision changes
+            if (m_nCachedTile != m_nCurrentTile || m_nCachedSubdiv != m_nCurrentSubdiv) {
+                m_aoCachedPolylines.clear();
+                oTile.poRGN->DecodePolylines(oSubdiv, oTile.poLBL.get(), m_aoCachedPolylines);
+                // TODO: extended polylines when DecodeExtendedPolylines is implemented
+                m_nCachedTile = m_nCurrentTile;
+                m_nCachedSubdiv = m_nCurrentSubdiv;
+            }
 
-            std::vector<RGNPolyFeature> aoExtPolylines;
-            oTile.poRGN->DecodeExtendedPolylines(oSubdiv, oTile.poLBL.get(),
-                                                  0, 0, aoExtPolylines);
-            aoPolylines.insert(aoPolylines.end(), aoExtPolylines.begin(), aoExtPolylines.end());
-
-            if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPolylines.size())) {
-                const auto& oPoly = aoPolylines[m_nCurrentFeatureInSubdiv];
+            if (m_nCurrentFeatureInSubdiv < static_cast<int>(m_aoCachedPolylines.size())) {
+                const auto& oPoly = m_aoCachedPolylines[m_nCurrentFeatureInSubdiv];
                 m_nCurrentFeatureInSubdiv++;
 
                 OGRFeature* poFeature = new OGRFeature(m_poFeatureDefn);
@@ -475,16 +483,17 @@ OGRFeature* OGRGarminIMGLayer::GetNextPolygonFeature() {
                 continue;
             }
 
-            std::vector<RGNPolyFeature> aoPolygons;
-            oTile.poRGN->DecodePolygons(oSubdiv, oTile.poLBL.get(), aoPolygons);
+            // Cache: decode only when subdivision changes
+            if (m_nCachedTile != m_nCurrentTile || m_nCachedSubdiv != m_nCurrentSubdiv) {
+                m_aoCachedPolygons.clear();
+                oTile.poRGN->DecodePolygons(oSubdiv, oTile.poLBL.get(), m_aoCachedPolygons);
+                // TODO: extended polygons when DecodeExtendedPolygons is implemented
+                m_nCachedTile = m_nCurrentTile;
+                m_nCachedSubdiv = m_nCurrentSubdiv;
+            }
 
-            std::vector<RGNPolyFeature> aoExtPolygons;
-            oTile.poRGN->DecodeExtendedPolygons(oSubdiv, oTile.poLBL.get(),
-                                                 0, 0, aoExtPolygons);
-            aoPolygons.insert(aoPolygons.end(), aoExtPolygons.begin(), aoExtPolygons.end());
-
-            if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPolygons.size())) {
-                const auto& oPoly = aoPolygons[m_nCurrentFeatureInSubdiv];
+            if (m_nCurrentFeatureInSubdiv < static_cast<int>(m_aoCachedPolygons.size())) {
+                const auto& oPoly = m_aoCachedPolygons[m_nCurrentFeatureInSubdiv];
                 m_nCurrentFeatureInSubdiv++;
 
                 OGRFeature* poFeature = new OGRFeature(m_poFeatureDefn);

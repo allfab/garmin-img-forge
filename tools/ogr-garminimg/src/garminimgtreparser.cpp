@@ -179,7 +179,7 @@ bool GarminIMGTREParser::Parse(const uint8_t* pabyData, uint32_t nSize) {
 /************************************************************************/
 
 bool GarminIMGTREParser::ParseLevels(uint32_t nOffset, uint32_t nSize) {
-    if (nOffset + nSize > m_nSize) {
+    if (nOffset > m_nSize || nSize > m_nSize - nOffset) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "GarminIMG TRE: Levels section out of bounds");
         return false;
@@ -209,7 +209,7 @@ bool GarminIMGTREParser::ParseLevels(uint32_t nOffset, uint32_t nSize) {
 /************************************************************************/
 
 bool GarminIMGTREParser::ParseSubdivisions(uint32_t nOffset, uint32_t nSize) {
-    if (nOffset + nSize > m_nSize) {
+    if (nOffset > m_nSize || nSize > m_nSize - nOffset) {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "GarminIMG TRE: Subdivisions section out of bounds");
         return false;
@@ -300,7 +300,7 @@ bool GarminIMGTREParser::ParseOverviews(uint32_t nOffset, uint32_t nSize,
                                         int nItemSize,
                                         std::vector<TREOverview>& aoOverviews) {
     if (nSize == 0) return true;
-    if (nOffset + nSize > m_nSize) return false;
+    if (nOffset > m_nSize || nSize > m_nSize - nOffset) return false;
 
     int nCount = nSize / nItemSize;
     aoOverviews.reserve(nCount);
@@ -378,7 +378,7 @@ int GarminIMGTREParser::GetFinestLevel() const {
 /************************************************************************/
 
 bool GarminIMGTREParser::ParseExtTypeOffsets(uint32_t nOffset, uint32_t nSize) {
-    if (nOffset + nSize > m_nSize || nSize < 13) return false;
+    if (nOffset > m_nSize || nSize > m_nSize - nOffset || nSize < 13) return false;
 
     // Each record is 13 bytes: areas_off(4) + lines_off(4) + points_off(4) + kinds(1)
     // One record per subdivision (including topdiv at index 0) + 1 terminator.
