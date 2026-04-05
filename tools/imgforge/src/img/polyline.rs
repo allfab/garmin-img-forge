@@ -82,10 +82,11 @@ impl Polyline {
         buf.push(lb[1]);
         buf.push(lb[2]);
 
-        // First point delta from subdivision center (clamped to i16 range)
+        // First point delta with rounding bias — must match compute_deltas
         let first = &self.points[0];
-        let dx = ((first.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
-        let dy = ((first.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
+        let half = (1i32 << shift) / 2;
+        let dx = ((first.longitude() - subdiv_center_lon + half) >> shift).clamp(-32768, 32767) as i16;
+        let dy = ((first.latitude() - subdiv_center_lat + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 
@@ -126,10 +127,11 @@ impl Polyline {
         buf.push(type_high);
         buf.push(type_low);
 
-        // First point delta from subdivision center (i16 LE)
+        // First point delta with rounding bias — must match compute_deltas
         let first = &self.points[0];
-        let dx = ((first.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
-        let dy = ((first.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
+        let half = (1i32 << shift) / 2;
+        let dx = ((first.longitude() - subdiv_center_lon + half) >> shift).clamp(-32768, 32767) as i16;
+        let dy = ((first.latitude() - subdiv_center_lat + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dx.to_le_bytes());
         buf.extend_from_slice(&dy.to_le_bytes());
 

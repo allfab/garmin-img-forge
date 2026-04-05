@@ -469,7 +469,13 @@ fn filter_features_for_level(
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
-        .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
+        .filter(|(_, l)| {
+            if l.points.is_empty() { return false; }
+            // Use bounding box intersection for polylines too — a line starting
+            // outside this parent but crossing into it must still be included.
+            let bbox = Area::from_coords(&l.points);
+            expanded.intersects(&bbox)
+        })
         .map(|(i, l)| {
             let mut pts = l.points.clone();
             if let Some(eps) = line_epsilon {
@@ -487,7 +493,14 @@ fn filter_features_for_level(
 
     let mut shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
-        .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
+        .filter(|(_, s)| {
+            if s.points.is_empty() { return false; }
+            // Use bounding box intersection instead of first-point containment.
+            // A polygon may span multiple parent subdivisions; filtering by first
+            // point alone would lose coverage outside the parent that contains it.
+            let bbox = Area::from_coords(&s.points);
+            expanded.intersects(&bbox)
+        })
         .filter_map(|(i, s)| {
             // Min-size filtering
             if let Some(min) = min_size {
@@ -749,12 +762,12 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
     let mut deltas = Vec::new();
     if points.len() < 2 { return deltas; }
 
-    let mut last_lat = subdiv.round_lat_to_local_shifted(points[0].latitude()) as i32;
-    let mut last_lon = subdiv.round_lon_to_local_shifted(points[0].longitude()) as i32;
+    let mut last_lat = subdiv.round_lat_to_local_shifted(points[0].latitude());
+    let mut last_lon = subdiv.round_lon_to_local_shifted(points[0].longitude());
 
     for point in &points[1..] {
-        let lat = subdiv.round_lat_to_local_shifted(point.latitude()) as i32;
-        let lon = subdiv.round_lon_to_local_shifted(point.longitude()) as i32;
+        let lat = subdiv.round_lat_to_local_shifted(point.latitude());
+        let lon = subdiv.round_lon_to_local_shifted(point.longitude());
         deltas.push((lon - last_lon, lat - last_lat));
         last_lon = lon;
         last_lat = lat;

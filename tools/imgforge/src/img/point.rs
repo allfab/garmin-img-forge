@@ -54,12 +54,13 @@ impl Point {
         buf.push(lb[1]);
         buf.push(lb[2]);
 
-        // Delta longitude (i16 LE, clamped to avoid overflow)
-        let dx = ((self.coord.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
+        // Delta longitude with rounding bias (i16 LE) — mkgmap MapObject
+        let half = (1i32 << shift) / 2;
+        let dx = ((self.coord.longitude() - subdiv_center_lon + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dx.to_le_bytes());
 
-        // Delta latitude (i16 LE, clamped to avoid overflow)
-        let dy = ((self.coord.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
+        // Delta latitude with rounding bias (i16 LE)
+        let dy = ((self.coord.latitude() - subdiv_center_lat + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dy.to_le_bytes());
 
         // Subtype if flagged
@@ -87,12 +88,13 @@ impl Point {
         buf.push(type_high);
         buf.push(type_low);
 
-        // Delta longitude (i16 LE)
-        let dx = ((self.coord.longitude() - subdiv_center_lon) >> shift).clamp(-32768, 32767) as i16;
+        // Delta longitude with rounding bias (i16 LE) — mkgmap MapObject
+        let half = (1i32 << shift) / 2;
+        let dx = ((self.coord.longitude() - subdiv_center_lon + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dx.to_le_bytes());
 
-        // Delta latitude (i16 LE)
-        let dy = ((self.coord.latitude() - subdiv_center_lat) >> shift).clamp(-32768, 32767) as i16;
+        // Delta latitude with rounding bias (i16 LE)
+        let dy = ((self.coord.latitude() - subdiv_center_lat + half) >> shift).clamp(-32768, 32767) as i16;
         buf.extend_from_slice(&dy.to_le_bytes());
 
         // Label (3 bytes) if has_label

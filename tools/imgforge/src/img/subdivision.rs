@@ -82,15 +82,17 @@ impl Subdivision {
     }
 
     /// Round a latitude to local shifted coords — mkgmap Subdivision.roundLatToLocalShifted
-    pub fn round_lat_to_local_shifted(&self, lat: i32) -> i16 {
+    pub fn round_lat_to_local_shifted(&self, lat: i32) -> i32 {
         let shift = 24 - self.resolution as i32;
-        ((lat - self.center_lat) >> shift) as i16
+        let val = lat - self.center_lat + ((1 << shift) / 2);
+        val >> shift
     }
 
-    /// Round a longitude to local shifted coords
-    pub fn round_lon_to_local_shifted(&self, lon: i32) -> i16 {
+    /// Round a longitude to local shifted coords — mkgmap Subdivision.roundLonToLocalShifted
+    pub fn round_lon_to_local_shifted(&self, lon: i32) -> i32 {
         let shift = 24 - self.resolution as i32;
-        ((lon - self.center_lon) >> shift) as i16
+        let val = lon - self.center_lon + ((1 << shift) / 2);
+        val >> shift
     }
 
     /// Write subdivision record — mkgmap format
@@ -201,10 +203,14 @@ mod tests {
         s.center_lat = 2_000_000;
         s.center_lon = 1_000_000;
 
-        // shift = 24 - 20 = 4
-        // local = (lat - center) >> 4
+        // shift = 24 - 20 = 4, half = 8
+        // (16 + 8) >> 4 = 1
         let local = s.round_lat_to_local_shifted(2_000_016);
-        assert_eq!(local, 1); // (16 >> 4) = 1
+        assert_eq!(local, 1);
+
+        // Rounding bias edge case: without bias (9 >> 4 = 0), with bias (9+8 >> 4 = 1)
+        let biased = s.round_lat_to_local_shifted(2_000_009);
+        assert_eq!(biased, 1); // rounding bias rounds up
     }
 
     #[test]
