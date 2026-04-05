@@ -526,12 +526,54 @@ bool GarminIMGRGNParser::DecodePolygons(
 /************************************************************************/
 
 bool GarminIMGRGNParser::DecodeExtendedPOIs(
-    const TRESubdivision& /* oSubdiv */,
-    const GarminIMGLBLParser* /* poLBL */,
-    std::vector<RGNPOIFeature>& /* aoFeatures */) {
-    // Extended POIs are in separate RGN sections
-    if (m_nExtPointSize == 0) return true;
-    // TODO: Implement extended point parsing
+    const TRESubdivision& oSubdiv,
+    const GarminIMGLBLParser* poLBL,
+    uint32_t nExtStart, uint32_t nExtEnd,
+    std::vector<RGNPOIFeature>& aoFeatures) {
+
+    if (m_nExtPointSize == 0 || nExtStart >= nExtEnd) return true;
+
+    // Extended points are in the ext_point section of the RGN file
+    uint32_t nAbsStart = m_nExtPointOffset + nExtStart;
+    uint32_t nAbsEnd   = m_nExtPointOffset + nExtEnd;
+    if (nAbsStart >= m_nSize || nAbsEnd > m_nSize) return false;
+
+    int nShift = 24 - oSubdiv.nResolution;
+    uint32_t nPos = nAbsStart;
+
+    // Extended point format (imgforge point.rs write_ext):
+    //   type_high(1B) + type_low_with_flags(1B) + dx(i16 LE) + dy(i16 LE) + [label(3B)]
+    while (nPos + 6 <= nAbsEnd) {
+        uint8_t nTypeHigh = m_pabyData[nPos];
+        uint8_t nTypeLow  = m_pabyData[nPos + 1];
+        bool bHasLabel = (nTypeLow & 0x20) != 0;
+        uint16_t nType = (static_cast<uint16_t>(nTypeHigh) << 8) | (nTypeLow & 0x1F);
+
+        int16_t nDeltaLon = ReadLE16Signed(m_pabyData + nPos + 2);
+        int16_t nDeltaLat = ReadLE16Signed(m_pabyData + nPos + 4);
+        nPos += 6;
+
+        RGNPOIFeature oPOI;
+        oPOI.nType = nType;
+        oPOI.bExtended = true;
+        oPOI.nEndLevel = oSubdiv.nLevel;
+
+        int32_t nAbsLon = oSubdiv.nCenterLon + (static_cast<int32_t>(nDeltaLon) << nShift);
+        int32_t nAbsLat = oSubdiv.nCenterLat + (static_cast<int32_t>(nDeltaLat) << nShift);
+        oPOI.dfLon = GarminIMGBitReader::MapUnitsToDegrees(nAbsLon);
+        oPOI.dfLat = GarminIMGBitReader::MapUnitsToDegrees(nAbsLat);
+
+        if (bHasLabel && nPos + 3 <= nAbsEnd) {
+            uint32_t nLabelOffset = ReadLE24(m_pabyData + nPos);
+            nPos += 3;
+            if (poLBL && nLabelOffset > 0) {
+                oPOI.osLabel = poLBL->GetLabel(nLabelOffset);
+            }
+        }
+
+        aoFeatures.push_back(std::move(oPOI));
+    }
+
     return true;
 }
 
@@ -540,9 +582,11 @@ bool GarminIMGRGNParser::DecodeExtendedPOIs(
 /************************************************************************/
 
 bool GarminIMGRGNParser::DecodeExtendedPolylines(
-    const TRESubdivision& /* oSubdiv */,
-    const GarminIMGLBLParser* /* poLBL */,
-    std::vector<RGNPolyFeature>& /* aoFeatures */) {
+    const TRESubdivision& oSubdiv,
+    const GarminIMGLBLParser* poLBL,
+    uint32_t nExtStart, uint32_t nExtEnd,
+    std::vector<RGNPolyFeature>& aoFeatures) {
+    (void)oSubdiv; (void)poLBL; (void)nExtStart; (void)nExtEnd; (void)aoFeatures;
     if (m_nExtPolylineSize == 0) return true;
     // TODO: Implement extended polyline parsing
     return true;
@@ -553,9 +597,11 @@ bool GarminIMGRGNParser::DecodeExtendedPolylines(
 /************************************************************************/
 
 bool GarminIMGRGNParser::DecodeExtendedPolygons(
-    const TRESubdivision& /* oSubdiv */,
-    const GarminIMGLBLParser* /* poLBL */,
-    std::vector<RGNPolyFeature>& /* aoFeatures */) {
+    const TRESubdivision& oSubdiv,
+    const GarminIMGLBLParser* poLBL,
+    uint32_t nExtStart, uint32_t nExtEnd,
+    std::vector<RGNPolyFeature>& aoFeatures) {
+    (void)oSubdiv; (void)poLBL; (void)nExtStart; (void)nExtEnd; (void)aoFeatures;
     if (m_nExtPolygonSize == 0) return true;
     // TODO: Implement extended polygon parsing
     return true;

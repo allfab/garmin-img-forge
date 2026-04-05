@@ -93,16 +93,21 @@ public:
                         std::vector<RGNPolyFeature>& aoFeatures);
 
     // Extended types (>= 0x100)
+    // nExtStart/nExtEnd are offsets within the ext_point/ext_line/ext_area
+    // section of RGN, derived from TRE extTypeOffsets records.
     bool DecodeExtendedPOIs(const TRESubdivision& oSubdiv,
                             const GarminIMGLBLParser* poLBL,
+                            uint32_t nExtStart, uint32_t nExtEnd,
                             std::vector<RGNPOIFeature>& aoFeatures);
 
     bool DecodeExtendedPolylines(const TRESubdivision& oSubdiv,
                                  const GarminIMGLBLParser* poLBL,
+                                 uint32_t nExtStart, uint32_t nExtEnd,
                                  std::vector<RGNPolyFeature>& aoFeatures);
 
     bool DecodeExtendedPolygons(const TRESubdivision& oSubdiv,
                                 const GarminIMGLBLParser* poLBL,
+                                uint32_t nExtStart, uint32_t nExtEnd,
                                 std::vector<RGNPolyFeature>& aoFeatures);
 
     uint32_t GetHeaderLength() const { return m_nHeaderLength; }

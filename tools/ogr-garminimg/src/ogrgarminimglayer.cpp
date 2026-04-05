@@ -284,27 +284,43 @@ OGRFeature* OGRGarminIMGLayer::GetNextPOIFeature() {
     while (m_nCurrentTile < static_cast<int>(aoTiles.size())) {
         const auto& oTile = aoTiles[m_nCurrentTile];
         const auto& aoSubdivs = oTile.poTRE->GetSubdivisions();
-        int nFinestLevel = oTile.poTRE->GetFinestLevel();
+        const auto& aoExtOffsets = oTile.poTRE->GetExtTypeOffsets();
 
         while (m_nCurrentSubdiv < static_cast<int>(aoSubdivs.size())) {
             const auto& oSubdiv = aoSubdivs[m_nCurrentSubdiv];
 
-            // Only read POIs at the finest level
-            if (oSubdiv.nLevel != nFinestLevel ||
-                !(oSubdiv.nContentFlags & 0x30)) {  // 0x10=points, 0x20=indexed
+            // Check if this subdivision has standard or extended points
+            bool bHasStdPoints = (oSubdiv.nContentFlags & 0x30) != 0;
+            // ExtTypeOffsets index: subdiv index + 1 (topdiv at index 0)
+            int nExtIdx = m_nCurrentSubdiv + 1;
+            bool bHasExtPoints = false;
+            uint32_t nExtPtStart = 0, nExtPtEnd = 0;
+            if (nExtIdx < static_cast<int>(aoExtOffsets.size()) &&
+                nExtIdx + 1 < static_cast<int>(aoExtOffsets.size())) {
+                nExtPtStart = aoExtOffsets[nExtIdx].nExtPointsOffset;
+                nExtPtEnd   = aoExtOffsets[nExtIdx + 1].nExtPointsOffset;
+                if (nExtPtEnd > nExtPtStart) bHasExtPoints = true;
+            }
+
+            if (!bHasStdPoints && !bHasExtPoints) {
                 m_nCurrentSubdiv++;
                 m_nCurrentFeatureInSubdiv = 0;
                 continue;
             }
 
-            // Decode POIs for this subdivision
+            // Decode standard POIs
             std::vector<RGNPOIFeature> aoPOIs;
-            oTile.poRGN->DecodePOIs(oSubdiv, oTile.poLBL.get(), aoPOIs);
+            if (bHasStdPoints) {
+                oTile.poRGN->DecodePOIs(oSubdiv, oTile.poLBL.get(), aoPOIs);
+            }
 
-            // Also decode extended POIs
-            std::vector<RGNPOIFeature> aoExtPOIs;
-            oTile.poRGN->DecodeExtendedPOIs(oSubdiv, oTile.poLBL.get(), aoExtPOIs);
-            aoPOIs.insert(aoPOIs.end(), aoExtPOIs.begin(), aoExtPOIs.end());
+            // Decode extended POIs
+            if (bHasExtPoints) {
+                std::vector<RGNPOIFeature> aoExtPOIs;
+                oTile.poRGN->DecodeExtendedPOIs(oSubdiv, oTile.poLBL.get(),
+                                                 nExtPtStart, nExtPtEnd, aoExtPOIs);
+                aoPOIs.insert(aoPOIs.end(), aoExtPOIs.begin(), aoExtPOIs.end());
+            }
 
             if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPOIs.size())) {
                 const auto& oPOI = aoPOIs[m_nCurrentFeatureInSubdiv];
@@ -383,7 +399,8 @@ OGRFeature* OGRGarminIMGLayer::GetNextPolylineFeature() {
             oTile.poRGN->DecodePolylines(oSubdiv, oTile.poLBL.get(), aoPolylines);
 
             std::vector<RGNPolyFeature> aoExtPolylines;
-            oTile.poRGN->DecodeExtendedPolylines(oSubdiv, oTile.poLBL.get(), aoExtPolylines);
+            oTile.poRGN->DecodeExtendedPolylines(oSubdiv, oTile.poLBL.get(),
+                                                  0, 0, aoExtPolylines);
             aoPolylines.insert(aoPolylines.end(), aoExtPolylines.begin(), aoExtPolylines.end());
 
             if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPolylines.size())) {
@@ -462,7 +479,8 @@ OGRFeature* OGRGarminIMGLayer::GetNextPolygonFeature() {
             oTile.poRGN->DecodePolygons(oSubdiv, oTile.poLBL.get(), aoPolygons);
 
             std::vector<RGNPolyFeature> aoExtPolygons;
-            oTile.poRGN->DecodeExtendedPolygons(oSubdiv, oTile.poLBL.get(), aoExtPolygons);
+            oTile.poRGN->DecodeExtendedPolygons(oSubdiv, oTile.poLBL.get(),
+                                                 0, 0, aoExtPolygons);
             aoPolygons.insert(aoPolygons.end(), aoExtPolygons.begin(), aoExtPolygons.end());
 
             if (m_nCurrentFeatureInSubdiv < static_cast<int>(aoPolygons.size())) {

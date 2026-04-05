@@ -64,6 +64,13 @@ struct TRESubdivision {
     uint32_t nEndRGNOffset = 0;   // Calculated: next subdiv's RGN offset or terminator
 };
 
+struct TREExtTypeOffset {
+    uint32_t nExtAreasOffset = 0;   // Offset in RGN ext_areas section
+    uint32_t nExtLinesOffset = 0;   // Offset in RGN ext_lines section
+    uint32_t nExtPointsOffset = 0;  // Offset in RGN ext_points section
+    uint8_t nKinds = 0;             // Number of non-empty ext sections
+};
+
 struct TREOverview {
     uint8_t nType = 0;
     uint8_t nSubType = 0;   // Only for point overviews (3 bytes)
@@ -87,6 +94,7 @@ public:
     const std::vector<TREOverview>& GetPointOverviews() const { return m_aoPointOverviews; }
     const std::vector<TREOverview>& GetPolylineOverviews() const { return m_aoPolylineOverviews; }
     const std::vector<TREOverview>& GetPolygonOverviews() const { return m_aoPolygonOverviews; }
+    const std::vector<TREExtTypeOffset>& GetExtTypeOffsets() const { return m_aoExtTypeOffsets; }
 
     bool HasRouting() const { return m_bHasRouting; }
     bool IsTransparent() const { return m_bTransparent; }
@@ -108,6 +116,7 @@ private:
     std::vector<TREOverview> m_aoPointOverviews;
     std::vector<TREOverview> m_aoPolylineOverviews;
     std::vector<TREOverview> m_aoPolygonOverviews;
+    std::vector<TREExtTypeOffset> m_aoExtTypeOffsets;
 
     bool m_bHasRouting = false;
     bool m_bTransparent = false;
@@ -120,6 +129,7 @@ private:
     bool ParseOverviews(uint32_t nOffset, uint32_t nSize, int nItemSize,
                         std::vector<TREOverview>& aoOverviews);
     void CalculateEndOffsets();
+    bool ParseExtTypeOffsets(uint32_t nOffset, uint32_t nSize);
 };
 
 #endif /* GARMINIMGTREPARSER_H_INCLUDED */

@@ -134,6 +134,14 @@ bool GarminIMGTREParser::Parse(const uint8_t* pabyData, uint32_t nSize) {
         m_nMapID = ReadLE32(pabyData + 0x70);
     }
 
+    // Extended type offsets at 0x7C (if header is large enough)
+    uint32_t nExtTypeOffsetsOffset = 0;
+    uint32_t nExtTypeOffsetsSize = 0;
+    if (m_nHeaderLength >= 0x86 && nSize >= 0x86) {
+        nExtTypeOffsetsOffset = ReadLE32(pabyData + 0x7C);
+        nExtTypeOffsetsSize   = ReadLE32(pabyData + 0x80);
+    }
+
     // Parse sections
     if (!ParseLevels(nLevelsOffset, nLevelsSize)) {
         return false;
@@ -150,12 +158,18 @@ bool GarminIMGTREParser::Parse(const uint8_t* pabyData, uint32_t nSize) {
 
     CalculateEndOffsets();
 
+    // Parse extended type offsets (non-fatal)
+    if (nExtTypeOffsetsSize > 0) {
+        ParseExtTypeOffsets(nExtTypeOffsetsOffset, nExtTypeOffsetsSize);
+    }
+
     CPLDebug("OGR_GARMINIMG", "TRE: bounds=(%.6f,%.6f)-(%.6f,%.6f), "
-             "levels=%zu, subdivs=%zu, mapID=%u, routing=%d, transparent=%d",
+             "levels=%zu, subdivs=%zu, mapID=%u, routing=%d, transparent=%d, extTypeOffsets=%zu",
              m_oBounds.dfWest, m_oBounds.dfSouth,
              m_oBounds.dfEast, m_oBounds.dfNorth,
              m_aoLevels.size(), m_aoSubdivisions.size(),
-             m_nMapID, m_bHasRouting, m_bTransparent);
+             m_nMapID, m_bHasRouting, m_bTransparent,
+             m_aoExtTypeOffsets.size());
 
     return true;
 }
@@ -357,4 +371,36 @@ int GarminIMGTREParser::GetFinestLevel() const {
         }
     }
     return (nFinest >= 0) ? nFinest : 0;
+}
+
+/************************************************************************/
+/*                      ParseExtTypeOffsets()                           */
+/************************************************************************/
+
+bool GarminIMGTREParser::ParseExtTypeOffsets(uint32_t nOffset, uint32_t nSize) {
+    if (nOffset + nSize > m_nSize || nSize < 13) return false;
+
+    // Each record is 13 bytes: areas_off(4) + lines_off(4) + points_off(4) + kinds(1)
+    // One record per subdivision (including topdiv at index 0) + 1 terminator.
+    // kinds == 0 does NOT mean terminator — subdivisions without ext data also
+    // have kinds == 0. Parse all records based on count.
+    int nCount = nSize / 13;
+    m_aoExtTypeOffsets.reserve(nCount);
+
+    for (int i = 0; i < nCount; i++) {
+        const uint8_t* p = m_pabyData + nOffset + i * 13;
+
+        TREExtTypeOffset oExt;
+        oExt.nExtAreasOffset  = ReadLE32(p);
+        oExt.nExtLinesOffset  = ReadLE32(p + 4);
+        oExt.nExtPointsOffset = ReadLE32(p + 8);
+        oExt.nKinds           = p[12];
+
+        m_aoExtTypeOffsets.push_back(oExt);
+    }
+
+    CPLDebug("OGR_GARMINIMG", "TRE: parsed %zu extTypeOffset records",
+             m_aoExtTypeOffsets.size());
+
+    return true;
 }
