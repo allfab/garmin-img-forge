@@ -285,14 +285,6 @@ fn build_multilevel_hierarchy(
     // Topdiv has no extended data
     ext_offsets.push((0, 0, 0, 0, 0, 0));
 
-    // ── Pre-compute bounding boxes for polylines and polygons (avoid O(n) per filter call) ──
-    let line_bboxes: Vec<Area> = mp.polylines.iter()
-        .map(|l| if l.points.is_empty() { Area::new(0, 0, 0, 0) } else { Area::from_coords(&l.points) })
-        .collect();
-    let shape_bboxes: Vec<Area> = mp.polygons.iter()
-        .map(|s| if s.points.is_empty() { Area::new(0, 0, 0, 0) } else { Area::from_coords(&s.points) })
-        .collect();
-
     // ── Process each level from most zoomed-out to most detailed ──
     // Skip the highest level (it's the inherited topdiv level)
     let process_levels = if num_levels > 1 { num_levels - 1 } else { num_levels };
@@ -305,7 +297,7 @@ fn build_multilevel_hierarchy(
 
         for (parent_bounds, parent_num) in &parent_areas {
             let (split_points, split_lines, split_shapes) =
-                filter_features_for_level(mp, level_num, parent_bounds, &line_bboxes, &shape_bboxes);
+                filter_features_for_level(mp, level_num, parent_bounds);
 
             if split_points.is_empty() && split_lines.is_empty() && split_shapes.is_empty() {
                 continue;
@@ -453,8 +445,6 @@ fn filter_features_for_level(
     mp: &MpFile,
     level: u8,
     parent_bounds: &Area,
-    line_bboxes: &[Area],
-    shape_bboxes: &[Area],
 ) -> (Vec<SplitPoint>, Vec<SplitLine>, Vec<SplitShape>) {
     // Expand bounds by 1 unit to catch boundary features (F6 fix)
     let expanded = Area::new(
@@ -479,13 +469,7 @@ fn filter_features_for_level(
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
-        .filter(|(_, l)| {
-            // Use first-point containment for polylines (not bbox intersection).
-            // The splitter handles cross-boundary distribution via Cohen-Sutherland
-            // clipping, so bbox filtering here would cause double-inclusion and
-            // inflate the output file size.
-            !l.points.is_empty() && expanded.contains_coord(&l.points[0])
-        })
+        .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
         .map(|(i, l)| {
             let mut pts = l.points.clone();
             if let Some(eps) = line_epsilon {
@@ -503,13 +487,7 @@ fn filter_features_for_level(
 
     let mut shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
-        .filter(|(i, _)| {
-            // Use pre-computed bounding box intersection instead of first-point
-            // containment. A polygon may span multiple parent subdivisions;
-            // filtering by first point alone would lose coverage outside the
-            // parent that contains it.
-            expanded.intersects(&shape_bboxes[*i])
-        })
+        .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
         .filter_map(|(i, s)| {
             // Min-size filtering
             if let Some(min) = min_size {
@@ -771,12 +749,12 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
     let mut deltas = Vec::new();
     if points.len() < 2 { return deltas; }
 
-    let mut last_lat = subdiv.round_lat_to_local_shifted(points[0].latitude());
-    let mut last_lon = subdiv.round_lon_to_local_shifted(points[0].longitude());
+    let mut last_lat = subdiv.round_lat_to_local_shifted(points[0].latitude()) as i32;
+    let mut last_lon = subdiv.round_lon_to_local_shifted(points[0].longitude()) as i32;
 
     for point in &points[1..] {
-        let lat = subdiv.round_lat_to_local_shifted(point.latitude());
-        let lon = subdiv.round_lon_to_local_shifted(point.longitude());
+        let lat = subdiv.round_lat_to_local_shifted(point.latitude()) as i32;
+        let lon = subdiv.round_lon_to_local_shifted(point.longitude()) as i32;
         deltas.push((lon - last_lon, lat - last_lat));
         last_lon = lon;
         last_lat = lat;
