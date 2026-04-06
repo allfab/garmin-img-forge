@@ -11,13 +11,13 @@
       <category value="0x0007" symbol="sym_7_0" label="0x0007"/>
       <category value="0x0009" symbol="sym_9_0" label="0x0009"/>
       <category value="0x000A" symbol="sym_10_0" label="0x000A"/>
-      <category value="0x000C" symbol="sym_12_0" label="ROUNDABOUT"/>
-      <category value="0x000D" symbol="sym_13_0" label="TUNNEL"/>
-      <category value="0x000E" symbol="sym_14_0" label="CYCLE PATH"/>
-      <category value="0x000F" symbol="sym_15_0" label="STAIRS"/>
-      <category value="0x0010" symbol="sym_16_0" label="TRAIL"/>
-      <category value="0x0011" symbol="sym_17_0" label="TUNNEL"/>
-      <category value="0x0012" symbol="sym_18_0" label="UNDER CONSTRUCTION"/>
+      <category value="0x000C" symbol="sym_12_0" label="0x000C"/>
+      <category value="0x000D" symbol="sym_13_0" label="0x000D"/>
+      <category value="0x000E" symbol="sym_14_0" label="0x000E"/>
+      <category value="0x000F" symbol="sym_15_0" label="0x000F"/>
+      <category value="0x0010" symbol="sym_16_0" label="0x0010"/>
+      <category value="0x0011" symbol="sym_17_0" label="0x0011"/>
+      <category value="0x0012" symbol="sym_18_0" label="0x0012"/>
       <category value="0x0014" symbol="sym_20_0" label="0x0014"/>
       <category value="0x0015" symbol="sym_21_0" label="0x0015"/>
       <category value="0x0016" symbol="sym_22_0" label="0x0016"/>
@@ -49,88 +49,88 @@
       <category value="0x010C" symbol="sym_268_0" label="0x010C"/>
       <category value="0x010C" symbol="sym_268_3" label="0x010C"/>
       <category value="0x010C" symbol="sym_268_4" label="0x010C"/>
-      <category value="0x010E" symbol="sym_270_0" label="MATERIAL TRANSPORT"/>
-      <category value="0x010E" symbol="sym_270_1" label="SKILIFT, TELEPHERIC"/>
-      <category value="0x010E" symbol="sym_270_2" label="HIGH SPEED RAIL"/>
-      <category value="0x010E" symbol="sym_270_3" label="DISUSED TRACK"/>
-      <category value="0x010E" symbol="sym_270_4" label="URBAN TRAFFIC"/>
-      <category value="0x010E" symbol="sym_270_5" label="MOUNTAIN RAIL"/>
-      <category value="0x010E" symbol="sym_270_6" label="RAIL TUNNEL"/>
-      <category value="0x010E" symbol="sym_270_7" label="TUNNEL DISUSED TRACK"/>
-      <category value="0x010E" symbol="sym_270_8" label="TUNNEL LOCAL TRANSPORT"/>
-      <category value="0x010E" symbol="sym_270_9" label="TUNNEL MOUNTAIN RAIL"/>
-      <category value="0x010E" symbol="sym_270_10" label="RAILROAD (IN CONSTRUCTION)"/>
-      <category value="0x010E" symbol="sym_270_11" label="TUNNEL RAILROAD (IN CONSTRUCTION)"/>
-      <category value="0x010E" symbol="sym_270_12" label="BARRAGE"/>
-      <category value="0x010E" symbol="sym_270_13" label="WATERFALL"/>
-      <category value="0x010E" symbol="sym_270_14" label="LOCK"/>
-      <category value="0x010E" symbol="sym_270_15" label="CANAL BRIDGE"/>
-      <category value="0x010E" symbol="sym_270_16" label="WATER COURSE (BELOW SURFACE)"/>
-      <category value="0x010E" symbol="sym_270_17" label="LOW TIDE"/>
-      <category value="0x010E" symbol="sym_270_18" label="PIPELINE"/>
-      <category value="0x010E" symbol="sym_270_19" label="BULKHEAD"/>
-      <category value="0x010E" symbol="sym_270_20" label="BRIDGE"/>
-      <category value="0x010E" symbol="sym_270_21" label="RUIN"/>
-      <category value="0x010E" symbol="sym_270_22" label="QUAY"/>
-      <category value="0x010E" symbol="sym_270_23" label="LEVEE"/>
-      <category value="0x010E" symbol="sym_270_24" label="RETAIN WALL"/>
-      <category value="0x010E" symbol="sym_270_25" label="EMBANKMENT"/>
-      <category value="0x010E" symbol="sym_270_26" label="EMBANKMENT"/>
-      <category value="0x010E" symbol="sym_270_28" label="ROAD (IN CONSTRUCTION)"/>
-      <category value="0x010E" symbol="sym_270_30" label="NATIONAL PARC"/>
-      <category value="0x010E" symbol="sym_270_31" label="NATIONAL PARC (CORE ZONE)"/>
-      <category value="0x010F" symbol="sym_271_0" label="REGIONAL PARC"/>
-      <category value="0x010F" symbol="sym_271_1" label="CLUB VOSGIEN TRAILS"/>
+      <category value="0x010E" symbol="sym_270_0" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_1" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_2" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_3" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_4" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_5" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_6" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_7" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_8" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_9" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_10" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_11" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_12" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_13" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_14" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_15" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_16" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_17" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_18" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_19" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_20" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_21" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_22" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_23" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_24" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_25" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_26" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_28" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_30" label="0x010E"/>
+      <category value="0x010E" symbol="sym_270_31" label="0x010E"/>
+      <category value="0x010F" symbol="sym_271_0" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_1" label="0x010F"/>
       <category value="0x010F" symbol="sym_271_2" label="0x010F"/>
       <category value="0x010F" symbol="sym_271_3" label="0x010F"/>
-      <category value="0x010F" symbol="sym_271_4" label="GR"/>
-      <category value="0x010F" symbol="sym_271_7" label="BASE MILITAIRE"/>
-      <category value="0x010F" symbol="sym_271_8" label="BARRAGE"/>
-      <category value="0x010F" symbol="sym_271_9" label="CEMETERY"/>
-      <category value="0x010F" symbol="sym_271_10" label="MILITARY"/>
-      <category value="0x010F" symbol="sym_271_11" label="SKI LIFT"/>
-      <category value="0x010F" symbol="sym_271_12" label="MOUNTAIN SPORT"/>
-      <category value="0x011A" symbol="sym_282_0" label="Cliff"/>
-      <category value="0x011A" symbol="sym_282_1" label="Cliff"/>
-      <category value="0x0133" symbol="sym_307_2" label="HEDGE"/>
-      <category value="0x0133" symbol="sym_307_8" label="WALL"/>
-      <category value="0x0133" symbol="sym_307_9" label="FENCE"/>
+      <category value="0x010F" symbol="sym_271_4" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_7" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_8" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_9" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_10" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_11" label="0x010F"/>
+      <category value="0x010F" symbol="sym_271_12" label="0x010F"/>
+      <category value="0x011A" symbol="sym_282_0" label="0x011A"/>
+      <category value="0x011A" symbol="sym_282_1" label="0x011A"/>
+      <category value="0x0133" symbol="sym_307_2" label="0x0133"/>
+      <category value="0x0133" symbol="sym_307_8" label="0x0133"/>
+      <category value="0x0133" symbol="sym_307_9" label="0x0133"/>
     </categories>
     <symbols>
       <symbol name="sym_1_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,252,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_2_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,0,0,255"/>
-          <prop k="line_width" v="4"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_3_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,0,0,255"/>
-          <prop k="line_width" v="4"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_4_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,0,0,255"/>
-          <prop k="line_width" v="4"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_5_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,200,0,255"/>
-          <prop k="line_width" v="3"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_6_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,252,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_7_0" type="line">
@@ -142,7 +142,7 @@
       <symbol name="sym_9_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="248,148,0,255"/>
-          <prop k="line_width" v="3"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_10_0" type="line">
@@ -166,7 +166,7 @@
       <symbol name="sym_14_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="136,84,160,255"/>
-          <prop k="line_width" v="3"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_15_0" type="line">
@@ -214,7 +214,7 @@
       <symbol name="sym_24_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="104,180,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_27_0" type="line">
@@ -322,7 +322,7 @@
       <symbol name="sym_266_0" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="104,180,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_266_1" type="line">
@@ -454,7 +454,7 @@
       <symbol name="sym_270_12" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="80,168,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_270_13" type="line">
@@ -466,13 +466,13 @@
       <symbol name="sym_270_14" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="32,144,248,255"/>
-          <prop k="line_width" v="3"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_270_15" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="104,184,248,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_270_16" type="line">
@@ -514,7 +514,7 @@
       <symbol name="sym_270_22" type="line">
         <layer class="SimpleLine">
           <prop k="line_color" v="96,96,96,255"/>
-          <prop k="line_width" v="2"/>
+          <prop k="line_width" v="1"/>
         </layer>
       </symbol>
       <symbol name="sym_270_23" type="line">
