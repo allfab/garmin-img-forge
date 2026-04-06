@@ -203,7 +203,7 @@ Les options suivantes sont disponibles sur les deux commandes. Elles sont appliq
 |--------|-------------|--------|
 | `--transparent` | Carte transparente (overlay) — set le flag TRE | `false` |
 | `--draw-priority <N>` | Priorité d'affichage (0-255) | `25` |
-| `--levels <LEVELS>` | Niveaux de zoom : `"24,22,20,18,16"` ou `"0:24,1:22,2:20"` | header .mp |
+| `--levels <LEVELS>` | Niveaux de zoom : `"24,20,16"` ou `"0:24,1:20,2:16"` | header .mp |
 | `--order-by-decreasing-area` | Trier les polygones par aire décroissante (plus grands rendus en premier) | `false` |
 
 #### Optimisation géométrique
@@ -353,6 +353,29 @@ imgforge build tiles/ --jobs 4
 # Large projet (>100 tuiles)
 imgforge build tiles/ --jobs 8
 ```
+
+## Niveaux de zoom (`--levels`)
+
+L'option `--levels` contrôle les niveaux de zoom de la carte Garmin. Chaque niveau crée un jeu de subdivisions contenant les features visibles à cette échelle.
+
+```bash
+# 3 niveaux (recommandé) : détail, intermédiaire, vue large
+imgforge build tiles/ --levels "24,20,16"
+
+# 2 niveaux : détail + vue large
+imgforge build tiles/ --levels "24,18"
+```
+
+**Correspondance avec `EndLevel`** : une feature avec `EndLevel=N` dans le fichier `.mp` est écrite aux niveaux **0 à N**. Plus il y a de niveaux et plus les EndLevel sont élevés, plus le fichier est gros :
+
+| Niveaux | EndLevel max | Copies max | Taille relative |
+|---------|-------------|------------|-----------------|
+| `"24,18"` | 1 | x2 | Référence |
+| `"24,20,16"` | 2 | x3 | +30-50% |
+| `"24,22,20,18,16"` | 4 | x5 | +100-150% |
+| `"24,23,...,16"` (9) | 8 | x9 | +200-400% |
+
+> **Recommandation** : 3 niveaux avec des sauts de 4+ bits d'écart offrent le meilleur compromis taille/navigation. Les niveaux consécutifs (24→23→22) n'apportent aucune différence perceptible sur un GPS Garmin.
 
 ## Rapport JSON
 

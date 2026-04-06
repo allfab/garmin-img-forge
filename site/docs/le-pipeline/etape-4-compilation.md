@@ -135,7 +135,7 @@ imgforge build output/tiles/ \
     --dem-dists 3,3,4,6,8,12,16,24,32 \
     --dem-interpolation bicubic \
     --latin1 \
-    --levels "24,23,22,21,20,19,18,17,16" \
+    --levels "24,20,16" \
     --typ-file resources/bdtopo.typ \
     --keep-going \
     -vv
@@ -185,14 +185,28 @@ La sortie standard d'imgforge est un rapport JSON :
 imgforge supporte la configuration des niveaux de zoom via `--levels` :
 
 ```bash
-# Format simple : liste de bits
-imgforge build tiles/ --levels "24,22,20,18,16"
+# Format simple : liste de résolutions (bits)
+imgforge build tiles/ --levels "24,20,16"
 
 # Format explicite : niveau:bits
-imgforge build tiles/ --levels "0:24,1:22,2:20,3:18,4:16"
+imgforge build tiles/ --levels "0:24,1:20,2:16"
 ```
 
 Si non spécifié, imgforge utilise les niveaux définis dans le header de chaque fichier `.mp`.
+
+Chaque niveau crée un jeu de subdivisions contenant les features dont l'`EndLevel` est supérieur ou égal au numéro du niveau. Plus il y a de niveaux, plus le fichier est volumineux car les features sont dupliquées.
+
+| Configuration | Niveaux | Taille relative |
+|--------------|---------|-----------------|
+| `"24,18"` | 2 | Référence |
+| `"24,20,16"` | 3 | +30-50% |
+| `"24,22,20,18,16"` | 5 | +100-150% |
+| `"24,23,22,21,20,19,18,17,16"` | 9 | +200-400% |
+
+!!! tip "Recommandation"
+    **3 niveaux** avec des sauts de 4+ bits (`"24,20,16"`) offrent le meilleur compromis taille/navigation. Les niveaux consécutifs (24→23→22) n'apportent aucune différence visuelle perceptible sur un GPS Garmin.
+
+    Voir la [référence complète sur les niveaux de zoom](../reference/niveaux-et-zoom.md) pour comprendre la correspondance avec `EndLevel`.
 
 ## Contrôle du routing
 

@@ -22,6 +22,14 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](correspondances-bdtopo.md)
 
+-   **Niveaux de zoom et EndLevel**
+
+    ---
+
+    Comprendre la correspondance entre `EndLevel` (fichier .mp), `--levels` (imgforge) et les niveaux de zoom GPS.
+
+    [:octicons-arrow-right-24: Consulter](niveaux-et-zoom.md)
+
 -   **Limites des formats**
 
     ---

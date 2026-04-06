@@ -472,6 +472,35 @@ header:
 | `left_side_traffic` | `LeftSideTraffic` | Circulation à gauche | `Y`/`N` |
 | `custom` | _(clés arbitraires)_ | Champs personnalisés | Map clé-valeur |
 
+#### Comprendre les niveaux de zoom et EndLevel
+
+Les niveaux de zoom (`Levels`, `Level0`-`Level9`) définissent l'échelle de rendu sur le GPS. L'attribut `EndLevel` de chaque feature contrôle **jusqu'à quel niveau elle reste visible** :
+
+- `EndLevel=0` : visible uniquement au zoom le plus détaillé (Level 0)
+- `EndLevel=1` : visible aux niveaux 0 et 1
+- `EndLevel=N` : visible aux niveaux 0 à N
+
+```yaml
+# Header : 3 niveaux de zoom
+header:
+  levels: "3"
+  level0: "24"    # Level 0 : détail max (~5m)
+  level1: "20"    # Level 1 : intermédiaire (~80m)
+  level2: "16"    # Level 2 : vue large (~1.2km)
+```
+
+```yaml
+# Règles : chaque feature définit son EndLevel
+rules:
+  - match: { CL_ADMIN: "Autoroute" }
+    set: { Type: "0x01", EndLevel: "2" }    # Visible partout
+
+  - match: { NATURE: "Sentier" }
+    set: { Type: "0x16", EndLevel: "0" }    # Détail uniquement
+```
+
+> **Impact sur la taille** : chaque copie supplémentaire augmente le fichier IMG. Avec 3 niveaux, une feature `EndLevel=2` est écrite 3 fois. Limitez les EndLevel élevés aux features structurantes (routes principales, grands lacs).
+
 #### Précédence des options
 
 Si `template` ET champs individuels sont spécifiés, **le template prend le dessus** :

@@ -479,9 +479,12 @@ fn filter_features_for_level(
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
-        .filter(|(i, l)| {
-            if l.points.is_empty() { return false; }
-            expanded.intersects(&line_bboxes[*i])
+        .filter(|(_, l)| {
+            // Use first-point containment for polylines (not bbox intersection).
+            // The splitter handles cross-boundary distribution via Cohen-Sutherland
+            // clipping, so bbox filtering here would cause double-inclusion and
+            // inflate the output file size.
+            !l.points.is_empty() && expanded.contains_coord(&l.points[0])
         })
         .map(|(i, l)| {
             let mut pts = l.points.clone();

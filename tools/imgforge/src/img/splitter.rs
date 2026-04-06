@@ -209,10 +209,7 @@ impl MapArea {
                 // Entire line fits in target area — no clipping needed
                 sub_areas[target].add_line(line.clone());
             } else {
-                // Line spans multiple areas — clip to overlapping areas.
-                // Like polygon clipping, segments on shared boundaries may appear
-                // in both adjacent sub-areas. This is intentional: slight overlap
-                // is preferable to gaps on GPS devices.
+                // Line spans multiple areas — clip to overlapping areas
                 for (i, bounds) in sub_bounds.iter().enumerate() {
                     if !bounds.intersects(&line_bbox) {
                         continue;
