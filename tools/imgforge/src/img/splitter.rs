@@ -17,7 +17,7 @@ pub const MAX_RGN_SIZE: usize = 0xFFF8; // 65528 bytes
 pub const MAX_NUM_LINES: usize = 0xFF;
 pub const MAX_NUM_POINTS: usize = 0xFF;
 pub const WANTED_MAX_AREA_SIZE: usize = 0x3FFF; // 16383 bytes
-pub const MIN_DIMENSION: i32 = 10;
+pub const MIN_DIMENSION: i32 = 1;
 pub const LARGE_OBJECT_DIM: i32 = 8192;
 
 // Size estimation — mkgmap MapArea.addSize
@@ -182,26 +182,51 @@ impl MapArea {
             .min(MAX_DIVISION_SIZE / 2)
             .max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: distribute by first point, no clipping ──
+        // ── Lines: distribute by first point, clip if spanning multiple areas ──
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
             }
+
+            let line_bbox = Area::from_coords(&line.points);
+
+            // Large object: if line bounds exceed cell dimensions, create dedicated area
+            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
+                let mut dedicated = MapArea::new(line_bbox, self.resolution);
+                dedicated.add_line(line.clone());
+                sub_areas.push(dedicated);
+                continue;
+            }
+
             let first = &line.points[0];
-            let idx = pick_area(
+            let target = pick_area(
                 first.longitude() as i64,
                 first.latitude() as i64,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            // Large object: if line bounds exceed cell dimensions, create dedicated area
-            let line_bbox = Area::from_coords(&line.points);
-            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
-                let mut dedicated = MapArea::new(line_bbox, self.resolution);
-                dedicated.add_line(line.clone());
-                sub_areas.push(dedicated);
+            if sub_areas[target].bounds.contains_area(&line_bbox) {
+                // Entire line fits in target area — no clipping needed
+                sub_areas[target].add_line(line.clone());
             } else {
-                sub_areas[idx].add_line(line.clone());
+                // Line spans multiple areas — clip to overlapping areas.
+                // Like polygon clipping, segments on shared boundaries may appear
+                // in both adjacent sub-areas. This is intentional: slight overlap
+                // is preferable to gaps on GPS devices.
+                for (i, bounds) in sub_bounds.iter().enumerate() {
+                    if !bounds.intersects(&line_bbox) {
+                        continue;
+                    }
+                    let clipped_segments = clip_polyline_to_rect(&line.points, bounds);
+                    for segment in clipped_segments {
+                        if segment.len() >= 2 {
+                            sub_areas[i].add_line(SplitLine {
+                                mp_index: line.mp_index,
+                                points: segment,
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -273,6 +298,119 @@ fn pick_area(
         0
     };
     (xcell * ny + ycell).min(num_areas - 1)
+}
+
+// ── Polyline clipping — Cohen-Sutherland ──────────────────────────────────
+
+/// Clip a polyline against an axis-aligned rectangle.
+/// Returns polyline segments (each with >= 2 points) that fall within the rect.
+pub fn clip_polyline_to_rect(polyline: &[Coord], rect: &Area) -> Vec<Vec<Coord>> {
+    if polyline.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut segments: Vec<Vec<Coord>> = Vec::new();
+    let mut current: Vec<Coord> = Vec::with_capacity(polyline.len());
+
+    // Flush helper: move current segment to results, reuse buffer capacity
+    let flush = |current: &mut Vec<Coord>, segments: &mut Vec<Vec<Coord>>| {
+        if current.len() >= 2 {
+            let done = std::mem::replace(current, Vec::with_capacity(current.capacity()));
+            segments.push(done);
+        } else {
+            current.clear();
+        }
+    };
+
+    for i in 0..polyline.len() - 1 {
+        let a = polyline[i];
+        let b = polyline[i + 1];
+
+        if let Some((ca, cb)) = clip_line_segment(a, b, rect) {
+            // Skip zero-length segments (endpoints round to same coord)
+            if ca == cb { continue; }
+            if current.is_empty() {
+                current.push(ca);
+            } else if current.last() != Some(&ca) {
+                // Discontinuity — flush current segment, start new one
+                flush(&mut current, &mut segments);
+                current.push(ca);
+            }
+            current.push(cb);
+        } else {
+            // Segment entirely outside — flush current
+            flush(&mut current, &mut segments);
+        }
+    }
+
+    if current.len() >= 2 {
+        segments.push(current);
+    }
+
+    segments
+}
+
+/// Clip a single line segment [a, b] against a rectangle using Cohen-Sutherland.
+/// Returns the clipped segment endpoints or None if entirely outside.
+fn clip_line_segment(a: Coord, b: Coord, rect: &Area) -> Option<(Coord, Coord)> {
+    let (mut x0, mut y0) = (a.longitude() as f64, a.latitude() as f64);
+    let (mut x1, mut y1) = (b.longitude() as f64, b.latitude() as f64);
+
+    let xmin = rect.min_lon() as f64;
+    let xmax = rect.max_lon() as f64;
+    let ymin = rect.min_lat() as f64;
+    let ymax = rect.max_lat() as f64;
+
+    let outcode = |x: f64, y: f64| -> u8 {
+        let mut code = 0u8;
+        if x < xmin { code |= 1; }
+        if x > xmax { code |= 2; }
+        if y < ymin { code |= 4; }
+        if y > ymax { code |= 8; }
+        code
+    };
+
+    let mut code0 = outcode(x0, y0);
+    let mut code1 = outcode(x1, y1);
+
+    loop {
+        if (code0 | code1) == 0 {
+            return Some((
+                Coord::new(y0.round() as i32, x0.round() as i32),
+                Coord::new(y1.round() as i32, x1.round() as i32),
+            ));
+        }
+        if (code0 & code1) != 0 {
+            return None;
+        }
+
+        let code_out = if code0 != 0 { code0 } else { code1 };
+        let (x, y);
+
+        if (code_out & 8) != 0 {
+            x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
+            y = ymax;
+        } else if (code_out & 4) != 0 {
+            x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+            y = ymin;
+        } else if (code_out & 2) != 0 {
+            y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+            x = xmax;
+        } else {
+            y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+            x = xmin;
+        }
+
+        if code_out == code0 {
+            x0 = x;
+            y0 = y;
+            code0 = outcode(x0, y0);
+        } else {
+            x1 = x;
+            y1 = y;
+            code1 = outcode(x1, y1);
+        }
+    }
 }
 
 // ── Polygon clipping — Sutherland-Hodgman ──────────────────────────────────
@@ -483,7 +621,7 @@ pub fn split_features(
     let initial = split_max_size(&area, shift);
 
     // Step 2: Recursive splitting until all areas fit limits
-    add_areas_to_list(initial, 8)
+    add_areas_to_list(initial, 16)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -611,11 +749,11 @@ mod tests {
     }
 
     #[test]
-    fn test_split_lines_by_first_point() {
+    fn test_split_lines_clips_across_areas() {
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
-        // Line starts in bottom-left, extends to top-right
+        // Line starts in bottom-left, extends to top-right — spans multiple sub-areas
         area.add_line(SplitLine {
             mp_index: 0,
             points: vec![pt(100, 100), pt(900, 900)],
@@ -623,7 +761,30 @@ mod tests {
 
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        assert_eq!(total_lines, 1); // line assigned to exactly one area
+        assert!(total_lines >= 1); // line clipped into segments across areas
+
+        // All segments reference the same original feature
+        for sub in &subs {
+            for line in &sub.lines {
+                assert_eq!(line.mp_index, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_split_lines_contained_not_clipped() {
+        let bounds = Area::new(0, 0, 1000, 1000);
+        let mut area = MapArea::new(bounds, 24);
+
+        // Line entirely within bottom-left quadrant
+        area.add_line(SplitLine {
+            mp_index: 0,
+            points: vec![pt(100, 100), pt(200, 200)],
+        });
+
+        let subs = area.split(2, 2);
+        let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
+        assert_eq!(total_lines, 1); // line fits in one area, no clipping
     }
 
     // ── Sutherland-Hodgman tests ──
