@@ -317,8 +317,16 @@ body:has(.zn-hero) .md-header {
   box-shadow: none;
 }
 
-body:has(.zn-hero) .md-main {
+body:has(.zn-hero) .md-content,
+body:has(.zn-hero) .md-sidebar--secondary {
   display: none;
+}
+
+/* Rendre le drawer mobile accessible malgré l'attribut hidden généré par le framework */
+@media screen and (max-width: 76.234375em) {
+  body:has(.zn-hero) .md-sidebar--primary[hidden] {
+    display: block !important;
+  }
 }
 
 /* ============================================================
