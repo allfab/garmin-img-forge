@@ -17,7 +17,7 @@ pub const MAX_RGN_SIZE: usize = 0xFFF8; // 65528 bytes
 pub const MAX_NUM_LINES: usize = 0xFF;
 pub const MAX_NUM_POINTS: usize = 0xFF;
 pub const WANTED_MAX_AREA_SIZE: usize = 0x3FFF; // 16383 bytes
-pub const MIN_DIMENSION: i32 = 1;
+pub const MIN_DIMENSION: i32 = 10;
 pub const LARGE_OBJECT_DIM: i32 = 8192;
 
 // Size estimation — mkgmap MapArea.addSize
@@ -182,48 +182,29 @@ impl MapArea {
             .min(MAX_DIVISION_SIZE / 2)
             .max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: distribute by first point, clip if spanning multiple areas ──
+        // ── Lines: distribute by first point, no clipping (mkgmap behavior) ──
+        // Polylines are assigned whole to one subdivision based on first point.
+        // mkgmap never clips polylines — oversized subdivisions are acceptable
+        // and handled gracefully by GPS devices and most viewers.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
             }
-
-            let line_bbox = Area::from_coords(&line.points);
-
-            // Large object: if line bounds exceed cell dimensions, create dedicated area
-            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
-                let mut dedicated = MapArea::new(line_bbox, self.resolution);
-                dedicated.add_line(line.clone());
-                sub_areas.push(dedicated);
-                continue;
-            }
-
             let first = &line.points[0];
-            let target = pick_area(
+            let idx = pick_area(
                 first.longitude() as i64,
                 first.latitude() as i64,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            if sub_areas[target].bounds.contains_area(&line_bbox) {
-                // Entire line fits in target area — no clipping needed
-                sub_areas[target].add_line(line.clone());
+            // Large object: if line bounds exceed cell dimensions, create dedicated area
+            let line_bbox = Area::from_coords(&line.points);
+            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
+                let mut dedicated = MapArea::new(line_bbox, self.resolution);
+                dedicated.add_line(line.clone());
+                sub_areas.push(dedicated);
             } else {
-                // Line spans multiple areas — clip to overlapping areas
-                for (i, bounds) in sub_bounds.iter().enumerate() {
-                    if !bounds.intersects(&line_bbox) {
-                        continue;
-                    }
-                    let clipped_segments = clip_polyline_to_rect(&line.points, bounds);
-                    for segment in clipped_segments {
-                        if segment.len() >= 2 {
-                            sub_areas[i].add_line(SplitLine {
-                                mp_index: line.mp_index,
-                                points: segment,
-                            });
-                        }
-                    }
-                }
+                sub_areas[idx].add_line(line.clone());
             }
         }
 
@@ -746,11 +727,11 @@ mod tests {
     }
 
     #[test]
-    fn test_split_lines_clips_across_areas() {
+    fn test_split_lines_by_first_point() {
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
-        // Line starts in bottom-left, extends to top-right — spans multiple sub-areas
+        // Line starts in bottom-left, extends to top-right
         area.add_line(SplitLine {
             mp_index: 0,
             points: vec![pt(100, 100), pt(900, 900)],
@@ -758,18 +739,11 @@ mod tests {
 
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        assert!(total_lines >= 1); // line clipped into segments across areas
-
-        // All segments reference the same original feature
-        for sub in &subs {
-            for line in &sub.lines {
-                assert_eq!(line.mp_index, 0);
-            }
-        }
+        assert_eq!(total_lines, 1); // line assigned whole to one area (mkgmap behavior)
     }
 
     #[test]
-    fn test_split_lines_contained_not_clipped() {
+    fn test_split_lines_contained() {
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
