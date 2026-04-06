@@ -164,9 +164,10 @@ output:
 header:
   name: "BDTOPO {col:03}_{row:03}"
   copyright: "IGN BDTOPO 2025"
-  levels: "2"
+  levels: "3"
   level0: "24"
-  level1: "18"
+  level1: "20"
+  level2: "16"
   tree_size: "1000"
   rgn_limit: "1024"
   transparent: "N"
@@ -176,7 +177,7 @@ header:
   routing: "Y"
 
 # Règles de transformation BDTOPO → types Garmin
-rules: pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml
+rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
 
 
 error_handling: "continue"

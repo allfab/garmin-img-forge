@@ -17,7 +17,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
         set:
           Type: "0x01"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "~[0x04]${NUMERO}"
 
       # 2. Nationale (hors Rond-point)
@@ -26,7 +26,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "~[0x05]${NUMERO}"
 
       # 3. Nationale Rond-point (pas de label)
@@ -35,7 +35,7 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "7"
+          EndLevel: "2"
 
       # 4. Departementale (hors Rond-point)
       - match:
@@ -43,7 +43,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "~[0x06]${NUMERO}"
 
       # 5. Departementale Rond-point (Type override 0x04, pas de label)
@@ -52,14 +52,14 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "7"
+          EndLevel: "2"
 
       # 6. Route intercommunale (toute NATURE)
       - match:
           CL_ADMIN: "Route intercommunale"
         set:
           Type: "0x05"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "${NUMERO}"
 
       # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
@@ -69,42 +69,42 @@ rulesets:
           NATURE: "Route à 1 chaussée"
         set:
           Type: "0x06"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 8. Route a 2 chaussees
       - match:
           NATURE: "Route à 2 chaussées"
         set:
           Type: "0x06"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
       - match:
           NATURE: "Rond-point"
         set:
           Type: "0x06"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 10. Route empierree
       - match:
           NATURE: "Route empierrée"
         set:
           Type: "0x07"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 11. Bretelle
       - match:
           NATURE: "Bretelle"
         set:
           Type: "0x09"
-          EndLevel: "7"
+          EndLevel: "2"
 
       # 12. Type autoroutier
       - match:
           NATURE: "Type autoroutier"
         set:
           Type: "0x09"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "~[0x04]${NUMERO}"
 
       # 13. Chemin
@@ -112,35 +112,35 @@ rulesets:
           NATURE: "Chemin"
         set:
           Type: "0x0a"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 14. Escalier
       - match:
           NATURE: "Escalier"
         set:
           Type: "0x0f"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 15. Piste cyclable
       - match:
           NATURE: "Piste cyclable"
         set:
           Type: "0x0e"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 16. Sentier
       - match:
           NATURE: "Sentier"
         set:
           Type: "0x10"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 17. Bac ou liaison maritime
       - match:
           NATURE: "Bac ou liaison maritime"
         set:
           Type: "0x1b"
-          EndLevel: "1"
+          EndLevel: "0"
 
   # ==========================================================================
   # TRANSPORT — Voies ferrees (POLYLINE)
@@ -155,7 +155,7 @@ rulesets:
           POS_SOL: "-1"
         set:
           Type: "0x10e06"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 2. Voie ferree principale (hors souterrain)
@@ -164,7 +164,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10c00"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 3. LGV (hors souterrain)
@@ -173,7 +173,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e02"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 4. Voie de service (hors souterrain)
@@ -182,7 +182,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e03"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 5. Tramway (hors souterrain)
@@ -191,7 +191,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e04"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 6. Funiculaire ou cremaillere (hors souterrain)
@@ -200,7 +200,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e05"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
       # 7. Sans objet (hors souterrain)
@@ -209,7 +209,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10c00"
-          EndLevel: "5"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -225,7 +225,7 @@ rulesets:
           NATURE: "Piste en dur"
         set:
           Type: "0x1090b"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 2. Piste en herbe
@@ -233,7 +233,7 @@ rulesets:
           NATURE: "Piste en herbe"
         set:
           Type: "0x10f17"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -249,7 +249,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10f0b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -265,7 +265,7 @@ rulesets:
           NOM: "*"
         set:
           Type: "0x54"
-          EndLevel: "7"
+          EndLevel: "2"
           Label: "${NOM}"
           CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
@@ -285,7 +285,7 @@ rulesets:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 2. Grange (cabane, bergerie, baraquement)
@@ -293,7 +293,7 @@ rulesets:
           NATURE: "Grange"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 3. Habitat temporaire (Guyane — carbet, habitation intermittente)
@@ -301,7 +301,7 @@ rulesets:
           NATURE: "Habitat temporaire"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 4. Lieu-dit habite (hameau, groupe d'habitations)
@@ -309,7 +309,7 @@ rulesets:
           NATURE: "Lieu-dit habité"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 5. Moulin (moulin a eau nomme)
@@ -317,7 +317,7 @@ rulesets:
           NATURE: "Moulin"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 6. Quartier (cite, faubourg, lotissement)
@@ -325,7 +325,7 @@ rulesets:
           NATURE: "Quartier"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 7. Ruines (batiment ou construction en ruines)
@@ -333,7 +333,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
       # 8. Catch-all Zone d'habitation (NATURE non reconnue)
@@ -341,7 +341,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x03"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -357,7 +357,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x26"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_C_EAU}"
 
       # 2. Catch-all (Permanent, Inconnue, vide)
@@ -365,7 +365,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x18"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_C_EAU}"
 
   # ==========================================================================
@@ -381,7 +381,7 @@ rulesets:
           NATURE: "Glacier, névé"
         set:
           Type: "0x4d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_P_EAU}"
 
       # 2. Intermittent (hors Glacier)
@@ -389,7 +389,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x4c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_P_EAU}"
 
       # 3. Inconnue
@@ -397,7 +397,7 @@ rulesets:
           PERSISTANC: "Inconnue"
         set:
           Type: "0x4c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_P_EAU}"
 
       # 4. Catch-all (Permanent, vide)
@@ -405,7 +405,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x3f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NOM_P_EAU}"
 
   # ==========================================================================
@@ -421,7 +421,7 @@ rulesets:
           NATURE: "Arroyo"
         set:
           Type: "0x06501"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 2. Baie
@@ -429,7 +429,7 @@ rulesets:
           NATURE: "Baie"
         set:
           Type: "0x06503"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 3. Cascade
@@ -437,7 +437,7 @@ rulesets:
           NATURE: "Cascade"
         set:
           Type: "0x06508"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 4. Crique
@@ -445,7 +445,7 @@ rulesets:
           NATURE: "Crique"
         set:
           Type: "0x06507"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 5. Fontaine
@@ -453,7 +453,7 @@ rulesets:
           NATURE: "Fontaine"
         set:
           Type: "0x06509"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 6. Glacier
@@ -461,7 +461,7 @@ rulesets:
           NATURE: "Glacier"
         set:
           Type: "0x0650a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 7. Lac
@@ -469,7 +469,7 @@ rulesets:
           NATURE: "Lac"
         set:
           Type: "0x0650d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 8. Marais
@@ -477,7 +477,7 @@ rulesets:
           NATURE: "Marais"
         set:
           Type: "0x06513"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 9. Mer
@@ -485,7 +485,7 @@ rulesets:
           NATURE: "Mer"
         set:
           Type: "0x06510"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 10. Reservoir
@@ -493,7 +493,7 @@ rulesets:
           NATURE: "Réservoir"
         set:
           Type: "0x0650f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 11. Source
@@ -501,7 +501,7 @@ rulesets:
           NATURE: "Source"
         set:
           Type: "0x06511"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 12. Source captee
@@ -509,7 +509,7 @@ rulesets:
           NATURE: "Source captée"
         set:
           Type: "0x06511"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 13. Catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence, etc.)
@@ -517,7 +517,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x06414"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -534,91 +534,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "0"
 
   # ==========================================================================
   # BATI — Cimetieres (POLYGON)
@@ -634,21 +634,21 @@ rulesets:
           NATURE: "Civil"
         set:
           Type: "0x1a"
-          EndLevel: "4"
+          EndLevel: "1"
 
       # 2. Militaire
       - match:
           NATURE: "Militaire"
         set:
           Type: "0x10f13"
-          EndLevel: "4"
+          EndLevel: "1"
 
       # 3. Militaire etranger
       - match:
           NATURE: "Militaire étranger"
         set:
           Type: "0x10f13"
-          EndLevel: "4"
+          EndLevel: "1"
 
   # ==========================================================================
   # BATI — Constructions lineaires (POLYLINE)
@@ -664,7 +664,7 @@ rulesets:
           NATURE: "Autre ligne descriptive"
         set:
           Type: "0x10c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 2. Barrage
@@ -672,7 +672,7 @@ rulesets:
           NATURE: "Barrage"
         set:
           Type: "0x10f08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 3. Cloture
@@ -680,7 +680,7 @@ rulesets:
           NATURE: "Clôture"
         set:
           Type: "0x13309"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 4. Mur
@@ -688,7 +688,7 @@ rulesets:
           NATURE: "Mur"
         set:
           Type: "0x13308"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 5. Mur anti-bruit
@@ -696,7 +696,7 @@ rulesets:
           NATURE: "Mur anti-bruit"
         set:
           Type: "0x10e13"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 6. Mur de soutenement
@@ -704,7 +704,7 @@ rulesets:
           NATURE: "Mur de soutènement"
         set:
           Type: "0x10e18"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 7. Pont
@@ -712,7 +712,7 @@ rulesets:
           NATURE: "Pont"
         set:
           Type: "0x10e14"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 8. Quai
@@ -720,7 +720,7 @@ rulesets:
           NATURE: "Quai"
         set:
           Type: "0x10e16"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 9. Ruines
@@ -728,7 +728,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x10e15"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 10. Sport de montagne
@@ -736,7 +736,7 @@ rulesets:
           NATURE: "Sport de montagne"
         set:
           Type: "0x10f0c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 11. Tunnel
@@ -744,7 +744,7 @@ rulesets:
           NATURE: "Tunnel"
         set:
           Type: "0x10e08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 12. Catch-all (NATURE non reconnue)
@@ -752,7 +752,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -769,7 +769,7 @@ rulesets:
           NATURE: "Antenne"
         set:
           Type: "0x11503"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 2. Autre construction elevee
@@ -777,7 +777,7 @@ rulesets:
           NATURE: "Autre construction élevée"
         set:
           Type: "0x06402"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 3. Calvaire
@@ -785,7 +785,7 @@ rulesets:
           NATURE: "Calvaire"
         set:
           Type: "0x11507"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 4. Cheminee
@@ -793,7 +793,7 @@ rulesets:
           NATURE: "Cheminée"
         set:
           Type: "0x11504"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 5. Clocher
@@ -801,7 +801,7 @@ rulesets:
           NATURE: "Clocher"
         set:
           Type: "0x10d0e"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 6. Croix
@@ -809,7 +809,7 @@ rulesets:
           NATURE: "Croix"
         set:
           Type: "0x11507"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 7. Eolienne
@@ -817,7 +817,7 @@ rulesets:
           NATURE: "Eolienne"
         set:
           Type: "0x11505"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 8. Minaret
@@ -825,7 +825,7 @@ rulesets:
           NATURE: "Minaret"
         set:
           Type: "0x10d0d"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 9. Phare
@@ -833,7 +833,7 @@ rulesets:
           NATURE: "Phare"
         set:
           Type: "0x10101"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 10. Puits d'hydrocarbures
@@ -841,7 +841,7 @@ rulesets:
           NATURE: "Puits d'hydrocarbures"
         set:
           Type: "0x0640d"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 11. Torchère
@@ -849,7 +849,7 @@ rulesets:
           NATURE: "Torchère"
         set:
           Type: "0x11108"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 12. Transformateur
@@ -857,7 +857,7 @@ rulesets:
           NATURE: "Transformateur"
         set:
           Type: "0x11506"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -874,7 +874,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x11503"
-          EndLevel: "2"
+          EndLevel: "0"
 
   # ==========================================================================
   # BATI — Terrains de sport (POLYGON)
@@ -890,7 +890,7 @@ rulesets:
           NATURE: "Bassin de natation"
         set:
           Type: "0x10f1d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NAT_DETAIL}"
 
       # 2. Grand terrain de sport (EndLevel=4, pas 2 !)
@@ -898,7 +898,7 @@ rulesets:
           NATURE: "Grand terrain de sport"
         set:
           Type: "0x1090d"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${NAT_DETAIL}"
 
       # 3. Petit terrain multi-sports
@@ -906,7 +906,7 @@ rulesets:
           NATURE: "Petit terrain multi-sports"
         set:
           Type: "0x1100a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NAT_DETAIL}"
 
       # 4. Piste de sport
@@ -914,7 +914,7 @@ rulesets:
           NATURE: "Piste de sport"
         set:
           Type: "0x10f1b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NAT_DETAIL}"
 
       # 5. Terrain de tennis
@@ -922,7 +922,7 @@ rulesets:
           NATURE: "Terrain de tennis"
         set:
           Type: "0x10f1c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NAT_DETAIL}"
 
       # 6. Catch-all (NATURE non reconnue → Grand terrain par defaut, EndLevel=2)
@@ -930,7 +930,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x1090d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NAT_DETAIL}"
 
   # ==========================================================================
@@ -947,7 +947,7 @@ rulesets:
           NATURE: "Carrière"
         set:
           Type: "0x10e1a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NATURE}"
 
       # 2. Levee
@@ -955,7 +955,7 @@ rulesets:
           NATURE: "Levée"
         set:
           Type: "0x10e17"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NATURE}"
 
       # 3. Talus
@@ -963,7 +963,7 @@ rulesets:
           NATURE: "Talus"
         set:
           Type: "0x10e19"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${NATURE}"
 
   # ==========================================================================
@@ -980,7 +980,7 @@ rulesets:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "6"
+          EndLevel: "2"
           Label: "Bois"
 
       # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
@@ -988,7 +988,7 @@ rulesets:
           NATURE: "Forêt fermée de conifères"
         set:
           Type: "0x10f1f"
-          EndLevel: "6"
+          EndLevel: "2"
           Label: "Forêt de conifères"
 
       # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
@@ -996,7 +996,7 @@ rulesets:
           NATURE: "Forêt fermée de feuillus"
         set:
           Type: "0x10f1e"
-          EndLevel: "6"
+          EndLevel: "2"
           Label: "Forêt de feuillus"
 
       # 4. Foret fermee mixte (EndLevel=6, pas de Label)
@@ -1004,35 +1004,35 @@ rulesets:
           NATURE: "Forêt fermée mixte"
         set:
           Type: "0x4e"
-          EndLevel: "6"
+          EndLevel: "2"
 
       # 5. Foret ouverte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt ouverte"
         set:
           Type: "0x11000"
-          EndLevel: "6"
+          EndLevel: "2"
 
       # 6. Haie (EndLevel=4, pas de Label)
       - match:
           NATURE: "Haie"
         set:
           Type: "0x11002"
-          EndLevel: "4"
+          EndLevel: "1"
 
       # 7. Lande ligneuse (EndLevel=4, pas de Label)
       - match:
           NATURE: "Lande ligneuse"
         set:
           Type: "0x11003"
-          EndLevel: "4"
+          EndLevel: "1"
 
       # 8. Peupleraie (EndLevel=4, Label statique)
       - match:
           NATURE: "Peupleraie"
         set:
           Type: "0x11001"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "Peupleraie"
 
       # 9. Verger (EndLevel=4, Label statique)
@@ -1040,7 +1040,7 @@ rulesets:
           NATURE: "Verger"
         set:
           Type: "0x11004"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "Verger"
 
       # 10. Vigne (EndLevel=4, Label statique)
@@ -1048,7 +1048,7 @@ rulesets:
           NATURE: "Vigne"
         set:
           Type: "0x11004"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "Vigne"
 
       # 11. Catch-all (NATURE non reconnue → Bois par defaut, EndLevel=4)
@@ -1056,7 +1056,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x11005"
-          EndLevel: "4"
+          EndLevel: "1"
 
   # ==========================================================================
   # SERVICES — Zones d'activite ou d'interet (POLYGON)
@@ -1072,7 +1072,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x0c"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -1089,7 +1089,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x29"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "Ligne ${VOLTAGE}"
 
   # ==========================================================================
@@ -1105,7 +1105,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10a03"
-          EndLevel: "3"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -1132,7 +1132,7 @@ rulesets:
           NATURE: "Aérodrome"
         set:
           Type: "0x02d0b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 2. Altiport
@@ -1141,7 +1141,7 @@ rulesets:
           NATURE: "Altiport"
         set:
           Type: "0x15500"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 3. Heliport
@@ -1150,7 +1150,7 @@ rulesets:
           NATURE: "Héliport"
         set:
           Type: "0x15500"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 4. Catch-all Aerodrome (NATURE non reconnue)
@@ -1159,7 +1159,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x02d0b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1174,7 +1174,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x06403"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1188,7 +1188,7 @@ rulesets:
           NATURE: "Barrage"
         set:
           Type: "0x06407"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 7. Mur
@@ -1197,7 +1197,7 @@ rulesets:
           NATURE: "Mur"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 8. Mur de soutenement
@@ -1206,7 +1206,7 @@ rulesets:
           NATURE: "Mur de soutènement"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 9. Pont
@@ -1215,7 +1215,7 @@ rulesets:
           NATURE: "Pont"
         set:
           Type: "0x06401"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 10. Quai
@@ -1224,7 +1224,7 @@ rulesets:
           NATURE: "Quai"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 11. Ruines
@@ -1233,7 +1233,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x11514"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 12. Sport de montagne
@@ -1242,7 +1242,7 @@ rulesets:
           NATURE: "Sport de montagne"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 13. Tunnel
@@ -1251,7 +1251,7 @@ rulesets:
           NATURE: "Tunnel"
         set:
           Type: "0x06413"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 14. Catch-all Construction lineaire
@@ -1260,7 +1260,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1274,7 +1274,7 @@ rulesets:
           NATURE: "Autre construction élevée"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 16. Calvaire
@@ -1283,7 +1283,7 @@ rulesets:
           NATURE: "Calvaire"
         set:
           Type: "0x11507"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 17. Clocher
@@ -1292,7 +1292,7 @@ rulesets:
           NATURE: "Clocher"
         set:
           Type: "0x10d0e"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 18. Croix
@@ -1301,7 +1301,7 @@ rulesets:
           NATURE: "Croix"
         set:
           Type: "0x11507"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 19. Eolienne
@@ -1310,7 +1310,7 @@ rulesets:
           NATURE: "Eolienne"
         set:
           Type: "0x11505"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 20. Catch-all Construction ponctuelle
@@ -1319,7 +1319,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10101"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1333,7 +1333,7 @@ rulesets:
           NATURE: "Barrage"
         set:
           Type: "0x06407"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 22. Dalle
@@ -1342,7 +1342,7 @@ rulesets:
           NATURE: "Dalle"
         set:
           Type: "0x06401"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 23. Ecluse
@@ -1351,7 +1351,7 @@ rulesets:
           NATURE: "Ecluse"
         set:
           Type: "0x06401"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 24. Pont
@@ -1360,7 +1360,7 @@ rulesets:
           NATURE: "Pont"
         set:
           Type: "0x06401"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 25. Catch-all Construction surfacique
@@ -1369,7 +1369,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x06401"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1383,7 +1383,7 @@ rulesets:
           NATURE: "Cap"
         set:
           Type: "0x06606"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 27. Cirque
@@ -1392,7 +1392,7 @@ rulesets:
           NATURE: "Cirque"
         set:
           Type: "0x06608"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 28. Col
@@ -1401,7 +1401,7 @@ rulesets:
           NATURE: "Col"
         set:
           Type: "0x06601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 29. Crete
@@ -1410,7 +1410,7 @@ rulesets:
           NATURE: "Crête"
         set:
           Type: "0x06613"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 30. Depression
@@ -1419,7 +1419,7 @@ rulesets:
           NATURE: "Dépression"
         set:
           Type: "0x0660b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 31. Dune
@@ -1428,7 +1428,7 @@ rulesets:
           NATURE: "Dune"
         set:
           Type: "0x15502"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 32. Escarpement
@@ -1437,7 +1437,7 @@ rulesets:
           NATURE: "Escarpement"
         set:
           Type: "0x06607"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 33. Gorge
@@ -1446,7 +1446,7 @@ rulesets:
           NATURE: "Gorge"
         set:
           Type: "0x06611"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 34. Gouffre
@@ -1455,7 +1455,7 @@ rulesets:
           NATURE: "Gouffre"
         set:
           Type: "0x11515"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 35. Grotte
@@ -1464,7 +1464,7 @@ rulesets:
           NATURE: "Grotte"
         set:
           Type: "0x11515"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 36. Ile
@@ -1473,7 +1473,7 @@ rulesets:
           NATURE: "Ile"
         set:
           Type: "0x06501"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 37. Isthme
@@ -1482,7 +1482,7 @@ rulesets:
           NATURE: "Isthme"
         set:
           Type: "0x0660d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 38. Montagne
@@ -1491,7 +1491,7 @@ rulesets:
           NATURE: "Montagne"
         set:
           Type: "0x06601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 39. Pic
@@ -1500,7 +1500,7 @@ rulesets:
           NATURE: "Pic"
         set:
           Type: "0x06616"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 40. Plage
@@ -1509,7 +1509,7 @@ rulesets:
           NATURE: "Plage"
         set:
           Type: "0x1160e"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 41. Plaine
@@ -1518,7 +1518,7 @@ rulesets:
           NATURE: "Plaine"
         set:
           Type: "0x06610"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 42. Recif
@@ -1527,7 +1527,7 @@ rulesets:
           NATURE: "Récif"
         set:
           Type: "0x15504"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 43. Rochers
@@ -1536,7 +1536,7 @@ rulesets:
           NATURE: "Rochers"
         set:
           Type: "0x06614"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 44. Sommet
@@ -1545,7 +1545,7 @@ rulesets:
           NATURE: "Sommet"
         set:
           Type: "0x06616"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 45. Terril
@@ -1554,7 +1554,7 @@ rulesets:
           NATURE: "Terril"
         set:
           Type: "0x15503"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 46. Vallee
@@ -1563,7 +1563,7 @@ rulesets:
           NATURE: "Vallée"
         set:
           Type: "0x06617"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 47. Versant
@@ -1572,7 +1572,7 @@ rulesets:
           NATURE: "Versant"
         set:
           Type: "0x06615"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 48. Volcan
@@ -1581,7 +1581,7 @@ rulesets:
           NATURE: "Volcan"
         set:
           Type: "0x06608"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1595,7 +1595,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x0660a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1609,7 +1609,7 @@ rulesets:
           NATURE: "Arbre"
         set:
           Type: "0x1150c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 51. Bois
@@ -1618,7 +1618,7 @@ rulesets:
           NATURE: "Bois"
         set:
           Type: "0x0660a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 52. Pare-feu
@@ -1627,7 +1627,7 @@ rulesets:
           NATURE: "Pare-feu"
         set:
           Type: "0x11609"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 53. Lieu-dit non habite
@@ -1636,7 +1636,7 @@ rulesets:
           NATURE: "Lieu-dit non habité"
         set:
           Type: "0x1150e"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1651,7 +1651,7 @@ rulesets:
           NATURE: "Abri de montagne"
         set:
           Type: "0x02b04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 55. Administration centrale de l'Etat
@@ -1660,7 +1660,7 @@ rulesets:
           NATURE: "Administration centrale de l'Etat"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 56. Aire d'accueil des gens du voyage
@@ -1669,7 +1669,7 @@ rulesets:
           NATURE: "Aire d'accueil des gens du voyage"
         set:
           Type: "0x02f0c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 57. Aire de detente
@@ -1678,7 +1678,7 @@ rulesets:
           NATURE: "Aire de détente"
         set:
           Type: "0x02c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 58. Aquaculture
@@ -1687,7 +1687,7 @@ rulesets:
           NATURE: "Aquaculture"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 59. Autre equipement sportif
@@ -1696,7 +1696,7 @@ rulesets:
           NATURE: "Autre équipement sportif"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 60. Autre etablissement d'enseignement
@@ -1705,7 +1705,7 @@ rulesets:
           NATURE: "Autre établissement d'enseignement"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 61. Autre service deconcentre de l'Etat
@@ -1714,7 +1714,7 @@ rulesets:
           NATURE: "Autre service déconcentré de l'Etat"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 62. Baignade surveillee
@@ -1723,7 +1723,7 @@ rulesets:
           NATURE: "Baignade surveillée"
         set:
           Type: "0x1151f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 63. Borne
@@ -1732,7 +1732,7 @@ rulesets:
           NATURE: "Borne"
         set:
           Type: "0x0660f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 64. Borne frontiere
@@ -1741,7 +1741,7 @@ rulesets:
           NATURE: "Borne frontière"
         set:
           Type: "0x0660f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 65. Camp militaire non clos
@@ -1750,7 +1750,7 @@ rulesets:
           NATURE: "Camp militaire non clos"
         set:
           Type: "0x0640b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 66. Camping
@@ -1759,7 +1759,7 @@ rulesets:
           NATURE: "Camping"
         set:
           Type: "0x02b03"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 67. Capitainerie
@@ -1768,7 +1768,7 @@ rulesets:
           NATURE: "Capitainerie"
         set:
           Type: "0x02f09"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 68. Carriere
@@ -1777,7 +1777,7 @@ rulesets:
           NATURE: "Carrière"
         set:
           Type: "0x0640c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 69. Caserne
@@ -1786,7 +1786,7 @@ rulesets:
           NATURE: "Caserne"
         set:
           Type: "0x03008"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 70. Caserne de pompiers
@@ -1795,7 +1795,7 @@ rulesets:
           NATURE: "Caserne de pompiers"
         set:
           Type: "0x03008"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 71. Centrale electrique
@@ -1804,7 +1804,7 @@ rulesets:
           NATURE: "Centrale électrique"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 72. Centre de documentation
@@ -1813,7 +1813,7 @@ rulesets:
           NATURE: "Centre de documentation"
         set:
           Type: "0x02c03"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 73. Centre equestre
@@ -1822,7 +1822,7 @@ rulesets:
           NATURE: "Centre équestre"
         set:
           Type: "0x02d0a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 74. Champ de tir
@@ -1831,7 +1831,7 @@ rulesets:
           NATURE: "Champ de tir"
         set:
           Type: "0x0640b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 75. College
@@ -1840,7 +1840,7 @@ rulesets:
           NATURE: "Collège"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 76. Complexe sportif couvert
@@ -1849,7 +1849,7 @@ rulesets:
           NATURE: "Complexe sportif couvert"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 77. Construction
@@ -1858,7 +1858,7 @@ rulesets:
           NATURE: "Construction"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 78. Culte chretien
@@ -1867,7 +1867,7 @@ rulesets:
           NATURE: "Culte chrétien"
         set:
           Type: "0x02c0e"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 79. Culte divers
@@ -1876,7 +1876,7 @@ rulesets:
           NATURE: "Culte divers"
         set:
           Type: "0x02c0b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 80. Culte israelite
@@ -1885,7 +1885,7 @@ rulesets:
           NATURE: "Culte israélite"
         set:
           Type: "0x02c10"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 81. Culte musulman
@@ -1894,7 +1894,7 @@ rulesets:
           NATURE: "Culte musulman"
         set:
           Type: "0x02c0d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 82. Decheterie
@@ -1903,7 +1903,7 @@ rulesets:
           NATURE: "Déchèterie"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 83. Divers agricole
@@ -1912,7 +1912,7 @@ rulesets:
           NATURE: "Divers agricole"
         set:
           Type: "0x1150e"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 84. Divers commercial
@@ -1921,7 +1921,7 @@ rulesets:
           NATURE: "Divers commercial"
         set:
           Type: "0x02e04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 85. Divers industriel
@@ -1930,7 +1930,7 @@ rulesets:
           NATURE: "Divers industriel"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 86. Divers public ou administratif
@@ -1939,7 +1939,7 @@ rulesets:
           NATURE: "Divers public ou administratif"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 87. Ecomusee
@@ -1948,7 +1948,7 @@ rulesets:
           NATURE: "Ecomusée"
         set:
           Type: "0x11600"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 88. Elevage
@@ -1957,7 +1957,7 @@ rulesets:
           NATURE: "Elevage"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 89. Enceinte militaire
@@ -1966,7 +1966,7 @@ rulesets:
           NATURE: "Enceinte militaire"
         set:
           Type: "0x0640b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 90. Enseignement primaire
@@ -1975,7 +1975,7 @@ rulesets:
           NATURE: "Enseignement primaire"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 91. Enseignement superieur
@@ -1984,7 +1984,7 @@ rulesets:
           NATURE: "Enseignement supérieur"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 92. Equipement de cyclisme
@@ -1993,7 +1993,7 @@ rulesets:
           NATURE: "Equipement de cyclisme"
         set:
           Type: "0x1160a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 93. Espace public
@@ -2002,7 +2002,7 @@ rulesets:
           NATURE: "Espace public"
         set:
           Type: "0x1160d"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 94. Etablissement extraterritorial
@@ -2011,7 +2011,7 @@ rulesets:
           NATURE: "Etablissement extraterritorial"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 95. Etablissement hospitalier
@@ -2020,7 +2020,7 @@ rulesets:
           NATURE: "Etablissement hospitalier"
         set:
           Type: "0x03002"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 96. Etablissement penitentiaire
@@ -2029,7 +2029,7 @@ rulesets:
           NATURE: "Etablissement pénitentiaire"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 97. Etablissement thermal
@@ -2038,7 +2038,7 @@ rulesets:
           NATURE: "Etablissement thermal"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 98. Gendarmerie
@@ -2047,7 +2047,7 @@ rulesets:
           NATURE: "Gendarmerie"
         set:
           Type: "0x03001"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 99. Golf
@@ -2056,7 +2056,7 @@ rulesets:
           NATURE: "Golf"
         set:
           Type: "0x02d05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 100. Habitation troglodytique
@@ -2065,7 +2065,7 @@ rulesets:
           NATURE: "Habitation troglodytique"
         set:
           Type: "0x11509"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 101. Haras
@@ -2074,7 +2074,7 @@ rulesets:
           NATURE: "Haras"
         set:
           Type: "0x02d0a"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 102. Hebergement de loisirs
@@ -2083,7 +2083,7 @@ rulesets:
           NATURE: "Hébergement de loisirs"
         set:
           Type: "0x02b04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 103. Hippodrome
@@ -2092,7 +2092,7 @@ rulesets:
           NATURE: "Hippodrome"
         set:
           Type: "0x02c08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 104. Hopital
@@ -2101,7 +2101,7 @@ rulesets:
           NATURE: "Hôpital"
         set:
           Type: "0x03002"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 105. Hotel de departement
@@ -2110,7 +2110,7 @@ rulesets:
           NATURE: "Hôtel de département"
         set:
           Type: "0x03003"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 106. Hotel de region
@@ -2119,7 +2119,7 @@ rulesets:
           NATURE: "Hôtel de région"
         set:
           Type: "0x03003"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 107. Hotel de collectivite
@@ -2128,7 +2128,7 @@ rulesets:
           NATURE: "Hôtel de collectivité"
         set:
           Type: "0x03003"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 108. Lycee
@@ -2137,7 +2137,7 @@ rulesets:
           NATURE: "Lycée"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 109. Mairie
@@ -2146,7 +2146,7 @@ rulesets:
           NATURE: "Mairie"
         set:
           Type: "0x03003"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 110. Maison de retraite
@@ -2155,7 +2155,7 @@ rulesets:
           NATURE: "Maison de retraite"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 111. Maison du parc
@@ -2164,7 +2164,7 @@ rulesets:
           NATURE: "Maison du parc"
         set:
           Type: "0x06402"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 112. Maison forestiere
@@ -2173,7 +2173,7 @@ rulesets:
           NATURE: "Maison forestière"
         set:
           Type: "0x14e01"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 113. Marais salant
@@ -2182,7 +2182,7 @@ rulesets:
           NATURE: "Marais salant"
         set:
           Type: "0x15505"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 114. Marche
@@ -2191,7 +2191,7 @@ rulesets:
           NATURE: "Marché"
         set:
           Type: "0x02e04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 115. Megalithe
@@ -2200,7 +2200,7 @@ rulesets:
           NATURE: "Mégalithe"
         set:
           Type: "0x11508"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 116. Mine
@@ -2209,7 +2209,7 @@ rulesets:
           NATURE: "Mine"
         set:
           Type: "0x0640c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 117. Monument
@@ -2218,7 +2218,7 @@ rulesets:
           NATURE: "Monument"
         set:
           Type: "0x14e0f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 118. Musee
@@ -2227,7 +2227,7 @@ rulesets:
           NATURE: "Musée"
         set:
           Type: "0x02c02"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 119. Office de tourisme
@@ -2236,7 +2236,7 @@ rulesets:
           NATURE: "Office de tourisme"
         set:
           Type: "0x02f0c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 120. Ouvrage militaire
@@ -2245,7 +2245,7 @@ rulesets:
           NATURE: "Ouvrage militaire"
         set:
           Type: "0x0640b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 121. Palais de justice
@@ -2254,7 +2254,7 @@ rulesets:
           NATURE: "Palais de justice"
         set:
           Type: "0x03004"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 122. Parc de loisirs
@@ -2263,7 +2263,7 @@ rulesets:
           NATURE: "Parc de loisirs"
         set:
           Type: "0x02c01"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 123. Parc des expositions
@@ -2272,7 +2272,7 @@ rulesets:
           NATURE: "Parc des expositions"
         set:
           Type: "0x10d09"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 124. Parc zoologique
@@ -2281,7 +2281,7 @@ rulesets:
           NATURE: "Parc zoologique"
         set:
           Type: "0x02c07"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 125. Patinoire
@@ -2290,7 +2290,7 @@ rulesets:
           NATURE: "Patinoire"
         set:
           Type: "0x02d08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 126. Piscine
@@ -2299,7 +2299,7 @@ rulesets:
           NATURE: "Piscine"
         set:
           Type: "0x02d09"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 127. Point de vue
@@ -2308,7 +2308,7 @@ rulesets:
           NATURE: "Point de vue"
         set:
           Type: "0x02c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 128. Police
@@ -2317,7 +2317,7 @@ rulesets:
           NATURE: "Police"
         set:
           Type: "0x03001"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 129. Poste
@@ -2326,7 +2326,7 @@ rulesets:
           NATURE: "Poste"
         set:
           Type: "0x02f05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 130. Prefecture
@@ -2335,7 +2335,7 @@ rulesets:
           NATURE: "Préfecture"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 131. Prefecture de region
@@ -2344,7 +2344,7 @@ rulesets:
           NATURE: "Préfecture de région"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 132. Refuge
@@ -2353,7 +2353,7 @@ rulesets:
           NATURE: "Refuge"
         set:
           Type: "0x02b04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 133. Salle de danse ou de jeux
@@ -2362,7 +2362,7 @@ rulesets:
           NATURE: "Salle de danse ou de jeux"
         set:
           Type: "0x02d04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 134. Salle de spectacle ou conference
@@ -2371,7 +2371,7 @@ rulesets:
           NATURE: "Salle de spectacle ou conférence"
         set:
           Type: "0x02d01"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 135. Science
@@ -2380,7 +2380,7 @@ rulesets:
           NATURE: "Science"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 136. Sentier de decouverte
@@ -2389,7 +2389,7 @@ rulesets:
           NATURE: "Sentier de découverte"
         set:
           Type: "0x06412"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 137. Siege d'EPCI
@@ -2398,7 +2398,7 @@ rulesets:
           NATURE: "Siège d'EPCI"
         set:
           Type: "0x03003"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 138. Site de vol libre
@@ -2407,7 +2407,7 @@ rulesets:
           NATURE: "Site de vol libre"
         set:
           Type: "0x02d0b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 139. Site d'escalade
@@ -2416,7 +2416,7 @@ rulesets:
           NATURE: "Site d'escalade"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 140. Sous-prefecture
@@ -2425,7 +2425,7 @@ rulesets:
           NATURE: "Sous-préfecture"
         set:
           Type: "0x03007"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 141. Sports en eaux vives
@@ -2434,7 +2434,7 @@ rulesets:
           NATURE: "Sports en eaux vives"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 142. Sports mecaniques
@@ -2443,7 +2443,7 @@ rulesets:
           NATURE: "Sports mécaniques"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 143. Sports nautiques
@@ -2452,7 +2452,7 @@ rulesets:
           NATURE: "Sports nautiques"
         set:
           Type: "0x11601"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 144. Stade
@@ -2461,7 +2461,7 @@ rulesets:
           NATURE: "Stade"
         set:
           Type: "0x02c08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 145. Stand de tir
@@ -2470,7 +2470,7 @@ rulesets:
           NATURE: "Stand de tir"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 146. Station de pompage
@@ -2479,7 +2479,7 @@ rulesets:
           NATURE: "Station de pompage"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 147. Station d'epuration
@@ -2488,7 +2488,7 @@ rulesets:
           NATURE: "Station d'épuration"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 148. Structure d'accueil pour personnes handicapees
@@ -2497,7 +2497,7 @@ rulesets:
           NATURE: "Structure d'accueil pour personnes handicapées"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 149. Surveillance maritime
@@ -2506,7 +2506,7 @@ rulesets:
           NATURE: "Surveillance maritime"
         set:
           Type: "0x1151f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 150. Tombeau
@@ -2515,7 +2515,7 @@ rulesets:
           NATURE: "Tombeau"
         set:
           Type: "0x06403"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 151. Universite
@@ -2524,7 +2524,7 @@ rulesets:
           NATURE: "Université"
         set:
           Type: "0x02c05"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 152. Usine
@@ -2533,7 +2533,7 @@ rulesets:
           NATURE: "Usine"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 153. Usine de production d'eau potable
@@ -2542,7 +2542,7 @@ rulesets:
           NATURE: "Usine de production d'eau potable"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 154. Vestige archeologique
@@ -2551,7 +2551,7 @@ rulesets:
           NATURE: "Vestige archéologique"
         set:
           Type: "0x1150b"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 155. Zone industrielle
@@ -2560,7 +2560,7 @@ rulesets:
           NATURE: "Zone industrielle"
         set:
           Type: "0x02900"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -2574,7 +2574,7 @@ rulesets:
           NATURE: "Château"
         set:
           Type: "0x1150f"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 157. Grange
@@ -2583,7 +2583,7 @@ rulesets:
           NATURE: "Grange"
         set:
           Type: "0x11510"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 158. Lieu-dit habite
@@ -2592,7 +2592,7 @@ rulesets:
           NATURE: "Lieu-dit habité"
         set:
           Type: "0x00d00"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 159. Moulin
@@ -2601,7 +2601,7 @@ rulesets:
           NATURE: "Moulin"
         set:
           Type: "0x11512"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 160. Quartier
@@ -2610,7 +2610,7 @@ rulesets:
           NATURE: "Quartier"
         set:
           Type: "0x11513"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 161. Ruines
@@ -2619,7 +2619,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x11514"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # 162. Catch-all Zone d'habitation
@@ -2628,7 +2628,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x00d00"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${GRAPHIE}"
 
       # ==================================================================
@@ -2663,7 +2663,7 @@ rulesets:
       #     NATURE: "*"
       #   set:
       #     Type: "0x06512"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
 
       # --- Cat 12 : Detail hydrographique (doublons DETAIL_HYDROGRAPHIQUE) ---
@@ -2672,196 +2672,196 @@ rulesets:
       #     NATURE: "Cascade"
       #   set:
       #     Type: "0x06508"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Citerne"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Fontaine"
       #   set:
       #     Type: "0x06509"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Lavoir"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Marais"
       #   set:
       #     Type: "0x06513"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Perte"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Point d'eau"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Résurgence"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Source"
       #   set:
       #     Type: "0x06511"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "Source captée"
       #   set:
       #     Type: "0x06511"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
       # - match:  # catch-all
       #     CLASSE: "Détail hydrographique"
       #     NATURE: "*"
       #   set:
       #     Type: "0x06414"
-      #     EndLevel: "2"
+      #     EndLevel: "0"
       #     Label: "${GRAPHIE}"
 
       # --- Cat 13 : Equipement de transport (doublons couches Transport) ---
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Aérogare"
-      #   set: { Type: "0x02d0b", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02d0b", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Aire de repos ou de service"
-      #   set: { Type: "0x02b03", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02b03", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Carrefour"
-      #   set: { Type: "0x06406", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06406", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Parking"
-      #   set: { Type: "0x1100b", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x1100b", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Péage"
-      #   set: { Type: "0x02f01", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02f01", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Port"
-      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06401", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Station de métro"
-      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Equipement de transport"
       #     NATURE: "Station de tramway"
-      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:  # catch-all
       #     CLASSE: "Equipement de transport"
       #     NATURE: "*"
-      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 14 : Itineraire autre ---
       # - match:
       #     CLASSE: "Itineraire autre"
       #     NATURE: "Itinéraire de randonnée pédestre"
-      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06412", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Itineraire autre"
       #     NATURE: "Itinéraire cyclable"
-      #   set: { Type: "0x1160a", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x1160a", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Itineraire autre"
       #     NATURE: "Itinéraire équestre"
-      #   set: { Type: "0x02d0a", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02d0a", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:  # catch-all
       #     CLASSE: "Itineraire autre"
       #     NATURE: "*"
-      #   set: { Type: "0x06412", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06412", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 15 : Parc ou reserve (doublons FORET_PUBLIQUE / zones reg.) ---
       # - match:
       #     CLASSE: "Parc ou réserve"
       #     NATURE: "*"
-      #   set: { Type: "0x02c06", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02c06", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 16 : Plan d'eau (doublons SURFACE_HYDROGRAPHIQUE) ---
       # - match:
       #     CLASSE: "Plan d'eau"
       #     NATURE: "Lac"
-      #   set: { Type: "0x0650d", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x0650d", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Plan d'eau"
       #     NATURE: "Glacier, névé"
-      #   set: { Type: "0x0650a", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x0650a", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Plan d'eau"
       #     NATURE: "Retenue"
-      #   set: { Type: "0x0650f", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x0650f", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:  # catch-all
       #     CLASSE: "Plan d'eau"
       #     NATURE: "*"
-      #   set: { Type: "0x06414", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06414", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 17 : Point du reseau (doublons couches Transport) ---
       # - match:
       #     CLASSE: "Point du réseau"
       #     NATURE: "Passage à niveau"
-      #   set: { Type: "0x1160b", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x1160b", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:
       #     CLASSE: "Point du réseau"
       #     NATURE: "Poteau de balisage de randonnée"
-      #   set: { Type: "0x0660f", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x0660f", EndLevel: "0", Label: "${GRAPHIE}" }
       # - match:  # catch-all
       #     CLASSE: "Point du réseau"
       #     NATURE: "*"
-      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06401", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 18 : Poste de transformation (doublons LIGNE_ELECTRIQUE) ---
       # - match:
       #     CLASSE: "Poste de transformation"
       #     NATURE: "*"
-      #   set: { Type: "0x11506", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x11506", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 19 : Route (doublons TRONCON_DE_ROUTE) ---
       # - match:
       #     CLASSE: "Route"
       #     NATURE: "*"
-      #   set: { Type: "0x06401", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x06401", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 20 : Transport par cable (doublons TRANSPORT_PAR_CABLE) ---
       # - match:
       #     CLASSE: "Transport par cable"
       #     NATURE: "*"
-      #   set: { Type: "0x15501", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x15501", EndLevel: "0", Label: "${GRAPHIE}" }
 
       # --- Cat 21 : Voie ferree (doublons TRONCON_DE_VOIE_FERREE) ---
       # - match:
       #     CLASSE: "Voie ferrée"
       #     NATURE: "*"
-      #   set: { Type: "0x02f08", EndLevel: "2", Label: "${GRAPHIE}" }
+      #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
 
   # ==========================================================================
   # COURBES DE NIVEAU — Contour lines (POLYLINE)
@@ -2878,7 +2878,7 @@ rulesets:
           IMPORTANCE: "1"
         set:
           Type: "0x22"
-          EndLevel: "4"
+          EndLevel: "1"
           Label: "${ALTITUDE}"
 
       # 2. Courbes intermédiaires (multiples de 10m, non-maîtresses)
@@ -2886,4 +2886,4 @@ rulesets:
           IMPORTANCE: "0"
         set:
           Type: "0x21"
-          EndLevel: "2"
+          EndLevel: "0"

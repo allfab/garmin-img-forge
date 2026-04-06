@@ -133,7 +133,7 @@ L'option `--levels` d'imgforge **remplace** ces valeurs. Il est recommandé de m
 
 ### Configuration 3 niveaux optimisée pour la BD TOPO
 
-**Règles mpforge** (dans `ign-bdtopo-garmin-rules.yaml`) :
+**Règles mpforge** (dans `garmin-rules.yaml`) :
 ```yaml
 # Autoroutes : visibles à tous les zooms
 - match:

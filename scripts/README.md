@@ -73,10 +73,10 @@ source pipeline/.env
 | Fichier | Rôle |
 |---|---|
 | `pipeline/.env.example` | Template des variables d'environnement (`DATA_ROOT`, `CONTOURS_DATA_ROOT`, etc.) |
-| `pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml` | Sources SHP : couches BDTOPO + courbes de niveau, grille de tuilage, header MP |
-| `pipeline/configs/ign-bdtopo/ign-bdtopo-garmin-rules.yaml` | Règles de mapping BDTOPO + courbes → types Garmin |
+| `pipeline/configs/ign-bdtopo/sources-shp.yaml` | Sources SHP : couches BDTOPO + courbes de niveau, grille de tuilage, header MP |
+| `pipeline/configs/ign-bdtopo/garmin-rules.yaml` | Règles de mapping BDTOPO + courbes → types Garmin |
 
-Convention de nommage : `ign-bdtopo-<theme>.yaml` (sources par format, règles de mapping).
+Convention de nommage : `<theme>.yaml` dans le dossier `ign-bdtopo/` (sources par format, règles de mapping).
 
 ---
 
@@ -102,8 +102,8 @@ scripts/
 pipeline/
   .env.example                 # Template des variables
   configs/ign-bdtopo/
-    ign-bdtopo-sources-shp.yaml
-    ign-bdtopo-garmin-rules.yaml
+    sources-shp.yaml
+    garmin-rules.yaml
   data/bdtopo/                 # Données BDTOPO (gitignore)
   data/courbes/                # Courbes de niveau IGN (gitignore)
     D038/                      # Dalles SHP par département
@@ -179,7 +179,7 @@ Script : `scripts/shapefile/01-export-mp.sh`
 export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
 export OUTPUT_DIR=./pipeline/output
 envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
-  < pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  < pipeline/configs/ign-bdtopo/sources-shp.yaml \
   > /tmp/mpforge-config-expanded.yaml
 
 # Lancer mpforge
@@ -198,7 +198,7 @@ mpforge build \
 export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
 export OUTPUT_DIR=./pipeline/output
 envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
-  < pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  < pipeline/configs/ign-bdtopo/sources-shp.yaml \
   > /tmp/mpforge-config-expanded.yaml
 
 # Lancer mpforge (binaire compilé localement)
@@ -330,7 +330,7 @@ Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des
 
 # Avec config YAML explicite
 ./scripts/build-garmin-map.sh \
-  --config pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  --config pipeline/configs/ign-bdtopo/sources-shp.yaml \
   --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
   --jobs 8
 
@@ -342,7 +342,7 @@ Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des
 
 # Avec courbes de niveau (après download --with-contours)
 ./scripts/build-garmin-map.sh \
-  --config pipeline/configs/ign-bdtopo/ign-bdtopo-sources-shp.yaml \
+  --config pipeline/configs/ign-bdtopo/sources-shp.yaml \
   --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
   --contours-root pipeline/data/courbes/D038
 ```
