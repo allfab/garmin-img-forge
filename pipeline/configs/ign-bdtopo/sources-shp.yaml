@@ -44,8 +44,8 @@ inputs:
     target_srs: "EPSG:4326"
     generalize:
       smooth: "chaikin"
-      iterations: 2
-      simplify: 0.00005
+      iterations: 1
+      simplify: 0.00003
 
   # ==========================================================================
   # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
