@@ -1023,37 +1023,39 @@ impl DemWriter {
         }
     }
 
-    /// Calculate DEM sections for all zoom levels.
+    /// Calculate DEM sections based on dem-dists configuration.
+    /// Like mkgmap, the number of DEM sections is determined by dem_config.dists,
+    /// NOT by the number of map levels. Default: 1 section with auto distance.
     /// Returns adjusted bounds if DEM grid alignment extends beyond tile bounds.
     pub fn calc(
         &mut self,
         bounds: &GeoBounds,
         dem_config: &DemConfig,
         converter: &DemConverter,
-        levels: &[Zoom],
+        _levels: &[Zoom],
     ) -> GeoBounds {
         self.sections.clear();
 
-        for (i, level) in levels.iter().enumerate() {
-            let dist = if i < dem_config.dists.len() {
-                dem_config.dists[i]
-            } else if !dem_config.dists.is_empty() {
-                // Scale from last provided distance
-                let last = *dem_config.dists.last().unwrap();
-                last * (1 << (i - dem_config.dists.len() + 1)) as i32
-            } else {
-                -1 // Auto
-            };
+        // Build the list of distances (like mkgmap MapBuilder.parseDemDists)
+        // Default: single entry [-1] = auto-detect from source resolution
+        let dists = if dem_config.dists.is_empty() {
+            vec![-1i32] // mkgmap default: 1 zoom level, auto distance
+        } else {
+            dem_config.dists.clone()
+        };
 
-            let section = DemSection::new(level.level as u8, bounds, dist, converter);
+        for (i, &dist) in dists.iter().enumerate() {
+            let section = DemSection::new(i as u8, bounds, dist, converter);
             self.sections.push(section);
         }
 
         // Calculate adjusted bounds from all sections
+        // left/top are in DEM units (map_units × 256), convert via MAP_UNIT_FACTOR/256
+        const MAP_UNIT_FACTOR_ADJ: f64 = 360.0 / (1u64 << 24) as f64;
         let mut adj = bounds.clone();
         for section in &self.sections {
-            let s_west = section.left as f64 * FACTOR / 256.0;
-            let s_north = section.top as f64 * FACTOR / 256.0;
+            let s_west = section.left as i32 as f64 * MAP_UNIT_FACTOR_ADJ / 256.0;
+            let s_north = section.top as i32 as f64 * MAP_UNIT_FACTOR_ADJ / 256.0;
             let s_east = s_west + (section.tiles_lon * STD_DIM) as f64 * section.points_distance_lon as f64 * FACTOR;
             let s_south = s_north - (section.tiles_lat * STD_DIM) as f64 * section.points_distance_lat as f64 * FACTOR;
 

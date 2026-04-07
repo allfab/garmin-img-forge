@@ -27,6 +27,8 @@ pub struct TdbWriter {
     pub overview_map_number: u32,
     pub tiles: Vec<TdbTile>,
     pub codepage: u16,
+    /// Enable profile/elevation display (set to true when DEM is present)
+    pub enable_profile: bool,
 }
 
 /// A tile entry in the TDB
@@ -61,6 +63,7 @@ impl TdbWriter {
             overview_map_number: 0,
             tiles: Vec::new(),
             codepage: 0,
+            enable_profile: false,
         }
     }
 
@@ -138,7 +141,7 @@ impl TdbWriter {
         data.extend_from_slice(&(self.codepage as u32).to_le_bytes()); // codePage
         data.extend_from_slice(&10000u32.to_le_bytes()); // constant
         data.push(0x01);       // map is routable
-        data.push(0x00);       // no profile
+        data.push(if self.enable_profile { 0x01 } else { 0x00 }); // profile/elevation
         data.push(0x00);       // reserved
 
         write_block(buf, BLOCK_PRODUCT, &data);

@@ -294,6 +294,11 @@ fn main() -> Result<()> {
                 if let Some(ref rn) = region_name { tdb.region_name = rn.clone(); }
                 if let Some(ref ra) = region_abbr { tdb.region_abbr = ra.clone(); }
 
+                // Enable profile/elevation display if any tile has DEM data
+                if tile_subfiles.iter().any(|t| t.dem.is_some()) {
+                    tdb.enable_profile = true;
+                }
+
                 for tile in &tile_subfiles {
                     let map_num: u32 = tile.map_number.parse().unwrap_or(0);
                     let (north, east, south, west) = imgforge::img::common_header::read_tre_bounds(&tile.tre);
