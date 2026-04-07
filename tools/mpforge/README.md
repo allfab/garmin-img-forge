@@ -225,6 +225,53 @@ Voir le répertoire [`examples/`](examples/) :
 - **[simple-with-mapping.yaml](examples/simple-with-mapping.yaml)** : Configuration avec field mapping (sources avec champs personnalisés)
 - **[bdtopo.yaml](examples/bdtopo.yaml)** : Configuration production pour BDTOPO (35 GB, 50+ couches)
 
+### Généralisation de géométrie
+
+**mpforge** permet de lisser et/ou simplifier les géométries par couche via la directive `generalize` dans la configuration des sources. Cela reproduit le comportement des transformeurs FME comme Generalizer (McMaster) en utilisant des algorithmes géométriques standards.
+
+#### Configuration
+
+Ajoutez `generalize` à n'importe quelle entrée `inputs` :
+
+```yaml
+inputs:
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    generalize:
+      smooth: "chaikin"       # Algorithme de lissage
+      iterations: 2           # Nombre de passes (chaque itération double les vertices)
+      simplify: 0.00005       # Tolérance Douglas-Peucker (degrés WGS84, optionnel)
+```
+
+#### Paramètres
+
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `smooth` | string | non | Algorithme de lissage : `"chaikin"` (corner-cutting) |
+| `iterations` | entier | non | Nombre de passes de lissage (défaut : 1) |
+| `simplify` | flottant | non | Tolérance Douglas-Peucker en degrés WGS84 (post-lissage) |
+
+#### Algorithmes disponibles
+
+**Chaikin corner-cutting** (`smooth: "chaikin"`) : Lisse les angles vifs des polygones et polylignes en coupant itérativement les coins. Équivalent approximatif du McMaster sliding average de FME. Chaque itération double le nombre de vertices, d'où l'intérêt de combiner avec `simplify` pour contrôler la densité finale.
+
+| Itérations | Résultat |
+|-----------|----------|
+| 1 | Lissage léger — adoucit les angles |
+| 2 | Lissage modéré — courbes arrondies (recommandé) |
+| 3+ | Lissage prononcé — très arrondi, beaucoup de vertices |
+
+#### Pipeline de traitement
+
+La généralisation s'applique **après le clipping** des features sur les tuiles et **avant l'export** en Polish Map :
+
+```
+Lecture → Règles → Clipping tuile → [Lissage + Simplification] → Export .mp
+```
+
+Les points (POI) ne sont pas affectés. Seuls les polygones et polylignes sont traités.
+
 ### Field Mapping Configuration
 
 **mpforge** supporte le mappage personnalisé des champs sources vers les champs canoniques du format Polish Map via un **fichier YAML externe**.

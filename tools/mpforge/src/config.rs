@@ -53,7 +53,7 @@ pub struct GridConfig {
     pub origin: Option<[f64; 2]>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct InputSource {
     pub path: Option<String>,
     pub connection: Option<String>,
@@ -73,6 +73,31 @@ pub struct InputSource {
     /// When set, replaces the native layer.name() so multiple SHP tiles match the same ruleset.
     #[serde(default)]
     pub layer_alias: Option<String>,
+    /// Geometry generalization: smoothing and/or simplification applied after clipping.
+    #[serde(default)]
+    pub generalize: Option<GeneralizeConfig>,
+}
+
+/// Configuration for geometry generalization (smoothing + simplification).
+///
+/// Smoothing algorithms produce rounder curves from angular polygon/polyline vertices.
+/// Optional simplification reduces vertex count after smoothing.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GeneralizeConfig {
+    /// Smoothing algorithm: "chaikin" (Chaikin corner-cutting).
+    #[serde(default)]
+    pub smooth: Option<String>,
+    /// Number of smoothing iterations (default: 1). Each iteration doubles vertex count.
+    #[serde(default = "default_iterations")]
+    pub iterations: usize,
+    /// Optional Douglas-Peucker simplification tolerance (in degrees WGS84).
+    /// Applied after smoothing to reduce vertex count.
+    #[serde(default)]
+    pub simplify: Option<f64>,
+}
+
+fn default_iterations() -> usize {
+    1
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,6 +252,31 @@ impl std::str::FromStr for ErrorMode {
 }
 
 impl InputSource {
+    /// Resolve the effective layer name: `layer_alias` if set, `layer` if set,
+    /// otherwise the filename stem from `path` (e.g., "ZONE_D_HABITATION" from ".../ZONE_D_HABITATION.shp").
+    ///
+    /// Returns `None` for wildcard paths (containing `*` or `?`) since they expand
+    /// to multiple layers at runtime.
+    pub fn effective_layer_name(&self) -> Option<String> {
+        if let Some(ref alias) = self.layer_alias {
+            return Some(alias.clone());
+        }
+        if let Some(ref layer) = self.layer {
+            return Some(layer.clone());
+        }
+        if let Some(ref path) = self.path {
+            // Wildcard paths expand to multiple files/layers — no single name
+            if path.contains('*') || path.contains('?') {
+                return None;
+            }
+            return Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string());
+        }
+        None
+    }
+
     /// Detect source type based on connection string pattern.
     pub fn source_type(&self) -> SourceType {
         if let Some(conn) = &self.connection {
@@ -239,6 +289,33 @@ impl InputSource {
 }
 
 impl Config {
+    /// Build a map of layer_name → GeneralizeConfig for all inputs that have generalization configured.
+    ///
+    /// The layer name is resolved as: `layer_alias` if set, otherwise the filename stem from `path`.
+    pub fn build_generalize_map(&self) -> HashMap<String, GeneralizeConfig> {
+        let mut map = HashMap::new();
+        for input in &self.inputs {
+            if let Some(ref gen_config) = input.generalize {
+                match input.effective_layer_name() {
+                    Some(name) => {
+                        map.insert(name, gen_config.clone());
+                    }
+                    None => {
+                        let source = input.path.as_deref()
+                            .or(input.connection.as_deref())
+                            .unwrap_or("<unknown>");
+                        warn!(
+                            source = %source,
+                            "generalize directive ignored: cannot resolve layer name \
+                             (use layer_alias for wildcard paths or PostGIS connections)"
+                        );
+                    }
+                }
+            }
+        }
+        map
+    }
+
     /// Validate configuration semantic rules.
     pub fn validate(&self) -> anyhow::Result<()> {
         // Grid validation
@@ -270,6 +347,33 @@ impl Config {
                     "InputSource #{} must have either 'path' or 'connection', not both or none",
                     i
                 );
+            }
+
+            // Validate generalize config
+            if let Some(ref gen) = input.generalize {
+                if gen.iterations == 0 {
+                    anyhow::bail!(
+                        "InputSource #{}: generalize.iterations must be >= 1, got 0",
+                        i
+                    );
+                }
+                if let Some(tol) = gen.simplify {
+                    if tol <= 0.0 {
+                        anyhow::bail!(
+                            "InputSource #{}: generalize.simplify must be positive, got {}",
+                            i, tol
+                        );
+                    }
+                }
+                if let Some(ref algo) = gen.smooth {
+                    if algo != "chaikin" {
+                        anyhow::bail!(
+                            "InputSource #{}: unknown generalize.smooth algorithm '{}' \
+                             (supported: \"chaikin\")",
+                            i, algo
+                        );
+                    }
+                }
             }
         }
 
@@ -1090,6 +1194,7 @@ output:
                 target_srs: None,
                 attribute_filter: None,
                 layer_alias: None,
+                generalize: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -1179,6 +1284,208 @@ filters:
             .contains("min_lat must be < max_lat"));
     }
 
+    // =================================================================
+    // Tests: effective_layer_name
+    // =================================================================
+
+    #[test]
+    fn test_effective_layer_name_from_path() {
+        let input = InputSource {
+            path: Some("/data/LIEUX_NOMMES/ZONE_D_HABITATION.shp".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), Some("ZONE_D_HABITATION".to_string()));
+    }
+
+    #[test]
+    fn test_effective_layer_name_layer_alias_wins() {
+        let input = InputSource {
+            path: Some("/data/ZONE_D_HABITATION.shp".to_string()),
+            layer_alias: Some("MY_ALIAS".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), Some("MY_ALIAS".to_string()));
+    }
+
+    #[test]
+    fn test_effective_layer_name_layer_over_path() {
+        let input = InputSource {
+            path: Some("/data/ZONE_D_HABITATION.shp".to_string()),
+            layer: Some("my_layer".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), Some("my_layer".to_string()));
+    }
+
+    #[test]
+    fn test_effective_layer_name_wildcard_returns_none() {
+        let input = InputSource {
+            path: Some("/data/**/*.shp".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), None);
+    }
+
+    #[test]
+    fn test_effective_layer_name_wildcard_with_alias() {
+        // layer_alias takes precedence even for wildcard paths
+        let input = InputSource {
+            path: Some("/data/**/*.shp".to_string()),
+            layer_alias: Some("MY_LAYER".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), Some("MY_LAYER".to_string()));
+    }
+
+    #[test]
+    fn test_effective_layer_name_no_path_no_layer() {
+        let input = InputSource {
+            connection: Some("PG:host=localhost".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(input.effective_layer_name(), None);
+    }
+
+    // =================================================================
+    // Tests: build_generalize_map
+    // =================================================================
+
+    #[test]
+    fn test_build_generalize_map_basic() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE_D_HABITATION.shp"
+    generalize:
+      smooth: "chaikin"
+      iterations: 2
+  - path: "data/BATIMENT.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let map = config.build_generalize_map();
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key("ZONE_D_HABITATION"));
+        assert_eq!(map["ZONE_D_HABITATION"].iterations, 2);
+    }
+
+    #[test]
+    fn test_build_generalize_map_wildcard_ignored() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/**/*.shp"
+    generalize:
+      smooth: "chaikin"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let map = config.build_generalize_map();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_build_generalize_map_empty_when_no_generalize() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.build_generalize_map().is_empty());
+    }
+
+    // =================================================================
+    // Tests: GeneralizeConfig validation (H4)
+    // =================================================================
+
+    #[test]
+    fn test_validate_generalize_iterations_zero() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    generalize:
+      smooth: "chaikin"
+      iterations: 0
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("iterations must be >= 1"));
+    }
+
+    #[test]
+    fn test_validate_generalize_negative_simplify() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    generalize:
+      simplify: -0.001
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("simplify must be positive"));
+    }
+
+    #[test]
+    fn test_validate_generalize_unknown_algorithm() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    generalize:
+      smooth: "mcmaster"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown generalize.smooth algorithm"));
+    }
+
+    #[test]
+    fn test_validate_generalize_valid_config() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    generalize:
+      smooth: "chaikin"
+      iterations: 2
+      simplify: 0.00005
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
     #[test]
     fn test_input_source_type_detection() {
         // File type (path)
@@ -1191,6 +1498,7 @@ filters:
             target_srs: None,
             attribute_filter: None,
             layer_alias: None,
+            generalize: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -1204,6 +1512,7 @@ filters:
             target_srs: None,
             attribute_filter: None,
             layer_alias: None,
+            generalize: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -1217,6 +1526,7 @@ filters:
             target_srs: None,
             attribute_filter: None,
             layer_alias: None,
+            generalize: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -1230,6 +1540,7 @@ filters:
             target_srs: None,
             attribute_filter: None,
             layer_alias: None,
+            generalize: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -1806,6 +2117,7 @@ header:
             target_srs: Some("EPSG:4326".to_string()),
             attribute_filter: Some("ALTITUDE > 100".to_string()),
             layer_alias: Some("COURBE".to_string()),
+            generalize: None,
         };
         let cloned = input.clone();
         assert_eq!(cloned.path, input.path);

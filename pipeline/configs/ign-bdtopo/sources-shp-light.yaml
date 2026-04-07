@@ -18,6 +18,10 @@ inputs:
   - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    generalize:
+      smooth: "chaikin"
+      iterations: 2
+      simplify: 0.00005
 
   # Bâtiments (polygon — couche volumineuse)
   - path: "${DATA_ROOT}/BATI/BATIMENT.shp"

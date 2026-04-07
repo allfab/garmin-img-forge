@@ -2,6 +2,7 @@
 //!
 //! Story 11.1: Parallelized tile processing via rayon thread pool.
 
+pub mod geometry_smoother;
 pub mod geometry_validator;
 pub mod reader;
 pub mod route_params;
@@ -10,8 +11,9 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
+use crate::config::{Config, ErrorMode, GeneralizeConfig, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
+use crate::pipeline::geometry_smoother::generalize_features;
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -195,6 +197,7 @@ struct TileContext<'a> {
     filename_pattern: &'a str,
     field_mapping_path: Option<&'a Path>,
     header_config: Option<&'a HeaderConfig>,
+    generalize_map: Arc<std::collections::HashMap<String, GeneralizeConfig>>,
 }
 
 /// Process a single tile autonomously (thread-safe).
@@ -346,6 +349,18 @@ fn process_single_tile(
         }
     }
     drop(features);
+
+    // 3b. Apply geometry generalization (smoothing + simplification) per-layer
+    if !ctx.generalize_map.is_empty() {
+        let gen_count = generalize_features(&mut clipped_features, &ctx.generalize_map);
+        if gen_count > 0 {
+            tracing::debug!(
+                tile_id = %tile_id,
+                generalized = gen_count,
+                "Geometry generalization applied"
+            );
+        }
+    }
 
     if clipped_features.is_empty() {
         return Ok(TileOutcome::Skipped { existing: false });
@@ -680,6 +695,15 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         args.skip_existing || config.output.overwrite == Some(false);
 
     // Story 11.1 — Task 1: Build immutable context shared across workers
+    let generalize_map = Arc::new(config.build_generalize_map());
+    if !generalize_map.is_empty() {
+        let layer_list: Vec<&str> = generalize_map.keys().map(|s| s.as_str()).collect();
+        info!(
+            layers = %layer_list.join(", "),
+            "Geometry generalization configured"
+        );
+    }
+
     let ctx = TileContext {
         config,
         rules: rules.map(Arc::new),
@@ -690,6 +714,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         filename_pattern: &config.output.filename_pattern,
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
+        generalize_map,
     };
 
     // Inform user when no header section is configured

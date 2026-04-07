@@ -119,6 +119,33 @@ Seuls les noms POSIX valides sont reconnus : lettres, chiffres et underscores, c
 | `{seq:04}.mp` | `0157.mp` | Séquentiel |
 | `tile_{col}_{row}.mp` | `tile_15_42.mp` | Préfixe personnalisé |
 
+### Généralisation de géométrie
+
+Pour certaines couches, les géométries brutes (polygones anguleux, polylignes en escalier) gagnent à être lissées avant export. mpforge propose une directive `generalize` par source qui reproduit les transformations FME type Generalizer (McMaster).
+
+```yaml
+inputs:
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    generalize:
+      smooth: "chaikin"       # Algorithme : Chaikin corner-cutting
+      iterations: 2           # Nombre de passes (chaque passe double les vertices)
+      simplify: 0.00005       # Douglas-Peucker après lissage (degrés WGS84, optionnel)
+```
+
+| Paramètre | Type | Défaut | Description |
+|-----------|------|--------|-------------|
+| `smooth` | string | — | Algorithme de lissage. Seul `"chaikin"` est disponible actuellement |
+| `iterations` | entier | 1 | Nombre de passes de lissage |
+| `simplify` | flottant | — | Tolérance Douglas-Peucker post-lissage (en degrés WGS84) |
+
+!!! tip "Équivalence FME"
+    Le **Chaikin corner-cutting** avec `iterations: 2` produit un résultat visuel proche du **McMaster sliding average** de FME (voisins=2, offset=25%). Combinez avec `simplify` pour éviter l'explosion du nombre de vertices.
+
+!!! note "Pipeline"
+    La généralisation s'applique **après** le clipping sur les tuiles et **avant** l'export en Polish Map. Les points (POI) ne sont pas affectés.
+
 ## 2. Field mapping
 
 Le field mapping traduit les noms de colonnes de vos données sources vers les champs standard du format Polish Map :

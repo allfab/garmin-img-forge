@@ -128,6 +128,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
         target_srs: Some("EPSG:4326".to_string()),
                 attribute_filter: None,
                 layer_alias: None,
+            generalize: None,
     });
 
     // Scan extents should work with explicit SRS
@@ -192,6 +193,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
         target_srs: None, // Should default to WGS84
         attribute_filter: None,
         layer_alias: None,
+            generalize: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();
@@ -239,6 +241,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
         target_srs: None,
                 attribute_filter: None,
                 layer_alias: None,
+            generalize: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();
@@ -296,6 +299,7 @@ fn test_srs_override_detected_srs() {
         target_srs: Some("EPSG:4326".to_string()),
                 attribute_filter: None,
                 layer_alias: None,
+            generalize: None,
     });
 
     // Use scan_extents to get proper bounds for the spatial filter
@@ -383,6 +387,7 @@ fn test_srs_scan_extents_explicit() {
         target_srs: Some("EPSG:4326".to_string()),
                 attribute_filter: None,
                 layer_alias: None,
+            generalize: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();
