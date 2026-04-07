@@ -305,15 +305,10 @@ impl TreWriter {
         sorted.iter().flat_map(|o| o.write()).collect()
     }
 
+    /// Build ext type overviews data — order must match TRE count fields:
+    /// Lines first, then Areas (polygons), then Points (mkgmap TREHeader.java)
     fn build_ext_type_overviews(&self) -> Vec<u8> {
         let mut data = Vec::new();
-
-        let mut sorted_points = self.ext_point_overviews.clone();
-        sorted_points.sort();
-        sorted_points.dedup();
-        for o in &sorted_points {
-            data.extend_from_slice(&o.write());
-        }
 
         let mut sorted_lines = self.ext_polyline_overviews.clone();
         sorted_lines.sort();
@@ -326,6 +321,13 @@ impl TreWriter {
         sorted_polys.sort();
         sorted_polys.dedup();
         for o in &sorted_polys {
+            data.extend_from_slice(&o.write());
+        }
+
+        let mut sorted_points = self.ext_point_overviews.clone();
+        sorted_points.sort();
+        sorted_points.dedup();
+        for o in &sorted_points {
             data.extend_from_slice(&o.write());
         }
 

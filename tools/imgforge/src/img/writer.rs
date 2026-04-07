@@ -286,84 +286,124 @@ fn build_multilevel_hierarchy(
     ext_offsets.push((0, 0, 0, 0, 0, 0));
 
     // ── Process each level from most zoomed-out to most detailed ──
-    // Skip the highest level (it's the inherited topdiv level)
+    // Each level filters features from the FULL map bounds (not parent subdivision bounds).
+    // This ensures complete spatial coverage: even if a coarser level has sparse features,
+    // finer levels still include all their features. Parent→child links are assigned
+    // by spatial containment of each subdivision's center within parent areas.
     let process_levels = if num_levels > 1 { num_levels - 1 } else { num_levels };
     for level_idx in (0..process_levels).rev() {
         let level = &levels[level_idx];
         let level_num = level_idx as u8;
         let shift = (24i32 - level.resolution as i32).max(0);
 
-        let mut next_parent_areas: Vec<(Area, u32)> = Vec::new();
+        // Filter ALL features for this level from FULL map bounds
+        let (split_points, split_lines, split_shapes) =
+            filter_features_for_level(mp, level_num, bounds);
 
-        for (parent_bounds, parent_num) in &parent_areas {
-            let (split_points, split_lines, split_shapes) =
-                filter_features_for_level(mp, level_num, parent_bounds);
+        if split_points.is_empty() && split_lines.is_empty() && split_shapes.is_empty() {
+            continue;
+        }
 
-            if split_points.is_empty() && split_lines.is_empty() && split_shapes.is_empty() {
-                continue;
-            }
+        let areas = splitter::split_features(
+            *bounds, level.resolution,
+            split_points, split_lines, split_shapes,
+        );
+        if areas.is_empty() { continue; }
 
-            let areas = splitter::split_features(
-                *parent_bounds, level.resolution,
-                split_points, split_lines, split_shapes,
-            );
-            if areas.is_empty() { continue; }
-
-            let first_child_num = subdiv_counter;
-
-            for (i, area) in areas.iter().enumerate() {
-                assert!(subdiv_counter <= u16::MAX as u32, "Too many subdivisions (>65535)");
-                let subdiv_num = subdiv_counter as u16;
-                subdiv_counter += 1;
-
-                let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
-                subdiv.set_center(&area.bounds.center());
-                subdiv.set_bounds(
-                    area.bounds.min_lat(), area.bounds.min_lon(),
-                    area.bounds.max_lat(), area.bounds.max_lon(),
-                );
-                subdiv.parent = *parent_num as u16;
-                subdiv.is_last = i == areas.len() - 1;
-
-                // Capture ext positions before encoding
-                let ext_areas_before = rgn.ext_areas_position();
-                let ext_lines_before = rgn.ext_lines_position();
-                let ext_points_before = rgn.ext_points_position();
-
-                let is_leaf = level_idx == 0;
-                let (pts_data, lines_data, polys_data, road_refs) =
-                    encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx, is_leaf);
-                all_subdiv_road_refs.extend(road_refs);
-
-                // Capture ext positions after encoding
-                let ext_areas_after = rgn.ext_areas_position();
-                let ext_lines_after = rgn.ext_lines_position();
-                let ext_points_after = rgn.ext_points_position();
-                ext_offsets.push((ext_areas_before, ext_lines_before, ext_points_before,
-                                  ext_areas_after, ext_lines_after, ext_points_after));
-
-                if !pts_data.is_empty() { subdiv.flags |= subdivision::HAS_POINTS; }
-                if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
-                if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
-
-                // mkgmap: startRgnPointer = position() - HEADER_LEN → relative to RGN body
-                subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
-
-                let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
-                if total_rgn > MAX_RGN_SIZE {
+        // Determine parent for each area, then sort by parent to guarantee
+        // contiguous child subdivision numbers per parent (Garmin format requirement:
+        // children are encoded as "first child number" + contiguous range).
+        let area_parents: Vec<u16> = areas.iter().map(|area| {
+            let center = area.bounds.center();
+            parent_areas.iter()
+                .find(|(pa, _)| pa.contains_coord(&center))
+                .map(|(_, n)| *n as u16)
+                .unwrap_or_else(|| {
                     eprintln!(
-                        "WARNING: Subdivision {} RGN size {} exceeds MAX_RGN_SIZE {}",
-                        subdiv_num, total_rgn, MAX_RGN_SIZE
+                        "WARNING: subdivision center ({},{}) not contained in any parent, assigning to topdiv",
+                        center.latitude(), center.longitude()
                     );
-                }
+                    1
+                })
+        }).collect();
 
-                all_subdivisions.push(subdiv);
-                next_parent_areas.push((area.bounds, subdiv_num as u32));
+        // Sort areas by parent number to ensure contiguity
+        let mut order: Vec<usize> = (0..areas.len()).collect();
+        order.sort_by_key(|&i| area_parents[i]);
+
+        let sorted_areas: Vec<&MapArea> = order.iter().map(|&i| &areas[i]).collect();
+        let sorted_parents: Vec<u16> = order.iter().map(|&i| area_parents[i]).collect();
+
+        let mut next_parent_areas: Vec<(Area, u32)> = Vec::new();
+        let first_child_num = subdiv_counter;
+
+        for (i, (&area, &parent_num)) in sorted_areas.iter().zip(sorted_parents.iter()).enumerate() {
+            assert!(subdiv_counter <= u16::MAX as u32, "Too many subdivisions (>65535)");
+            let subdiv_num = subdiv_counter as u16;
+            subdiv_counter += 1;
+
+            let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
+            subdiv.set_center(&area.bounds.center());
+            subdiv.set_bounds(
+                area.bounds.min_lat(), area.bounds.min_lon(),
+                area.bounds.max_lat(), area.bounds.max_lon(),
+            );
+            subdiv.parent = parent_num;
+            subdiv.is_last = i == sorted_areas.len() - 1;
+
+            // Capture ext positions before encoding
+            let ext_areas_before = rgn.ext_areas_position();
+            let ext_lines_before = rgn.ext_lines_position();
+            let ext_points_before = rgn.ext_points_position();
+
+            let is_leaf = level_idx == 0;
+            let (pts_data, lines_data, polys_data, road_refs) =
+                encode_subdivision_rgn(mp, area, &subdiv, shift, point_labels, line_labels, poly_labels, rgn, routing_ctx, is_leaf);
+            all_subdiv_road_refs.extend(road_refs);
+
+            // Capture ext positions after encoding
+            let ext_areas_after = rgn.ext_areas_position();
+            let ext_lines_after = rgn.ext_lines_position();
+            let ext_points_after = rgn.ext_points_position();
+            ext_offsets.push((ext_areas_before, ext_lines_before, ext_points_before,
+                              ext_areas_after, ext_lines_after, ext_points_after));
+
+            if !pts_data.is_empty() { subdiv.flags |= subdivision::HAS_POINTS; }
+            if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
+            if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
+
+            // mkgmap: startRgnPointer = position() - HEADER_LEN → relative to RGN body
+            subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
+
+            let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
+            if total_rgn > MAX_RGN_SIZE {
+                eprintln!(
+                    "WARNING: Subdivision {} RGN size {} exceeds MAX_RGN_SIZE {}",
+                    subdiv_num, total_rgn, MAX_RGN_SIZE
+                );
             }
 
-            if let Some(parent) = all_subdivisions.iter_mut().find(|s| s.number == *parent_num as u16) {
+            all_subdivisions.push(subdiv);
+            next_parent_areas.push((area.bounds, subdiv_num as u32));
+        }
+
+        // Link children to parents — contiguous ranges guaranteed by parent-sorted numbering
+        let child_nums: Vec<u16> = (first_child_num..subdiv_counter).map(|n| n as u16).collect();
+        let child_parents: Vec<u16> = child_nums.iter().map(|&num| {
+            all_subdivisions.iter().find(|s| s.number == num).map(|s| s.parent).unwrap_or(1)
+        }).collect();
+
+        let mut i = 0;
+        while i < child_nums.len() {
+            let pnum = child_parents[i];
+            let start = i;
+            while i < child_nums.len() && child_parents[i] == pnum {
+                i += 1;
+            }
+            let children: Vec<u16> = child_nums[start..i].to_vec();
+            if let Some(parent) = all_subdivisions.iter_mut().find(|s| s.number == pnum) {
                 parent.has_children = true;
-                parent.children = (first_child_num..subdiv_counter).map(|n| n as u16).collect();
+                parent.children = children;
             }
         }
 
@@ -460,12 +500,25 @@ fn filter_features_for_level(
         .map(|(i, p)| SplitPoint { mp_index: i, location: p.coord })
         .collect();
 
+    // Auto-simplification: when no explicit simplification is configured and shift > 0,
+    // apply a default DP epsilon to prevent quantization artifacts (self-intersections,
+    // degenerate edges) caused by coordinate quantization at lower resolutions.
+    let shift = mp.header.levels.get(level as usize)
+        .map(|&res| (24i32 - res as i32).max(0))
+        .unwrap_or(0);
+    let auto_epsilon = if shift > 0 && level > 0 {
+        Some((1i32 << shift) as f64 * 0.5)
+    } else {
+        None
+    };
+
     // Determine DP epsilon for lines
-    let line_epsilon = mp.header.reduce_point_density;
+    let line_epsilon = mp.header.reduce_point_density.or(auto_epsilon);
 
     // Determine DP epsilon for polygons (simplify_polygons per-resolution or fallback to reduce_point_density)
     let poly_epsilon = resolve_polygon_epsilon(&mp.header, level)
-        .or(mp.header.reduce_point_density);
+        .or(mp.header.reduce_point_density)
+        .or(auto_epsilon);
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
@@ -622,10 +675,24 @@ fn encode_subdivision_rgn(
     let mut polygons_data = Vec::new();
     for split_shape in &area.shapes {
         if split_shape.points.len() < 3 { continue; }
+        // Remove duplicate closing vertex (shapefile convention: first == last)
+        // Garmin format closes polygons implicitly, so the duplicate wastes bitstream space
+        let pts = if split_shape.points.len() > 3 {
+            let first = &split_shape.points[0];
+            let last = &split_shape.points[split_shape.points.len() - 1];
+            if first.latitude() == last.latitude() && first.longitude() == last.longitude() {
+                &split_shape.points[..split_shape.points.len() - 1]
+            } else {
+                &split_shape.points[..]
+            }
+        } else {
+            &split_shape.points[..]
+        };
+        if pts.len() < 3 { continue; }
         let mp_poly = &mp.polygons[split_shape.mp_index];
-        let mut pg = Polygon::new(mp_poly.type_code, split_shape.points.clone());
+        let mut pg = Polygon::new(mp_poly.type_code, pts.to_vec());
         pg.label_offset = poly_labels[split_shape.mp_index];
-        let deltas = compute_deltas(&split_shape.points, subdiv);
+        let deltas = compute_deltas(pts, subdiv);
         let is_ext = mp_poly.type_code >= 0x100;
         if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
             if is_ext {
