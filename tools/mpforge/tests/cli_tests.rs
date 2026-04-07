@@ -238,20 +238,18 @@ fn test_build_without_config_fails() {
 #[test]
 fn test_build_with_config_succeeds() {
     let mut cmd = cargo_bin_cmd!("mpforge");
-    cmd.args(["build", "--config", "test.yaml"]);
+    cmd.args(["build", "--config", "test.yaml", "--dry-run"]);
 
-    // In Story 5.1, the pipeline stub succeeds with placeholder config
-    // Story 5.2 will implement actual config validation
+    // dry-run: parse config, scan extents, generate grid — skip export (no PolishMap driver needed)
     cmd.assert().success();
 }
 
 #[test]
 fn test_verbosity_flag_parsing() {
     let mut cmd = cargo_bin_cmd!("mpforge");
-    cmd.args(["build", "--config", "test.yaml", "-vv"]);
+    cmd.args(["build", "--config", "test.yaml", "-vv", "--dry-run"]);
 
     // Verify the command accepts verbosity flags and runs successfully
-    // The stub pipeline should complete successfully in this story
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Pipeline"));
@@ -260,7 +258,7 @@ fn test_verbosity_flag_parsing() {
 #[test]
 fn test_jobs_option_parsing() {
     let mut cmd = cargo_bin_cmd!("mpforge");
-    cmd.args(["build", "--config", "test.yaml", "--jobs", "4"]);
+    cmd.args(["build", "--config", "test.yaml", "--jobs", "4", "--dry-run"]);
 
     // Verify the jobs argument is accepted and pipeline runs
     cmd.assert().success();
@@ -269,7 +267,7 @@ fn test_jobs_option_parsing() {
 #[test]
 fn test_fail_fast_flag_parsing() {
     let mut cmd = cargo_bin_cmd!("mpforge");
-    cmd.args(["build", "--config", "test.yaml", "--fail-fast"]);
+    cmd.args(["build", "--config", "test.yaml", "--fail-fast", "--dry-run"]);
 
     // Verify the fail-fast flag is accepted and pipeline runs
     cmd.assert().success();

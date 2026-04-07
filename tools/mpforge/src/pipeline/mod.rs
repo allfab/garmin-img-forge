@@ -605,12 +605,58 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let start_time = Instant::now();
 
     // ========================================================================
-    // Phase 1: Scan extents (no feature loading) and generate grid
+    // Phase 1a: Pre-build spatial filter geometries (union + buffer)
+    // Must run BEFORE extent scan so we can clamp source extents to the
+    // spatial filter envelope (prevents COURBE tiles from inflating the grid).
+    // F2: Deduplicate by (source, buffer) to avoid rebuilding for wildcard-expanded sources
     // ========================================================================
-    info!("Phase 1: Scanning source extents");
+    let mut sf_cache: std::collections::HashMap<String, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
+    let mut spatial_filter_geometries: std::collections::HashMap<usize, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
+    for (idx, input) in config.inputs.iter().enumerate() {
+        if let Some(ref sf) = input.spatial_filter {
+            let cache_key = format!("{}|{}", sf.source, sf.buffer);
+            let sf_geom = if let Some(cached) = sf_cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                info!(
+                    source_index = idx,
+                    filter_source = %sf.source,
+                    buffer_m = sf.buffer,
+                    "Building spatial filter geometry for source"
+                );
+                let built = SourceReader::build_spatial_filter_geometry(&sf.source, sf.buffer)
+                    .with_context(|| format!(
+                        "Failed to build spatial filter geometry from '{}' for source index {}",
+                        sf.source, idx
+                    ))?;
+                sf_cache.insert(cache_key, built.clone());
+                built
+            };
+            spatial_filter_geometries.insert(idx, sf_geom);
+        }
+    }
+    if !spatial_filter_geometries.is_empty() {
+        info!(
+            count = spatial_filter_geometries.len(),
+            unique = sf_cache.len(),
+            "Spatial filter geometries pre-built"
+        );
+    }
+
+    // ========================================================================
+    // Phase 1b: Scan extents (no feature loading) and generate grid
+    // Sources with a spatial_filter have their extent clamped to the filter envelope.
+    // ========================================================================
+    info!("Phase 1b: Scanning source extents");
     let scan_start = Instant::now();
 
-    let global_extent = match SourceReader::scan_extents(config) {
+    // Build envelope map for scan_extents: source_index → [minx, miny, maxx, maxy] in source SRS
+    let sf_envelopes: std::collections::HashMap<usize, ([f64; 4], Option<String>)> =
+        spatial_filter_geometries.iter()
+            .map(|(&idx, sf)| (idx, (sf.envelope, sf.srs.clone())))
+            .collect();
+
+    let global_extent = match SourceReader::scan_extents(config, &sf_envelopes) {
         Ok(extent) => extent,
         Err(_) if config.inputs.is_empty() => {
             // No inputs at all — return empty success (Story 5.4 AC5)
@@ -651,42 +697,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     info!(tiles_count = tiles.len(), "Grid generated");
 
-    // ========================================================================
-    // Phase 1b: Pre-build spatial filter geometries (union + buffer)
-    // F2: Deduplicate by (source, buffer) to avoid rebuilding for wildcard-expanded sources
-    // ========================================================================
-    let mut sf_cache: std::collections::HashMap<String, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
-    let mut spatial_filter_geometries: std::collections::HashMap<usize, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
-    for (idx, input) in config.inputs.iter().enumerate() {
-        if let Some(ref sf) = input.spatial_filter {
-            let cache_key = format!("{}|{}", sf.source, sf.buffer);
-            let sf_geom = if let Some(cached) = sf_cache.get(&cache_key) {
-                cached.clone()
-            } else {
-                info!(
-                    source_index = idx,
-                    filter_source = %sf.source,
-                    buffer_m = sf.buffer,
-                    "Building spatial filter geometry for source"
-                );
-                let built = SourceReader::build_spatial_filter_geometry(&sf.source, sf.buffer)
-                    .with_context(|| format!(
-                        "Failed to build spatial filter geometry from '{}' for source index {}",
-                        sf.source, idx
-                    ))?;
-                sf_cache.insert(cache_key, built.clone());
-                built
-            };
-            spatial_filter_geometries.insert(idx, sf_geom);
-        }
-    }
-    if !spatial_filter_geometries.is_empty() {
-        info!(
-            count = spatial_filter_geometries.len(),
-            unique = sf_cache.len(),
-            "Spatial filter geometries pre-built"
-        );
-    }
     let spatial_filter_geometries = Arc::new(spatial_filter_geometries);
 
     // ========================================================================

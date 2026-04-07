@@ -68,7 +68,7 @@ fn make_config(filenames: &[&str]) -> Config {
 fn test_scan_extents_returns_valid_bbox() {
     let config = make_config(&["file1.shp"]);
 
-    let extent = SourceReader::scan_extents(&config).expect("scan_extents should succeed");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("scan_extents should succeed");
 
     assert_eq!(extent.layer_count, 1, "Should have scanned 1 source");
     assert!(extent.min_x < extent.max_x, "min_x should be < max_x");
@@ -79,7 +79,7 @@ fn test_scan_extents_returns_valid_bbox() {
 fn test_scan_extents_multiple_sources() {
     let config = make_config(&["file1.shp", "file2.shp"]);
 
-    let extent = SourceReader::scan_extents(&config).expect("scan_extents should succeed");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("scan_extents should succeed");
 
     assert_eq!(extent.layer_count, 2, "Should have scanned 2 sources");
     assert!(extent.min_x < extent.max_x);
@@ -91,7 +91,7 @@ fn test_scan_extents_matches_read_all_sources_bbox() {
     // AC1: verify scan_extents bbox matches the R-tree global bbox from read_all_sources
     let config = make_config(&["file1.shp", "file2.shp"]);
 
-    let extent = SourceReader::scan_extents(&config).expect("scan_extents failed");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("scan_extents failed");
     let (_features, rtree, _unsup, _multi) =
         SourceReader::read_all_sources(&config).expect("read_all_sources failed");
 
@@ -159,7 +159,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
         ..make_config(&[])
     };
 
-    let extent = SourceReader::scan_extents(&config).expect("Should succeed despite invalid source");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("Should succeed despite invalid source");
     assert_eq!(extent.layer_count, 1, "Should have scanned 1 valid source");
 }
 
@@ -183,7 +183,7 @@ fn test_scan_extents_invalid_source_fail_fast() {
         ..make_config(&[])
     };
 
-    let result = SourceReader::scan_extents(&config);
+    let result = SourceReader::scan_extents(&config, &std::collections::HashMap::new());
     assert!(result.is_err(), "Should fail with invalid source in fail-fast mode");
 }
 
@@ -196,7 +196,7 @@ fn test_read_features_for_tile_filters_spatially() {
     let config = make_config(&["file1.shp"]);
 
     // First get the full extent
-    let extent = SourceReader::scan_extents(&config).expect("scan_extents failed");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("scan_extents failed");
 
     // Read features for a tile covering the first quarter of the extent
     let mid_x = (extent.min_x + extent.max_x) / 2.0;
@@ -332,7 +332,7 @@ fn test_scan_extents_grid_covers_rtree_grid() {
     // so the scan_extents grid should have >= tiles than the R-tree grid.
     let config = make_config(&["file1.shp", "file2.shp"]);
 
-    let extent = SourceReader::scan_extents(&config).expect("scan_extents failed");
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).expect("scan_extents failed");
     #[allow(deprecated)]
     let (_features, rtree, _unsup, _multi) =
         SourceReader::read_all_sources(&config).expect("read_all_sources failed");

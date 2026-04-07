@@ -133,7 +133,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
     });
 
     // Scan extents should work with explicit SRS
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
     // Lambert 93 (700000, 6600000) ≈ WGS84 (3.0, 46.5) — check bounds are in WGS84 range
     assert!(
         extent.min_x > -10.0 && extent.min_x < 20.0,
@@ -148,7 +148,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
 
     // Read features should produce WGS84 coordinates
     // Use extent-based tile bounds to ensure spatial filter captures the feature
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
     let tile_bounds = mpforge::pipeline::tiler::TileBounds {
         min_lon: extent.min_x - 1.0,
         min_lat: extent.min_y - 1.0,
@@ -198,7 +198,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
             spatial_filter: None,
     });
 
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
     let tile_bounds = mpforge::pipeline::tiler::TileBounds {
         min_lon: extent.min_x - 1.0,
         min_lat: extent.min_y - 1.0,
@@ -247,7 +247,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
             spatial_filter: None,
     });
 
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
     let tile_bounds = mpforge::pipeline::tiler::TileBounds {
         min_lon: extent.min_x - 1.0,
         min_lat: extent.min_y - 1.0,
@@ -307,7 +307,7 @@ fn test_srs_override_detected_srs() {
     });
 
     // Use scan_extents to get proper bounds for the spatial filter
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
     let tile_bounds = mpforge::pipeline::tiler::TileBounds {
         min_lon: extent.min_x - 1.0,
         min_lat: extent.min_y - 1.0,
@@ -395,7 +395,7 @@ fn test_srs_scan_extents_explicit() {
             spatial_filter: None,
     });
 
-    let extent = SourceReader::scan_extents(&config).unwrap();
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
 
     // Extent should be in WGS84 range (France ~42-51 lat, -5-10 lon)
     assert!(

@@ -797,6 +797,10 @@ impl SourceReader {
     ///
     /// # Arguments
     /// * `config` - Configuration with list of input sources
+    /// * `sf_envelopes` - Spatial filter envelopes per source index:
+    ///   `(envelope_in_source_srs, srs_definition)`. When present, the source
+    ///   extent is clamped (intersected) with this envelope so that sources
+    ///   covering a larger area than the clipping geometry do not inflate the grid.
     ///
     /// # Returns
     /// * `Result<GlobalExtent>` - Union bounding box of all sources
@@ -804,7 +808,10 @@ impl SourceReader {
     /// # Errors
     /// * No valid sources found (all failed or empty inputs)
     /// * GDAL errors (depending on error_handling mode)
-    pub fn scan_extents(config: &Config) -> Result<GlobalExtent> {
+    pub fn scan_extents(
+        config: &Config,
+        sf_envelopes: &std::collections::HashMap<usize, ([f64; 4], Option<String>)>,
+    ) -> Result<GlobalExtent> {
         let mut min_x = f64::MAX;
         let mut min_y = f64::MAX;
         let mut max_x = f64::MIN;
@@ -918,7 +925,61 @@ impl SourceReader {
                 };
 
                 // Reproject envelope to target SRS if layer has a different SRS
-                let bounds = [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY];
+                let mut bounds = [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY];
+
+                // Clamp extent to spatial filter envelope when configured.
+                // The spatial filter envelope is in the filter source SRS (typically EPSG:2154).
+                // The layer extent is in the layer's native SRS. When both SRS match,
+                // we intersect the two bounding boxes directly. This prevents sources
+                // like COURBE tiles from inflating the global extent beyond the clipping area.
+                if let Some((sf_env, ref sf_srs)) = sf_envelopes.get(&idx) {
+                    // Determine layer SRS for comparison
+                    let layer_srs_def = input.source_srs.as_deref()
+                        .map(|s| s.to_string())
+                        .or_else(|| layer.spatial_ref().and_then(|srs| {
+                            srs.auth_code().ok().map(|code| format!("EPSG:{}", code))
+                        }));
+
+                    let srs_match = match (&layer_srs_def, sf_srs) {
+                        (Some(a), Some(b)) => a == b,
+                        _ => false,
+                    };
+
+                    if srs_match {
+                        let clamped = [
+                            bounds[0].max(sf_env[0]),
+                            bounds[1].max(sf_env[1]),
+                            bounds[2].min(sf_env[2]),
+                            bounds[3].min(sf_env[3]),
+                        ];
+                        // Only clamp if the intersection is valid (non-empty)
+                        if clamped[0] < clamped[2] && clamped[1] < clamped[3] {
+                            debug!(
+                                path = %path,
+                                source_index = idx,
+                                original = ?bounds,
+                                clamped = ?clamped,
+                                "Extent clamped by spatial filter envelope"
+                            );
+                            bounds = clamped;
+                        } else {
+                            debug!(
+                                path = %path,
+                                source_index = idx,
+                                "Source extent does not intersect spatial filter envelope, skipping"
+                            );
+                            continue;
+                        }
+                    } else {
+                        debug!(
+                            path = %path,
+                            source_index = idx,
+                            layer_srs = ?layer_srs_def,
+                            filter_srs = ?sf_srs,
+                            "SRS mismatch between layer and spatial filter, using raw extent"
+                        );
+                    }
+                }
 
                 // Story 9.4: Use explicit SRS from InputSource if available
                 let bounds_wgs84 = if let Some(ref src_def) = input.source_srs {
