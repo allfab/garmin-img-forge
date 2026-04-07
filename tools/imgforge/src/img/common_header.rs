@@ -87,6 +87,22 @@ pub fn write_u24(buf: &mut Vec<u8>, val: u32) {
     buf.push(b[2]);
 }
 
+/// Read a 24-bit signed LE value from 3 bytes, sign-extended to i32
+pub fn read_i24(bytes: &[u8]) -> i32 {
+    let val = bytes[0] as i32 | ((bytes[1] as i32) << 8) | ((bytes[2] as i32) << 16);
+    if val & 0x800000 != 0 { val | !0xFFFFFF } else { val }
+}
+
+/// Extract map bounds (north, east, south, west) from raw TRE subfile bytes.
+/// Bounds are stored as 24-bit signed LE at TRE header offsets 21-32.
+pub fn read_tre_bounds(tre_data: &[u8]) -> (i32, i32, i32, i32) {
+    let north = read_i24(&tre_data[21..24]);
+    let east  = read_i24(&tre_data[24..27]);
+    let south = read_i24(&tre_data[27..30]);
+    let west  = read_i24(&tre_data[30..33]);
+    (north, east, south, west)
+}
+
 /// Write a 24-bit signed LE value (3 bytes)
 pub fn write_i24(buf: &mut Vec<u8>, val: i32) {
     let b = val.to_le_bytes();

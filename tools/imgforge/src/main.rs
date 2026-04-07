@@ -296,13 +296,34 @@ fn main() -> Result<()> {
 
                 for tile in &tile_subfiles {
                     let map_num: u32 = tile.map_number.parse().unwrap_or(0);
+                    let (north, east, south, west) = imgforge::img::common_header::read_tre_bounds(&tile.tre);
+
+                    // Build subfile list with sizes (IMG subfile naming convention)
+                    let img_name = |ext: &str| format!("I{:08}.{}", map_num, ext);
+                    let mut subfiles = vec![
+                        (img_name("TRE"), tile.tre.len() as u32),
+                        (img_name("RGN"), tile.rgn.len() as u32),
+                        (img_name("LBL"), tile.lbl.len() as u32),
+                    ];
+                    if let Some(ref net) = tile.net {
+                        subfiles.push((img_name("NET"), net.len() as u32));
+                    }
+                    if let Some(ref nod) = tile.nod {
+                        subfiles.push((img_name("NOD"), nod.len() as u32));
+                    }
+                    if let Some(ref dem) = tile.dem {
+                        subfiles.push((img_name("DEM"), dem.len() as u32));
+                    }
+
                     tdb.add_tile(TdbTile {
                         map_number: map_num,
+                        parent_map_number: tdb.overview_map_number,
                         description: tile.map_number.clone(),
-                        north: 0,
-                        south: 0,
-                        east: 0,
-                        west: 0,
+                        north,
+                        south,
+                        east,
+                        west,
+                        subfiles,
                     });
                 }
 
