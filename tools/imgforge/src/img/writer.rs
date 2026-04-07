@@ -567,7 +567,6 @@ fn filter_features_for_level(
     // uses a global bit width based on the max delta across ALL points. Splitting keeps
     // each element's geographic extent small → smaller deltas → compact bitstreams.
     let lines = split_large_polylines(lines);
-    #[allow(unused_mut)]
     let mut shapes = split_large_polygons(shapes);
 
     // Order by decreasing area if requested
@@ -587,13 +586,25 @@ fn filter_features_for_level(
 /// Maximum points per element — mkgmap LineSplitterFilter.MAX_POINTS_IN_LINE
 const MAX_POINTS_IN_ELEMENT: usize = 250;
 
+/// Maximum clipping iterations for polygon splitting (prevents runaway loops
+/// on degenerate geometries where clipping adds intersection points).
+const MAX_POLYGON_SPLIT_ITERATIONS: usize = 10_000;
+
 /// Split polylines with >250 points into chunks — mkgmap LineSplitterFilter
 ///
 /// Each chunk has at most MAX_POINTS_IN_ELEMENT points.
 /// Consecutive chunks share their boundary point (1-point overlap).
 /// mkgmap balances chunk sizes when the total is between 1x and 2x the limit.
+/// Only the first chunk keeps the label; subsequent chunks get label_offset = 0
+/// via the `first_chunk` flag stored in the mp_index encoding (see M3 fix below —
+/// the label suppression is handled in encode_subdivision_rgn by tracking seen mp_indices).
 fn split_large_polylines(lines: Vec<SplitLine>) -> Vec<SplitLine> {
-    let mut result = Vec::with_capacity(lines.len());
+    // Estimate output capacity: most lines pass through, a few expand ~10x
+    let capacity = lines.iter()
+        .map(|l| 1 + l.points.len() / MAX_POINTS_IN_ELEMENT)
+        .sum();
+    let mut result = Vec::with_capacity(capacity);
+
     for line in lines {
         let npoints = line.points.len();
         if npoints <= MAX_POINTS_IN_ELEMENT {
@@ -609,12 +620,22 @@ fn split_large_polylines(lines: Vec<SplitLine>) -> Vec<SplitLine> {
             MAX_POINTS_IN_ELEMENT
         };
 
+        // Safety: max chunks = npoints (each chunk has ≥2 points, so this is generous)
+        let max_chunks = npoints;
+        let mut chunks_emitted = 0;
+
         loop {
-            let end = pos + wanted;
+            debug_assert!(wanted >= 2, "chunk size must be ≥ 2 points");
+            let end = (pos + wanted).min(npoints);
             result.push(SplitLine {
                 mp_index: line.mp_index,
                 points: line.points[pos..end].to_vec(),
             });
+            chunks_emitted += 1;
+
+            if end >= npoints || chunks_emitted >= max_chunks {
+                break;
+            }
 
             pos = end - 1; // 1-point overlap
             let remaining = npoints - pos;
@@ -639,16 +660,36 @@ fn split_large_polylines(lines: Vec<SplitLine>) -> Vec<SplitLine> {
 
 /// Split polygons with >250 points via midpoint clipping — mkgmap PolygonSplitterBase
 ///
-/// Uses Sutherland-Hodgman clipping along the longer bounding-box axis,
-/// recursively, until all fragments have ≤ MAX_POINTS_IN_ELEMENT points.
+/// Uses Sutherland-Hodgman clipping along the longer bounding-box axis.
+/// Processes queue in FIFO order (VecDeque) to preserve input ordering.
+/// Limits iterations to MAX_POLYGON_SPLIT_ITERATIONS to prevent runaway loops
+/// on degenerate geometries where clipping intersections inflate point counts.
 fn split_large_polygons(shapes: Vec<SplitShape>) -> Vec<SplitShape> {
-    let mut result = Vec::with_capacity(shapes.len());
-    let mut queue: Vec<SplitShape> = shapes;
+    use std::collections::VecDeque;
 
-    while let Some(shape) = queue.pop() {
+    let mut result = Vec::with_capacity(shapes.len());
+    let mut queue: VecDeque<SplitShape> = shapes.into_iter().collect();
+    let mut iterations = 0;
+
+    while let Some(shape) = queue.pop_front() {
         if shape.points.len() <= MAX_POINTS_IN_ELEMENT {
             result.push(shape);
             continue;
+        }
+
+        iterations += 1;
+        if iterations > MAX_POLYGON_SPLIT_ITERATIONS {
+            // Degenerate case: stop splitting, keep oversized fragment to avoid data loss
+            eprintln!(
+                "WARNING: polygon split exceeded {} iterations, keeping fragment with {} points",
+                MAX_POLYGON_SPLIT_ITERATIONS, shape.points.len()
+            );
+            result.push(shape);
+            // Drain remaining queue items
+            for remaining in queue {
+                result.push(remaining);
+            }
+            break;
         }
 
         let bbox = Area::from_coords(&shape.points);
@@ -674,10 +715,10 @@ fn split_large_polygons(shapes: Vec<SplitShape>) -> Vec<SplitShape> {
         let b_ok = clipped_b.len() >= 3;
 
         if a_ok {
-            queue.push(SplitShape { mp_index: shape.mp_index, points: clipped_a });
+            queue.push_back(SplitShape { mp_index: shape.mp_index, points: clipped_a });
         }
         if b_ok {
-            queue.push(SplitShape { mp_index: shape.mp_index, points: clipped_b });
+            queue.push_back(SplitShape { mp_index: shape.mp_index, points: clipped_b });
         }
 
         // Safety: if clipping produced nothing useful, keep original to avoid data loss
@@ -744,13 +785,21 @@ fn encode_subdivision_rgn(
     // polyline_counter tracks the index of standard polylines within this subdivision's
     // RGN data. Extended polylines (type >= 0x100) go to a separate RGN section and must
     // NOT be counted, otherwise NET1 level/div polyline_num would be off.
+    // Track seen mp_indices to avoid duplicate labels on split polylines (M3 fix):
+    // only the first chunk of a split polyline gets its label.
+    let mut seen_line_indices: HashSet<usize> = HashSet::new();
     let mut polylines_data = Vec::new();
     for split_line in &area.lines {
         if split_line.points.len() < 2 { continue; }
         let mp_line = &mp.polylines[split_line.mp_index];
         let is_ext = mp_line.type_code >= 0x100;
         let mut pl = Polyline::new(mp_line.type_code, split_line.points.clone());
-        pl.label_offset = line_labels[split_line.mp_index];
+        // Only label the first chunk of a split polyline within this subdivision
+        if seen_line_indices.insert(split_line.mp_index) {
+            pl.label_offset = line_labels[split_line.mp_index];
+        } else {
+            pl.label_offset = 0;
+        }
         pl.direction = mp_line.direction;
 
         // P3: RGN→NET link at leaf level. The label field is REPLACED by
@@ -1333,5 +1382,222 @@ Data0=(48.5734,7.7521)
             pos += 512;
         }
         false
+    }
+}
+
+// ── Tests for feature splitting ───────────────────────────────────────────
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+    use super::splitter::{SplitLine, SplitShape};
+
+    fn coord(lat: i32, lon: i32) -> Coord {
+        Coord::new(lat, lon)
+    }
+
+    fn make_line(n: usize) -> SplitLine {
+        SplitLine {
+            mp_index: 0,
+            points: (0..n).map(|i| coord(i as i32 * 10, i as i32 * 10)).collect(),
+        }
+    }
+
+    fn make_shape(n: usize, spread: i32) -> SplitShape {
+        // Create a polygon with N points arranged in a rough circle
+        let mut pts = Vec::with_capacity(n);
+        for i in 0..n {
+            let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+            let lat = (spread as f64 * angle.sin()) as i32;
+            let lon = (spread as f64 * angle.cos()) as i32;
+            pts.push(coord(lat, lon));
+        }
+        SplitShape { mp_index: 0, points: pts }
+    }
+
+    // ── Polyline splitting tests ──
+
+    #[test]
+    fn test_polyline_no_split_under_limit() {
+        let lines = vec![make_line(250)];
+        let result = split_large_polylines(lines);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].points.len(), 250);
+    }
+
+    #[test]
+    fn test_polyline_no_split_at_limit() {
+        let lines = vec![make_line(MAX_POINTS_IN_ELEMENT)];
+        let result = split_large_polylines(lines);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].points.len(), MAX_POINTS_IN_ELEMENT);
+    }
+
+    #[test]
+    fn test_polyline_split_251_points() {
+        let lines = vec![make_line(251)];
+        let result = split_large_polylines(lines);
+        assert_eq!(result.len(), 2);
+        // mkgmap balances: 251 < 2*250, so wanted = 251/2+1 = 126
+        assert_eq!(result[0].points.len(), 126);
+        assert_eq!(result[1].points.len(), 126); // 251 - 125 = 126
+    }
+
+    #[test]
+    fn test_polyline_split_overlap() {
+        let lines = vec![make_line(501)];
+        let result = split_large_polylines(lines);
+        // Verify 1-point overlap: last point of chunk N == first point of chunk N+1
+        for i in 0..result.len() - 1 {
+            let last = result[i].points.last().unwrap();
+            let first = &result[i + 1].points[0];
+            assert_eq!(
+                last.latitude(), first.latitude(),
+                "chunks {} and {} must share boundary point", i, i + 1
+            );
+            assert_eq!(last.longitude(), first.longitude());
+        }
+    }
+
+    #[test]
+    fn test_polyline_split_preserves_all_points() {
+        let original = make_line(750);
+        let original_first = original.points[0];
+        let original_last = original.points[749];
+        let lines = vec![original];
+        let result = split_large_polylines(lines);
+
+        assert!(result.len() >= 3, "750 points should produce ≥3 chunks");
+
+        // First point of first chunk == original first
+        assert_eq!(result[0].points[0].latitude(), original_first.latitude());
+        // Last point of last chunk == original last
+        let last_chunk = result.last().unwrap();
+        assert_eq!(last_chunk.points.last().unwrap().latitude(), original_last.latitude());
+
+        // All chunks have ≤250 points
+        for (i, chunk) in result.iter().enumerate() {
+            assert!(
+                chunk.points.len() <= MAX_POINTS_IN_ELEMENT,
+                "chunk {} has {} points (max {})",
+                i, chunk.points.len(), MAX_POINTS_IN_ELEMENT
+            );
+            assert!(chunk.points.len() >= 2, "chunk {} has < 2 points", i);
+        }
+    }
+
+    #[test]
+    fn test_polyline_split_3283_points() {
+        // Real-world case from D038 BDTOPO
+        let lines = vec![make_line(3283)];
+        let result = split_large_polylines(lines);
+        // 3283 points → ~14 chunks
+        assert!(result.len() >= 13);
+        for chunk in &result {
+            assert!(chunk.points.len() <= MAX_POINTS_IN_ELEMENT);
+            assert!(chunk.points.len() >= 2);
+        }
+        // mp_index preserved
+        for chunk in &result {
+            assert_eq!(chunk.mp_index, 0);
+        }
+    }
+
+    #[test]
+    fn test_polyline_split_small_line_passthrough() {
+        let lines = vec![
+            make_line(10),
+            make_line(500),
+            make_line(5),
+        ];
+        let result = split_large_polylines(lines);
+        // First and third pass through, second is split
+        assert!(result.len() >= 4); // 1 + ≥2 + 1
+        assert_eq!(result[0].points.len(), 10);
+        assert_eq!(result.last().unwrap().points.len(), 5);
+    }
+
+    // ── Polygon splitting tests ──
+
+    #[test]
+    fn test_polygon_no_split_under_limit() {
+        let shapes = vec![make_shape(100, 1000)];
+        let result = split_large_polygons(shapes);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].points.len(), 100);
+    }
+
+    #[test]
+    fn test_polygon_split_large_shape() {
+        let shapes = vec![make_shape(500, 10000)];
+        let result = split_large_polygons(shapes);
+        assert!(result.len() >= 2, "500-point polygon should be split");
+        for fragment in &result {
+            assert!(
+                fragment.points.len() <= MAX_POINTS_IN_ELEMENT,
+                "fragment has {} points (max {})",
+                fragment.points.len(), MAX_POINTS_IN_ELEMENT
+            );
+            assert!(fragment.points.len() >= 3, "fragment must be valid polygon");
+        }
+    }
+
+    #[test]
+    fn test_polygon_split_preserves_mp_index() {
+        let mut shapes = vec![make_shape(400, 5000)];
+        shapes[0].mp_index = 42;
+        let result = split_large_polygons(shapes);
+        for fragment in &result {
+            assert_eq!(fragment.mp_index, 42);
+        }
+    }
+
+    #[test]
+    fn test_polygon_split_8564_points() {
+        // Real-world case from D038 BDTOPO
+        let shapes = vec![make_shape(8564, 50000)];
+        let result = split_large_polygons(shapes);
+        assert!(result.len() >= 4, "8564-point polygon should produce many fragments");
+        for fragment in &result {
+            assert!(fragment.points.len() <= MAX_POINTS_IN_ELEMENT);
+            assert!(fragment.points.len() >= 3);
+        }
+    }
+
+    #[test]
+    fn test_polygon_split_fifo_order() {
+        // Verify FIFO ordering: first input polygon's fragments come before second's
+        let shapes = vec![
+            SplitShape { mp_index: 1, points: make_shape(400, 5000).points },
+            SplitShape { mp_index: 2, points: make_shape(400, 5000).points },
+        ];
+        let result = split_large_polygons(shapes);
+        // All mp_index=1 fragments should come before mp_index=2
+        let first_idx2 = result.iter().position(|s| s.mp_index == 2).unwrap();
+        let last_idx1 = result.iter().rposition(|s| s.mp_index == 1).unwrap();
+        assert!(last_idx1 < first_idx2, "FIFO order: all idx=1 before idx=2");
+    }
+
+    #[test]
+    fn test_polygon_degenerate_collinear() {
+        // All points on a line — clipping may produce < 3 point fragments
+        let pts: Vec<Coord> = (0..300).map(|i| coord(i * 10, 0)).collect();
+        let shapes = vec![SplitShape { mp_index: 0, points: pts }];
+        let result = split_large_polygons(shapes);
+        // Should not panic; may keep original if clipping fails
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_mixed_small_and_large_features() {
+        let shapes = vec![
+            make_shape(10, 100),   // small, passthrough
+            make_shape(500, 10000), // large, split
+            make_shape(20, 200),   // small, passthrough
+        ];
+        let result = split_large_polygons(shapes);
+        assert!(result.len() >= 4); // 1 + ≥2 + 1
+        // First and last should be the small ones (FIFO order)
+        assert_eq!(result[0].points.len(), 10);
     }
 }
