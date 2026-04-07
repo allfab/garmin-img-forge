@@ -76,6 +76,9 @@ pub struct InputSource {
     /// Geometry generalization: smoothing and/or simplification applied after clipping.
     #[serde(default)]
     pub generalize: Option<GeneralizeConfig>,
+    /// Spatial filter: clip features using a reference geometry (e.g., COMMUNE.shp) + buffer.
+    #[serde(default)]
+    pub spatial_filter: Option<SpatialFilterConfig>,
 }
 
 /// Configuration for geometry generalization (smoothing + simplification).
@@ -98,6 +101,19 @@ pub struct GeneralizeConfig {
 
 fn default_iterations() -> usize {
     1
+}
+
+/// Configuration for spatial filtering using a reference geometry layer.
+///
+/// The source shapefile polygons are unioned and buffered to create a clipping
+/// geometry applied via GDAL `set_spatial_filter()` before reading features.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpatialFilterConfig {
+    /// Path to the shapefile containing the clipping geometry (e.g., COMMUNE.shp).
+    pub source: String,
+    /// Buffer distance in meters, applied in the source SRS (default: 0.0).
+    #[serde(default)]
+    pub buffer: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1195,6 +1211,7 @@ output:
                 attribute_filter: None,
                 layer_alias: None,
                 generalize: None,
+                spatial_filter: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -1499,6 +1516,7 @@ output:
             attribute_filter: None,
             layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -1513,6 +1531,7 @@ output:
             attribute_filter: None,
             layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -1527,6 +1546,7 @@ output:
             attribute_filter: None,
             layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -1541,6 +1561,7 @@ output:
             attribute_filter: None,
             layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -2118,6 +2139,7 @@ header:
             attribute_filter: Some("ALTITUDE > 100".to_string()),
             layer_alias: Some("COURBE".to_string()),
             generalize: None,
+            spatial_filter: None,
         };
         let cloned = input.clone();
         assert_eq!(cloned.path, input.path);

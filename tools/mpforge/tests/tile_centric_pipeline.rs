@@ -34,6 +34,7 @@ fn make_config(filenames: &[&str]) -> Config {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         })
         .collect();
 
@@ -139,6 +140,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file1.shp")),
@@ -150,6 +152,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
             },
         ],
         error_handling: "continue".to_string(),
@@ -174,6 +177,7 @@ fn test_scan_extents_invalid_source_fail_fast() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         }],
         error_handling: "fail-fast".to_string(),
         ..make_config(&[])
@@ -208,7 +212,7 @@ fn test_read_features_for_tile_filters_spatially() {
     };
 
     let (tile_features, _unsup, _multi) =
-        SourceReader::read_features_for_tile(&config, &quarter_tile)
+        SourceReader::read_features_for_tile(&config, &quarter_tile, &std::collections::HashMap::new())
             .expect("read_features_for_tile failed");
 
     // Read ALL features for comparison
@@ -239,7 +243,7 @@ fn test_read_features_for_tile_empty_area() {
     };
 
     let (features, _unsup, _multi) =
-        SourceReader::read_features_for_tile(&config, &empty_tile)
+        SourceReader::read_features_for_tile(&config, &empty_tile, &std::collections::HashMap::new())
             .expect("read_features_for_tile should succeed");
 
     assert!(

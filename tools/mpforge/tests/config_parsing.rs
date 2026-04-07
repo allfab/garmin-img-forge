@@ -238,6 +238,72 @@ output:
 }
 
 #[test]
+fn test_spatial_filter_parsed() {
+    let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    spatial_filter:
+      source: "commune.shp"
+      buffer: 500
+output:
+  directory: "tiles/"
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.yaml");
+    fs::write(&config_path, yaml).unwrap();
+    let config = load_config(&config_path).unwrap();
+
+    let sf = config.inputs[0].spatial_filter.as_ref().unwrap();
+    assert_eq!(sf.source, "commune.shp");
+    assert_eq!(sf.buffer, 500.0);
+}
+
+#[test]
+fn test_spatial_filter_absent() {
+    let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+output:
+  directory: "tiles/"
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.yaml");
+    fs::write(&config_path, yaml).unwrap();
+    let config = load_config(&config_path).unwrap();
+
+    assert!(config.inputs[0].spatial_filter.is_none());
+}
+
+#[test]
+fn test_spatial_filter_default_buffer() {
+    let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data.shp"
+    spatial_filter:
+      source: "commune.shp"
+output:
+  directory: "tiles/"
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.yaml");
+    fs::write(&config_path, yaml).unwrap();
+    let config = load_config(&config_path).unwrap();
+
+    let sf = config.inputs[0].spatial_filter.as_ref().unwrap();
+    assert_eq!(sf.source, "commune.shp");
+    assert_eq!(sf.buffer, 0.0);
+}
+
+#[test]
 fn test_load_config_file_not_found() {
     let result = load_config(PathBuf::from("nonexistent.yaml"));
 

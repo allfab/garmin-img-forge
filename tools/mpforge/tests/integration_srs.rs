@@ -129,6 +129,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     });
 
     // Scan extents should work with explicit SRS
@@ -156,7 +157,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
         col: 0,
         row: 0,
     };
-    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds).unwrap();
+    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1, "Should have exactly 1 feature");
 
     let feature = &features[0];
@@ -194,6 +195,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
         attribute_filter: None,
         layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();
@@ -205,7 +207,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
         col: 0,
         row: 0,
     };
-    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds).unwrap();
+    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);
 
     let (lon, lat) = features[0].geometry[0];
@@ -242,6 +244,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();
@@ -253,7 +256,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
         col: 0,
         row: 0,
     };
-    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds).unwrap();
+    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);
 
     let (lon, lat) = features[0].geometry[0];
@@ -300,6 +303,7 @@ fn test_srs_override_detected_srs() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     });
 
     // Use scan_extents to get proper bounds for the spatial filter
@@ -312,7 +316,7 @@ fn test_srs_override_detected_srs() {
         col: 0,
         row: 0,
     };
-    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds).unwrap();
+    let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);
 
     let (lon, lat) = features[0].geometry[0];
@@ -388,6 +392,7 @@ fn test_srs_scan_extents_explicit() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     });
 
     let extent = SourceReader::scan_extents(&config).unwrap();

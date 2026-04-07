@@ -9,6 +9,39 @@ use rstar::{RTree, RTreeObject, AABB};
 use std::collections::{BTreeMap, HashMap};
 use tracing::{debug, info, instrument, trace, warn};
 
+/// Pre-built spatial filter geometry with metadata for thread-safe sharing.
+#[derive(Debug, Clone)]
+pub struct SpatialFilterGeometry {
+    /// WKB-encoded union+buffer geometry.
+    pub wkb: Vec<u8>,
+    /// SRS definition string (e.g., "EPSG:2154") of the source shapefile.
+    pub srs: Option<String>,
+    /// Envelope [min_x, min_y, max_x, max_y] in the source SRS, for fast rejection.
+    pub envelope: [f64; 4],
+}
+
+/// Binary tree union of geometries: O(n log n) instead of O(n²) incremental.
+fn binary_tree_union(mut geoms: Vec<gdal::vector::Geometry>) -> Result<gdal::vector::Geometry> {
+    while geoms.len() > 1 {
+        let mut next = Vec::with_capacity((geoms.len() + 1) / 2);
+        let mut i = 0;
+        while i + 1 < geoms.len() {
+            let a = &geoms[i];
+            let b = &geoms[i + 1];
+            let merged = a.union(b)
+                .ok_or_else(|| anyhow!("Geometry union failed at binary tree merge step"))?;
+            next.push(merged);
+            i += 2;
+        }
+        if i < geoms.len() {
+            // Odd element: carry forward
+            next.push(geoms.pop().unwrap());
+        }
+        geoms = next;
+    }
+    Ok(geoms.into_iter().next().unwrap())
+}
+
 /// Statistics for source reading.
 #[derive(Debug, Default)]
 struct ReaderStats {
@@ -998,6 +1031,83 @@ impl SourceReader {
         })
     }
 
+    /// Build a spatial filter geometry from a reference shapefile.
+    ///
+    /// Opens the shapefile, unions all polygon geometries (O(n log n) binary tree),
+    /// applies a buffer, and returns WKB + SRS + envelope for thread-safe sharing.
+    ///
+    /// # Arguments
+    /// * `source_path` - Path to the shapefile containing clipping polygons
+    /// * `buffer_distance` - Buffer distance in meters (in the source SRS). Negative = inward shrink.
+    ///
+    /// # Returns
+    /// * `Result<SpatialFilterGeometry>` - WKB-encoded geometry with SRS and envelope
+    pub fn build_spatial_filter_geometry(
+        source_path: &str,
+        buffer_distance: f64,
+    ) -> Result<SpatialFilterGeometry> {
+        let dataset = Dataset::open(source_path)
+            .with_context(|| format!("Failed to open spatial filter source: {}", source_path))?;
+        let mut layer = dataset.layer(0)
+            .with_context(|| format!("Failed to access layer 0 in: {}", source_path))?;
+
+        // Detect SRS from source layer
+        let srs_def = layer.spatial_ref().and_then(|srs| {
+            srs.auth_code().ok().map(|code| format!("EPSG:{}", code))
+        });
+
+        let feature_count = layer.feature_count();
+        info!(
+            source = %source_path,
+            features = feature_count,
+            buffer_m = buffer_distance,
+            srs = srs_def.as_deref().unwrap_or("unknown"),
+            "Building spatial filter geometry"
+        );
+
+        // Collect all geometries
+        let mut geometries: Vec<gdal::vector::Geometry> = Vec::new();
+        for feature in layer.features() {
+            if let Some(g) = feature.geometry() {
+                geometries.push(g.clone());
+            }
+        }
+
+        if geometries.is_empty() {
+            return Err(anyhow!("No geometries found in spatial filter source: {}", source_path));
+        }
+
+        let united_count = geometries.len();
+
+        // Binary tree union: O(n log n) instead of O(n²) incremental union
+        let geom = binary_tree_union(geometries)?;
+
+        let buffered = if buffer_distance != 0.0 {
+            geom.buffer(buffer_distance, 30)
+                .with_context(|| format!("Buffer({}) failed on union geometry", buffer_distance))?
+        } else {
+            geom
+        };
+
+        let envelope = buffered.envelope();
+
+        info!(
+            source = %source_path,
+            features_united = united_count,
+            buffer_m = buffer_distance,
+            "Spatial filter geometry built"
+        );
+
+        let wkb = buffered.wkb()
+            .with_context(|| "Failed to serialize spatial filter geometry to WKB")?;
+
+        Ok(SpatialFilterGeometry {
+            wkb,
+            srs: srs_def,
+            envelope: [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY],
+        })
+    }
+
     /// Load features intersecting a single tile from all sources.
     ///
     /// Uses `set_spatial_filter_rect()` to leverage GDAL's native spatial filtering.
@@ -1011,12 +1121,14 @@ impl SourceReader {
     /// # Arguments
     /// * `config` - Configuration with list of input sources
     /// * `tile_bounds` - Tile bounding box for spatial filtering
+    /// * `spatial_filter_geometries` - Pre-built spatial filter geometries, keyed by source index
     ///
     /// # Returns
     /// * `Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)>` - Filtered features and stats
     pub fn read_features_for_tile(
         config: &Config,
         tile_bounds: &crate::pipeline::tiler::TileBounds,
+        spatial_filter_geometries: &HashMap<usize, SpatialFilterGeometry>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut all_features = Vec::new();
         let mut all_unsupported = UnsupportedTypeStats::default();
@@ -1087,73 +1199,129 @@ impl SourceReader {
                     },
                 };
 
-                // Story 9.4: When explicit source_srs is set, reproject tile bounds
-                // from target SRS back to source SRS for the spatial filter.
-                // GDAL spatial filter operates in the layer's native CRS.
-                if let Some(ref src_def) = input.source_srs {
-                    let mut target = if let Some(ref dst_def) = input.target_srs {
-                        SpatialRef::from_definition(dst_def)?
-                    } else {
-                        SpatialRef::from_epsg(4326)?
-                    };
-                    target.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
-                    let mut source = SpatialRef::from_definition(src_def)?;
-                    source.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
-                    let reverse_transform = CoordTransform::new(&target, &source)?;
-                    let native_bounds = reverse_transform.transform_bounds(
-                        &[tile_bounds.min_lon, tile_bounds.min_lat, tile_bounds.max_lon, tile_bounds.max_lat],
-                        21,
-                    )?;
-                    layer.set_spatial_filter_rect(
-                        native_bounds[0],
-                        native_bounds[1],
-                        native_bounds[2],
-                        native_bounds[3],
-                    );
+                // Determine the native CRS definition string for this layer.
+                let native_srs_def: String = if let Some(ref src_def) = input.source_srs {
+                    src_def.clone()
                 } else if let Some(layer_srs) = layer.spatial_ref() {
-                    // Auto-detect path: reproject tile bounds from WGS84 to layer's native CRS
-                    // for the spatial filter when layer is not in WGS84
-                    let is_wgs84 = layer_srs.auth_code().is_ok_and(|c| c == 4326);
-                    if is_wgs84 {
-                        layer.set_spatial_filter_rect(
-                            tile_bounds.min_lon,
-                            tile_bounds.min_lat,
-                            tile_bounds.max_lon,
-                            tile_bounds.max_lat,
-                        );
+                    let code = layer_srs.auth_code().unwrap_or(4326);
+                    format!("EPSG:{}", code)
+                } else {
+                    "EPSG:4326".to_string()
+                };
+
+                // Compute tile bounds in the layer's native CRS for spatial filtering.
+                // GDAL spatial filter operates in the layer's native CRS.
+                let (native_min_x, native_min_y, native_max_x, native_max_y) =
+                    if let Some(ref src_def) = input.source_srs {
+                        let mut target = if let Some(ref dst_def) = input.target_srs {
+                            SpatialRef::from_definition(dst_def)?
+                        } else {
+                            SpatialRef::from_epsg(4326)?
+                        };
+                        target.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                        let mut source = SpatialRef::from_definition(src_def)?;
+                        source.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                        let reverse_transform = CoordTransform::new(&target, &source)?;
+                        let nb = reverse_transform.transform_bounds(
+                            &[tile_bounds.min_lon, tile_bounds.min_lat, tile_bounds.max_lon, tile_bounds.max_lat],
+                            21,
+                        )?;
+                        (nb[0], nb[1], nb[2], nb[3])
+                    } else if native_srs_def == "EPSG:4326" {
+                        (tile_bounds.min_lon, tile_bounds.min_lat, tile_bounds.max_lon, tile_bounds.max_lat)
                     } else {
                         let wgs84_srs = SpatialRef::from_definition("EPSG:4326")?;
-                        let auth_code = layer_srs.auth_code().unwrap_or(4326);
-                        let native_srs = SpatialRef::from_definition(&format!("EPSG:{}", auth_code))?;
+                        let native_srs = SpatialRef::from_definition(&native_srs_def)?;
                         let reverse = CoordTransform::new(&wgs84_srs, &native_srs)?;
-                        // Use transform_coords on the 4 corners instead of transform_bounds
-                        // to avoid axis order issues with OCTTransformBounds
                         let mut xs = vec![tile_bounds.min_lon, tile_bounds.max_lon];
                         let mut ys = vec![tile_bounds.min_lat, tile_bounds.max_lat];
                         if reverse.transform_coords(&mut xs, &mut ys, &mut []).is_ok() {
-                            let min_x = xs[0].min(xs[1]);
-                            let max_x = xs[0].max(xs[1]);
-                            let min_y = ys[0].min(ys[1]);
-                            let max_y = ys[0].max(ys[1]);
-                            layer.set_spatial_filter_rect(min_x, min_y, max_x, max_y);
+                            (xs[0].min(xs[1]), ys[0].min(ys[1]), xs[0].max(xs[1]), ys[0].max(ys[1]))
                         } else {
-                            // Fallback: use tile bounds as-is (may miss features)
-                            layer.set_spatial_filter_rect(
-                                tile_bounds.min_lon,
-                                tile_bounds.min_lat,
-                                tile_bounds.max_lon,
-                                tile_bounds.max_lat,
-                            );
+                            (tile_bounds.min_lon, tile_bounds.min_lat, tile_bounds.max_lon, tile_bounds.max_lat)
+                        }
+                    };
+
+                // Apply spatial filter: combine with clipping geometry if available
+                let mut skip_layer = false;
+                if let Some(sf_geom) = spatial_filter_geometries.get(&idx) {
+                    // F5: Fast envelope pre-rejection — avoid WKB parse if tile is clearly outside
+                    let env = &sf_geom.envelope;
+                    let same_crs = sf_geom.srs.as_deref() == Some(&native_srs_def);
+                    if same_crs
+                        && (native_max_x < env[0] || native_min_x > env[2]
+                            || native_max_y < env[1] || native_min_y > env[3])
+                    {
+                        trace!(
+                            source_index = idx,
+                            tile = %tile_bounds.tile_id(),
+                            "Tile outside spatial filter envelope, skipping source"
+                        );
+                        skip_layer = true;
+                    } else {
+                        // Reconstruct clipping geometry from WKB
+                        let clip_geom = gdal::vector::Geometry::from_wkb(&sf_geom.wkb)
+                            .with_context(|| format!("Failed to deserialize spatial filter WKB for source {}", idx))?;
+
+                        // F1: Reproject clipping geometry to layer's native CRS if CRS differ
+                        if !same_crs {
+                            if let Some(ref clip_srs_def) = sf_geom.srs {
+                                let mut clip_srs = SpatialRef::from_definition(clip_srs_def)?;
+                                clip_srs.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                                let mut target_srs = SpatialRef::from_definition(&native_srs_def)?;
+                                target_srs.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                                let transform = CoordTransform::new(&clip_srs, &target_srs)?;
+                                let rv = unsafe {
+                                    gdal_sys::OGR_G_Transform(
+                                        clip_geom.c_geometry(),
+                                        transform.to_c_hct(),
+                                    )
+                                };
+                                if rv != gdal_sys::OGRErr::OGRERR_NONE {
+                                    return Err(anyhow!(
+                                        "Failed to reproject spatial filter from {} to {}",
+                                        clip_srs_def, native_srs_def
+                                    ));
+                                }
+                            }
+                        }
+
+                        // Build tile polygon in native CRS via WKT
+                        let tile_wkt = format!(
+                            "POLYGON (({} {}, {} {}, {} {}, {} {}, {} {}))",
+                            native_min_x, native_min_y,
+                            native_max_x, native_min_y,
+                            native_max_x, native_max_y,
+                            native_min_x, native_max_y,
+                            native_min_x, native_min_y,
+                        );
+                        let tile_poly = gdal::vector::Geometry::from_wkt(&tile_wkt)
+                            .with_context(|| "Failed to create tile polygon from WKT")?;
+
+                        // Intersect clipping geometry with tile polygon
+                        match clip_geom.intersection(&tile_poly) {
+                            Some(combined) if !combined.is_empty() => {
+                                layer.set_spatial_filter(&combined);
+                            }
+                            _ => {
+                                trace!(
+                                    source_index = idx,
+                                    tile = %tile_bounds.tile_id(),
+                                    "Tile outside spatial filter area, skipping source"
+                                );
+                                skip_layer = true;
+                            }
                         }
                     }
                 } else {
-                    // No SRS: assume WGS84, use tile bounds directly
+                    // No spatial filter: use tile rect as before
                     layer.set_spatial_filter_rect(
-                        tile_bounds.min_lon,
-                        tile_bounds.min_lat,
-                        tile_bounds.max_lon,
-                        tile_bounds.max_lat,
+                        native_min_x, native_min_y, native_max_x, native_max_y,
                     );
+                }
+
+                if skip_layer {
+                    continue;
                 }
 
                 // Apply attribute filter if configured on this InputSource

@@ -35,6 +35,7 @@ fn test_geopackage_three_layers_configured() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -111,6 +112,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -185,6 +187,7 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -235,6 +238,7 @@ fn test_geopackage_empty_layers_list() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -280,6 +284,7 @@ fn test_geopackage_layers_none_backward_compat() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -320,6 +325,7 @@ fn test_geopackage_mixed_geometry_types() {
                 attribute_filter: None,
                 layer_alias: None,
             generalize: None,
+            spatial_filter: None,
     };
 
     let result = SourceReader::read_file_source(&input);

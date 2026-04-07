@@ -198,6 +198,8 @@ struct TileContext<'a> {
     field_mapping_path: Option<&'a Path>,
     header_config: Option<&'a HeaderConfig>,
     generalize_map: Arc<std::collections::HashMap<String, GeneralizeConfig>>,
+    /// Pre-built spatial filter geometries, keyed by source index.
+    spatial_filter_geometries: Arc<std::collections::HashMap<usize, reader::SpatialFilterGeometry>>,
 }
 
 /// Process a single tile autonomously (thread-safe).
@@ -214,7 +216,7 @@ fn process_single_tile(
     let tile_id = tile_bounds.tile_id();
 
     // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
-    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds) {
+    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
         Ok(result) => result,
         Err(e) => {
             if ctx.error_mode == ErrorMode::FailFast {
@@ -650,6 +652,44 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     info!(tiles_count = tiles.len(), "Grid generated");
 
     // ========================================================================
+    // Phase 1b: Pre-build spatial filter geometries (union + buffer)
+    // F2: Deduplicate by (source, buffer) to avoid rebuilding for wildcard-expanded sources
+    // ========================================================================
+    let mut sf_cache: std::collections::HashMap<String, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
+    let mut spatial_filter_geometries: std::collections::HashMap<usize, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
+    for (idx, input) in config.inputs.iter().enumerate() {
+        if let Some(ref sf) = input.spatial_filter {
+            let cache_key = format!("{}|{}", sf.source, sf.buffer);
+            let sf_geom = if let Some(cached) = sf_cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                info!(
+                    source_index = idx,
+                    filter_source = %sf.source,
+                    buffer_m = sf.buffer,
+                    "Building spatial filter geometry for source"
+                );
+                let built = SourceReader::build_spatial_filter_geometry(&sf.source, sf.buffer)
+                    .with_context(|| format!(
+                        "Failed to build spatial filter geometry from '{}' for source index {}",
+                        sf.source, idx
+                    ))?;
+                sf_cache.insert(cache_key, built.clone());
+                built
+            };
+            spatial_filter_geometries.insert(idx, sf_geom);
+        }
+    }
+    if !spatial_filter_geometries.is_empty() {
+        info!(
+            count = spatial_filter_geometries.len(),
+            unique = sf_cache.len(),
+            "Spatial filter geometries pre-built"
+        );
+    }
+    let spatial_filter_geometries = Arc::new(spatial_filter_geometries);
+
+    // ========================================================================
     // Phase 2: Tile-centric processing (load → clip → export per tile)
     // ========================================================================
     info!("Phase 2: Processing {} tiles (tile-centric)", tiles.len());
@@ -715,6 +755,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
         generalize_map,
+        spatial_filter_geometries: spatial_filter_geometries.clone(),
     };
 
     // Inform user when no header section is configured
