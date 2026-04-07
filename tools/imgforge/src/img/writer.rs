@@ -538,7 +538,7 @@ fn filter_features_for_level(
 
     let min_size = mp.header.min_size_polygon;
 
-    let mut shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
+    let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
         .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
         .filter_map(|(i, s)| {
@@ -562,6 +562,14 @@ fn filter_features_for_level(
         })
         .collect();
 
+    // Split features with >250 points — mkgmap LineSplitterFilter / PolygonSplitterFilter
+    // Large features cause bitstream overflow because the variable-width delta encoding
+    // uses a global bit width based on the max delta across ALL points. Splitting keeps
+    // each element's geographic extent small → smaller deltas → compact bitstreams.
+    let lines = split_large_polylines(lines);
+    #[allow(unused_mut)]
+    let mut shapes = split_large_polygons(shapes);
+
     // Order by decreasing area if requested
     if mp.header.order_by_decreasing_area && !shapes.is_empty() {
         shapes.sort_by(|a, b| {
@@ -572,6 +580,112 @@ fn filter_features_for_level(
     }
 
     (points, lines, shapes)
+}
+
+// ── Feature splitting — mkgmap LineSplitterFilter / PolygonSplitterFilter ──
+
+/// Maximum points per element — mkgmap LineSplitterFilter.MAX_POINTS_IN_LINE
+const MAX_POINTS_IN_ELEMENT: usize = 250;
+
+/// Split polylines with >250 points into chunks — mkgmap LineSplitterFilter
+///
+/// Each chunk has at most MAX_POINTS_IN_ELEMENT points.
+/// Consecutive chunks share their boundary point (1-point overlap).
+/// mkgmap balances chunk sizes when the total is between 1x and 2x the limit.
+fn split_large_polylines(lines: Vec<SplitLine>) -> Vec<SplitLine> {
+    let mut result = Vec::with_capacity(lines.len());
+    for line in lines {
+        let npoints = line.points.len();
+        if npoints <= MAX_POINTS_IN_ELEMENT {
+            result.push(line);
+            continue;
+        }
+
+        let mut pos = 0;
+        // mkgmap: if total is between 1x and 2x limit, split evenly in two
+        let mut wanted = if npoints < 2 * MAX_POINTS_IN_ELEMENT {
+            npoints / 2 + 1
+        } else {
+            MAX_POINTS_IN_ELEMENT
+        };
+
+        loop {
+            let end = pos + wanted;
+            result.push(SplitLine {
+                mp_index: line.mp_index,
+                points: line.points[pos..end].to_vec(),
+            });
+
+            pos = end - 1; // 1-point overlap
+            let remaining = npoints - pos;
+
+            if remaining <= MAX_POINTS_IN_ELEMENT {
+                // Last chunk
+                result.push(SplitLine {
+                    mp_index: line.mp_index,
+                    points: line.points[pos..].to_vec(),
+                });
+                break;
+            } else if remaining < 2 * MAX_POINTS_IN_ELEMENT {
+                // Balance the last two chunks
+                wanted = remaining / 2 + 1;
+            } else {
+                wanted = MAX_POINTS_IN_ELEMENT;
+            }
+        }
+    }
+    result
+}
+
+/// Split polygons with >250 points via midpoint clipping — mkgmap PolygonSplitterBase
+///
+/// Uses Sutherland-Hodgman clipping along the longer bounding-box axis,
+/// recursively, until all fragments have ≤ MAX_POINTS_IN_ELEMENT points.
+fn split_large_polygons(shapes: Vec<SplitShape>) -> Vec<SplitShape> {
+    let mut result = Vec::with_capacity(shapes.len());
+    let mut queue: Vec<SplitShape> = shapes;
+
+    while let Some(shape) = queue.pop() {
+        if shape.points.len() <= MAX_POINTS_IN_ELEMENT {
+            result.push(shape);
+            continue;
+        }
+
+        let bbox = Area::from_coords(&shape.points);
+        // Split along the longer dimension — mkgmap PolygonSplitterBase.split
+        let (half_a, half_b) = if bbox.width() >= bbox.height() {
+            let mid = bbox.min_lon() + bbox.width() / 2;
+            (
+                Area::new(bbox.min_lat(), bbox.min_lon(), bbox.max_lat(), mid),
+                Area::new(bbox.min_lat(), mid, bbox.max_lat(), bbox.max_lon()),
+            )
+        } else {
+            let mid = bbox.min_lat() + bbox.height() / 2;
+            (
+                Area::new(bbox.min_lat(), bbox.min_lon(), mid, bbox.max_lon()),
+                Area::new(mid, bbox.min_lon(), bbox.max_lat(), bbox.max_lon()),
+            )
+        };
+
+        let clipped_a = splitter::clip_polygon_to_rect(&shape.points, &half_a);
+        let clipped_b = splitter::clip_polygon_to_rect(&shape.points, &half_b);
+
+        let a_ok = clipped_a.len() >= 3;
+        let b_ok = clipped_b.len() >= 3;
+
+        if a_ok {
+            queue.push(SplitShape { mp_index: shape.mp_index, points: clipped_a });
+        }
+        if b_ok {
+            queue.push(SplitShape { mp_index: shape.mp_index, points: clipped_b });
+        }
+
+        // Safety: if clipping produced nothing useful, keep original to avoid data loss
+        if !a_ok && !b_ok {
+            result.push(shape);
+        }
+    }
+    result
 }
 
 /// Resolve polygon epsilon from simplify_polygons spec (e.g. "24:12,18:10,16:8")
