@@ -19,10 +19,15 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
-  # # Routes (couche principale — la plus volumineuse)
-  # - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
-  #   source_srs: "EPSG:2154"
-  #   target_srs: "EPSG:4326"
+  # Bâtiments (polygon — couche volumineuse)
+  - path: "${DATA_ROOT}/BATI/BATIMENT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Routes (couche principale — la plus volumineuse)
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
 
   # Zones de végétation (forêts, haies — couche volumineuse)
   - path: "${DATA_ROOT}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"

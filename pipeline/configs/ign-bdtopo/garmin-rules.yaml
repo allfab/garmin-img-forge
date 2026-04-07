@@ -284,6 +284,7 @@ rulesets:
       - match:
           IMPORTANCE: "in:1,2,3"
           NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
