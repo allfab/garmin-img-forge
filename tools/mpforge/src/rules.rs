@@ -183,6 +183,12 @@ pub fn find_ruleset<'a>(rules: &'a RulesFile, layer_name: &str) -> Option<&'a Ru
 /// - `"*"` → wildcard (always matches)
 /// - `"!!"` → field is present and non-empty
 /// - `""` → field is absent or empty
+/// - `"in:v1,v2,v3"` → value is one of the comma-separated values
+/// - `"!in:v1,v2,v3"` → value is NOT one of the comma-separated values
+/// - `"^prefix"` → value starts with prefix (case-sensitive)
+/// - `"^i:prefix"` → value starts with prefix (case-insensitive)
+/// - `"!^prefix"` → value does NOT start with prefix (case-sensitive)
+/// - `"!^i:prefix"` → value does NOT start with prefix (case-insensitive)
 /// - `"!<value>"` → not equal to `<value>`
 /// - anything else → strict equality
 pub fn evaluate_match(
@@ -204,6 +210,24 @@ pub fn evaluate_match(
         } else if pattern.is_empty() {
             // Empty: value must be absent or empty
             attr_value.is_empty()
+        } else if let Some(list) = pattern.strip_prefix("in:") {
+            // In-list: value must be one of the comma-separated values
+            list.split(',').any(|v| v.trim() == attr_value)
+        } else if let Some(list) = pattern.strip_prefix("!in:") {
+            // Not-in-list: value must NOT be one of the comma-separated values
+            !list.split(',').any(|v| v.trim() == attr_value)
+        } else if let Some(prefix) = pattern.strip_prefix("!^i:") {
+            // Not-starts-with case-insensitive
+            !attr_value.to_lowercase().starts_with(&prefix.to_lowercase())
+        } else if let Some(prefix) = pattern.strip_prefix("!^") {
+            // Not-starts-with case-sensitive
+            !attr_value.starts_with(prefix)
+        } else if let Some(prefix) = pattern.strip_prefix("^i:") {
+            // Starts-with case-insensitive
+            attr_value.to_lowercase().starts_with(&prefix.to_lowercase())
+        } else if let Some(prefix) = pattern.strip_prefix('^') {
+            // Starts-with case-sensitive
+            attr_value.starts_with(prefix)
         } else if pattern.starts_with('!') && pattern.len() > 1 {
             // Not equal: strip '!' prefix and compare
             attr_value != &pattern[1..]
@@ -640,6 +664,187 @@ rulesets:
         let conditions = HashMap::from([("NATURE".into(), "!Rond-point".into())]);
         let attrs = HashMap::new();
         assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    // ===================================================================
+    // Tests: in-list operator (in:v1,v2,v3)
+    // ===================================================================
+
+    #[test]
+    fn test_match_in_list_matches() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "in:1,2,3".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "2".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_in_list_first_value() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "in:1,2,3".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "1".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_in_list_last_value() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "in:1,2,3".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "3".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_in_list_no_match() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "in:1,2,3".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "5".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_in_list_absent_field() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "in:1,2,3".into())]);
+        let attrs = HashMap::new();
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_in_list_with_spaces() {
+        let conditions = HashMap::from([("NATURE".into(), "in:Lieu-dit habité, Quartier, Ruines".into())]);
+        let attrs = HashMap::from([("NATURE".into(), "Quartier".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_in_list_matches() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "!in:4,5".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "1".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_in_list_no_match() {
+        let conditions = HashMap::from([("IMPORTANCE".into(), "!in:4,5".into())]);
+        let attrs = HashMap::from([("IMPORTANCE".into(), "4".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    // ===================================================================
+    // Tests: starts-with operators (^, ^i:, !^, !^i:)
+    // ===================================================================
+
+    #[test]
+    fn test_match_starts_with_matches() {
+        let conditions = HashMap::from([("TOPONYME".into(), "^Commune".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Commune de Paris".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_starts_with_no_match() {
+        let conditions = HashMap::from([("TOPONYME".into(), "^Commune".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Ville de Lyon".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_starts_with_case_sensitive() {
+        let conditions = HashMap::from([("TOPONYME".into(), "^Commune".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "commune de Paris".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_starts_with_case_insensitive_matches() {
+        let conditions = HashMap::from([("TOPONYME".into(), "^i:Commune d".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "commune de Paris".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_starts_with_case_insensitive_no_match() {
+        let conditions = HashMap::from([("TOPONYME".into(), "^i:Commune d".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Ville de Lyon".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_starts_with_matches() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!^Commune".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Ville de Lyon".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_starts_with_no_match() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!^Commune".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Commune de Paris".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_starts_with_case_insensitive_matches() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!^i:Commune d".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "Le Hameau".into())]);
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_starts_with_case_insensitive_no_match() {
+        let conditions = HashMap::from([("TOPONYME".into(), "!^i:Commune d".into())]);
+        let attrs = HashMap::from([("TOPONYME".into(), "COMMUNE DE PARIS".into())]);
+        assert!(!evaluate_match(&conditions, &attrs));
+    }
+
+    #[test]
+    fn test_match_not_starts_with_case_insensitive_absent_field() {
+        // Absent field = "" → "" doesn't start with "Commune d" → true
+        let conditions = HashMap::from([("TOPONYME".into(), "!^i:Commune d".into())]);
+        let attrs = HashMap::new();
+        assert!(evaluate_match(&conditions, &attrs));
+    }
+
+    // ===================================================================
+    // Integration: FME-style multi-condition filter
+    // ===================================================================
+
+    #[test]
+    fn test_match_fme_zone_habitation_filter() {
+        // Reproduces: IMPORTANCE in {1,2,3} AND NATURE = "Lieu-dit habité" AND NOT TOPONYME starts with "Commune d" (case-insensitive)
+        let conditions = HashMap::from([
+            ("IMPORTANCE".into(), "in:1,2,3".into()),
+            ("NATURE".into(), "Lieu-dit habité".into()),
+            ("TOPONYME".into(), "!^i:Commune d".into()),
+        ]);
+
+        // Should match: all conditions satisfied
+        let attrs_ok = HashMap::from([
+            ("IMPORTANCE".into(), "2".into()),
+            ("NATURE".into(), "Lieu-dit habité".into()),
+            ("TOPONYME".into(), "Le Hameau".into()),
+        ]);
+        assert!(evaluate_match(&conditions, &attrs_ok));
+
+        // Should NOT match: IMPORTANCE=5 not in list
+        let attrs_bad_importance = HashMap::from([
+            ("IMPORTANCE".into(), "5".into()),
+            ("NATURE".into(), "Lieu-dit habité".into()),
+            ("TOPONYME".into(), "Le Hameau".into()),
+        ]);
+        assert!(!evaluate_match(&conditions, &attrs_bad_importance));
+
+        // Should NOT match: wrong NATURE
+        let attrs_bad_nature = HashMap::from([
+            ("IMPORTANCE".into(), "1".into()),
+            ("NATURE".into(), "Quartier".into()),
+            ("TOPONYME".into(), "Le Hameau".into()),
+        ]);
+        assert!(!evaluate_match(&conditions, &attrs_bad_nature));
+
+        // Should NOT match: TOPONYME starts with "Commune d"
+        let attrs_bad_toponyme = HashMap::from([
+            ("IMPORTANCE".into(), "1".into()),
+            ("NATURE".into(), "Lieu-dit habité".into()),
+            ("TOPONYME".into(), "Commune de Paris".into()),
+        ]);
+        assert!(!evaluate_match(&conditions, &attrs_bad_toponyme));
     }
 
     // ===================================================================

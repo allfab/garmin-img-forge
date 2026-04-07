@@ -273,72 +273,18 @@ rulesets:
 
   # ==========================================================================
   # ADMINISTRATIF — Zones d'habitation (POLYGON)
-  # Source FME : 01-COMMUNE-ZONEURBA.fmw
-  # Ref TYP-MAPPING-RULES.md section 5.2
-  # 8 regles : 7 NATURE explicites + catch-all
+  # Source FME : 01-COMMUNE-ZONEURBA.fmw / Tester-ZONEHABITATION
+  # Filtre : IMPORTANCE in {1,2,3}
+  #           AND NATURE = "Lieu-dit habité"
+  #           AND NOT TOPONYME commence par "Commune d" (insensible casse)
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
     rules:
-      # 1. Chateau (manoir, tour nommee)
       - match:
-          NATURE: "Château"
-        set:
-          Type: "0x10f0a"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 2. Grange (cabane, bergerie, baraquement)
-      - match:
-          NATURE: "Grange"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 3. Habitat temporaire (Guyane — carbet, habitation intermittente)
-      - match:
-          NATURE: "Habitat temporaire"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 4. Lieu-dit habite (hameau, groupe d'habitations)
-      - match:
+          IMPORTANCE: "in:1,2,3"
           NATURE: "Lieu-dit habité"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 5. Moulin (moulin a eau nomme)
-      - match:
-          NATURE: "Moulin"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 6. Quartier (cite, faubourg, lotissement)
-      - match:
-          NATURE: "Quartier"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 7. Ruines (batiment ou construction en ruines)
-      - match:
-          NATURE: "Ruines"
-        set:
-          Type: "0x03"
-          EndLevel: "1"
-          Label: "${TOPONYME}"
-
-      # 8. Catch-all Zone d'habitation (NATURE non reconnue)
-      - match:
-          NATURE: "*"
+          TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
           EndLevel: "1"
