@@ -1,7 +1,7 @@
 version: 1
 
 grid:
-  cell_size: 1.000       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  cell_size: 0.500      # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
 
 inputs:
@@ -19,13 +19,18 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
-  # Routes (couche principale — la plus volumineuse)
-  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
+  # # Routes (couche principale — la plus volumineuse)
+  # - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
 
   # Zones de végétation (forêts, haies — couche volumineuse)
   - path: "${DATA_ROOT}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -60,7 +65,6 @@ header:
 # Règles de transformation BDTOPO → types Garmin
 rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
 
-
 error_handling: "continue"
 
 # =============================================================================
@@ -68,8 +72,8 @@ error_handling: "continue"
 # =============================================================================
 
 # Filtre bbox (WGS84) — exemple :
-filters:
-  bbox: [4.6485700073917853,45.4316591307921058, 5.0874666249716247,45.6131681521921095]
+# filters:
+#   bbox: [4.6485700073917853,45.4316591307921058, 5.0874666249716247,45.6131681521921095]
 
 # Filtre bbox (WGS84) — exemple pour l'Isère :
 # filters:
