@@ -47,11 +47,13 @@ flowchart TD
 ### Ce qui se passe en interne
 
 1. **Lecture** — mpforge ouvre toutes les sources GDAL déclarées dans la configuration
-2. **Indexation** — Les features sont indexées dans un R-tree spatial pour des requêtes rapides
-3. **Grille** — Une grille régulière (configurable en degrés) est calculée sur l'emprise des données
-4. **Parallélisation** — Chaque tuile est traitée par un worker indépendant (rayon)
-5. **Clipping** — Les géométries sont découpées aux frontières de la tuile (avec overlap)
-6. **Export** — Le driver ogr-polishmap génère le fichier `.mp` avec le field mapping configuré
+2. **Filtrage spatial** — Si configuré, les features sont pré-filtrées par une géométrie de référence (ex: communes)
+3. **Indexation** — Les features sont indexées dans un R-tree spatial pour des requêtes rapides
+4. **Grille** — Une grille régulière (configurable en degrés) est calculée sur l'emprise des données
+5. **Parallélisation** — Chaque tuile est traitée par un worker indépendant (rayon)
+6. **Clipping** — Les géométries sont découpées aux frontières de la tuile (avec overlap)
+7. **Généralisation** — Lissage (Chaikin) et simplification (Douglas-Peucker) optionnels
+8. **Export** — Le driver ogr-polishmap génère le fichier `.mp` avec le field mapping configuré
 
 ## Configuration YAML
 
@@ -76,6 +78,12 @@ inputs:
       - "troncon_de_route"
       - "cours_d_eau"
       - "zone_vegetation"
+
+  # Filtrage spatial par géométrie de référence
+  - path: "data/COURBES_NIVEAU.shp"
+    spatial_filter:
+      source: "data/COMMUNE.shp"
+      buffer: 500  # mètres dans le SRS source
 
   # PostGIS (non implémenté — prévu dans une future version)
   # - connection: "PG:host=localhost dbname=gis"
@@ -273,6 +281,59 @@ Deux modes pour s'adapter au contexte :
 - **`continue`** (défaut) — Les tuiles en erreur sont journalisées mais le traitement continue. Idéal pour la production où quelques tuiles problématiques ne doivent pas bloquer 2000 autres.
 - **`fail-fast`** — Arrêt immédiat à la première erreur. Idéal pour le développement et le débogage.
 
+## Filtrage spatial
+
+Pour les sources volumineuses (courbes de niveau, MNT...), mpforge permet de **filtrer spatialement les features** par une géométrie de référence avant le tuilage. Cela réduit drastiquement le volume de données traitées :
+
+```yaml
+inputs:
+  - path: "data/COURBES_NIVEAU.shp"
+    spatial_filter:
+      source: "data/COMMUNE.shp"    # Géométrie de référence
+      buffer: 500                     # Buffer en mètres (SRS source)
+```
+
+Le filtre fonctionne par union binaire (O(n log n)) des géométries de référence, avec pré-rejet par enveloppe pour optimiser les performances. Seules les features intersectant la géométrie résultante (avec buffer) sont conservées.
+
+## Généralisation géométrique
+
+mpforge intègre un pipeline de généralisation appliqué après le clipping et avant l'export :
+
+```yaml
+inputs:
+  - path: "data/COURBES_NIVEAU.shp"
+    smooth: "chaikin"     # Lissage Chaikin (corner-cutting)
+    iterations: 1         # Nombre de passes de lissage
+    simplify: 0.00005     # Tolérance Douglas-Peucker (en degrés)
+```
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `smooth` | Algorithme de lissage (`chaikin`) | - |
+| `iterations` | Nombre de passes de lissage (1-2) | 1 |
+| `simplify` | Tolérance Douglas-Peucker post-lissage | - |
+
+!!! tip "Impact en production"
+    Sur les données BD TOPO (~35 Go), limitez les itérations à 1 pour éviter une consommation mémoire excessive. La simplification Douglas-Peucker est optionnelle et s'applique après le lissage.
+
+## Moteur de règles
+
+mpforge dispose d'un moteur de règles YAML pour transformer les attributs des features (catégorisation, réécriture de labels, affectation des types Garmin...) :
+
+```yaml
+# Opérateurs disponibles dans les conditions
+conditions:
+  - field: "NATURE"
+    operator: "in-list"          # Teste l'appartenance à une liste
+    values: ["Autoroute", "Nationale", "Départementale"]
+
+  - field: "NOM_VOIE"
+    operator: "starts-with"      # Teste le préfixe
+    value: "Chemin"
+```
+
+Le fichier de règles est référencé dans la configuration et validé par `mpforge validate`.
+
 ## Installation
 
 ### Binaire pré-compilé (recommandé)
@@ -280,7 +341,10 @@ Deux modes pour s'adapter au contexte :
 Le binaire statique inclut **PROJ 9.3.1, GEOS 3.13.0, GDAL 3.10.1 et le driver ogr-polishmap intégrés**. Zéro configuration requise :
 
 ```bash
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.2.1/mpforge
+# Télécharger et extraire l'archive
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.3.0/mpforge-linux-amd64.tar.gz
+tar xzf mpforge-linux-amd64.tar.gz
+
 chmod +x mpforge
 sudo mv mpforge /usr/local/bin/
 mpforge --version

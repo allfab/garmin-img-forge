@@ -47,10 +47,17 @@ imgforge compile tile_0_0.mp \
 imgforge build tiles/ \
     --output gmapsupp.img \
     --jobs 8 \
+    --family-id 4136 \
+    --product-id 1 \
     --family-name "BDTOPO France" \
     --series-name "IGN BDTOPO 2026" \
+    --area-name "France métropolitaine" \
+    --country-name "France" \
+    --country-abbr "FRA" \
+    --product-version 100 \
     --copyright-message "IGN BDTOPO 2026" \
     --latin1 \
+    --levels "24,20,16" \
     --reduce-point-density 3.0 \
     --min-size-polygon 8 \
     --typ-file bdtopo.typ \
@@ -65,6 +72,47 @@ La commande `build` est le coeur du pipeline de production. Elle :
 3. Assemble les tuiles compilées en un seul `gmapsupp.img`
 4. Génère le fichier TDB compagnon
 5. Intègre optionnellement le fichier TYP et les données DEM
+
+## Identité et métadonnées Garmin
+
+La commande `build` accepte des options pour identifier la carte dans les logiciels Garmin (BaseCamp, MapInstall) :
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--family-id <N>` | Identifiant famille (unique par carte) | 1 |
+| `--product-id <N>` | Identifiant produit | 1 |
+| `--family-name <TEXT>` | Nom de la famille de cartes | `Map` |
+| `--series-name <TEXT>` | Nom de la série (affiché dans BaseCamp) | `imgforge` |
+| `--area-name <TEXT>` | Zone géographique couverte | - |
+| `--country-name <TEXT>` | Nom du pays | - |
+| `--country-abbr <TEXT>` | Abréviation pays (ex: `FRA`) | - |
+| `--region-name <TEXT>` | Nom de la région | - |
+| `--region-abbr <TEXT>` | Abréviation région | - |
+| `--product-version <N>` | Version (100 = v1.00) | 100 |
+| `--copyright-message <TEXT>` | Copyright intégré dans TRE et TDB | - |
+
+## Niveaux de zoom
+
+L'option `--levels` définit la résolution en bits de chaque niveau de zoom :
+
+```bash
+# Format simple (bits par niveau, du plus détaillé au plus large)
+imgforge build tiles/ --levels "24,20,16"
+
+# Format explicite (niveau:bits)
+imgforge build tiles/ --levels "0:24,1:20,2:16"
+```
+
+Voir la [référence complète sur les niveaux de zoom](../reference/niveaux-et-zoom.md) pour le détail des correspondances EndLevel, l'impact sur la taille des fichiers et les recommandations.
+
+Options de rendu supplémentaires :
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--transparent` | Carte overlay transparente | false |
+| `--draw-priority <N>` | Priorité d'affichage (overlay) | 25 |
+| `--order-by-decreasing-area` | Trier les polygones par aire décroissante | false |
+| `--lower-case` | Autoriser les minuscules dans les labels (force Format 9/10) | false |
 
 ## Encodage des labels
 
@@ -100,6 +148,26 @@ imgforge build tiles/ --min-size-polygon 8
 ```
 
 Élimine les micro-polygones invisibles à l'échelle du GPS (petits bâtiments, fragments de végétation...).
+
+### Simplification par résolution
+
+En complément de `--reduce-point-density` (seuil global), `--simplify-polygons` permet un seuil Douglas-Peucker **différent par résolution** :
+
+```bash
+# Seuil DP adapté à chaque niveau de zoom (résolution:seuil)
+imgforge build tiles/ --simplify-polygons "24:12,18:10,16:8"
+```
+
+Plus la résolution est basse (vue large), plus la simplification est agressive.
+
+### Découpage automatique des features volumineuses
+
+imgforge découpe automatiquement les features de plus de **250 points** pour éviter les débordements dans l'encodage RGN Garmin (delta variable-width) :
+
+- **Polylignes** : découpées en segments de ≤250 points avec 1 point de recouvrement aux jointures
+- **Polygones** : découpés par clipping Sutherland-Hodgman récursif le long de l'axe le plus long de la bounding box
+
+Ce traitement est **transparent** — aucune option à configurer.
 
 ## Contrôle du routing
 
@@ -200,7 +268,10 @@ Les tuiles en erreur sont journalisées (warning) mais n'empêchent pas la gén�
 ### Binaire pré-compilé
 
 ```bash
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.1.0/imgforge
+# Télécharger et extraire l'archive
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.3.0/imgforge-linux-amd64.tar.gz
+tar xzf imgforge-linux-amd64.tar.gz
+
 chmod +x imgforge
 sudo mv imgforge /usr/local/bin/
 imgforge --version

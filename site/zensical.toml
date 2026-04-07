@@ -64,6 +64,7 @@ Accueil = "index.md"
   { "Vue d'ensemble" = "reference/index.md" },
   { "Types Garmin" = "reference/types-garmin.md" },
   { "Correspondances BD TOPO" = "reference/correspondances-bdtopo.md" },
+  { "Niveaux de zoom et EndLevel" = "reference/niveaux-et-zoom.md" },
   { "Limites des formats" = "reference/limites-formats.md" }
 ]
 

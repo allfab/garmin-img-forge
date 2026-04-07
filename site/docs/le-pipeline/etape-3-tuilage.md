@@ -19,6 +19,21 @@ C'est tout. mpforge va :
 5. Pour chaque tuile : clipper les géométries, appliquer le field mapping, exporter le `.mp`
 6. Afficher une barre de progression en temps réel
 
+### Filtrage spatial (optionnel)
+
+Si des sources volumineuses (courbes de niveau, MNT...) sont configurées avec un `spatial_filter`, mpforge pré-filtre les features par une géométrie de référence avant le tuilage. Cela réduit drastiquement le temps de traitement :
+
+```yaml
+# Dans la configuration YAML
+inputs:
+  - path: "data/COURBES_NIVEAU.shp"
+    spatial_filter:
+      source: "data/COMMUNE.shp"
+      buffer: 500
+```
+
+Voir la [documentation mpforge](../le-projet/mpforge.md#filtrage-spatial) pour les détails.
+
 ## Sortie
 
 ```
