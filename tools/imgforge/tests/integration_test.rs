@@ -872,7 +872,7 @@ fn test_dem_section_with_converter() {
     assert!(section.tiles_lon >= 1);
     assert!(!section.tile_results.is_empty());
 
-    // Section header should be 60 bytes
+    // Section header should be 64 bytes
     let header = section.build_header(0, 0);
     assert_eq!(header.len(), 60);
 }

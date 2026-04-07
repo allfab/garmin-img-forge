@@ -50,21 +50,6 @@ impl DemBitWriter {
         self.bits.push(bit);
     }
 
-    /// Write `count` zero bits followed by one 1-bit (unary coding)
-    fn write_unary(&mut self, count: u32) {
-        for _ in 0..count {
-            self.add_bit(false);
-        }
-        self.add_bit(true);
-    }
-
-    /// Write `n_bits` of value, MSB first
-    fn write_bits(&mut self, value: u32, n_bits: u32) {
-        for i in (0..n_bits).rev() {
-            self.add_bit((value >> i) & 1 != 0);
-        }
-    }
-
     fn into_bytes(self) -> Vec<u8> {
         let byte_len = (self.bits.len() + 7) / 8;
         let mut bytes = vec![0u8; byte_len];
@@ -94,251 +79,556 @@ pub struct DemTileResult {
 }
 
 /// Encode a single DEM tile's heights into a compressed bitstream.
-/// Faithful to mkgmap DEMTile.java encodeDeltas().
+/// Faithful to mkgmap DEMTile.java constructor + encodeDeltas().
 pub fn encode_dem_tile(heights: &[i16], width: u32, height: u32) -> DemTileResult {
     let total = (width * height) as usize;
     assert_eq!(heights.len(), total);
 
-    // Check for all-UNDEF tile
-    let has_undef = heights.iter().any(|&h| h == UNDEF);
-    let valid_heights: Vec<i16> = heights.iter().copied().filter(|&h| h != UNDEF).collect();
-
-    if valid_heights.is_empty() {
-        // All NODATA
-        return DemTileResult {
-            base_height: 0,
-            max_delta: 0,
-            encoding_type: 0x02,
-            bitstream: Vec::new(),
-        };
-    }
-
-    let min_h = *valid_heights.iter().min().unwrap();
-    let max_h = *valid_heights.iter().max().unwrap();
-    let base_height = min_h;
-    let max_delta = (max_h - min_h) as u16;
-
-    // Normalize heights: replace UNDEF with max_delta, subtract base
-    let mut normalized = vec![0u32; total];
-    for i in 0..total {
-        if heights[i] == UNDEF {
-            normalized[i] = max_delta as u32;
+    // Check for all-UNDEF and compute min/max
+    let mut min_h = i32::MAX;
+    let mut max_h = i32::MIN;
+    let mut count_invalid = 0usize;
+    for &h in heights {
+        if h == UNDEF {
+            count_invalid += 1;
         } else {
-            normalized[i] = (heights[i] - base_height) as u32;
+            let hi = h as i32;
+            if hi > max_h { max_h = hi; }
+            if hi < min_h { min_h = hi; }
         }
     }
 
-    // If all same height, minimal bitstream
-    if max_delta == 0 {
+    let (base_height, max_delta_height, encoding_type, has_data);
+    if min_h == i32::MAX {
+        // All values invalid
+        has_data = false;
+        encoding_type = 2u8;
+        min_h = 0;
+        max_h = 0;
+        base_height = 0i16;
+        max_delta_height = 0u16;
+    } else if count_invalid > 0 {
+        // Some values invalid — mkgmap: max++, encodingType=2
+        has_data = true;
+        encoding_type = 2;
+        max_h += 1; // reserve highest value for UNDEF marker
+        base_height = min_h as i16;
+        max_delta_height = (max_h - min_h) as u16;
+    } else {
+        has_data = true;
+        encoding_type = 0;
+        base_height = min_h as i16;
+        max_delta_height = (max_h - min_h) as u16;
+    }
+
+    if !has_data || min_h == max_h {
         return DemTileResult {
             base_height,
-            max_delta: 0,
-            encoding_type: if has_undef { 0x02 } else { 0x00 },
+            max_delta: max_delta_height,
+            encoding_type,
             bitstream: Vec::new(),
         };
     }
 
-    // Encode using delta prediction + hybrid/plateau compression
-    let bitstream = encode_deltas(&normalized, width, height, max_delta);
+    // Normalize heights: UNDEF → maxDeltaHeight, else subtract base
+    let md = max_delta_height as i32;
+    let mut normalized = vec![0i32; total];
+    for i in 0..total {
+        if heights[i] == UNDEF {
+            normalized[i] = md;
+        } else {
+            normalized[i] = heights[i] as i32 - min_h;
+        }
+    }
+
+    let bitstream = encode_deltas(&normalized, width as usize, height as usize, md);
 
     DemTileResult {
         base_height,
-        max_delta,
-        encoding_type: if has_undef { 0x02 } else { 0x00 },
+        max_delta: max_delta_height,
+        encoding_type,
         bitstream,
     }
 }
 
-/// Encode delta-compressed bitstream (faithful to mkgmap DEMTile.encodeDeltas)
-fn encode_deltas(normalized: &[u32], width: u32, height: u32, max_delta: u16) -> Vec<u8> {
-    let mut bw = DemBitWriter::new();
-    let max_zero_bits = get_max_zero_bits(max_delta);
-    let big_bin_bits = get_big_bin_bits(max_delta);
-    let mut hunit = get_start_hunit(max_delta);
+// ─── Encoding types and wrap types (from mkgmap DEMTile.java) ───
 
-    // Windowed statistics for hunit adaptation (F5 fix)
-    let mut window_sum: u64 = 0;
-    let mut window_count: u32 = 0;
+#[derive(Clone, Copy, PartialEq)]
+enum EncType { Hybrid, Len }
 
-    let mut col = 0u32;
-    let mut row = 0u32;
+#[derive(Clone, Copy, PartialEq)]
+enum WrapType { Wrap0, Wrap1, Wrap2 }
 
-    while row < height {
-        while col < width {
-            let idx = (row * width + col) as usize;
-            let val = normalized[idx];
+#[derive(Clone, Copy, PartialEq)]
+enum CalcType { CalcPLen, CalcStd, CalcPlateauZero, CalcPlateauNonZero }
 
-            let h_upper = if row > 0 { normalized[((row - 1) * width + col) as usize] } else { 0 };
-            let h_left = if col > 0 { normalized[idx - 1] } else { 0 };
-            let h_up_left = if row > 0 && col > 0 { normalized[((row - 1) * width + col - 1) as usize] } else { 0 };
+/// ValPredicter — keeps statistics about previously encoded values and predicts the next.
+/// Faithful to mkgmap DEMTile.ValPredicter inner class.
+struct ValPredicter {
+    calc_type: CalcType,
+    enc_type: EncType,
+    wrap_type: WrapType,
+    sum_h: i32,
+    sum_l: i32,
+    elem_count: i32,
+    hunit: i32,
+    unit_delta: i32,
+    max_zero_bits: i32,
+    max_delta_height: i32,
+    // Wrap thresholds
+    l0_wrap_down: i32, l0_wrap_up: i32,
+    l1_wrap_down: i32, l1_wrap_up: i32,
+    l2_wrap_down: i32, l2_wrap_up: i32,
+    h_wrap_down: i32, h_wrap_up: i32,
+}
 
-            if h_upper == h_left {
-                // Plateau mode: count how many consecutive elements equal h_upper
-                let plateau_len = count_plateau(normalized, row, col, width, h_upper);
+impl ValPredicter {
+    fn new(calc_type: CalcType, max_height: i32) -> Self {
+        let num_zero_bits = get_max_zero_bits(max_height as u16) as i32;
+        let max_zero_bits = if calc_type == CalcType::CalcPlateauNonZero
+            || calc_type == CalcType::CalcPlateauZero {
+            num_zero_bits - 1
+        } else {
+            num_zero_bits
+        };
 
-                // Write the plateau run-length, then skip those elements
-                write_plateau_len(&mut bw, plateau_len);
+        let unit_delta = ((max_height - 0x5f).max(0)) / 0x40;
+        let hunit = get_start_hunit(max_height as u16) as i32;
 
-                // Advance past the plateau elements
-                for i in 0..plateau_len {
-                    let skip_idx = (row * width + col + i) as usize;
-                    window_sum += normalized[skip_idx] as u64;
-                    window_count += 1;
+        let (l0_wrap_down, l0_wrap_up, l1_wrap_down, l1_wrap_up, l2_wrap_down, l2_wrap_up);
+        if max_height % 2 == 0 {
+            l0_wrap_down = max_height / 2;
+            l0_wrap_up = -(max_height / 2);
+            l1_wrap_down = (max_height + 2) / 2;
+            l1_wrap_up = -(max_height / 2);
+            l2_wrap_down = max_height / 2;
+            l2_wrap_up = -(max_height / 2);
+        } else {
+            l0_wrap_down = (max_height + 1) / 2;
+            l0_wrap_up = -((max_height - 1) / 2);
+            l1_wrap_down = (max_height + 1) / 2;
+            l1_wrap_up = -((max_height - 1) / 2);
+            l2_wrap_down = (max_height - 1) / 2;
+            l2_wrap_up = -((max_height + 1) / 2);
+        }
 
-                    if window_count >= 64 {
-                        hunit = adapt_hunit(window_sum, window_count, max_delta);
-                        window_sum = 0;
-                        window_count = 0;
-                    }
-                }
-                col += plateau_len;
+        let h_wrap_down = (max_height + 1) / 2;
+        let h_wrap_up = -((max_height - 1) / 2);
 
-                // After plateau, if there are more elements in this row and the next
-                // element differs from h_upper, encode it with standard prediction
-                if col < width {
-                    let next_idx = (row * width + col) as usize;
-                    let next_val = normalized[next_idx];
-                    let predict = clamp_predict(h_upper as i64 + h_upper as i64 - h_up_left as i64, max_delta);
-                    let delta = wrap(next_val as i32 - predict as i32, max_delta);
-                    write_val_hybrid(&mut bw, delta, hunit, max_zero_bits, big_bin_bits, max_delta);
+        Self {
+            calc_type, enc_type: EncType::Hybrid, wrap_type: WrapType::Wrap0,
+            sum_h: 0, sum_l: 0, elem_count: 0,
+            hunit, unit_delta, max_zero_bits, max_delta_height: max_height,
+            l0_wrap_down, l0_wrap_up, l1_wrap_down, l1_wrap_up,
+            l2_wrap_down, l2_wrap_up, h_wrap_down, h_wrap_up,
+        }
+    }
 
-                    window_sum += next_val as u64;
-                    window_count += 1;
-                    col += 1;
+    fn wrap(&self, data: i32) -> i32 {
+        let mut v = data;
+        let (down, up) = if self.enc_type == EncType::Hybrid {
+            (self.h_wrap_down, self.h_wrap_up)
+        } else {
+            match self.wrap_type {
+                WrapType::Wrap0 => (self.l0_wrap_down, self.l0_wrap_up),
+                WrapType::Wrap1 => (self.l1_wrap_down, self.l1_wrap_up),
+                WrapType::Wrap2 => (self.l2_wrap_down, self.l2_wrap_up),
+            }
+        };
+        if v > down { v -= self.max_delta_height + 1; }
+        if v < up { v += self.max_delta_height + 1; }
+        v
+    }
 
-                    if window_count >= 64 {
-                        hunit = adapt_hunit(window_sum, window_count, max_delta);
-                        window_sum = 0;
-                        window_count = 0;
-                    }
-                }
+    fn write(&mut self, val: i32, bw: &mut DemBitWriter,
+             curr_calc_type: CalcType, curr_plateau_table_pos: usize,
+             d_diff: i32) {
+        let wrapped = self.wrap(val);
+        let mut delta1 = wrapped;
+
+        if self.calc_type == CalcType::CalcPlateauZero {
+            if delta1 <= 0 { delta1 += 1; }
+        } else if self.calc_type == CalcType::CalcPlateauNonZero {
+            if d_diff > 0 { delta1 = -delta1; }
+        }
+
+        let delta2 = match self.wrap_type {
+            WrapType::Wrap0 => delta1,
+            WrapType::Wrap1 => 1 - delta1,
+            WrapType::Wrap2 => -delta1,
+        };
+
+        let mut written = false;
+        let current_max = self.get_current_max_zero_bits(curr_calc_type, curr_plateau_table_pos);
+
+        if self.enc_type == EncType::Hybrid {
+            written = write_val_hybrid(bw, delta2, self.hunit, current_max);
+        } else {
+            // EncType::Len
+            let n0 = if delta2 < 0 {
+                -delta2 * 2
+            } else if delta2 > 0 {
+                (delta2 - 1) * 2 + 1
             } else {
-                // Standard prediction mode
-                let predict = clamp_predict(h_left as i64 + h_upper as i64 - h_up_left as i64, max_delta);
-                let delta = wrap(val as i32 - predict as i32, max_delta);
-                write_val_hybrid(&mut bw, delta, hunit, max_zero_bits, big_bin_bits, max_delta);
-
-                window_sum += val as u64;
-                window_count += 1;
-                col += 1;
-
-                if window_count >= 64 {
-                    hunit = adapt_hunit(window_sum, window_count, max_delta);
-                    window_sum = 0;
-                    window_count = 0;
-                }
+                0
+            };
+            if n0 <= current_max {
+                write_number_of_zero_bits(bw, n0);
+                written = true;
             }
         }
-        col = 0;
-        row += 1;
+
+        if !written {
+            write_val_big_bin(bw, delta2, current_max, self.max_delta_height);
+        }
+
+        self.process_val(delta1);
+    }
+
+    fn get_current_max_zero_bits(&self, curr_calc_type: CalcType, curr_plateau_table_pos: usize) -> i32 {
+        if curr_calc_type == CalcType::CalcPlateauNonZero
+            || curr_calc_type == CalcType::CalcPlateauZero {
+            self.max_zero_bits - PLATEAU_BIN_BITS[curr_plateau_table_pos] as i32
+        } else {
+            self.max_zero_bits
+        }
+    }
+
+    fn process_val(&mut self, delta1: i32) {
+        match self.calc_type {
+            CalcType::CalcStd => {
+                // sumH: hybrid threshold
+                self.sum_h += delta1.abs();
+                if self.sum_h + self.unit_delta + 1 >= 0xffff {
+                    self.sum_h -= 0x10000;
+                }
+
+                // sumL: length encoding threshold
+                let mut work_data = delta1;
+                let mut eval_region: i32 = -1;
+                if self.elem_count == 63 {
+                    eval_region = get_evaluate_data_region(self.sum_l, self.elem_count, delta1);
+                    let data_even = delta1 % 2 == 0;
+                    let sum_l1 = (self.sum_l - 1) % 4 == 0;
+                    match eval_region {
+                        0 | 2 | 4 => {
+                            if (sum_l1 && !data_even) || (!sum_l1 && data_even) {
+                                work_data += 1;
+                            }
+                        }
+                        1 => {
+                            work_data += 1;
+                            if (sum_l1 && !data_even) || (!sum_l1 && data_even) {
+                                work_data += 1;
+                            }
+                        }
+                        3 => {
+                            if (sum_l1 && data_even) || (!sum_l1 && !data_even) {
+                                work_data -= 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if eval_region < 0 {
+                    eval_region = get_evaluate_data_region(self.sum_l, self.elem_count, work_data);
+                }
+                let eval = evaluate_data(self.sum_l, self.elem_count, work_data, eval_region);
+                self.sum_l += eval;
+
+                self.elem_count += 1;
+                if self.elem_count == 64 {
+                    self.elem_count = 32;
+                    self.sum_h = ((self.sum_h - self.unit_delta) >> 1) - 1;
+                    self.sum_l /= 2;
+                }
+
+                self.hunit = normalize_hunit((self.unit_delta + self.sum_h + 1) / (self.elem_count + 1));
+
+                self.wrap_type = WrapType::Wrap0;
+                if self.hunit > 0 {
+                    self.enc_type = EncType::Hybrid;
+                } else {
+                    self.enc_type = EncType::Len;
+                    if self.sum_l > 0 { self.wrap_type = WrapType::Wrap1; }
+                }
+            }
+            CalcType::CalcPlateauZero => {
+                self.sum_h += if delta1 > 0 { delta1 } else { 1 - delta1 };
+                if self.sum_h + self.unit_delta + 1 >= 0xffff {
+                    self.sum_h -= 0x10000;
+                }
+                self.sum_l += if delta1 <= 0 { -1 } else { 1 };
+                self.elem_count += 1;
+                if self.elem_count == 64 {
+                    self.elem_count = 32;
+                    self.sum_h = ((self.sum_h - self.unit_delta) >> 1) - 1;
+                    self.sum_l /= 2;
+                    if self.sum_l % 2 != 0 { self.sum_l += 1; }
+                }
+                self.hunit = normalize_hunit((self.unit_delta + self.sum_h + 1 - self.elem_count / 2) / (self.elem_count + 1));
+                self.wrap_type = WrapType::Wrap0;
+                if self.hunit > 0 {
+                    self.enc_type = EncType::Hybrid;
+                } else {
+                    self.enc_type = EncType::Len;
+                    if self.sum_l >= 0 { self.wrap_type = WrapType::Wrap1; }
+                }
+            }
+            CalcType::CalcPlateauNonZero => {
+                self.sum_h += delta1.abs();
+                if self.sum_h + self.unit_delta + 1 >= 0xffff {
+                    self.sum_h -= 0x10000;
+                }
+                self.sum_l += if delta1 <= 0 { -1 } else { 1 };
+                self.elem_count += 1;
+                if self.elem_count == 64 {
+                    self.elem_count = 32;
+                    self.sum_h = ((self.sum_h - self.unit_delta) >> 1) - 1;
+                    self.sum_l /= 2;
+                    if self.sum_l % 2 != 0 { self.sum_l -= 1; } // different from PlateauZero!
+                }
+                self.hunit = normalize_hunit((self.unit_delta + self.sum_h + 1) / (self.elem_count + 1));
+                self.wrap_type = WrapType::Wrap0;
+                if self.hunit > 0 {
+                    self.enc_type = EncType::Hybrid;
+                } else {
+                    self.enc_type = EncType::Len;
+                    if self.sum_l <= 0 { self.wrap_type = WrapType::Wrap2; }
+                }
+            }
+            CalcType::CalcPLen => {} // never called with this type
+        }
+    }
+}
+
+/// Encode delta-compressed bitstream (faithful to mkgmap DEMTile.encodeDeltas)
+#[allow(unused_assignments)]
+fn encode_deltas(heights: &[i32], width: usize, _height: usize, max_delta_height: i32) -> Vec<u8> {
+    let mut bw = DemBitWriter::new();
+
+    let mut enc_standard = ValPredicter::new(CalcType::CalcStd, max_delta_height);
+    let mut enc_plateau_f0 = ValPredicter::new(CalcType::CalcPlateauZero, max_delta_height);
+    let mut enc_plateau_f1 = ValPredicter::new(CalcType::CalcPlateauNonZero, max_delta_height);
+
+    let mut curr_calc_type = CalcType::CalcPLen; // initial dummy
+    let mut curr_plateau_table_pos: usize = 0;
+    let mut write_follower = false;
+
+    let get_height = |col: i32, row: i32| -> i32 {
+        if row < 0 { return 0; }
+        if col < 0 {
+            return if row == 0 { 0 } else { heights[(row as usize - 1) * width] };
+        }
+        heights[col as usize + row as usize * width]
+    };
+
+    let mut pos: usize = 0;
+    while pos < heights.len() {
+        let n = (pos % width) as i32; // col
+        let m = (pos / width) as i32; // row
+
+        let h_upper = get_height(n, m - 1);
+        let h_left = get_height(n - 1, m);
+        let d_diff = h_upper - h_left;
+
+        if write_follower {
+            let encoder = if d_diff == 0 { &mut enc_plateau_f0 } else { &mut enc_plateau_f1 };
+            write_follower = false;
+
+            curr_calc_type = encoder.calc_type;
+            let h = get_height(n, m);
+            // Plateau follower: predicted value is upper height
+            let v = h - h_upper;
+
+            encoder.write(v, &mut bw, curr_calc_type, curr_plateau_table_pos, d_diff);
+            pos += 1;
+        } else if d_diff == 0 {
+            curr_calc_type = CalcType::CalcPLen;
+            let p_len = calc_plateau_len(heights, n, m, width);
+            write_plateau_len(&mut bw, p_len as u32, n as u32, width as u32, &mut curr_plateau_table_pos);
+            pos += p_len;
+            write_follower = (pos % width != 0) || p_len == 0;
+        } else {
+            curr_calc_type = CalcType::CalcStd;
+            let h = get_height(n, m);
+
+            // Standard prediction
+            let h_up_left = get_height(n - 1, m - 1);
+            let hdiff_up = h_upper - h_up_left;
+            let predict = if hdiff_up >= max_delta_height - h_left {
+                -1
+            } else if hdiff_up <= -h_left {
+                0
+            } else {
+                h_left + hdiff_up
+            };
+
+            let v = if d_diff > 0 { -h + predict } else { h - predict };
+
+            enc_standard.write(v, &mut bw, curr_calc_type, curr_plateau_table_pos, d_diff);
+            pos += 1;
+        }
     }
 
     bw.into_bytes()
 }
 
-/// Count how many consecutive elements from (row, col) equal `plateau_val`
-fn count_plateau(normalized: &[u32], row: u32, col: u32, width: u32, plateau_val: u32) -> u32 {
-    let mut count = 0;
+/// Calculate plateau length — counts elements from (col, row) equal to h_left.
+/// Faithful to mkgmap DEMTile.calcPlateauLen: compares with getHeight(col-1, row).
+fn calc_plateau_len(heights: &[i32], col: i32, row: i32, width: usize) -> usize {
+    let h_left = if col > 0 {
+        heights[col as usize - 1 + row as usize * width]
+    } else if row == 0 {
+        0
+    } else {
+        heights[(row as usize - 1) * width]
+    };
+
+    let mut len = 0usize;
     let mut c = col;
-    while c < width {
-        let idx = (row * width + c) as usize;
-        if normalized[idx] != plateau_val {
+    while (c as usize) < width {
+        if heights[c as usize + row as usize * width] != h_left {
             break;
         }
-        count += 1;
+        len += 1;
         c += 1;
     }
-    count
+    len
 }
 
-/// Write plateau length using the plateau unit/binbits tables
-fn write_plateau_len(bw: &mut DemBitWriter, len: u32) {
-    if len == 0 {
-        bw.write_unary(0); // single 1-bit = zero length
-        return;
-    }
+/// Write plateau length using the plateau unit/binbits tables.
+/// Faithful to mkgmap DEMTile.writePlateauLen with persistent currPlateauTablePos.
+#[allow(unused_assignments)]
+fn write_plateau_len(
+    bw: &mut DemBitWriter, p_len: u32, col: u32, width: u32,
+    curr_plateau_table_pos: &mut usize,
+) {
+    let mut len = p_len as i32;
+    let mut x = col as i32;
 
-    let mut remaining = len;
-    let mut table_idx = 0;
-
-    while remaining > 0 && table_idx < PLATEAU_UNIT.len() {
-        let unit = PLATEAU_UNIT[table_idx];
-        let bin_bits = PLATEAU_BIN_BITS[table_idx];
-
-        if remaining < unit * (1 << bin_bits) + unit {
-            // This table entry can encode the remaining length
-            let quotient = remaining / unit;
-            let remainder = remaining % unit;
-            bw.write_unary(quotient);
-            if bin_bits > 0 {
-                bw.write_bits(remainder, bin_bits);
-            }
-            return;
+    if col as i32 + len >= width as i32 {
+        // Row-end optimization
+        while x < width as i32 {
+            let unit = PLATEAU_UNIT[*curr_plateau_table_pos] as i32;
+            *curr_plateau_table_pos += 1;
+            len -= unit;
+            x += unit;
+            bw.add_bit(true);
+        }
+        if x != width as i32 {
+            *curr_plateau_table_pos -= 1;
+        }
+    } else {
+        loop {
+            let unit = PLATEAU_UNIT[*curr_plateau_table_pos] as i32;
+            if len < unit { break; }
+            *curr_plateau_table_pos += 1;
+            len -= unit;
+            bw.add_bit(true);
+            x += unit;
+            if x > width as i32 { *curr_plateau_table_pos -= 1; }
+            if x >= width as i32 { return; }
+        }
+        if *curr_plateau_table_pos > 0 {
+            *curr_plateau_table_pos -= 1;
         }
 
-        remaining -= unit * (1 << bin_bits);
-        table_idx += 1;
+        bw.add_bit(false); // separator bit
+        let bin_bits = PLATEAU_BIN_BITS[*curr_plateau_table_pos] as u32;
+        if bin_bits > 0 {
+            write_val_as_bin(bw, len.unsigned_abs(), bin_bits);
+        }
     }
-
-    // Fallback for very long plateaus
-    bw.write_unary(remaining);
 }
 
-/// Hybrid value encoding (faithful to mkgmap writeValHybrid)
-fn write_val_hybrid(
-    bw: &mut DemBitWriter,
-    val: u32,
-    hunit: u32,
-    max_zero_bits: u32,
-    big_bin_bits: u32,
-    max_delta: u16,
-) {
-    if val == 0 {
-        bw.add_bit(true); // single 1-bit for zero
-        return;
+/// Write unsigned binary value MSB first
+fn write_val_as_bin(bw: &mut DemBitWriter, val: u32, num_bits: u32) {
+    if num_bits == 0 && val == 0 { return; }
+    let mut t = 1u32 << (num_bits - 1);
+    while t > 0 {
+        bw.add_bit((val & t) != 0);
+        t >>= 1;
     }
+}
 
-    let abs_val = if val <= max_delta as u32 / 2 {
-        val
+/// Write length-encoded value: sequence of 0-bits followed by 1-bit
+fn write_number_of_zero_bits(bw: &mut DemBitWriter, val: i32) {
+    for _ in 0..val { bw.add_bit(false); }
+    bw.add_bit(true);
+}
+
+/// Hybrid value encoding — returns true if value was written, false if BigBin needed.
+/// Faithful to mkgmap DEMTile.writeValHybrid (signed values).
+fn write_val_hybrid(bw: &mut DemBitWriter, val: i32, hunit: i32, max_zero_bits: i32) -> bool {
+    if hunit <= 0 { return false; }
+    let num_bits = (hunit as u32).trailing_zeros();
+    let (bin_part, len_part) = if val > 0 {
+        ((val - 1) % hunit, (val - 1 - (val - 1) % hunit) / hunit)
     } else {
-        max_delta as u32 + 1 - val
+        ((-val) % hunit, (-val - (-val) % hunit) / hunit)
     };
-    let sign = val > max_delta as u32 / 2;
-
-    let len_part = (abs_val - 1) / hunit;
-    let bin_part = (abs_val - 1) % hunit;
-    let hunit_bits = log2_floor(hunit);
 
     if len_part <= max_zero_bits {
-        // Normal hybrid: len_part zeros + 1 + bin_part + sign
-        bw.write_unary(len_part);
-        if hunit_bits > 0 {
-            bw.write_bits(bin_part, hunit_bits);
-        }
-        bw.add_bit(sign);
+        write_number_of_zero_bits(bw, len_part);
+        write_val_as_bin(bw, bin_part as u32, num_bits);
+        bw.add_bit(val > 0); // sign bit: 1 = positive
+        true
     } else {
-        // BigBin fallback
-        for _ in 0..=max_zero_bits {
-            bw.add_bit(false);
-        }
-        bw.write_bits(abs_val, big_bin_bits);
-        bw.add_bit(!sign); // sign is inverted in bigbin
+        false
     }
 }
 
-/// Wrap signed delta into unsigned range for encoding
-fn wrap(val: i32, max_delta: u16) -> u32 {
-    let md = max_delta as i32 + 1;
-    let mut v = val % md;
-    if v < 0 {
-        v += md;
+/// BigBin fallback encoding.
+/// Faithful to mkgmap DEMTile.writeValBigBin.
+fn write_val_big_bin(bw: &mut DemBitWriter, val: i32, num_zero_bits: i32, max_delta_height: i32) {
+    // Signal BigBin by writing an invalid number of zero bits
+    write_number_of_zero_bits(bw, num_zero_bits + 1);
+    let bits = get_big_bin_bits(max_delta_height as u16);
+    if val < 0 {
+        write_val_as_bin(bw, (-val - 1) as u32, bits - 1);
+    } else {
+        write_val_as_bin(bw, (val - 1) as u32, bits - 1);
     }
-    v as u32
+    bw.add_bit(val <= 0); // sign bit: 0 = positive
 }
 
-/// Clamp prediction to valid range [0, max_delta]
-fn clamp_predict(val: i64, max_delta: u16) -> u32 {
-    val.max(0).min(max_delta as i64) as u32
+/// evaluateData — from mkgmap DEMTile.evaluateData
+fn evaluate_data(oldsum: i32, elemcount: i32, newdata: i32, region: i32) -> i32 {
+    match region {
+        0 => -1 - oldsum - elemcount,
+        1 => 2 * (newdata + elemcount) + 3,
+        2 => 2 * newdata - 1,
+        3 => 2 * (newdata - elemcount) - 5,
+        _ => 1 - oldsum + elemcount,
+    }
+}
+
+/// getEvaluateDataRegion — from mkgmap DEMTile.getEvaluateDataRegion
+fn get_evaluate_data_region(oldsum: i32, elemcount: i32, newdata: i32) -> i32 {
+    if elemcount < 63 {
+        if newdata < -2 - ((oldsum + 3 * elemcount) >> 1) { 0 }
+        else if newdata < -((oldsum + elemcount) >> 1) { 1 }
+        else if newdata < 2 - ((oldsum - elemcount) >> 1) { 2 }
+        else if newdata < 4 - ((oldsum - 3 * elemcount) >> 1) { 3 }
+        else { 4 }
+    } else {
+        if newdata < -2 - ((oldsum + 3 * elemcount) >> 1) { 0 }
+        else if newdata < -((oldsum + elemcount) >> 1) - 1 { 1 } // special case
+        else if newdata < 2 - ((oldsum - elemcount) >> 1) { 2 }
+        else if newdata < 4 - ((oldsum - 3 * elemcount) >> 1) { 3 }
+        else { 4 }
+    }
+}
+
+/// Normalize hunit to power of 2 (or 0).
+/// Faithful to mkgmap DEMTile.normalizeHUnit.
+fn normalize_hunit(hu: i32) -> i32 {
+    if hu > 0 {
+        1 << (31 - (hu as u32).leading_zeros())
+    } else {
+        0
+    }
 }
 
 /// Get initial hunit based on max_delta (mkgmap getStartHUnit)
@@ -355,7 +645,7 @@ fn get_start_hunit(max_delta: u16) -> u32 {
     else { 256 }
 }
 
-/// Get max zero bits for unary coding (mkgmap getMaxZeroBits)
+/// Get max zero bits for unary coding (mkgmap getMaxLengthZeroBits — FIXED)
 fn get_max_zero_bits(max_delta: u16) -> u32 {
     let md = max_delta as u32;
     if md < 2 { 15 }
@@ -366,40 +656,25 @@ fn get_max_zero_bits(max_delta: u16) -> u32 {
     else if md < 64 { 20 }
     else if md < 128 { 21 }
     else if md < 256 { 22 }
-    else if md < 512 { 23 }
-    else if md < 1024 { 24 }
-    else if md < 2048 { 25 }
-    else if md < 4096 { 26 }
-    else if md < 8192 { 27 }
+    else if md < 512 { 25 }
+    else if md < 1024 { 28 }
+    else if md < 2048 { 31 }
+    else if md < 4096 { 34 }
+    else if md < 8192 { 37 }
+    else if md < 16384 { 40 }
     else { 43 }
 }
 
-/// Get big bin bits (mkgmap getBigBinBits)
+/// Get big bin bits (mkgmap getBigBinBits — using highestOneBit approach)
 fn get_big_bin_bits(max_delta: u16) -> u32 {
-    if max_delta == 0 { return 0; }
-    log2_floor(max_delta as u32) + 1
-}
-
-/// Floor of log2
-fn log2_floor(val: u32) -> u32 {
-    if val == 0 { return 0; }
-    31 - val.leading_zeros()
-}
-
-/// Adapt hunit based on running statistics (mkgmap style)
-fn adapt_hunit(sum_h: u64, elem_count: u32, max_delta: u16) -> u32 {
-    if elem_count == 0 { return get_start_hunit(max_delta); }
-    let avg = sum_h / elem_count as u64;
-    let md = max_delta as u64;
+    let md = max_delta as u32;
     if md == 0 { return 1; }
-
-    // Target hunit = power of 2 near average / 2
-    let target = if avg > 0 { avg / 2 } else { 1 };
-    let mut hunit = 1u32;
-    while (hunit as u64) < target && hunit < 256 {
-        hunit *= 2;
+    if md < 16384 {
+        let n = 1u32 << (31 - md.leading_zeros()); // highest_one_bit
+        n.trailing_zeros() + 1
+    } else {
+        15
     }
-    hunit.max(1).min(256)
 }
 
 // ─── DemSection: one zoom level ───
@@ -445,39 +720,49 @@ impl DemSection {
             if aligned == 0 { 16 } else { aligned } // F10 fix: ensure non-zero
         };
 
-        let dist_i = dist as i64;
+        let dist_i = dist as i32;
         let dist_u = dist as u32;
-        // Align bounds to DEM grid (use i64 throughout for negative coords — F2 fix)
-        let left_i64 = (bounds.west / (dist as f64 * FACTOR)).floor() as i64 * dist_i * 256;
-        let top_i64 = (bounds.north / (dist as f64 * FACTOR)).ceil() as i64 * dist_i * 256;
-        let right_i64 = (bounds.east / (dist as f64 * FACTOR)).ceil() as i64 * dist_i * 256;
-        let bottom_i64 = (bounds.south / (dist as f64 * FACTOR)).floor() as i64 * dist_i * 256;
 
-        // Garmin DEM uses u32 wrapping for coordinates
-        let left = left_i64 as u32;
-        let top = top_i64 as u32;
+        // Convert bounds to Garmin map units (24-bit), then ×256 for DEM units
+        // This matches mkgmap DEMFile.calc(): int top = treArea.getMaxLat() * 256;
+        const MAP_UNIT_FACTOR: f64 = 360.0 / (1u64 << 24) as f64; // degrees per map unit
+        let top_mu = (bounds.north / MAP_UNIT_FACTOR).ceil() as i32;
+        let left_mu = (bounds.west / MAP_UNIT_FACTOR).floor() as i32;
+        let bottom_mu = (bounds.south / MAP_UNIT_FACTOR).floor() as i32;
+        let right_mu = (bounds.east / MAP_UNIT_FACTOR).ceil() as i32;
 
-        // Calculate total points using i64 to avoid underflow
-        let total_points_lon = ((right_i64 - left_i64) / (dist_i * 256) + 1) as u32;
-        let total_points_lat = ((top_i64 - bottom_i64) / (dist_i * 256) + 1) as u32;
+        // DEM units = map_units × 256 (fits in i32 for reasonable latitudes)
+        let top_dem = top_mu.wrapping_mul(256);
+        let left_dem = left_mu.wrapping_mul(256);
+        let bottom_dem = bottom_mu.wrapping_mul(256);
+        let right_dem = right_mu.wrapping_mul(256);
 
-        // Tile counts
-        let tiles_lon = (total_points_lon + STD_DIM - 1) / STD_DIM;
-        let tiles_lat = (total_points_lat + STD_DIM - 1) / STD_DIM;
+        // Align to distance grid (like mkgmap moveUp/moveLeft)
+        let extra_dem = (0.1f64 / 45.0 * (1u64 << 29) as f64) as i32;
+        let (x_top, x_left) = if dist_i < extra_dem {
+            (move_up(top_dem, dist_i), move_left(left_dem, dist_i))
+        } else {
+            (top_dem, left_dem)
+        };
 
-        // Non-standard sizes for last row/column
-        let non_std_width = total_points_lon % STD_DIM;
-        let non_std_width = if non_std_width == 0 { STD_DIM } else { non_std_width };
-        let non_std_height = total_points_lat % STD_DIM;
-        let non_std_height = if non_std_height == 0 { STD_DIM } else { non_std_height };
+        let left = x_left as u32; // written as i32 in LE, same bit pattern
+        let top = x_top as u32;
+
+        // Calculate area dimensions in DEM units (like mkgmap)
+        let area_height = x_top - bottom_dem;
+        let area_width = right_dem - x_left;
+
+        // getTileInfo normalization (faithful to mkgmap DEMSection.getTileInfo)
+        let (tiles_lat, non_std_height) = get_tile_info(area_height, dist_i);
+        let (tiles_lon, non_std_width) = get_tile_info(area_width, dist_i);
 
         // Step size in degrees
         let step_lat = dist as f64 * FACTOR;
         let step_lon = dist as f64 * FACTOR;
 
-        // Top-left corner in degrees (use i64 for negative coords)
-        let top_lat = top_i64 as f64 * FACTOR / 256.0;
-        let left_lon = left_i64 as f64 * FACTOR / 256.0;
+        // Top-left corner in degrees (from aligned DEM units = map_units × 256)
+        let top_lat = x_top as f64 * MAP_UNIT_FACTOR / 256.0;
+        let left_lon = x_left as f64 * MAP_UNIT_FACTOR / 256.0;
 
         // Generate tiles
         let mut tile_results = Vec::with_capacity((tiles_lat * tiles_lon) as usize);
@@ -668,6 +953,58 @@ fn write_le_n_signed(buf: &mut Vec<u8>, val: i16, n: usize) {
 /// Align distance to 16-unit boundary
 fn align_distance(d: i32) -> i32 {
     ((d + 8) / 16) * 16
+}
+
+/// Move latitude up to align to distance grid (mkgmap DEMFile.moveUp)
+fn move_up(orig_lat: i32, distance: i32) -> i32 {
+    let mut moved = orig_lat;
+    if moved >= 0 {
+        moved -= moved % distance;
+        if moved < 0x3FFFFFFF - distance {
+            moved += distance;
+        }
+    } else {
+        moved -= moved % distance;
+    }
+    moved
+}
+
+/// Move longitude left to align to distance grid (mkgmap DEMFile.moveLeft)
+fn move_left(orig_lon: i32, distance: i32) -> i32 {
+    let mut moved = orig_lon;
+    if moved >= 0 {
+        moved -= moved % distance;
+    } else {
+        moved -= moved % distance;
+        if moved > i32::MIN + distance {
+            moved -= distance;
+        }
+    }
+    moved
+}
+
+/// Calculate tile count and non-standard dimension.
+/// Faithful to mkgmap DEMSection.getTileInfo — normalizes nonstd to 1..95 range.
+fn get_tile_info(dem_points: i32, dem_dist: i32) -> (u32, u32) {
+    let resolution = STD_DIM as i32 * dem_dist;
+    let points = dem_points + dem_dist; // mkgmap: "Garmin seems to prefer large overlaps"
+    let n_full = points / resolution;
+    let rest = points - n_full * resolution;
+    let mut num = n_full;
+    let mut nonstd = rest / dem_dist;
+    if rest % dem_dist != 0 {
+        nonstd += 1;
+    }
+    // Normalize so nonstd is between 1..95 (as Garmin does)
+    if nonstd >= STD_DIM as i32 / 2 {
+        num += 1; // absorb into an extra full tile
+    } else if num > 0 {
+        nonstd += STD_DIM as i32; // make > 64 so header stores nonstd-1 > 63
+    }
+    if num == 0 {
+        num = 1;
+    }
+    (num as u32, nonstd as u32)
 }
 
 // ─── DemWriter: complete DEM subfile ───
@@ -909,10 +1246,12 @@ mod tests {
     }
 
     #[test]
-    fn test_wrap() {
-        assert_eq!(wrap(0, 100), 0);
-        assert_eq!(wrap(5, 100), 5);
-        assert_eq!(wrap(-5, 100), 96); // 101 - 5
+    fn test_val_predicter_wrap() {
+        let vp = ValPredicter::new(CalcType::CalcStd, 100);
+        assert_eq!(vp.wrap(0), 0);
+        assert_eq!(vp.wrap(5), 5);
+        // Wrapping: val > h_wrap_down (51) → val - 101
+        assert_eq!(vp.wrap(60), 60 - 101); // -41
     }
 
     #[test]
@@ -934,12 +1273,15 @@ mod tests {
     fn test_get_max_zero_bits() {
         assert_eq!(get_max_zero_bits(1), 15);
         assert_eq!(get_max_zero_bits(100), 21);
-        assert_eq!(get_max_zero_bits(10000), 43);
+        assert_eq!(get_max_zero_bits(300), 25);   // was 23, now fixed per mkgmap
+        assert_eq!(get_max_zero_bits(1000), 28);  // was 24, now fixed per mkgmap
+        assert_eq!(get_max_zero_bits(10000), 40); // was 43, now correct for <16384
+        assert_eq!(get_max_zero_bits(20000), 43);
     }
 
     #[test]
     fn test_get_big_bin_bits() {
-        assert_eq!(get_big_bin_bits(0), 0);
+        assert_eq!(get_big_bin_bits(0), 1);  // mkgmap: highestOneBit(0) special case
         assert_eq!(get_big_bin_bits(1), 1);
         assert_eq!(get_big_bin_bits(255), 8);
         assert_eq!(get_big_bin_bits(1000), 10);

@@ -210,6 +210,14 @@ impl TreWriter {
             buf.extend_from_slice(&num_ext_points.to_le_bytes());
         }
 
+        // MapValues @154-169 (4 × u32) — integrity checksum required by Basecamp
+        // Ported from mkgmap MapValues.java (offset 0x9A in the TRE header)
+        common_header::pad_to(&mut buf, 154); // ensure we're at offset 154
+        let map_values = calc_map_values(self.map_id, TRE_HEADER_LEN as u32);
+        for v in &map_values {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+
         // Pad to exactly TRE_HEADER_LEN
         common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
 
@@ -326,6 +334,86 @@ impl TreWriter {
 }
 
 
+/// Calculate the four MapValues written at TRE header offset 0x9A (154).
+/// Ported from mkgmap MapValues.java by Steve Ratcliffe.
+/// These are integrity checksums derived from the map ID and header length.
+fn calc_map_values(map_id: u32, header_length: u32) -> [u32; 4] {
+    // Converts the digits in the map id to the values seen in this section.
+    const MAP_ID_CODE_TABLE: [u8; 16] = [
+        0, 1, 0xf, 5,
+        0xd, 4, 7, 6,
+        0xb, 9, 0xe, 8,
+        2, 0xa, 0xc, 3,
+    ];
+
+    // Used to work out the required offset that is applied to all digits.
+    const OFFSET_MAP: [u8; 16] = [
+        6, 7, 5, 11,
+        3, 10, 13, 12,
+        1, 15, 4, 14,
+        8, 0, 2, 9,
+    ];
+
+    // Extract nibble i of map_id (0 = most significant)
+    let digit = |i: usize| -> u8 {
+        ((map_id >> (4 * (7 - i))) & 0xf) as u8
+    };
+
+    // values[0..4][0..8] — 4 values, each with 8 nibbles
+    let mut values = [[0u8; 8]; 4];
+
+    // calcThird (values[2])
+    for i in 0..8 {
+        let n = digit(i) as usize;
+        values[2][i ^ 1] = MAP_ID_CODE_TABLE[n];
+    }
+
+    // calcFourth (values[3] = copy of values[2])
+    values[3] = values[2];
+
+    // calcFirst (values[0])
+    values[0][0] = digit(4).wrapping_add(values[3][0]);
+    values[0][1] = digit(5).wrapping_add(values[3][1]);
+    values[0][2] = digit(6).wrapping_add(values[3][2]);
+    values[0][3] = digit(7).wrapping_add(values[3][3]);
+    values[0][4] = values[3][4];
+    values[0][5] = values[3][5];
+    values[0][6] = values[3][6];
+    values[0][7] = values[3][7].wrapping_add(1);
+
+    // calcSecond (values[1])
+    values[1][0] = values[3][0];
+    values[1][1] = values[3][1];
+    let h1 = (header_length >> 4) as u8;
+    let h2 = header_length as u8;
+    values[1][2] = (values[3][2].wrapping_add(h1)) & 0xf;
+    values[1][3] = (values[3][3].wrapping_add(h2)) & 0xf;
+    values[1][4] = values[3][4].wrapping_add(digit(0));
+    values[1][5] = values[3][5].wrapping_add(digit(1));
+    values[1][6] = values[3][6].wrapping_add(digit(2));
+    values[1][7] = values[3][7].wrapping_add(digit(3));
+
+    // addOffset — sum even nibbles of mapId, lookup in offset table
+    let n = digit(1).wrapping_add(digit(3)).wrapping_add(digit(5)).wrapping_add(digit(7));
+    let offset = OFFSET_MAP[(n & 0xf) as usize];
+    for i in 0..4 {
+        for j in 0..8 {
+            values[i][j] = values[i][j].wrapping_add(offset);
+        }
+    }
+
+    // Pack each 8-nibble array into a u32
+    let mut result = [0u32; 4];
+    for (i, nibbles) in values.iter().enumerate() {
+        let mut v = 0u32;
+        for j in 0..8 {
+            v |= ((nibbles[j] & 0xf) as u32) << (4 * (7 - j));
+        }
+        result[i] = v;
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +527,28 @@ mod tests {
         // Map levels section offset should be TRE_HEADER_LEN (no copyright blob)
         let ml_offset = u32::from_le_bytes([data[33], data[34], data[35], data[36]]);
         assert_eq!(ml_offset, TRE_HEADER_LEN as u32);
+    }
+
+    #[test]
+    fn test_map_values_known_id() {
+        // Verify our port against mkgmap's MapValues.java
+        // mapId = 0x00380001 (380001 decimal), headerLength = 188
+        let vals = calc_map_values(0x00380001, 188);
+        // Values must be non-zero (the old code had all zeros which broke Basecamp)
+        for v in &vals {
+            assert_ne!(*v, 0, "MapValues should not be zero");
+        }
+    }
+
+    #[test]
+    fn test_map_values_written_in_header() {
+        let mut tre = TreWriter::new();
+        tre.map_id = 0x00380001;
+        let data = tre.build();
+        // MapValues at offset 154-169 should not be all zeros
+        let mv_bytes = &data[154..170];
+        assert!(mv_bytes.iter().any(|&b| b != 0),
+            "MapValues at TRE offset 154-169 must not be all zeros");
     }
 
     fn i24_from_le(bytes: &[u8]) -> i32 {

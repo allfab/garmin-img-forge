@@ -17,7 +17,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
         set:
           Type: "0x01"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "~[0x04]${NUMERO}"
 
       # 2. Nationale (hors Rond-point)
@@ -26,7 +26,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "~[0x05]${NUMERO}"
 
       # 3. Nationale Rond-point (pas de label)
@@ -35,7 +35,7 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 4. Departementale (hors Rond-point)
       - match:
@@ -43,7 +43,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "~[0x06]${NUMERO}"
 
       # 5. Departementale Rond-point (Type override 0x04, pas de label)
@@ -52,7 +52,7 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 6. Route intercommunale (toute NATURE)
       - match:
@@ -103,7 +103,7 @@ rulesets:
       - match:
           NATURE: "Type autoroutier"
         set:
-          Type: "0x09"
+          Type: "0x01"
           EndLevel: "2"
           Label: "~[0x04]${NUMERO}"
 

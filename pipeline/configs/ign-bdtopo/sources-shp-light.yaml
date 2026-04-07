@@ -14,10 +14,21 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
+  # Zones d'habitation
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
   # Routes (couche principale — la plus volumineuse)
   - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+
+  # Zones de végétation (forêts, haies — couche volumineuse)
+  - path: "${DATA_ROOT}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
 
 output:
   directory: "${OUTPUT_DIR}/mp/"
@@ -30,10 +41,14 @@ output:
 # avec padding optionnel {col:03}
 header:
   name: "BDTOPO38-{col:03}-{row:03}"
-  copyright: "IGN BDTOPO 2025"
-  levels: "2"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2025"
+  levels: "5"
   level0: "24"
-  level1: "18"
+  level1: "22"
+  level2: "20"
+  level3: "18"
+  level4: "16"
+  simplify_level: "0"
   tree_size: "1000"
   rgn_limit: "1024"
   transparent: "N"
@@ -51,6 +66,10 @@ error_handling: "continue"
 # =============================================================================
 # OPTIONS AVANCÉES (décommenter si nécessaire)
 # =============================================================================
+
+# Filtre bbox (WGS84) — exemple :
+filters:
+  bbox: [4.6485700073917853,45.4316591307921058, 5.0874666249716247,45.6131681521921095]
 
 # Filtre bbox (WGS84) — exemple pour l'Isère :
 # filters:
