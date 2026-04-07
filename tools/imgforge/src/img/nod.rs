@@ -1,7 +1,6 @@
 // NODFile + RouteNode/Arc/Center, faithful to mkgmap NODFile.java, NODHeader.java
 
 use super::common_header::{self, CommonHeader};
-use super::coord;
 
 pub const NOD_HEADER_LEN: u16 = 127;
 pub const NOD_ALIGNMENT: usize = 64; // Tables aligned to 1<<6
