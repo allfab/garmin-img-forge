@@ -20,7 +20,7 @@ inputs:
     target_srs: "EPSG:4326"
 
 output:
-  directory: "${OUTPUT_DIR}/tiles/"
+  directory: "${OUTPUT_DIR}/mp/"
   filename_pattern: "BDTOPO38-{col:03}-{row:03}.mp"
   overwrite: true
   base_id: ${BASE_ID}      # Auto-génère des IDs uniques par tuile : ex. 00380001, 00380002, etc.
