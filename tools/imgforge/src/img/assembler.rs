@@ -3,6 +3,7 @@
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
+use super::overview_map;
 
 /// Subfiles for a single tile
 pub struct TileSubfiles {
@@ -98,7 +99,6 @@ pub fn build_gmapsupp_with_meta_and_typ(
 
     // Build and add MPS subfile
     let mps_data = build_mps(tiles, meta);
-    // MPS file uses "MAKEGMAP" as filename (mkgmap convention)
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     fs.sync()
@@ -106,6 +106,11 @@ pub fn build_gmapsupp_with_meta_and_typ(
 
 /// Build MPS subfile data from tiles and metadata
 fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
+    build_mps_with_overview(tiles, meta, 0)
+}
+
+/// Build MPS including an overview map entry
+fn build_mps_with_overview(tiles: &[TileSubfiles], meta: &GmapsuppMeta, overview_map_id: u32) -> Vec<u8> {
     let mut mps = MpsWriter::new();
     mps.codepage = meta.codepage;
 
@@ -130,6 +135,18 @@ fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
             map_number: map_num,
             map_name: desc.clone(),
             map_description: desc,
+            area_name: meta.area_name.clone(),
+        });
+    }
+
+    // Overview map entry
+    if overview_map_id > 0 {
+        mps.add_map(MpsMapEntry {
+            product_id: meta.product_id,
+            family_id: meta.family_id,
+            map_number: overview_map_id,
+            map_name: meta.family_name.clone(),
+            map_description: meta.family_name.clone(),
             area_name: meta.area_name.clone(),
         });
     }

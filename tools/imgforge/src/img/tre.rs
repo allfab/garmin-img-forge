@@ -131,20 +131,22 @@ impl TreWriter {
         // Reserved @59-62
         buf.extend_from_slice(&0u32.to_le_bytes());
 
-        // Map properties @63 — mkgmap TREHeader.java
-        // bit 0x20 = transparent map (overlay)
-        // bit 0x01 = has routing (NET/NOD present)
-        let mut map_props: u8 = 0;
-        if self.transparent { map_props |= 0x20; }
-        if self.has_routing { map_props |= 0x01; }
-        buf.push(map_props);
+        // POI display flags @63 — mkgmap TREHeader.java poiDisplayFlags
+        // bit 0x01 = POI_FLAG_DETAIL (detailed POI info available)
+        // bit 0x02 = POI_FLAG_TRANSPARENT (transparent/overlay map)
+        // bit 0x04 = POI_FLAG_STREET_BEFORE_HOUSENUMBER
+        // bit 0x08 = POI_FLAG_POSTALCODE_BEFORE_CITY
+        // bit 0x20 = POI_FLAG_DRIVE_ON_LEFT
+        let mut poi_flags: u8 = 0x01; // POI_FLAG_DETAIL — always set (mkgmap default)
+        if self.transparent { poi_flags |= 0x02; }
+        buf.push(poi_flags);
 
         // Display priority @64-66 (3 bytes, mkgmap put3u)
         common_header::write_u24(&mut buf, self.display_priority);
 
-        // Routing capability marker @67-70 — mkgmap: 0x00110301 for routable maps
-        let marker: u32 = if self.has_routing { 0x00110301 } else { 0 };
-        buf.extend_from_slice(&marker.to_le_bytes());
+        // Map format marker @67-70 — mkgmap always writes 0x00110301
+        // This marker must be present for Garmin devices to render the tile.
+        buf.extend_from_slice(&0x00110301u32.to_le_bytes());
 
         // Reserved @71-72 (2 bytes, value 1 in mkgmap)
         buf.extend_from_slice(&1u16.to_le_bytes());

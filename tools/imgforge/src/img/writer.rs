@@ -414,15 +414,34 @@ fn build_multilevel_hierarchy(
 
     // Build TRE zoom levels from actual subdivisions
     // mkgmap: highest level is inherited (topdiv only), rest are regular
-    let mut tre_levels_build = Vec::new();
-    let mut top_zoom = Zoom::new(topdiv_level, topdiv_resolution);
-    top_zoom.inherited = true;
-    tre_levels_build.push(top_zoom);
+    // Collect active levels (those with subdivisions), then renumber contiguously.
+    let mut active_levels = Vec::new();
+    active_levels.push((topdiv_level, topdiv_resolution, true)); // (old_num, resolution, inherited)
 
     for level_idx in (0..process_levels).rev() {
         let level_num = level_idx as u8;
         if all_subdivisions.iter().any(|s| s.zoom_level == level_num) {
-            tre_levels_build.push(levels[level_idx]);
+            active_levels.push((level_num, levels[level_idx].resolution, false));
+        }
+    }
+
+    // Renumber contiguously: top = N-1, next = N-2, ..., bottom = 0
+    // This ensures Garmin devices see contiguous level numbers with no gaps.
+    let n = active_levels.len();
+    let mut level_remap: std::collections::HashMap<u8, u8> = std::collections::HashMap::new();
+    let mut tre_levels_build = Vec::new();
+    for (i, &(old_num, resolution, inherited)) in active_levels.iter().enumerate() {
+        let new_num = (n - 1 - i) as u8;
+        level_remap.insert(old_num, new_num);
+        let mut z = Zoom::new(new_num, resolution);
+        z.inherited = inherited;
+        tre_levels_build.push(z);
+    }
+
+    // Remap subdivision zoom_level numbers to match the contiguous scheme
+    for subdiv in all_subdivisions.iter_mut() {
+        if let Some(&new_level) = level_remap.get(&subdiv.zoom_level) {
+            subdiv.zoom_level = new_level;
         }
     }
 
