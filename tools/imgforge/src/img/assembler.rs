@@ -3,7 +3,7 @@
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
-use super::overview_map;
+
 
 /// Subfiles for a single tile
 pub struct TileSubfiles {
