@@ -168,16 +168,19 @@ Avant de lancer un long export, la sous-commande `validate` vérifie la configur
 mpforge validate --config config.yaml
 ```
 
-Six vérifications sont effectuées :
+Neuf vérifications sont effectuées :
 
 | # | Check | Description |
 |---|-------|-------------|
 | 1 | `yaml_syntax` | Syntaxe YAML valide et types corrects |
-| 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, base_id, header) |
+| 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, base_id, header, spatial_filter, generalize) |
 | 3 | `input_files` | Existence des fichiers sources (après résolution des wildcards) |
 | 4 | `rules_file` | Parsing et validation du fichier de règles |
 | 5 | `field_mapping` | Parsing du fichier de field mapping |
 | 6 | `header_template` | Existence du template header |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (par input) |
+| 8 | `generalize` | Rapport des configs de généralisation (smooth, iterations, simplify) |
+| 9 | `label_case` | Cohérence label_case dans les règles (warning si aucune règle ne set Label) |
 
 Exemple de sortie :
 
@@ -188,8 +191,11 @@ Exemple de sortie :
 ✓ rules_file           — 22 rulesets, 283 rules total
 - field_mapping        — Not configured
 - header_template      — No template configured
+✓ spatial_filter       — input #0: data/COMMUNE.shp
+✓ generalize           — input #2: smooth=chaikin, iterations=1
+✓ label_case           — 18 ruleset(s): Toponymie: Title, Communes: Title, ...
 
-Config valid. (4/4 checks passed)
+Config valid. (7/7 checks passed)
 ```
 
 Les variables d'environnement non définies sont signalées :

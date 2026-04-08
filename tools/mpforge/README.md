@@ -937,7 +937,33 @@ Le fichier YAML est validé au chargement avec messages d'erreur clairs :
 
 # error_handling invalide
 ❌ Config validation failed: error_handling must be "continue" or "fail-fast", got: "stop"
+
+# spatial_filter.buffer négatif
+❌ Config validation failed: InputSource #0: spatial_filter.buffer must not be negative, got -100
+
+# spatial_filter.source vide
+❌ Config validation failed: InputSource #0: spatial_filter.source must not be empty
+
+# generalize.iterations à zéro
+❌ Config validation failed: InputSource #0: generalize.iterations must be >= 1, got 0
+
+# label_case invalide dans les règles
+❌ Rules file error: unknown variant `MAJUSCULE`, expected one of `none`, `upper`, `lower`, `title`, `capitalize`
 ```
+
+La sous-commande `mpforge validate` effectue 9 checks sans exécuter le pipeline :
+
+| # | Check | Description |
+|---|-------|-------------|
+| 1 | `yaml_syntax` | Syntaxe YAML valide et types corrects |
+| 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, spatial_filter, generalize) |
+| 3 | `input_files` | Existence des fichiers sources (après résolution des wildcards) |
+| 4 | `rules_file` | Parsing et validation du fichier de règles |
+| 5 | `field_mapping` | Parsing du fichier de field mapping |
+| 6 | `header_template` | Existence du template header |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial |
+| 8 | `generalize` | Rapport des configs de généralisation (smooth, iterations, simplify) |
+| 9 | `label_case` | Cohérence label_case dans les règles (warning si aucune règle ne set Label) |
 
 ## Gestion d'erreurs
 

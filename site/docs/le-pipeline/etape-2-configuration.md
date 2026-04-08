@@ -244,16 +244,19 @@ Avant de lancer un tuilage qui peut durer plusieurs heures, vérifiez la configu
 mpforge validate --config configs/france-bdtopo.yaml
 ```
 
-Six vérifications sont effectuées en chaîne :
+Neuf vérifications sont effectuées en chaîne :
 
 | # | Check | Ce qui est vérifié |
 |---|-------|--------------------|
 | 1 | `yaml_syntax` | Syntaxe YAML valide, types corrects (ex: `base_id` est bien un nombre) |
-| 2 | `semantic_validation` | Règles métier : grille cohérente, inputs non vides, bbox valide, SRS, base_id dans 1..9999, filename pattern |
+| 2 | `semantic_validation` | Règles métier : grille cohérente, inputs non vides, bbox valide, SRS, base_id dans 1..9999, filename pattern, spatial_filter (buffer ≥ 0, source non vide), generalize (iterations ≥ 1, simplify > 0, algorithme connu) |
 | 3 | `input_files` | Existence de chaque fichier source sur disque (après résolution des wildcards) |
 | 4 | `rules_file` | Parsing et validation du fichier de règles de catégorisation |
 | 5 | `field_mapping` | Parsing du fichier de field mapping |
 | 6 | `header_template` | Existence du fichier template header |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (par input) |
+| 8 | `generalize` | Rapport des configs de généralisation détectées (smooth, iterations, simplify) |
+| 9 | `label_case` | Cohérence label_case dans les règles : warning si aucune règle du ruleset ne set `Label` |
 
 Exemple de sortie :
 
@@ -264,8 +267,11 @@ Exemple de sortie :
 ✓ rules_file           — 22 rulesets, 283 rules total
 ✓ field_mapping        — 6 field mappings loaded
 - header_template      — No template configured
+✓ spatial_filter       — input #0: data/COMMUNE.shp
+✓ generalize           — input #2: smooth=chaikin, iterations=1
+✓ label_case           — 18 ruleset(s): Toponymie: Title, Communes: Title, ...
 
-Config valid. (5/5 checks passed)
+Config valid. (8/8 checks passed)
 ```
 
 ### Rapport JSON
