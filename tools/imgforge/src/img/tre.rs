@@ -187,8 +187,9 @@ impl TreWriter {
         // Reserved @120-123
         buf.extend_from_slice(&0u32.to_le_bytes());
 
-        // Extended type sections @124+
-        if has_ext {
+        // Extended type sections @124+ — always written (mkgmap writes them even when empty;
+        // some Garmin firmware like Alpha 100 may require the magic 0x0607 at offset 134)
+        {
             // extTypeOffsets: offset(4) + size(4) + itemSize(2) @124-133
             assert_eq!(buf.len(), 124);
             common_header::write_section(&mut buf, current_offset, ext_type_offsets_data.len() as u32);
