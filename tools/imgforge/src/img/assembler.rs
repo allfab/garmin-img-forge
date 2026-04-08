@@ -4,6 +4,7 @@ use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
 use super::overview_map;
+use super::srt;
 
 
 /// Subfiles for a single tile
@@ -122,6 +123,12 @@ pub fn build_gmapsupp_with_meta_and_typ(
     fs.add_file(&ov_name, "TRE", overview.tre);
     fs.add_file(&ov_name, "RGN", overview.rgn);
     fs.add_file(&ov_name, "LBL", overview.lbl);
+
+    // Add SRT (sort descriptor) — required by some Garmin firmware (Alpha 100, etc.)
+    if meta.codepage == 1252 || meta.codepage == 0 {
+        let srt_name = format!("{:08}", meta.family_id);
+        fs.add_file(&srt_name, "SRT", srt::SRT_CP1252.to_vec());
+    }
 
     // Build and add MPS subfile (includes overview map entry)
     let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
