@@ -180,7 +180,9 @@ fn calc_block_size(total_file_size: usize, num_files: usize) -> u32 {
     let overhead = header_size + dir_size;
     let total = total_file_size + overhead;
 
-    let mut block_size: u32 = 512;
+    // Start at 1024 (not 512) — some Garmin firmware (Alpha 100) may not
+    // handle 512-byte blocks correctly in gmapsupp files.
+    let mut block_size: u32 = 1024;
     loop {
         let header_blocks = (overhead as u32 + block_size - 1) / block_size;
         let total_blocks = (total as u32 + block_size - 1) / block_size;
@@ -212,7 +214,7 @@ mod tests {
     #[test]
     fn test_calc_block_size_small() {
         let bs = calc_block_size(1000, 3);
-        assert_eq!(bs, 512);
+        assert_eq!(bs, 1024);
     }
 
     #[test]

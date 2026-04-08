@@ -182,22 +182,25 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     tre.last_rgn_pos = rgn.position();
 
     // Build overviews (deduplicated)
+    // Polish Map type codes: < 0x10000 = standard (type=high byte, subtype=low byte),
+    //                        >= 0x10000 = extended (prefix 0x1)
     for mp_point in &mp.points {
-        if mp_point.type_code < 0x100 {
-            tre.point_overviews.push(PointOverview::new(mp_point.type_code as u8, 0, 0));
+        if mp_point.type_code < 0x10000 {
+            let (t, st) = split_type_subtype(mp_point.type_code);
+            tre.point_overviews.push(PointOverview::new(t, 0, st));
         } else {
             tre.ext_point_overviews.push(ExtPointOverview::from_type_code(mp_point.type_code, 0));
         }
     }
     for mp_line in &mp.polylines {
-        if mp_line.type_code < 0x100 {
+        if mp_line.type_code < 0x10000 {
             tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
         } else {
             tre.ext_polyline_overviews.push(ExtPolylineOverview::from_type_code(mp_line.type_code, 0));
         }
     }
     for mp_poly in &mp.polygons {
-        if mp_poly.type_code < 0x100 {
+        if mp_poly.type_code < 0x10000 {
             tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
         } else {
             tre.ext_polygon_overviews.push(ExtPolygonOverview::from_type_code(mp_poly.type_code, 0));
@@ -773,8 +776,8 @@ fn resolve_polygon_epsilon(header: &crate::parser::mp_types::MpHeader, level: u8
 // ── RGN encoding per subdivision ───────────────────────────────────────────
 
 /// Encode features from a MapArea into RGN binary data for one subdivision.
-/// Standard types (< 0x100) go into the returned tuple.
-/// Extended types (≥ 0x100) are written directly into the RGN extended buffers.
+/// Standard types (< 0x10000) go into the returned tuple.
+/// Extended types (≥ 0x10000, Polish Map prefix 0x1) are written directly into the RGN extended buffers.
 fn encode_subdivision_rgn(
     mp: &MpFile,
     area: &MapArea,
@@ -792,15 +795,26 @@ fn encode_subdivision_rgn(
     let mut polyline_counter: usize = 0;
 
     // Points
+    // Polish Map type codes: < 0x10000 = standard, >= 0x10000 = extended
+    // Standard with subtype (0x100-0xFFFF): type = high byte, subtype = low byte
     let mut points_data = Vec::new();
     for split_pt in &area.points {
         let mp_point = &mp.points[split_pt.mp_index];
-        let mut pt = Point::new(mp_point.type_code, split_pt.location);
-        pt.label_offset = point_labels[split_pt.mp_index];
 
-        if mp_point.type_code >= 0x100 {
+        if mp_point.type_code >= 0x10000 {
+            // Extended point
+            let mut pt = Point::new(mp_point.type_code, split_pt.location);
+            pt.label_offset = point_labels[split_pt.mp_index];
             rgn.write_ext_point(&pt.write_ext(subdiv.center_lat, subdiv.center_lon, shift));
         } else {
+            // Standard point (possibly with subtype)
+            let (type_byte, sub_type) = split_type_subtype(mp_point.type_code);
+            let mut pt = Point::new(type_byte as u32, split_pt.location);
+            pt.label_offset = point_labels[split_pt.mp_index];
+            if sub_type > 0 || mp_point.type_code >= 0x100 {
+                pt.has_sub_type = true;
+                pt.sub_type = sub_type;
+            }
             points_data.extend_from_slice(&pt.write(subdiv.center_lat, subdiv.center_lon, shift));
         }
     }
@@ -816,7 +830,7 @@ fn encode_subdivision_rgn(
     for split_line in &area.lines {
         if split_line.points.len() < 2 { continue; }
         let mp_line = &mp.polylines[split_line.mp_index];
-        let is_ext = mp_line.type_code >= 0x100;
+        let is_ext = mp_line.type_code >= 0x10000;
         let mut pl = Polyline::new(mp_line.type_code, split_line.points.clone());
         // Only label the first chunk of a split polyline within this subdivision
         if seen_line_indices.insert(split_line.mp_index) {
@@ -880,7 +894,7 @@ fn encode_subdivision_rgn(
         let mut pg = Polygon::new(mp_poly.type_code, pts.to_vec());
         pg.label_offset = poly_labels[split_shape.mp_index];
         let deltas = compute_deltas(pts, subdiv);
-        let is_ext = mp_poly.type_code >= 0x100;
+        let is_ext = mp_poly.type_code >= 0x10000;
         if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
             if is_ext {
                 rgn.write_ext_polygon(
@@ -898,6 +912,17 @@ fn encode_subdivision_rgn(
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
+
+/// Split a Polish Map type code (< 0x10000) into Garmin type byte and subtype byte.
+/// - type_code < 0x100: type = type_code, subtype = 0
+/// - type_code 0x100-0xFFFF: type = high byte, subtype = low byte
+fn split_type_subtype(type_code: u32) -> (u8, u8) {
+    if type_code < 0x100 {
+        (type_code as u8, 0)
+    } else {
+        (((type_code >> 8) & 0xFF) as u8, (type_code & 0xFF) as u8)
+    }
+}
 
 fn compute_bounds(mp: &MpFile) -> Result<Area, ImgError> {
     let mut min_lat = i32::MAX;
