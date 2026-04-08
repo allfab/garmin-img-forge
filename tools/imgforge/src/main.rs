@@ -283,6 +283,7 @@ fn main() -> Result<()> {
             {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
                 let mut tdb = TdbWriter::new(fid, pid);
+                tdb.overview_map_number = (fid as u32) * 10000 + 9999;
                 tdb.codepage = effective_codepage;
                 tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
                 tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();

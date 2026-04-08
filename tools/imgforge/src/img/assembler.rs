@@ -3,6 +3,7 @@
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
+use super::overview_map;
 
 
 /// Subfiles for a single tile
@@ -108,16 +109,21 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&typ_name, "TYP", patched);
     }
 
-    // Build and add MPS subfile
-    let mps_data = build_mps(tiles, meta);
+    // Build and add overview map — required by Garmin handhelds (Alpha 100, etc.)
+    // to render detail tiles. The overview is a low-res tile covering all bounds.
+    // Uses a dedicated map_id derived from family_id to avoid collision with tile IDs.
+    let overview_map_id = (meta.family_id as u32) * 10000 + 9999;
+    let overview = overview_map::build_overview_map(tiles, overview_map_id, meta.codepage);
+    let ov_name = format!("{:08}", overview_map_id);
+    fs.add_file(&ov_name, "TRE", overview.tre);
+    fs.add_file(&ov_name, "RGN", overview.rgn);
+    fs.add_file(&ov_name, "LBL", overview.lbl);
+
+    // Build and add MPS subfile (includes overview map entry)
+    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     fs.sync()
-}
-
-/// Build MPS subfile data from tiles and metadata
-fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
-    build_mps_with_overview(tiles, meta, 0)
 }
 
 /// Build MPS including an overview map entry

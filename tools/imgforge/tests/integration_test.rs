@@ -731,7 +731,7 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
     }
 
     assert_eq!(product_count, 1, "Should have exactly 1 product block");
-    assert_eq!(map_count, 2, "Should have exactly 2 map blocks (one per tile)");
+    assert_eq!(map_count, 3, "Should have exactly 3 map blocks (2 tiles + 1 overview)");
 }
 
 // ============================================================================
