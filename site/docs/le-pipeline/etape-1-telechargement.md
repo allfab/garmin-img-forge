@@ -114,6 +114,58 @@ Les fichiers HGT sont directement utilisables par imgforge (`--dem ./srtm_hgt/`)
 
 Les fichiers ASC au format ESRI ASCII Grid, en projection Lambert 93, sont supportés nativement par imgforge avec reprojection intégrée (`--dem ./bdaltiv2/ --dem-source-srs EPSG:2154`).
 
+## Données OSM (OpenStreetMap)
+
+Les données OpenStreetMap complètent la BD TOPO avec des POIs (commerces, restaurants, pharmacies...) et des features naturelles (grottes, falaises, points de vue) non présents dans les données IGN.
+
+### Téléchargement depuis Geofabrik
+
+Le script `download-bdtopo.sh` gère aussi le téléchargement des fichiers `.osm.pbf` depuis [Geofabrik](https://download.geofabrik.de/europe/france.html) :
+
+```bash
+# BDTOPO + OSM pour Auvergne-Rhône-Alpes
+./scripts/download-bdtopo.sh --region ARA --with-osm
+
+# France entière (BDTOPO + 1 seul fichier OSM ~4.5 Go)
+./scripts/download-bdtopo.sh --region FXX --with-osm
+
+# Simuler sans télécharger
+./scripts/download-bdtopo.sh --region ARA --with-osm --dry-run
+```
+
+!!! note "Régions Geofabrik"
+    Geofabrik utilise les **anciennes régions françaises** (pré-2016). Le script gère automatiquement le mapping : `--region ARA` télécharge `auvergne-latest.osm.pbf` et `rhone-alpes-latest.osm.pbf`. Pour `--region FXX`, un seul fichier `france-latest.osm.pbf` est téléchargé.
+
+### Organisation des données OSM
+
+```
+pipeline/data/osm/
+├── auvergne-latest.osm.pbf
+├── rhone-alpes-latest.osm.pbf
+└── ...
+```
+
+Les fichiers PBF sont directement utilisables par mpforge via le driver GDAL OSM — pas d'extraction nécessaire.
+
+### Configuration OSM requise
+
+Un fichier `osmconf.ini` personnalisé est nécessaire pour exposer les tags OSM (`amenity`, `shop`, `tourism`, `natural`) comme attributs GDAL directs :
+
+```bash
+export OSM_CONFIG_FILE=pipeline/configs/osm/osmconf.ini
+
+# Augmenter le buffer du driver OSM (défaut 100 Mo, nécessaire pour les gros PBF régionaux)
+export OSM_MAX_TMPFILE_SIZE=1024
+
+# Accepter les géométries OSM avec des anneaux non fermés (supprime les warnings GDAL)
+export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
+```
+
+Ce fichier est fourni dans `pipeline/configs/osm/osmconf.ini`.
+
+!!! warning "Couche multipolygons non supportée"
+    Seules les couches `points` et `lines` des PBF sont utilisées. La couche `multipolygons` provoque des erreurs mémoire du driver GDAL OSM ("Too many features accumulated"). Les POIs mappés comme polygones dans OSM (grands supermarchés, hôpitaux) ne sont pas capturés.
+
 ## Courbes de niveau vectorielles
 
 !!! note "DEM et courbes de niveau : ne pas confondre"

@@ -945,12 +945,57 @@ impl SourceReader {
                         _ => false,
                     };
 
-                    if srs_match {
+                    // Resolve the spatial filter envelope in the layer's SRS
+                    let resolved_sf_env = if srs_match {
+                        // Same SRS — use envelope directly
+                        Some(*sf_env)
+                    } else if let (Some(ref layer_srs_str), Some(ref filter_srs_str)) = (&layer_srs_def, sf_srs) {
+                        // Different SRS — reproject the spatial filter envelope to the layer SRS
+                        let mut src_srs = SpatialRef::from_definition(filter_srs_str)
+                            .map_err(|e| { debug!(error = %e, "Failed to create SRS from filter def"); e }).ok();
+                        let mut dst_srs = SpatialRef::from_definition(layer_srs_str)
+                            .map_err(|e| { debug!(error = %e, "Failed to create SRS from layer def"); e }).ok();
+                        match (&mut src_srs, &mut dst_srs) {
+                            (Some(ref mut s), Some(ref mut d)) => {
+                                s.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                                d.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
+                                match CoordTransform::new(s, d) {
+                                    Ok(ct) => match ct.transform_bounds(sf_env, 21) {
+                                        Ok(reprojected) => {
+                                            debug!(
+                                                path = %path,
+                                                source_index = idx,
+                                                filter_srs = %filter_srs_str,
+                                                layer_srs = %layer_srs_str,
+                                                original_env = ?sf_env,
+                                                reprojected_env = ?reprojected,
+                                                "Reprojected spatial filter envelope for extent clamping"
+                                            );
+                                            Some(reprojected)
+                                        }
+                                        Err(e) => {
+                                            debug!(path = %path, error = %e, "Failed to reproject SF envelope bounds");
+                                            None
+                                        }
+                                    }
+                                    Err(e) => {
+                                        debug!(path = %path, error = %e, "Failed to create CoordTransform for SF envelope");
+                                        None
+                                    }
+                                }
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(sf_bounds) = resolved_sf_env {
                         let clamped = [
-                            bounds[0].max(sf_env[0]),
-                            bounds[1].max(sf_env[1]),
-                            bounds[2].min(sf_env[2]),
-                            bounds[3].min(sf_env[3]),
+                            bounds[0].max(sf_bounds[0]),
+                            bounds[1].max(sf_bounds[1]),
+                            bounds[2].min(sf_bounds[2]),
+                            bounds[3].min(sf_bounds[3]),
                         ];
                         // Only clamp if the intersection is valid (non-empty)
                         if clamped[0] < clamped[2] && clamped[1] < clamped[3] {
@@ -970,13 +1015,13 @@ impl SourceReader {
                             );
                             continue;
                         }
-                    } else {
+                    } else if !srs_match {
                         debug!(
                             path = %path,
                             source_index = idx,
                             layer_srs = ?layer_srs_def,
                             filter_srs = ?sf_srs,
-                            "SRS mismatch between layer and spatial filter, using raw extent"
+                            "Could not reproject SF envelope, using raw extent"
                         );
                     }
                 }

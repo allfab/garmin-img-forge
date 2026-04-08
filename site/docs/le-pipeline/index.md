@@ -8,7 +8,7 @@ Cette section décrit **étape par étape** le processus complet de création d'
 
 ```mermaid
 flowchart TD
-    A["1. Téléchargement<br/>BD TOPO IGN"] --> B["2. Configuration<br/>YAML + field mapping"]
+    A["1. Téléchargement<br/>BD TOPO IGN + OSM"] --> B["2. Configuration<br/>YAML + field mapping"]
     B --> C["3. Tuilage<br/>mpforge build"]
     C --> D["4. Compilation<br/>imgforge build"]
     D --> E["5. Installation<br/>GPS Garmin"]
@@ -22,7 +22,7 @@ flowchart TD
 
 | Étape | Outil | Entrée | Sortie | Durée typique |
 |-------|-------|--------|--------|---------------|
-| 1. Téléchargement | `download-bdtopo.sh` | URL IGN | `.gpkg` / `.shp` | 10-30 min |
+| 1. Téléchargement | `download-bdtopo.sh` | URL IGN + Geofabrik | `.gpkg` / `.shp` / `.osm.pbf` | 10-30 min |
 | 2. Configuration | Éditeur texte | - | `.yaml` | 5-15 min |
 | 3. Tuilage | `mpforge build` | `.gpkg` / `.shp` | `tiles/*.mp` | 30 min - 3h |
 | 4. Compilation | `imgforge build` | `tiles/*.mp` | `gmapsupp.img` | 10 min - 1h |

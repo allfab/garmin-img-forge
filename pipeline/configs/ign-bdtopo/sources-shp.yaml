@@ -159,6 +159,52 @@ inputs:
       source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
+  # ==========================================================================
+  # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
+  #
+  # Les PBF sont pré-convertis en GPKG par le script download-bdtopo.sh
+  # (option --with-osm). Les GPKG ont un accès aléatoire, éliminant les
+  # erreurs "Too many features accumulated" du driver OSM sur les gros PBF.
+  #
+  # Le chemin glob intègre automatiquement tous les GPKG du sous-dossier gpkg/.
+  # Le spatial_filter restreint les features à l'emprise communale + buffer.
+  # ==========================================================================
+
+  # --- Amenity POIs (restaurants, pharmacies, parking, etc.) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
+    layer_alias: "osm_amenity"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Shop POIs (boulangeries, supermarchés, etc.) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-shop-points.gpkg"
+    layer_alias: "osm_shop"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Natural features linéaires (arêtes, crêtes, falaises) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-natural-lines.gpkg"
+    layer_alias: "osm_natural_lines"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Natural features ponctuelles (grottes, rochers, dolines) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-natural-points.gpkg"
+    layer_alias: "osm_natural_points"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Tourism viewpoints ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-tourism-points.gpkg"
+    layer_alias: "osm_tourism"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
 output:
   directory: "${OUTPUT_DIR}/mp/"
   filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
@@ -170,7 +216,7 @@ output:
 # avec padding optionnel {col:03}
 header:
   name: "BDTOPO-{col:03}-{row:03}"
-  copyright: "2026 Allfab Studio - IGN BDTOPO 2025"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
   levels: "5"
   level0: "24"
   level1: "22"

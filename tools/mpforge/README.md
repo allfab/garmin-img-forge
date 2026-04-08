@@ -1011,6 +1011,53 @@ mpforge build --config config.yaml --fail-fast
 
 **Note** : Tous les formats supportés par GDAL/OGR sont compatibles.
 
+### Support OSM PBF
+
+mpforge peut lire directement les fichiers `.osm.pbf` de Geofabrik via le driver GDAL OSM. Les données OSM sont en EPSG:4326 natif — aucune reprojection n'est nécessaire.
+
+**Prérequis** : un fichier `osmconf.ini` personnalisé est nécessaire pour exposer les tags OSM souhaités (`amenity`, `shop`, `tourism`, `natural`) comme attributs GDAL directs, au lieu de les regrouper dans `other_tags`.
+
+```bash
+# Activer le fichier de configuration OSM personnalisé
+export OSM_CONFIG_FILE=pipeline/configs/osm/osmconf.ini
+
+# Augmenter le buffer du driver OSM (défaut 100 Mo, insuffisant pour les gros PBF)
+# Le driver lit le PBF séquentiellement et bufferise les couches non demandées.
+# 1024 Mo couvre les PBF régionaux Geofabrik (~500 Mo pour Rhône-Alpes).
+export OSM_MAX_TMPFILE_SIZE=1024
+
+# Accepter les géométries OSM avec des anneaux non fermés (supprime les warnings GDAL)
+export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
+```
+
+**Limitation** : seules les couches `points` et `lines` sont utilisées. La couche `multipolygons` n'est pas supportée car le driver GDAL OSM accumule les features des autres couches en mémoire lors de la lecture séquentielle, provoquant des erreurs "Too many features accumulated". Les gros POIs mappés comme polygones dans OSM (supermarchés, hôpitaux) ne sont donc pas capturés.
+
+**Exemple de configuration YAML** :
+
+```yaml
+inputs:
+  # Amenity POIs (restaurants, pharmacies, parking, etc.)
+  - path: "${OSM_DATA_ROOT}/**/*.osm.pbf"
+    layers: ["points"]
+    layer_alias: "osm_amenity"
+    attribute_filter: "amenity IS NOT NULL"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+```
+
+**Conventions de `layer_alias`** :
+
+| Alias | Couche GDAL | Filtre | Contenu |
+|-------|-------------|--------|---------|
+| `osm_amenity` | `points` | `amenity IS NOT NULL` | Restaurants, pharmacies, parking... |
+| `osm_shop` | `points` | `shop IS NOT NULL` | Boulangeries, supermarchés... |
+| `osm_natural_lines` | `lines` | `natural IN ('ridge','arete','cliff')` | Arêtes, crêtes, falaises |
+| `osm_natural_points` | `points` | `natural IN ('cave_entrance','cave','rock','sinkhole')` | Grottes, rochers, dolines |
+| `osm_tourism` | `points` | `tourism = 'viewpoint'` | Points de vue |
+
+Le chemin glob `**/*.osm.pbf` permet d'intégrer automatiquement tous les fichiers PBF d'un dossier (multi-régions). Le `spatial_filter` est fortement recommandé car les PBF Geofabrik couvrent des régions entières.
+
 ## Types géométriques supportés
 
 mpforge ne traite que les types géométriques simples compatibles avec le format Polish Map (.mp) :

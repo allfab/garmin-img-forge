@@ -73,6 +73,70 @@ Data0=(45.1234,5.6789),(45.1235,5.6790),...
 [END]
 ```
 
+## Correspondances OSM / Garmin
+
+Les données OpenStreetMap sont une source complémentaire à la BD TOPO pour les POIs et features naturelles.
+
+### Amenity (24 types)
+
+| Tag OSM | Type Garmin | Description |
+|---------|-------------|-------------|
+| `amenity=bar` | `POI 0x15200` | Bar |
+| `amenity=biergarten` | `POI 0x15201` | Brasserie en plein air |
+| `amenity=cafe` | `POI 0x15202` | Café |
+| `amenity=fast_food` | `POI 0x15203` | Restauration rapide |
+| `amenity=restaurant` / `food_court` | `POI 0x15204` | Restaurant |
+| `amenity=ice_cream` | `POI 0x15205` | Glacier |
+| `amenity=pub` | `POI 0x15206` | Pub |
+| `amenity=library` | `POI 0x15207` | Bibliothèque |
+| `amenity=bicycle_parking` | `POI 0x15208` | Parking vélo |
+| `amenity=bicycle_repair_station` | `POI 0x15209` | Réparation vélo |
+| `amenity=fuel` | `POI 0x1520a` | Station-service |
+| `amenity=charging_station` | `POI 0x1520b` | Borne de recharge |
+| `amenity=motorcycle_parking` | `POI 0x1520c` | Parking moto |
+| `amenity=parking` | `POI 0x1520d` | Parking |
+| `amenity=taxi` | `POI 0x1520e` | Station taxi |
+| `amenity=clinic` / `doctors` | `POI 0x1520f` | Médecin / clinique |
+| `amenity=dentist` | `POI 0x15210` | Dentiste |
+| `amenity=hospital` | `POI 0x15211` | Hôpital |
+| `amenity=pharmacy` | `POI 0x15212` | Pharmacie |
+| `amenity=veterinary` | `POI 0x15213` | Vétérinaire |
+| `amenity=shelter` | `POI 0x15214` | Abri |
+| `amenity=toilets` | `POI 0x15215` | Toilettes |
+| `amenity=*` (default) | `POI 0x15216` | Autre amenity |
+
+### Shop (53 types — sélection)
+
+| Tag OSM | Type Garmin | Description |
+|---------|-------------|-------------|
+| `shop=bakery` | `POI 0x15001` | Boulangerie |
+| `shop=supermarket` | `POI 0x15006` | Supermarché |
+| `shop=convenience` | `POI 0x15004` | Épicerie |
+| `shop=butcher` | `POI 0x15007` | Boucherie |
+| `shop=hairdresser` | `POI 0x15002` | Coiffeur |
+| `shop=pharmacy` | — | *(via amenity=pharmacy)* |
+| `shop=*` (default) | `POI 0x1500e` | Autre commerce |
+
+Les 53 types shop complets sont définis dans `garmin-rules.yaml`. Les types partageant le même code Garmin sont regroupés avec l'opérateur `in:`.
+
+### Natural
+
+| Tag OSM | Géométrie | Type Garmin | Description |
+|---------|-----------|-------------|-------------|
+| `natural=ridge` | LINE | `POLYLINE 0x11a00` | Crête |
+| `natural=arete` | LINE | `POLYLINE 0x11a00` | Arête |
+| `natural=cliff` | LINE | `POLYLINE 0x11a01` | Falaise |
+| `natural=cave_entrance` | POINT | `POI 0x15301` | Entrée de grotte |
+| `natural=rock` | POINT | `POI 0x06614` | Rocher |
+| `natural=sinkhole` | POINT | `POI 0x11509` | Doline |
+| `natural=cave` (default) | POINT | `POI 0x15300` | Grotte |
+
+### Tourism
+
+| Tag OSM | Type Garmin | Description |
+|---------|-------------|-------------|
+| `tourism=viewpoint` | `POI 0x16` | Point de vue (Scenic Area) |
+
 ## Couches non intégrées (à ce jour)
 
 Certaines couches BD TOPO ne sont pas encore intégrées dans le pipeline :

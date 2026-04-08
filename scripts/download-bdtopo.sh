@@ -35,7 +35,10 @@ DEBUG=false
 JSON_OUTPUT=""          # chemin fichier pour résumé JSON (vide = stdout)
 WITH_CONTOURS=false
 CONTOURS_DATA_ROOT="./pipeline/data/courbes"
-SCRIPT_VERSION="1.2.0"
+WITH_OSM=false
+OSM_DATA_ROOT="./pipeline/data/osm"
+GEOFABRIK_BASE="https://download.geofabrik.de/europe/france"
+SCRIPT_VERSION="1.3.0"
 
 # Métriques téléchargement — collecte pour résumé JSON (AC6)
 _LAST_DOWNLOAD_SIZE=0
@@ -113,6 +116,55 @@ declare -A REGIONS_TO_DEPARTMENTS=(
     [FXX]="D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D012 D013 D014 D015 D016 D017 D018 D019 D02A D02B D021 D022 D023 D024 D025 D026 D027 D028 D029 D030 D031 D032 D033 D034 D035 D036 D037 D038 D039 D040 D041 D042 D043 D044 D045 D046 D047 D048 D049 D050 D051 D052 D053 D054 D055 D056 D057 D058 D059 D060 D061 D062 D063 D064 D065 D066 D067 D068 D069 D070 D071 D072 D073 D074 D075 D076 D077 D078 D079 D080 D081 D082 D083 D084 D085 D086 D087 D088 D089 D090 D091 D092 D093 D094 D095"
 )
 
+# Mapping régions modernes → anciennes régions Geofabrik (pour OSM PBF)
+# Geofabrik utilise les régions françaises pré-2016
+declare -A REGIONS_TO_GEOFABRIK=(
+    [ARA]="auvergne rhone-alpes"
+    [BFC]="bourgogne franche-comte"
+    [BRE]="bretagne"
+    [CVL]="centre"
+    [COR]="corse"
+    [GES]="alsace champagne-ardenne lorraine"
+    [HDF]="nord-pas-de-calais picardie"
+    [IDF]="ile-de-france"
+    [NOR]="basse-normandie haute-normandie"
+    [NAQ]="aquitaine limousin poitou-charentes"
+    [OCC]="languedoc-roussillon midi-pyrenees"
+    [PDL]="pays-de-la-loire"
+    [PAC]="provence-alpes-cote-d-azur"
+    [FRANCE-SUD]="aquitaine limousin poitou-charentes languedoc-roussillon midi-pyrenees auvergne rhone-alpes provence-alpes-cote-d-azur corse"
+    [FRANCE-NORD]="ile-de-france centre bourgogne franche-comte basse-normandie haute-normandie nord-pas-de-calais picardie pays-de-la-loire bretagne alsace champagne-ardenne lorraine"
+    [FXX]="france"
+)
+
+# Mapping département → code région (pour résoudre D038 → ARA → Geofabrik)
+declare -A DEPT_TO_REGION=(
+    [D001]="ARA" [D003]="ARA" [D007]="ARA" [D015]="ARA" [D026]="ARA"
+    [D038]="ARA" [D042]="ARA" [D043]="ARA" [D063]="ARA" [D069]="ARA"
+    [D073]="ARA" [D074]="ARA"
+    [D021]="BFC" [D025]="BFC" [D039]="BFC" [D058]="BFC" [D070]="BFC"
+    [D071]="BFC" [D089]="BFC" [D090]="BFC"
+    [D022]="BRE" [D029]="BRE" [D035]="BRE" [D056]="BRE"
+    [D018]="CVL" [D028]="CVL" [D036]="CVL" [D037]="CVL" [D041]="CVL"
+    [D045]="CVL"
+    [D02A]="COR" [D02B]="COR"
+    [D008]="GES" [D010]="GES" [D051]="GES" [D052]="GES" [D054]="GES"
+    [D055]="GES" [D057]="GES" [D067]="GES" [D068]="GES" [D088]="GES"
+    [D002]="HDF" [D059]="HDF" [D060]="HDF" [D062]="HDF" [D080]="HDF"
+    [D075]="IDF" [D077]="IDF" [D078]="IDF" [D091]="IDF" [D092]="IDF"
+    [D093]="IDF" [D094]="IDF" [D095]="IDF"
+    [D014]="NOR" [D027]="NOR" [D050]="NOR" [D061]="NOR" [D076]="NOR"
+    [D016]="NAQ" [D017]="NAQ" [D019]="NAQ" [D023]="NAQ" [D024]="NAQ"
+    [D033]="NAQ" [D040]="NAQ" [D047]="NAQ" [D064]="NAQ" [D079]="NAQ"
+    [D086]="NAQ" [D087]="NAQ"
+    [D009]="OCC" [D011]="OCC" [D012]="OCC" [D030]="OCC" [D031]="OCC"
+    [D032]="OCC" [D034]="OCC" [D046]="OCC" [D048]="OCC" [D065]="OCC"
+    [D066]="OCC" [D081]="OCC" [D082]="OCC"
+    [D044]="PDL" [D049]="PDL" [D053]="PDL" [D072]="PDL" [D085]="PDL"
+    [D004]="PAC" [D005]="PAC" [D006]="PAC" [D013]="PAC" [D083]="PAC"
+    [D084]="PAC"
+)
+
 # ---------------------------------------------------------------------------
 # Aide
 # ---------------------------------------------------------------------------
@@ -144,6 +196,8 @@ OPTIONS :
     --json-output FILE  Écrire le résumé JSON dans un fichier (défaut: stdout)
     --with-contours     Télécharger aussi les courbes de niveau IGN (par département)
     --contours-root DIR Racine données courbes (défaut: ./pipeline/data/courbes)
+    --with-osm          Télécharger aussi les données OSM depuis Geofabrik (.osm.pbf)
+    --osm-root DIR      Racine données OSM (défaut: ./pipeline/data/osm)
     --debug             Afficher les requêtes API et réponses
     --version           Version du script
     -h, --help          Aide
@@ -161,6 +215,9 @@ EXEMPLES :
     DEBUG=1 ./download-bdtopo.sh --zones D038               # Mode debug
     ./download-bdtopo.sh --zones D038 --with-contours      # BDTOPO + courbes de niveau D038
     ./download-bdtopo.sh --region ARA --with-contours      # BDTOPO R84 + courbes 12 départements ARA
+    ./download-bdtopo.sh --region ARA --with-osm           # BDTOPO R84 + OSM auvergne + rhone-alpes
+    ./download-bdtopo.sh --region FXX --with-osm            # France entière BDTOPO + OSM
+    ./download-bdtopo.sh --with-osm --region ARA --dry-run  # Simuler téléchargement OSM
 EOF
     exit 0
 }
@@ -191,6 +248,8 @@ parse_args() {
             --json-output) JSON_OUTPUT="$2"; shift 2 ;;
             --with-contours) WITH_CONTOURS=true; shift ;;
             --contours-root) CONTOURS_DATA_ROOT="$2"; shift 2 ;;
+            --with-osm)   WITH_OSM=true; shift ;;
+            --osm-root)   OSM_DATA_ROOT="$2"; shift 2 ;;
             --debug)      DEBUG=true; shift ;;
             --version)    echo "download-bdtopo.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)    show_help ;;
@@ -1034,6 +1093,215 @@ extract_contour_archives() {
 }
 
 # =============================================================================
+# OSM PBF (Geofabrik)
+# =============================================================================
+
+# Résoudre les zones en noms de régions Geofabrik
+resolve_osm_regions() {
+    declare -ga OSM_REGIONS=()
+
+    # Si --region est défini, utiliser REGIONS_TO_GEOFABRIK
+    if [[ -n "$REGION" ]]; then
+        if [[ -z "${REGIONS_TO_GEOFABRIK[$REGION]+x}" ]]; then
+            log_error "Région inconnue pour OSM : $REGION"
+            exit 1
+        fi
+        IFS=' ' read -ra OSM_REGIONS <<< "${REGIONS_TO_GEOFABRIK[$REGION]}"
+        log_info "OSM — Région $REGION → ${#OSM_REGIONS[@]} fichier(s) Geofabrik : ${OSM_REGIONS[*]}"
+    else
+        # Résoudre depuis --zones
+        for zone in "${ZONES[@]}"; do
+            if [[ "$zone" =~ ^D ]]; then
+                # Département → trouver la région parente → Geofabrik
+                local region_code="${DEPT_TO_REGION[$zone]:-}"
+                if [[ -z "$region_code" ]]; then
+                    log_warn "OSM — département $zone inconnu, ignoré"
+                    continue
+                fi
+                IFS=' ' read -ra geofabrik_names <<< "${REGIONS_TO_GEOFABRIK[$region_code]}"
+                OSM_REGIONS+=("${geofabrik_names[@]}")
+                log_debug "OSM — $zone → $region_code → ${geofabrik_names[*]}"
+            elif [[ -n "${REGIONS_TO_GEOFABRIK[$zone]+x}" ]]; then
+                # Code région ou groupement connu directement
+                IFS=' ' read -ra geofabrik_names <<< "${REGIONS_TO_GEOFABRIK[$zone]}"
+                OSM_REGIONS+=("${geofabrik_names[@]}")
+                log_debug "OSM — $zone → ${geofabrik_names[*]}"
+            else
+                log_warn "OSM — zone $zone non supportée pour Geofabrik"
+            fi
+        done
+    fi
+
+    if [[ ${#OSM_REGIONS[@]} -eq 0 ]]; then
+        log_error "OSM — aucune région Geofabrik à télécharger"
+        exit 1
+    fi
+
+    # Dédupliquer
+    local -A seen
+    local unique=()
+    for r in "${OSM_REGIONS[@]}"; do
+        if [[ -z "${seen[$r]+x}" ]]; then
+            seen[$r]=1
+            unique+=("$r")
+        fi
+    done
+    OSM_REGIONS=("${unique[@]}")
+
+    log_info "OSM — ${#OSM_REGIONS[@]} fichier(s) PBF Geofabrik : ${OSM_REGIONS[*]}"
+}
+
+# Télécharger les fichiers PBF depuis Geofabrik
+download_osm_pbf() {
+    if [[ ${#OSM_REGIONS[@]} -eq 0 ]]; then return 0; fi
+
+    log_step "Téléchargement des données OSM (Geofabrik PBF)"
+    mkdir -p "$OSM_DATA_ROOT"
+
+    declare -ga OSM_DOWNLOAD_FILES=()
+    local total=${#OSM_REGIONS[@]} success=0 failed=0
+
+    for i in "${!OSM_REGIONS[@]}"; do
+        local region="${OSM_REGIONS[$i]}"
+        local filename="${region}-latest.osm.pbf"
+        local url
+
+        # France entière = URL racine, régions = sous-dossier
+        if [[ "$region" == "france" ]]; then
+            url="https://download.geofabrik.de/europe/france-latest.osm.pbf"
+        else
+            url="${GEOFABRIK_BASE}/${filename}"
+        fi
+
+        echo -e "\n${BOLD}[$((i+1))/$total]${NC} ${filename}"
+
+        if [[ "$DRY_RUN" == true ]]; then
+            echo -e "    ${YELLOW}[DRY-RUN]${NC} curl -L -C - -o '${OSM_DATA_ROOT}/${filename}' \\"
+            echo -e "               '${url}'"
+            OSM_DOWNLOAD_FILES+=("$filename")
+            success=$((success + 1))
+            continue
+        fi
+
+        local filepath="${OSM_DATA_ROOT}/${filename}"
+
+        # Skip si existant et même taille
+        if [[ "$SKIP_EXISTING" == true && -f "$filepath" ]]; then
+            local local_size
+            local_size=$(stat -c%s "$filepath" 2>/dev/null || echo "0")
+
+            if [[ "$local_size" -gt 0 ]]; then
+                local remote_size
+                remote_size=$(curl -sI -L "$url" 2>/dev/null \
+                    | grep -i 'content-length' | tail -1 | awk '{print $2}' | tr -d '\r' || echo "")
+
+                if [[ -n "$remote_size" && "$remote_size" -gt 0 && "$local_size" == "$remote_size" ]]; then
+                    local human_size
+                    human_size=$(numfmt --to=iec "$local_size" 2>/dev/null || echo "${local_size} o")
+                    log_ok "  Déjà présent ($human_size) — skip"
+                    OSM_DOWNLOAD_FILES+=("$filename")
+                    success=$((success + 1))
+                    continue
+                fi
+            fi
+        fi
+
+        log_info "  Téléchargement en cours..."
+        if curl -L -C - --connect-timeout 30 --max-time 7200 --retry 3 --retry-delay 5 \
+            -o "$filepath" "$url" 2>/dev/null; then
+            local dl_size
+            dl_size=$(stat -c%s "$filepath" 2>/dev/null || echo "0")
+            local human_size
+            human_size=$(numfmt --to=iec "$dl_size" 2>/dev/null || echo "${dl_size} o")
+            log_ok "  Téléchargé ($human_size)"
+            OSM_DOWNLOAD_FILES+=("$filename")
+            success=$((success + 1))
+        else
+            log_error "  Échec téléchargement : $filename"
+            failed=$((failed + 1))
+        fi
+    done
+
+    echo ""
+    log_ok "OSM : $success/$total fichiers PBF téléchargés dans $OSM_DATA_ROOT"
+    if [[ $failed -gt 0 ]]; then log_warn "OSM : $failed en échec"; fi
+}
+
+# Convertir les PBF en GPKG par catégorie (élimine les problèmes du driver OSM)
+# Le driver OSM lit séquentiellement et bufferise les couches non demandées,
+# provoquant "Too many features accumulated" sur les gros PBF.
+# Les GPKG ont un accès aléatoire → pas de problème de buffer.
+prepare_osm_gpkg() {
+    if [[ ${#OSM_DOWNLOAD_FILES[@]} -eq 0 && "$DRY_RUN" == true ]]; then
+        log_info "OSM — [DRY-RUN] ogr2ogr convertirait les PBF en GPKG"
+        return 0
+    fi
+
+    command -v ogr2ogr &>/dev/null || {
+        log_error "ogr2ogr requis pour la conversion PBF → GPKG (apt install gdal-bin)"
+        exit 1
+    }
+
+    log_step "Conversion OSM PBF → GPKG"
+
+    local osmconf="${OSM_CONFIG_FILE:-pipeline/configs/osm/osmconf.ini}"
+    if [[ ! -f "$osmconf" ]]; then
+        log_error "osmconf.ini introuvable : $osmconf"
+        exit 1
+    fi
+
+    local gpkg_dir="${OSM_DATA_ROOT}/gpkg"
+    mkdir -p "$gpkg_dir"
+
+    # Catégories à extraire : nom, couche source, filtre SQL
+    local -a categories=(
+        "amenity-points|points|amenity IS NOT NULL"
+        "shop-points|points|shop IS NOT NULL"
+        "natural-lines|lines|natural IN ('ridge','arete','cliff')"
+        "natural-points|points|natural IN ('cave_entrance','cave','rock','sinkhole')"
+        "tourism-points|points|tourism = 'viewpoint'"
+    )
+
+    for pbf in "${OSM_DATA_ROOT}"/*.osm.pbf; do
+        [[ -f "$pbf" ]] || continue
+        local base
+        base=$(basename "$pbf" .osm.pbf)
+
+        for cat_def in "${categories[@]}"; do
+            IFS='|' read -r cat_name layer_name where_clause <<< "$cat_def"
+            local gpkg_file="${gpkg_dir}/${base}-${cat_name}.gpkg"
+
+            if [[ "$SKIP_EXISTING" == true && -f "$gpkg_file" ]]; then
+                local gpkg_size
+                gpkg_size=$(stat -c%s "$gpkg_file" 2>/dev/null || echo "0")
+                if [[ "$gpkg_size" -gt 0 ]]; then
+                    log_ok "  ${base}-${cat_name}.gpkg — déjà présent, skip"
+                    continue
+                fi
+            fi
+
+            log_info "  ${base} → ${cat_name} ..."
+            rm -f "$gpkg_file"
+            if OSM_CONFIG_FILE="$osmconf" OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES \
+                OSM_MAX_TMPFILE_SIZE=1024 \
+                ogr2ogr -f GPKG "$gpkg_file" "$pbf" "$layer_name" \
+                -where "$where_clause" -progress 2>/dev/null; then
+                local gpkg_size
+                gpkg_size=$(stat -c%s "$gpkg_file" 2>/dev/null || echo "0")
+                local human_size
+                human_size=$(numfmt --to=iec "$gpkg_size" 2>/dev/null || echo "${gpkg_size} o")
+                log_ok "  ${base}-${cat_name}.gpkg ($human_size)"
+            else
+                log_error "  Échec conversion : ${base}-${cat_name}"
+                rm -f "$gpkg_file"
+            fi
+        done
+    done
+
+    log_ok "GPKG OSM dans : $gpkg_dir"
+}
+
+# =============================================================================
 # MAIN
 # =============================================================================
 main() {
@@ -1059,6 +1327,14 @@ main() {
         download_contours
         extract_contour_archives
         log_ok "Courbes de niveau dans : $CONTOURS_DATA_ROOT"
+    fi
+
+    # Passe 3 : OSM PBF (si --with-osm)
+    if [[ "$WITH_OSM" == true ]]; then
+        resolve_osm_regions
+        download_osm_pbf
+        prepare_osm_gpkg
+        log_ok "Données OSM dans : $OSM_DATA_ROOT"
     fi
 
     show_next_steps

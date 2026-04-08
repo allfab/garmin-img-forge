@@ -2852,3 +2852,568 @@ rulesets:
         set:
           Type: "0x21"
           EndLevel: "0"
+
+  # ==========================================================================
+  # OSM — Amenity POIs (bar, restaurant, pharmacie, parking, etc.)
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
+  # 24 types amenity mappés depuis le job FME de référence
+  # Opérateur in: pour regrouper les types partageant le même code Garmin
+  # ==========================================================================
+  - name: "OSM Amenity POIs"
+    source_layer: "osm_amenity"
+    label_case: "title"
+    rules:
+      - match:
+          amenity: "bar"
+        set:
+          Type: "0x15200"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "biergarten"
+        set:
+          Type: "0x15201"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "cafe"
+        set:
+          Type: "0x15202"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "fast_food"
+        set:
+          Type: "0x15203"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "in:restaurant,food_court"
+        set:
+          Type: "0x15204"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "ice_cream"
+        set:
+          Type: "0x15205"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "pub"
+        set:
+          Type: "0x15206"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "library"
+        set:
+          Type: "0x15207"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "bicycle_parking"
+        set:
+          Type: "0x15208"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "bicycle_repair_station"
+        set:
+          Type: "0x15209"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "fuel"
+        set:
+          Type: "0x1520a"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "charging_station"
+        set:
+          Type: "0x1520b"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "motorcycle_parking"
+        set:
+          Type: "0x1520c"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "parking"
+        set:
+          Type: "0x1520d"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "taxi"
+        set:
+          Type: "0x1520e"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "in:clinic,doctors"
+        set:
+          Type: "0x1520f"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "dentist"
+        set:
+          Type: "0x15210"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "hospital"
+        set:
+          Type: "0x15211"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "pharmacy"
+        set:
+          Type: "0x15212"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "veterinary"
+        set:
+          Type: "0x15213"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "shelter"
+        set:
+          Type: "0x15214"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          amenity: "toilets"
+        set:
+          Type: "0x15215"
+          EndLevel: "0"
+          Label: "${name}"
+
+      # Default — amenity non mappé explicitement
+      - match:
+          amenity: "*"
+        set:
+          Type: "0x15216"
+          EndLevel: "0"
+          Label: "${name}"
+
+  # ==========================================================================
+  # OSM — Shop POIs (boulangeries, supermarchés, coiffeurs, etc.)
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
+  # 53 types shop mappés depuis le job FME de référence
+  # Les types partageant le code 0x1500e (cheese, e-cigarette, etc.) sont
+  # capturés par la règle default wildcard en fin de ruleset
+  # ==========================================================================
+  - name: "OSM Shop POIs"
+    source_layer: "osm_shop"
+    label_case: "title"
+    rules:
+      - match:
+          shop: "in:alcohol,wine"
+        set:
+          Type: "0x15000"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "bakery"
+        set:
+          Type: "0x15001"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "hairdresser"
+        set:
+          Type: "0x15002"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "clothes"
+        set:
+          Type: "0x15003"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "convenience"
+        set:
+          Type: "0x15004"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "car_repair"
+        set:
+          Type: "0x15005"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "supermarket"
+        set:
+          Type: "0x15006"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "butcher"
+        set:
+          Type: "0x15007"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "sports"
+        set:
+          Type: "0x15008"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "beauty"
+        set:
+          Type: "0x15009"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "furniture"
+        set:
+          Type: "0x1500a"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "interior_decoration"
+        set:
+          Type: "0x1500b"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "deli"
+        set:
+          Type: "0x1500c"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "in:greengrocer,farm"
+        set:
+          Type: "0x1500d"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "gift"
+        set:
+          Type: "0x1500f"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "optician"
+        set:
+          Type: "0x15010"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "newsagent"
+        set:
+          Type: "0x15011"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "florist"
+        set:
+          Type: "0x15012"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "shoes"
+        set:
+          Type: "0x15013"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "jewelry"
+        set:
+          Type: "0x15014"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "car"
+        set:
+          Type: "0x15015"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "tobacco"
+        set:
+          Type: "0x15016"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "in:laundry,dry_cleaning"
+        set:
+          Type: "0x15017"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "books"
+        set:
+          Type: "0x15018"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "bicycle"
+        set:
+          Type: "0x15019"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "mobile_phone"
+        set:
+          Type: "0x1501a"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "travel_agency"
+        set:
+          Type: "0x1501b"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "in:doityourself,hardware"
+        set:
+          Type: "0x1501c"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "in:chocolate,pastry"
+        set:
+          Type: "0x1501d"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "variety_store"
+        set:
+          Type: "0x1501e"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "kitchen"
+        set:
+          Type: "0x1501f"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "cosmetics"
+        set:
+          Type: "0x15100"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "garden_centre"
+        set:
+          Type: "0x15101"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "computer"
+        set:
+          Type: "0x15102"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "ticket"
+        set:
+          Type: "0x15103"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "toys"
+        set:
+          Type: "0x15104"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "electronics"
+        set:
+          Type: "0x15105"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "outdoor"
+        set:
+          Type: "0x15106"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "motorcycle"
+        set:
+          Type: "0x15107"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "art"
+        set:
+          Type: "0x15108"
+          EndLevel: "0"
+          Label: "${name}"
+
+      - match:
+          shop: "stationery"
+        set:
+          Type: "0x15109"
+          EndLevel: "0"
+          Label: "${name}"
+
+      # Default (0x1500e) — capte les 6 types FME explicitement mappés à ce code
+      # (cheese, e-cigarette, funeral_directors, hearing_aids, tattoo, yes)
+      # ainsi que tout type shop non listé ci-dessus.
+      # Pour ajouter un type shop dédié, insérer une règle AVANT ce wildcard.
+      - match:
+          shop: "*"
+        set:
+          Type: "0x1500e"
+          EndLevel: "0"
+          Label: "${name}"
+
+  # ==========================================================================
+  # OSM — Natural features linéaires (arêtes, crêtes, falaises)
+  # Source : OpenStreetMap via Geofabrik PBF — couche "lines"
+  # 3 types : ridge, arete, cliff
+  # ==========================================================================
+  - name: "OSM Natural Lines"
+    source_layer: "osm_natural_lines"
+    rules:
+      - match:
+          natural: "ridge"
+        set:
+          Type: "0x11a00"
+          EndLevel: "1"
+          Label: "${name}"
+
+      - match:
+          natural: "arete"
+        set:
+          Type: "0x11a00"
+          EndLevel: "1"
+          Label: "${name}"
+
+      - match:
+          natural: "cliff"
+        set:
+          Type: "0x11a01"
+          EndLevel: "1"
+          Label: "${name}"
+
+  # ==========================================================================
+  # OSM — Natural features ponctuelles (grottes, rochers, dolines)
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
+  # 4 types : cave_entrance, rock, sinkhole, cave (default)
+  # cave_entrance doit matcher avant le wildcard (first-match-wins)
+  # ==========================================================================
+  - name: "OSM Natural POIs"
+    source_layer: "osm_natural_points"
+    rules:
+      - match:
+          natural: "cave_entrance"
+        set:
+          Type: "0x15301"
+          EndLevel: "1"
+          Label: "${name}"
+
+      - match:
+          natural: "rock"
+        set:
+          Type: "0x06614"
+          EndLevel: "1"
+          Label: "${name}"
+
+      - match:
+          natural: "sinkhole"
+        set:
+          Type: "0x11509"
+          EndLevel: "1"
+          Label: "${name}"
+
+      # Default — catch-all pour natural=cave (tag rare mais existant dans OSM,
+      # distinct de cave_entrance) et tout autre type natural non mappé
+      - match:
+          natural: "*"
+        set:
+          Type: "0x15300"
+          EndLevel: "1"
+          Label: "${name}"
+
+  # ==========================================================================
+  # OSM — Tourism viewpoints (points de vue)
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
+  # Note : le type 0x16 (Scenic Area/Viewpoint) est le type Garmin standard
+  # pour les points de vue, distinct du 0x15300 utilisé pour les grottes
+  # ==========================================================================
+  - name: "OSM Tourism Viewpoints"
+    source_layer: "osm_tourism"
+    rules:
+      - match:
+          tourism: "viewpoint"
+        set:
+          Type: "0x16"
+          EndLevel: "1"
+          Label: "${name}"

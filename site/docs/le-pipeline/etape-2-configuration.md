@@ -236,6 +236,52 @@ header:
 !!! info "Précédence"
     Si `template` ET champs individuels sont spécifiés, le template prend le dessus.
 
+## Configuration des sources OSM PBF
+
+Pour intégrer les données OpenStreetMap, ajoutez des entrées PBF dans la section `inputs` avec `layers`, `layer_alias` et `attribute_filter` :
+
+```yaml
+inputs:
+  # --- Sources BD TOPO (existantes) ---
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # --- Sources OSM PBF ---
+  # Nécessite : export OSM_CONFIG_FILE=pipeline/configs/osm/osmconf.ini
+  # Nécessite : export OSM_MAX_TMPFILE_SIZE=1024
+  # Recommandé : export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
+
+  # Amenity POIs (restaurants, pharmacies, parking, etc.)
+  - path: "${OSM_DATA_ROOT}/**/*.osm.pbf"
+    layers: ["points"]
+    layer_alias: "osm_amenity"
+    attribute_filter: "amenity IS NOT NULL"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # Shop POIs (boulangeries, supermarchés, etc.)
+  - path: "${OSM_DATA_ROOT}/**/*.osm.pbf"
+    layers: ["points"]
+    layer_alias: "osm_shop"
+    attribute_filter: "shop IS NOT NULL"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+```
+
+### Points clés
+
+- **Chemin glob** : `**/*.osm.pbf` intègre automatiquement tous les fichiers PBF du dossier (multi-régions)
+- **`layer_alias`** : route les features vers le bon ruleset dans les règles de catégorisation
+- **`attribute_filter`** : filtre GDAL appliqué avant chargement en mémoire
+- **`spatial_filter`** : restreint les features à l'emprise communale + buffer (recommandé car les PBF Geofabrik couvrent des régions entières)
+- Les données OSM sont en EPSG:4326 natif — pas de `source_srs`/`target_srs` nécessaire
+- Seules les couches `points` et `lines` sont supportées (pas `multipolygons` — limitation du driver GDAL OSM)
+- Positionner `OSM_MAX_TMPFILE_SIZE=1024` pour éviter l'erreur "Too many features accumulated" sur les gros PBF
+- Positionner `OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES` pour supprimer les warnings de géométries invalides
+
 ## Valider la configuration
 
 Avant de lancer un tuilage qui peut durer plusieurs heures, vérifiez la configuration avec `mpforge validate` :
