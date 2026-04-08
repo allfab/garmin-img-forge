@@ -111,8 +111,12 @@ pub fn build_gmapsupp_with_meta_and_typ(
 
     // Build and add overview map — required by Garmin handhelds (Alpha 100, etc.)
     // to render detail tiles. The overview is a low-res tile covering all bounds.
-    // Uses a dedicated map_id derived from family_id to avoid collision with tile IDs.
-    let overview_map_id = (meta.family_id as u32) * 10000 + 9999;
+    // Overview map_id: max tile ID + 1000, capped to 8 digits (99999999).
+    let max_tile_id: u32 = tiles.iter()
+        .filter_map(|t| t.map_number.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    let overview_map_id = (max_tile_id + 1000).min(99_999_999);
     let overview = overview_map::build_overview_map(tiles, overview_map_id, meta.codepage);
     let ov_name = format!("{:08}", overview_map_id);
     fs.add_file(&ov_name, "TRE", overview.tre);
