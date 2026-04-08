@@ -1,0 +1,28 @@
+version: 1
+
+rulesets:
+  - name: "Toponymie"
+    source_layer: "TOPONYMIE"
+    label_case: "title"
+    rules:
+      - match:
+          CLASSE: "Montagne"
+        set:
+          Type: "0x6616"
+          Label: "${GRAPHIE}"
+        label_case: "upper"
+      - match:
+          CLASSE: "Cours d'eau"
+        set:
+          Type: "0x6511"
+          Label: "${GRAPHIE}"
+
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          Label: "~[0x04]${NUMERO}"
+        label_case: "upper"

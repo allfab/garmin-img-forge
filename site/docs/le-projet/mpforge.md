@@ -334,6 +334,33 @@ conditions:
 
 Le fichier de règles est référencé dans la configuration et validé par `mpforge validate`.
 
+### Formatage de casse des labels (`label_case`)
+
+L'option `label_case` contrôle la casse des labels écrits dans les fichiers MP. Elle peut être définie au niveau du **ruleset** (défaut pour toutes les règles) ou au niveau d'une **règle individuelle** (override du ruleset).
+
+| Valeur | Description | Exemple |
+|--------|-------------|---------|
+| `none` | Pas de changement (défaut) | `"Mont Blanc"` → `"Mont Blanc"` |
+| `upper` | Tout en majuscules | `"Mont Blanc"` → `"MONT BLANC"` |
+| `lower` | Tout en minuscules | `"Mont Blanc"` → `"mont blanc"` |
+| `title` | Casse de titre | `"mont blanc"` → `"Mont Blanc"` |
+| `capitalize` | Première lettre en majuscule | `"mont blanc"` → `"Mont blanc"` |
+
+Les préfixes Garmin (`~[0xNN]`) sont préservés : seule la partie texte est transformée.
+
+```yaml
+- name: "Toponymie"
+  source_layer: "TOPONYMIE"
+  label_case: "title"        # Défaut pour tout le ruleset
+  rules:
+    - match:
+        CLASSE: "Montagne"
+      set:
+        Type: "0x6616"
+        Label: "${GRAPHIE}"
+      label_case: "upper"    # Override : sommets en majuscules
+```
+
 ## Installation
 
 ### Binaire pré-compilé (recommandé)

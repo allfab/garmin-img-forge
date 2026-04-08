@@ -174,7 +174,7 @@ field_mapping:
 
 | Catégorie | Champs |
 |-----------|--------|
-| **Core** | `Type`, `Label`, `EndLevel`, `Levels`, `Data0`-`Data9` |
+| **Core** | `Type`, `Label`, `EndLevel`, `Levels`, `Data0`-`Data9` (le champ `Label` peut être transformé via l'option [`label_case`](../le-projet/mpforge.md#formatage-de-casse-des-labels-label_case) dans les règles) |
 | **Localisation** | `CityName`, `RegionName`, `CountryName`, `Zip` |
 | **POI** | `SubType`, `Marine`, `City`, `StreetDesc`, `HouseNumber`, `PhoneNumber` |
 | **Routing** | `DirIndicator`, `RouteParam` |

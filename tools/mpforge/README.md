@@ -548,6 +548,35 @@ rules:
 
 > **Impact sur la taille** : chaque copie supplémentaire augmente le fichier IMG. Avec 3 niveaux, une feature `EndLevel=2` est écrite 3 fois. Limitez les EndLevel élevés aux features structurantes (routes principales, grands lacs).
 
+#### Formatage de casse des labels (`label_case`)
+
+L'option `label_case` contrôle le formatage de la casse des labels écrits dans les fichiers MP.
+Elle peut être définie au niveau du **ruleset** (défaut pour toutes les règles) ou au niveau
+d'une **règle individuelle** (override du ruleset).
+
+| Valeur | Description | Exemple |
+|--------|-------------|---------|
+| `none` | Pas de changement (défaut) | `"Mont Blanc"` → `"Mont Blanc"` |
+| `upper` | Tout en majuscules | `"Mont Blanc"` → `"MONT BLANC"` |
+| `lower` | Tout en minuscules | `"Mont Blanc"` → `"mont blanc"` |
+| `title` | Casse de titre | `"mont blanc"` → `"Mont Blanc"` |
+| `capitalize` | Première lettre en majuscule | `"mont blanc"` → `"Mont blanc"` |
+
+Les préfixes Garmin (`~[0xNN]`) sont préservés : seule la partie texte est transformée.
+
+```yaml
+- name: "Toponymie"
+  source_layer: "TOPONYMIE"
+  label_case: "title"        # Défaut : casse de titre pour tout le ruleset
+  rules:
+    - match:
+        CLASSE: "Montagne"
+      set:
+        Type: "0x6616"
+        Label: "${GRAPHIE}"
+      label_case: "upper"    # Override : sommets en majuscules
+```
+
 #### Précédence des options
 
 Si `template` ET champs individuels sont spécifiés, **le template prend le dessus** :

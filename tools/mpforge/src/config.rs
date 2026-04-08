@@ -365,6 +365,22 @@ impl Config {
                 );
             }
 
+            // Validate spatial_filter config
+            if let Some(ref sf) = input.spatial_filter {
+                if sf.source.is_empty() {
+                    anyhow::bail!(
+                        "InputSource #{}: spatial_filter.source must not be empty",
+                        i
+                    );
+                }
+                if sf.buffer < 0.0 {
+                    anyhow::bail!(
+                        "InputSource #{}: spatial_filter.buffer must not be negative, got {}",
+                        i, sf.buffer
+                    );
+                }
+            }
+
             // Validate generalize config
             if let Some(ref gen) = input.generalize {
                 if gen.iterations == 0 {
@@ -917,6 +933,121 @@ pub fn run_validate(
             status: CheckStatus::Skipped,
             details: "Not configured".to_string(),
         });
+    }
+
+    // Step 6: Spatial filter source files (optional, per-input)
+    {
+        let mut sf_sources: Vec<(usize, &str)> = Vec::new();
+        for (i, input) in config.inputs.iter().enumerate() {
+            if let Some(ref sf) = input.spatial_filter {
+                sf_sources.push((i, &sf.source));
+            }
+        }
+        if sf_sources.is_empty() {
+            checks.push(ValidationCheck {
+                name: "spatial_filter".to_string(),
+                status: CheckStatus::Skipped,
+                details: "Not configured".to_string(),
+            });
+        } else {
+            let mut all_ok = true;
+            let mut details_parts = Vec::new();
+            for (i, source) in &sf_sources {
+                let path = std::path::Path::new(source);
+                if path.exists() {
+                    details_parts.push(format!("input #{}: {}", i, source));
+                } else {
+                    all_ok = false;
+                    let err_msg = format!(
+                        "Input #{}: spatial_filter.source file does not exist: {}",
+                        i, source
+                    );
+                    errors.push(err_msg.clone());
+                    details_parts.push(err_msg);
+                }
+            }
+            checks.push(ValidationCheck {
+                name: "spatial_filter".to_string(),
+                status: if all_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+                details: details_parts.join("; "),
+            });
+        }
+    }
+
+    // Step 7: Generalize configs (optional, per-input)
+    {
+        let mut gen_details: Vec<String> = Vec::new();
+        for (i, input) in config.inputs.iter().enumerate() {
+            if let Some(ref gen) = input.generalize {
+                let mut parts = Vec::new();
+                if let Some(ref algo) = gen.smooth {
+                    parts.push(format!("smooth={}", algo));
+                }
+                parts.push(format!("iterations={}", gen.iterations));
+                if let Some(tol) = gen.simplify {
+                    parts.push(format!("simplify={}", tol));
+                }
+                gen_details.push(format!("input #{}: {}", i, parts.join(", ")));
+            }
+        }
+        if gen_details.is_empty() {
+            checks.push(ValidationCheck {
+                name: "generalize".to_string(),
+                status: CheckStatus::Skipped,
+                details: "Not configured".to_string(),
+            });
+        } else {
+            checks.push(ValidationCheck {
+                name: "generalize".to_string(),
+                status: CheckStatus::Pass,
+                details: gen_details.join("; "),
+            });
+        }
+    }
+
+    // Step 8: Label case validation (optional, in rules)
+    if let Some(ref rules_path) = config.rules {
+        if let Ok(rules_file) = crate::rules::load_rules(rules_path) {
+            let mut lc_details: Vec<String> = Vec::new();
+            for ruleset in &rules_file.rulesets {
+                let rs_name = ruleset.name.as_deref().unwrap_or(&ruleset.source_layer);
+                let has_label_in_rules = ruleset.rules.iter().any(|r| r.set.contains_key("Label"));
+
+                if let Some(lc) = ruleset.label_case {
+                    lc_details.push(format!("{}: {:?}", rs_name, lc));
+                    if !has_label_in_rules {
+                        warnings.push(format!(
+                            "Ruleset '{}': label_case is {:?} but no rule sets a Label field",
+                            rs_name, lc
+                        ));
+                    }
+                }
+
+                for (j, rule) in ruleset.rules.iter().enumerate() {
+                    if let Some(lc) = rule.label_case {
+                        if !rule.set.contains_key("Label") {
+                            warnings.push(format!(
+                                "Ruleset '{}', rule #{}: label_case is {:?} but rule does not set Label",
+                                rs_name, j + 1, lc
+                            ));
+                        }
+                    }
+                }
+            }
+            if lc_details.is_empty() {
+                checks.push(ValidationCheck {
+                    name: "label_case".to_string(),
+                    status: CheckStatus::Skipped,
+                    details: "Not configured in any ruleset".to_string(),
+                });
+            } else {
+                checks.push(ValidationCheck {
+                    name: "label_case".to_string(),
+                    status: CheckStatus::Pass,
+                    details: format!("{} ruleset(s): {}", lc_details.len(), lc_details.join(", ")),
+                });
+            }
+        }
     }
 
     // Build summary
@@ -2191,7 +2322,7 @@ output:
         assert!(passed.len() >= 3, "Expected at least 3 passed checks, got {}", passed.len());
 
         let skipped: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Skipped).collect();
-        assert_eq!(skipped.len(), 3, "Expected 3 skipped checks (rules, field_mapping, header_template)");
+        assert_eq!(skipped.len(), 5, "Expected 5 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize)");
     }
 
     #[test]
@@ -2253,6 +2384,177 @@ output:
 
         let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
         assert_eq!(yaml_check.status, CheckStatus::Fail);
+    }
+
+    // --- spatial_filter validation tests ---
+
+    #[test]
+    fn test_validate_spatial_filter_negative_buffer() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    spatial_filter:
+      source: "commune.shp"
+      buffer: -100.0
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("buffer must not be negative"));
+    }
+
+    #[test]
+    fn test_validate_spatial_filter_empty_source() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    spatial_filter:
+      source: ""
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("source must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_spatial_filter_valid() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    spatial_filter:
+      source: "commune.shp"
+      buffer: 500.0
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    // --- run_validate: spatial_filter, generalize, label_case checks ---
+
+    #[test]
+    fn test_run_validate_spatial_filter_missing_file() {
+        use crate::report::{CheckStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let mut input_file = NamedTempFile::new().unwrap();
+        write!(input_file, "dummy").unwrap();
+        let input_path = input_file.path().to_str().unwrap().to_string();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "{}"
+    spatial_filter:
+      source: "/nonexistent/commune.shp"
+output:
+  directory: "tiles/"
+"#,
+            input_path
+        );
+
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
+        assert_eq!(sf_check.status, CheckStatus::Fail);
+        assert!(sf_check.details.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_run_validate_spatial_filter_existing_file() {
+        use crate::report::{CheckStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let mut input_file = NamedTempFile::new().unwrap();
+        write!(input_file, "dummy").unwrap();
+        let input_path = input_file.path().to_str().unwrap().to_string();
+
+        let mut sf_file = NamedTempFile::new().unwrap();
+        write!(sf_file, "dummy").unwrap();
+        let sf_path = sf_file.path().to_str().unwrap().to_string();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "{}"
+    spatial_filter:
+      source: "{}"
+output:
+  directory: "tiles/"
+"#,
+            input_path, sf_path
+        );
+
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
+        assert_eq!(sf_check.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn test_run_validate_generalize_check_present() {
+        use crate::report::{CheckStatus};
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let mut input_file = NamedTempFile::new().unwrap();
+        write!(input_file, "dummy").unwrap();
+        let input_path = input_file.path().to_str().unwrap().to_string();
+
+        let yaml = format!(
+            r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "{}"
+    generalize:
+      smooth: "chaikin"
+      iterations: 2
+output:
+  directory: "tiles/"
+"#,
+            input_path
+        );
+
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", yaml).unwrap();
+        let config_path = config_file.path().to_str().unwrap().to_string();
+
+        let report = run_validate(&config_path).unwrap();
+        let gen_check = report.checks.iter().find(|c| c.name == "generalize").unwrap();
+        assert_eq!(gen_check.status, CheckStatus::Pass);
+        assert!(gen_check.details.contains("smooth=chaikin"));
+        assert!(gen_check.details.contains("iterations=2"));
     }
 
     // --- expand_env_vars tests ---

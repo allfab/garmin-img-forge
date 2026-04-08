@@ -11,6 +11,17 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tracing::{info, warn};
 
+/// Label case transformation modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LabelCase {
+    None,
+    Upper,
+    Lower,
+    Title,
+    Capitalize,
+}
+
 /// Top-level rules file structure.
 /// Corresponds to the YAML file with `version` and `rulesets`.
 #[derive(Debug, Deserialize)]
@@ -24,6 +35,8 @@ pub struct RulesFile {
 pub struct Ruleset {
     pub name: Option<String>,
     pub source_layer: String,
+    #[serde(default)]
+    pub label_case: Option<LabelCase>,
     pub rules: Vec<Rule>,
 }
 
@@ -36,6 +49,8 @@ pub struct Rule {
     pub match_conditions: HashMap<String, String>,
     /// Target attributes to set: attribute_name → value_or_template.
     pub set: HashMap<String, String>,
+    #[serde(default)]
+    pub label_case: Option<LabelCase>,
 }
 
 /// Domain errors for rule evaluation.
@@ -90,6 +105,12 @@ static SUBST_RE: LazyLock<Regex> =
 /// Pre-compiled regex for Type hex validation (`0x[0-9a-fA-F]+`).
 static TYPE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid regex"));
+
+/// Pre-compiled regex for Garmin label prefix `~[0x<hex>]` (e.g. `~[0x04]`, `~[0x1f]`).
+/// Only matches a single leading prefix. Multi-prefix labels (e.g. `~[0x04]A7~[0x05] text`)
+/// will have the second prefix treated as plain text.
+static GARMIN_PREFIX_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(~\[0x[0-9a-fA-F]+\])(.*)$").expect("valid regex"));
 
 /// Load and validate a rules file from disk.
 pub fn load_rules(path: &Path) -> anyhow::Result<RulesFile> {
@@ -275,6 +296,68 @@ pub fn apply_set(
     Ok(result)
 }
 
+/// Apply case transformation to a label value, preserving Garmin prefix.
+pub fn apply_label_case(label: &str, case: LabelCase) -> String {
+    if matches!(case, LabelCase::None) {
+        return label.to_string();
+    }
+    let (prefix, text) = match GARMIN_PREFIX_RE.captures(label) {
+        Some(caps) => (caps.get(1).unwrap().as_str(), caps.get(2).unwrap().as_str()),
+        None => ("", label),
+    };
+    let transformed = match case {
+        LabelCase::None => unreachable!(),
+        LabelCase::Upper => text.to_uppercase(),
+        LabelCase::Lower => text.to_lowercase(),
+        LabelCase::Title => to_title_case(text),
+        LabelCase::Capitalize => to_capitalize(text),
+    };
+    format!("{}{}", prefix, transformed)
+}
+
+/// Title-case: capitalize first letter of each word.
+/// Word separators: space, hyphen, apostrophe (ASCII `'` and typographic `\u{2019}`).
+fn to_title_case(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize_next = true;
+    for c in s.chars() {
+        if c == ' ' || c == '-' || c == '\'' || c == '\u{2019}' {
+            result.push(c);
+            capitalize_next = true;
+        } else if capitalize_next {
+            for uc in c.to_uppercase() {
+                result.push(uc);
+            }
+            capitalize_next = false;
+        } else {
+            for lc in c.to_lowercase() {
+                result.push(lc);
+            }
+        }
+    }
+    result
+}
+
+/// Capitalize: uppercase first letter only, lowercase the rest.
+fn to_capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => {
+            let mut result = String::with_capacity(s.len());
+            for uc in first.to_uppercase() {
+                result.push(uc);
+            }
+            for c in chars {
+                for lc in c.to_lowercase() {
+                    result.push(lc);
+                }
+            }
+            result
+        }
+    }
+}
+
 /// Evaluate a feature against all rules in a ruleset (first-match-wins).
 ///
 /// Returns `Some(transformed_attrs)` for the first matching rule,
@@ -285,7 +368,18 @@ pub fn evaluate_feature(
 ) -> Result<Option<HashMap<String, String>>, RuleError> {
     for rule in &ruleset.rules {
         if evaluate_match(&rule.match_conditions, feature_attrs) {
-            let transformed = apply_set(&rule.set, feature_attrs)?;
+            let mut transformed = apply_set(&rule.set, feature_attrs)?;
+            // Apply label_case: rule overrides ruleset
+            let effective_case = rule
+                .label_case
+                .or(ruleset.label_case)
+                .unwrap_or(LabelCase::None);
+            if !matches!(effective_case, LabelCase::None) {
+                if let Some(label) = transformed.get("Label") {
+                    let new_label = apply_label_case(label, effective_case);
+                    transformed.insert("Label".to_string(), new_label);
+                }
+            }
             return Ok(Some(transformed));
         }
     }
@@ -920,11 +1014,13 @@ rulesets:
         Ruleset {
             name: Some("Test".into()),
             source_layer: "LAYER".into(),
+            label_case: None,
             rules: rules
                 .into_iter()
                 .map(|(m, s)| Rule {
                     match_conditions: m,
                     set: s,
+                    label_case: None,
                 })
                 .collect(),
         }
@@ -1041,6 +1137,7 @@ rulesets:
                 .map(|name| Ruleset {
                     name: Some(name.to_string()),
                     source_layer: name.to_string(),
+                    label_case: None,
                     rules: vec![],
                 })
                 .collect(),
@@ -1084,5 +1181,292 @@ rulesets:
     fn test_find_ruleset_empty_rulesets() {
         let rules = make_rules_file(&[]);
         assert!(find_ruleset(&rules, "ANYTHING").is_none());
+    }
+
+    // --- LabelCase deserialization tests ---
+
+    #[test]
+    fn test_label_case_deserialize_ruleset() {
+        let yaml = r#"
+version: 1
+rulesets:
+  - name: "Test"
+    source_layer: "LAYER"
+    label_case: "upper"
+    rules:
+      - match:
+          FIELD: "val"
+        set:
+          Type: "0x01"
+"#;
+        let rules: RulesFile = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(rules.rulesets[0].label_case, Some(LabelCase::Upper));
+    }
+
+    #[test]
+    fn test_label_case_deserialize_rule() {
+        let yaml = r#"
+version: 1
+rulesets:
+  - name: "Test"
+    source_layer: "LAYER"
+    rules:
+      - match:
+          FIELD: "val"
+        set:
+          Type: "0x01"
+        label_case: "title"
+"#;
+        let rules: RulesFile = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(rules.rulesets[0].rules[0].label_case, Some(LabelCase::Title));
+    }
+
+    #[test]
+    fn test_label_case_deserialize_absent() {
+        let yaml = r#"
+version: 1
+rulesets:
+  - name: "Test"
+    source_layer: "LAYER"
+    rules:
+      - match:
+          FIELD: "val"
+        set:
+          Type: "0x01"
+"#;
+        let rules: RulesFile = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(rules.rulesets[0].label_case, None);
+        assert_eq!(rules.rulesets[0].rules[0].label_case, None);
+    }
+
+    #[test]
+    fn test_label_case_deserialize_invalid() {
+        let yaml = r#"
+version: 1
+rulesets:
+  - name: "Test"
+    source_layer: "LAYER"
+    label_case: "MAJUSCULE"
+    rules:
+      - match:
+          FIELD: "val"
+        set:
+          Type: "0x01"
+"#;
+        let result: Result<RulesFile, _> = serde_yml::from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    // --- apply_label_case basic tests ---
+
+    #[test]
+    fn test_label_case_upper() {
+        assert_eq!(apply_label_case("mont blanc", LabelCase::Upper), "MONT BLANC");
+    }
+
+    #[test]
+    fn test_label_case_lower() {
+        assert_eq!(apply_label_case("MONT BLANC", LabelCase::Lower), "mont blanc");
+    }
+
+    #[test]
+    fn test_label_case_title() {
+        assert_eq!(apply_label_case("mont blanc", LabelCase::Title), "Mont Blanc");
+    }
+
+    #[test]
+    fn test_label_case_capitalize() {
+        assert_eq!(apply_label_case("mont blanc", LabelCase::Capitalize), "Mont blanc");
+    }
+
+    #[test]
+    fn test_label_case_none() {
+        assert_eq!(apply_label_case("Mont Blanc", LabelCase::None), "Mont Blanc");
+    }
+
+    // --- Unicode accent tests ---
+
+    #[test]
+    fn test_label_case_title_unicode() {
+        assert_eq!(
+            apply_label_case("l'église saint-étienne", LabelCase::Title),
+            "L'Église Saint-Étienne"
+        );
+    }
+
+    #[test]
+    fn test_label_case_lower_unicode() {
+        assert_eq!(
+            apply_label_case("CHÂTEAU D'EAU", LabelCase::Lower),
+            "château d'eau"
+        );
+    }
+
+    #[test]
+    fn test_label_case_upper_unicode() {
+        assert_eq!(
+            apply_label_case("forêt domaniale", LabelCase::Upper),
+            "FORÊT DOMANIALE"
+        );
+    }
+
+    #[test]
+    fn test_label_case_capitalize_unicode() {
+        assert_eq!(
+            apply_label_case("CHÂTEAU D'EAU", LabelCase::Capitalize),
+            "Château d'eau"
+        );
+    }
+
+    // --- Garmin prefix tests ---
+
+    #[test]
+    fn test_label_case_garmin_prefix_upper() {
+        assert_eq!(
+            apply_label_case("~[0x04]D1075", LabelCase::Upper),
+            "~[0x04]D1075"
+        );
+    }
+
+    #[test]
+    fn test_label_case_garmin_prefix_title() {
+        assert_eq!(
+            apply_label_case("~[0x05]route nationale", LabelCase::Title),
+            "~[0x05]Route Nationale"
+        );
+    }
+
+    #[test]
+    fn test_label_case_garmin_prefix_upper_mixed() {
+        assert_eq!(
+            apply_label_case("~[0x04]autoroute A7", LabelCase::Upper),
+            "~[0x04]AUTOROUTE A7"
+        );
+    }
+
+    // --- Edge case tests ---
+
+    #[test]
+    fn test_label_case_empty() {
+        assert_eq!(apply_label_case("", LabelCase::Upper), "");
+    }
+
+    #[test]
+    fn test_label_case_garmin_prefix_only() {
+        assert_eq!(apply_label_case("~[0x04]", LabelCase::Title), "~[0x04]");
+    }
+
+    #[test]
+    fn test_label_case_single_char() {
+        assert_eq!(apply_label_case("a", LabelCase::Capitalize), "A");
+    }
+
+    // --- evaluate_feature with label_case ---
+
+    #[test]
+    fn test_evaluate_feature_label_case_from_ruleset() {
+        let mut ruleset = make_ruleset(vec![(
+            HashMap::from([("FIELD".into(), "*".into())]),
+            HashMap::from([
+                ("Type".into(), "0x01".into()),
+                ("Label".into(), "${TOPONYME}".into()),
+            ]),
+        )]);
+        ruleset.label_case = Some(LabelCase::Upper);
+
+        let attrs = HashMap::from([("TOPONYME".into(), "Mont Blanc".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap().unwrap();
+        assert_eq!(result.get("Label").unwrap(), "MONT BLANC");
+    }
+
+    #[test]
+    fn test_evaluate_feature_label_case_rule_overrides_ruleset() {
+        let mut ruleset = make_ruleset(vec![(
+            HashMap::from([("FIELD".into(), "*".into())]),
+            HashMap::from([
+                ("Type".into(), "0x01".into()),
+                ("Label".into(), "${TOPONYME}".into()),
+            ]),
+        )]);
+        ruleset.label_case = Some(LabelCase::Upper);
+        ruleset.rules[0].label_case = Some(LabelCase::Title);
+
+        let attrs = HashMap::from([("TOPONYME".into(), "mont blanc".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap().unwrap();
+        assert_eq!(result.get("Label").unwrap(), "Mont Blanc");
+    }
+
+    #[test]
+    fn test_evaluate_feature_label_case_backward_compat() {
+        let ruleset = make_ruleset(vec![(
+            HashMap::from([("FIELD".into(), "*".into())]),
+            HashMap::from([
+                ("Type".into(), "0x01".into()),
+                ("Label".into(), "${TOPONYME}".into()),
+            ]),
+        )]);
+
+        let attrs = HashMap::from([("TOPONYME".into(), "Mont Blanc".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap().unwrap();
+        assert_eq!(result.get("Label").unwrap(), "Mont Blanc");
+    }
+
+    #[test]
+    fn test_label_case_deserialize_none_value() {
+        let yaml = r#"
+version: 1
+rulesets:
+  - name: "Test"
+    source_layer: "LAYER"
+    label_case: "none"
+    rules:
+      - match:
+          FIELD: "val"
+        set:
+          Type: "0x01"
+        label_case: "none"
+"#;
+        let rules: RulesFile = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(rules.rulesets[0].label_case, Some(LabelCase::None));
+        assert_eq!(rules.rulesets[0].rules[0].label_case, Some(LabelCase::None));
+    }
+
+    #[test]
+    fn test_evaluate_feature_rule_none_overrides_ruleset_upper() {
+        let mut ruleset = make_ruleset(vec![(
+            HashMap::from([("FIELD".into(), "*".into())]),
+            HashMap::from([
+                ("Type".into(), "0x01".into()),
+                ("Label".into(), "${TOPONYME}".into()),
+            ]),
+        )]);
+        ruleset.label_case = Some(LabelCase::Upper);
+        ruleset.rules[0].label_case = Some(LabelCase::None);
+
+        let attrs = HashMap::from([("TOPONYME".into(), "Mont Blanc".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap().unwrap();
+        // Rule's label_case: "none" overrides ruleset's "upper" → label unchanged
+        assert_eq!(result.get("Label").unwrap(), "Mont Blanc");
+    }
+
+    #[test]
+    fn test_label_case_title_typographic_apostrophe() {
+        assert_eq!(
+            apply_label_case("l\u{2019}église saint-étienne", LabelCase::Title),
+            "L\u{2019}Église Saint-Étienne"
+        );
+    }
+
+    #[test]
+    fn test_evaluate_feature_label_case_no_label_field() {
+        let mut ruleset = make_ruleset(vec![(
+            HashMap::from([("FIELD".into(), "*".into())]),
+            HashMap::from([("Type".into(), "0x01".into())]),
+        )]);
+        ruleset.label_case = Some(LabelCase::Upper);
+
+        let attrs = HashMap::from([("FIELD".into(), "val".into())]);
+        let result = evaluate_feature(&ruleset, &attrs).unwrap().unwrap();
+        assert!(result.get("Label").is_none());
     }
 }

@@ -149,6 +149,7 @@ rulesets:
   # ==========================================================================
   - name: "Voies ferrees"
     source_layer: "TRONCON_DE_VOIE_FERREE"
+    label_case: "title"
     rules:
       # 1. Souterrain (POS_SOL=-1, quelle que soit NATURE) — DOIT ETRE EN PREMIER
       - match:
@@ -219,6 +220,7 @@ rulesets:
   # ==========================================================================
   - name: "Pistes aerodrome"
     source_layer: "PISTE_D_AERODROME"
+    label_case: "title"
     rules:
       # 1. Piste en dur
       - match:
@@ -243,6 +245,7 @@ rulesets:
   # ==========================================================================
   - name: "Transport par cable"
     source_layer: "TRANSPORT_PAR_CABLE"
+    label_case: "title"
     rules:
       # 1. Toute feature (mapping statique)
       - match:
@@ -259,6 +262,7 @@ rulesets:
   # ==========================================================================
   - name: "Communes"
     source_layer: "COMMUNE"
+    label_case: "title"
     rules:
       # 1. Toute commune (mapping statique)
       - match:
@@ -280,6 +284,7 @@ rulesets:
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
+    label_case: "title"
     rules:
       - match:
           IMPORTANCE: "in:1,2,3"
@@ -298,6 +303,7 @@ rulesets:
   # ==========================================================================
   - name: "Troncons hydrographiques"
     source_layer: "TRONCON_HYDROGRAPHIQUE"
+    label_case: "title"
     rules:
       # 1. Intermittent (seul type different du defaut)
       - match:
@@ -322,6 +328,7 @@ rulesets:
   # ==========================================================================
   - name: "Surfaces hydrographiques"
     source_layer: "SURFACE_HYDROGRAPHIQUE"
+    label_case: "title"
     rules:
       # 1. Glacier, neve (override toute valeur de PERSISTANC)
       - match:
@@ -362,6 +369,7 @@ rulesets:
   # ==========================================================================
   - name: "Details hydrographiques"
     source_layer: "DETAIL_HYDROGRAPHIQUE"
+    label_case: "title"
     rules:
       # 1. Arroyo
       - match:
@@ -605,6 +613,7 @@ rulesets:
   # ==========================================================================
   - name: "Constructions lineaires"
     source_layer: "CONSTRUCTION_LINEAIRE"
+    label_case: "title"
     rules:
       # 1. Autre ligne descriptive
       - match:
@@ -710,6 +719,7 @@ rulesets:
   # ==========================================================================
   - name: "Constructions ponctuelles"
     source_layer: "CONSTRUCTION_PONCTUELLE"
+    label_case: "title"
     rules:
       # 1. Antenne
       - match:
@@ -831,6 +841,7 @@ rulesets:
   # ==========================================================================
   - name: "Terrains de sport"
     source_layer: "TERRAIN_DE_SPORT"
+    label_case: "title"
     rules:
       # 1. Bassin de natation
       - match:
@@ -888,6 +899,7 @@ rulesets:
   # ==========================================================================
   - name: "Lignes orographiques"
     source_layer: "LIGNE_OROGRAPHIQUE"
+    label_case: "title"
     rules:
       # 1. Carriere
       - match:
@@ -921,6 +933,7 @@ rulesets:
   # ==========================================================================
   - name: "Zones de vegetation"
     source_layer: "ZONE_DE_VEGETATION"
+    label_case: "title"
     rules:
       # 1. Bois (EndLevel=6, Label statique)
       - match:
@@ -1013,6 +1026,7 @@ rulesets:
   # ==========================================================================
   - name: "Zones d'activite"
     source_layer: "ZONE_D_ACTIVITE_OU_D_INTERET"
+    label_case: "title"
     rules:
       # 1. Toute feature (mapping statique)
       - match:
@@ -1030,6 +1044,7 @@ rulesets:
   # ==========================================================================
   - name: "Lignes electriques"
     source_layer: "LIGNE_ELECTRIQUE"
+    label_case: "title"
     rules:
       # 1. Toute feature (mapping statique avec label dynamique)
       - match:
@@ -1046,6 +1061,7 @@ rulesets:
   # ==========================================================================
   - name: "Forets publiques"
     source_layer: "FORET_PUBLIQUE"
+    label_case: "title"
     rules:
       # 1. Toute feature (mapping statique)
       - match:
@@ -1067,6 +1083,7 @@ rulesets:
   # ==========================================================================
   - name: "Toponymie"
     source_layer: "TOPONYMIE"
+    label_case: "title"
     rules:
       # ------------------------------------------------------------------
       # Categorie 1 : Aerodrome (3 NATURE + catch-all 0x02d0b)
@@ -2819,6 +2836,7 @@ rulesets:
   # ==========================================================================
   - name: "Courbes de niveau"
     source_layer: "COURBE"
+    label_case: "title"
     rules:
       # 1. Courbes maîtresses (altitude multiple de 25m)
       - match:

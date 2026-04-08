@@ -63,7 +63,10 @@ pub enum Commands {
                             3. Input files existence (after wildcard resolution)\n  \
                             4. Rules file parsing and validation\n  \
                             5. Field mapping file parsing\n  \
-                            6. Header template file existence\n\n\
+                            6. Header template file existence\n  \
+                            7. Spatial filter source file existence\n  \
+                            8. Generalize configuration\n  \
+                            9. Label case configuration (coherence with Label fields)\n\n\
                             Exit code: 0 if valid, 1 if invalid.\n\n\
                             Example:\n  \
                             mpforge validate --config config.yaml\n  \

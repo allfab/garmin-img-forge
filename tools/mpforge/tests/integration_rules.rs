@@ -111,6 +111,86 @@ output:
 }
 
 // ============================================================================
+// label_case integration tests
+// ============================================================================
+
+#[test]
+fn test_load_rules_with_label_case() {
+    let rules_path = fixture_path("valid_rules_label_case.yaml");
+    let rules_file = rules::load_rules(&rules_path).unwrap();
+    assert_eq!(rules_file.rulesets.len(), 2);
+
+    // Ruleset-level label_case
+    assert_eq!(
+        rules_file.rulesets[0].label_case,
+        Some(rules::LabelCase::Title)
+    );
+    // Rule-level override
+    assert_eq!(
+        rules_file.rulesets[0].rules[0].label_case,
+        Some(rules::LabelCase::Upper)
+    );
+    // Rule without override
+    assert_eq!(rules_file.rulesets[0].rules[1].label_case, None);
+
+    // Ruleset without label_case
+    assert_eq!(rules_file.rulesets[1].label_case, None);
+    // Rule with label_case on ruleset without
+    assert_eq!(
+        rules_file.rulesets[1].rules[0].label_case,
+        Some(rules::LabelCase::Upper)
+    );
+}
+
+#[test]
+fn test_label_case_evaluate_feature_integration() {
+    let rules_path = fixture_path("valid_rules_label_case.yaml");
+    let rules_file = rules::load_rules(&rules_path).unwrap();
+
+    // Test rule override (Montagne → upper, ruleset is title)
+    let attrs = std::collections::HashMap::from([
+        ("CLASSE".to_string(), "Montagne".to_string()),
+        ("GRAPHIE".to_string(), "mont blanc".to_string()),
+    ]);
+    let result = rules::evaluate_feature(&rules_file.rulesets[0], &attrs)
+        .expect("rule evaluation should succeed")
+        .expect("should match Montagne rule");
+    assert_eq!(result.get("Label").expect("Label field should exist"), "MONT BLANC");
+
+    // Test ruleset default (Cours d'eau → title from ruleset)
+    let attrs2 = std::collections::HashMap::from([
+        ("CLASSE".to_string(), "Cours d'eau".to_string()),
+        ("GRAPHIE".to_string(), "la durance".to_string()),
+    ]);
+    let result2 = rules::evaluate_feature(&rules_file.rulesets[0], &attrs2)
+        .expect("rule evaluation should succeed")
+        .expect("should match Cours d'eau rule");
+    assert_eq!(result2.get("Label").expect("Label field should exist"), "La Durance");
+}
+
+#[test]
+fn test_backward_compat_existing_rules_without_label_case() {
+    // Existing valid_rules.yaml has no label_case at all
+    let rules_path = fixture_path("valid_rules.yaml");
+    let rules_file = rules::load_rules(&rules_path).unwrap();
+
+    assert_eq!(rules_file.rulesets[0].label_case, None);
+    for rule in &rules_file.rulesets[0].rules {
+        assert_eq!(rule.label_case, None);
+    }
+
+    // Labels should pass through unchanged
+    let attrs = std::collections::HashMap::from([
+        ("CL_ADMIN".to_string(), "Autoroute".to_string()),
+        ("NUMERO".to_string(), "A7".to_string()),
+    ]);
+    let result = rules::evaluate_feature(&rules_file.rulesets[0], &attrs)
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.get("Label").unwrap(), "A7");
+}
+
+// ============================================================================
 // AC3: rules pointe vers fichier inexistant → erreur claire
 // ============================================================================
 
