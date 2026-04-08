@@ -110,28 +110,14 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&typ_name, "TYP", patched);
     }
 
-    // Build and add overview map — required by Garmin handhelds (Alpha 100, etc.)
-    // to render detail tiles. The overview is a low-res tile covering all bounds.
-    // Overview map_id: max tile ID + 1000, capped to 8 digits (99999999).
-    let max_tile_id: u32 = tiles.iter()
-        .filter_map(|t| t.map_number.parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
-    let overview_map_id = (max_tile_id + 1000).min(99_999_999);
-    let overview = overview_map::build_overview_map(tiles, overview_map_id, meta.codepage);
-    let ov_name = format!("{:08}", overview_map_id);
-    fs.add_file(&ov_name, "TRE", overview.tre);
-    fs.add_file(&ov_name, "RGN", overview.rgn);
-    fs.add_file(&ov_name, "LBL", overview.lbl);
-
     // Add SRT (sort descriptor) — required by some Garmin firmware (Alpha 100, etc.)
     if meta.codepage == 1252 || meta.codepage == 0 {
         let srt_name = format!("{:08}", meta.family_id);
         fs.add_file(&srt_name, "SRT", srt::SRT_CP1252.to_vec());
     }
 
-    // Build and add MPS subfile (includes overview map entry)
-    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
+    // Build and add MPS subfile
+    let mps_data = build_mps_with_overview(tiles, meta, 0);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     fs.sync()

@@ -30,3 +30,4 @@ mpforge-report.*
 data/
 # Build artifacts (CMake)
 **/build/
+pipeline/resources/typfiles/xIGNBBTOP.typ

@@ -107,6 +107,11 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
 
     // 1. Build LBL — all labels
     let mut lbl_writer = LblWriter::new(encoding);
+    // Set sort IDs matching the SRT descriptor — mkgmap default for CP1252
+    // sort_id1=7, sort_id2=0x8002 (Western European sort)
+    if mp.header.codepage == 1252 || mp.header.codepage == 0 {
+        lbl_writer.set_sort_ids(7, 0x8002);
+    }
     let copyright_label = if !mp.header.copyright.is_empty() {
         lbl_writer.add_label(&mp.header.copyright)
     } else {

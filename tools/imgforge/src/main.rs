@@ -283,11 +283,8 @@ fn main() -> Result<()> {
             {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
                 let mut tdb = TdbWriter::new(fid, pid);
-                let max_tile_id: u32 = tile_subfiles.iter()
-                    .filter_map(|t| t.map_number.parse::<u32>().ok())
-                    .max()
-                    .unwrap_or(0);
-                tdb.overview_map_number = (max_tile_id + 1000).min(99_999_999);
+                // overview_map_number = 0 : no overview map in gmapsupp
+                // (empty overviews break some Garmin firmware like Alpha 100)
                 tdb.codepage = effective_codepage;
                 tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
                 tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();
