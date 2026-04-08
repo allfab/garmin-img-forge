@@ -11,9 +11,9 @@ Ce tuilage spatial est une opération complexe :
 - Appliquer des règles de catégorisation (quel type Garmin pour quel objet ?)
 - Traiter des millions de features en temps raisonnable
 
-## La solution : mpforge
+## La solution : `mpforge`
 
-**mpforge** est un CLI Rust qui orchestre tout ce processus en une seule commande :
+`mpforge` est un CLI Rust qui orchestre tout ce processus en une seule commande :
 
 ```bash
 mpforge build --config france-bdtopo.yaml --jobs 8
@@ -46,7 +46,7 @@ flowchart TD
 
 ### Ce qui se passe en interne
 
-1. **Lecture** — mpforge ouvre toutes les sources GDAL déclarées dans la configuration
+1. **Lecture** — `mpforge` ouvre toutes les sources GDAL déclarées dans la configuration
 2. **Filtrage spatial** — Si configuré, les features sont pré-filtrées par une géométrie de référence (ex: communes)
 3. **Indexation** — Les features sont indexées dans un R-tree spatial pour des requêtes rapides
 4. **Grille** — Une grille régulière (configurable en degrés) est calculée sur l'emprise des données
@@ -55,118 +55,61 @@ flowchart TD
 7. **Généralisation** — Lissage (Chaikin) et simplification (Douglas-Peucker) optionnels
 8. **Export** — Le driver ogr-polishmap génère le fichier `.mp` avec le field mapping configuré
 
-## Configuration YAML
+## CLI `mpforge`
 
-mpforge utilise un fichier YAML déclaratif pour définir l'intégralité du pipeline :
+### Commandes
 
-```yaml
-version: 1
+| Commande | Description |
+|----------|-------------|
+| `mpforge build` | Exécute le pipeline de tuilage complet |
+| `mpforge validate` | Valide la configuration sans exécuter le pipeline |
 
-grid:
-  cell_size: 0.15      # ~16.5 km par tuile
-  overlap: 0.01        # Chevauchement entre tuiles
-  origin: [-5.0, 41.0] # Point d'origine optionnel
-
-inputs:
-  # Shapefiles avec wildcards
-  - path: "data/bdtopo/*.shp"
-
-  # GeoPackage multi-couches
-  - path: "data/BDTOPO.gpkg"
-    layers:
-      - "batiment"
-      - "troncon_de_route"
-      - "cours_d_eau"
-      - "zone_vegetation"
-
-  # Filtrage spatial par géométrie de référence
-  - path: "data/COURBES_NIVEAU.shp"
-    spatial_filter:
-      source: "data/COMMUNE.shp"
-      buffer: 500  # mètres dans le SRS source
-
-  # PostGIS (non implémenté — prévu dans une future version)
-  # - connection: "PG:host=localhost dbname=gis"
-  #   layers: ["roads", "buildings"]
-
-output:
-  directory: "tiles/"
-  filename_pattern: "{col}_{row}.mp"
-  field_mapping_path: "bdtopo-mapping.yaml"
-
-header:
-  template: "header_template.mp"
-
-filters:
-  bbox: [-5.0, 41.0, 10.0, 51.5]  # France métropolitaine
-
-error_handling: "continue"
-```
-
-### Variables d'environnement
-
-Les fichiers de configuration supportent les **variables d'environnement** avec la syntaxe `${VAR}`. Elles sont substituées avant le parsing YAML, ce qui permet de paramétrer les chemins et valeurs numériques sans modifier le fichier :
-
-```yaml
-inputs:
-  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
-  - path: "${DATA_ROOT}/HYDROGRAPHIE/*.shp"
-
-output:
-  directory: "${OUTPUT_DIR}/tiles/"
-  base_id: ${BASE_ID}   # Fonctionne aussi pour les champs numériques
-```
+### Options de `mpforge build`
 
 ```bash
-# Les variables sont résolues au lancement
-DATA_ROOT=/data/bdtopo OUTPUT_DIR=/output BASE_ID=38 \
-  mpforge build --config config.yaml --jobs 8
+mpforge build --config <fichier.yaml> [options]
 ```
 
-Seuls les noms de variables POSIX valides sont reconnus (`[A-Za-z_][A-Za-z0-9_]*`). Les variables non définies dans l'environnement sont laissées telles quelles — la commande `validate` les signale comme warnings.
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--config <path>` | Fichier de configuration YAML (obligatoire) | - |
+| `--jobs <N>` | Nombre de threads parallèles | `1` |
+| `--report <path>` | Exporte un rapport JSON d'exécution | - |
+| `--skip-existing` | Reprend un export interrompu en sautant les tuiles déjà générées | `false` |
+| `--dry-run` | Mode prévisualisation : affiche ce qui serait exporté sans écrire | `false` |
+| `--fail-fast` | Arrêt immédiat à la première erreur | `false` |
+| `-v` / `-vv` / `-vvv` | Verbosité progressive (INFO / DEBUG / TRACE) | - |
 
-### Le field mapping : la passerelle entre deux mondes
-
-Les données BD TOPO utilisent des noms de champs comme `MP_TYPE`, `NAME`, `MPBITLEVEL`. Le format Polish Map attend `Type`, `Label`, `Levels`. Le field mapping fait le pont :
-
-```yaml
-# bdtopo-mapping.yaml
-field_mapping:
-  MP_TYPE: Type          # Code type Garmin
-  NAME: Label            # Nom de l'objet
-  Country: CountryName   # Pays
-  CityName: CityName     # Commune
-  MPBITLEVEL: Levels     # Niveaux de zoom
-```
-
-Cette séparation en deux fichiers (config + mapping) permet de **réutiliser** le même mapping pour plusieurs configurations.
-
-### Le header template : les métadonnées de la carte
-
-Chaque tuile `.mp` a besoin d'un header avec des métadonnées (nom, copyright, niveaux de zoom). Un template centralise ces réglages :
-
-```
-[IMG ID]
-Name=BDTOPO France
-ID=0
-Copyright=IGN 2026
-Levels=4
-Level0=24
-Level1=21
-Level2=18
-Level3=15
-TreeSize=3000
-RgnLimit=1024
-LBLcoding=9
-```
-
-## Validation de la configuration
-
-Avant de lancer un long export, la sous-commande `validate` vérifie la configuration sans exécuter le pipeline :
+Exemples :
 
 ```bash
-mpforge validate --config config.yaml
+# Mode séquentiel (debug)
+mpforge build --config config.yaml
+
+# Mode production — 8 threads en parallèle
+mpforge build --config config.yaml --jobs 8
+
+# Reprendre un export interrompu
+mpforge build --config config.yaml --jobs 8 --skip-existing
+
+# Prévisualiser sans écrire (dry-run)
+mpforge build --config config.yaml --dry-run
+
+# Avec rapport JSON pour CI/CD
+mpforge build --config config.yaml --jobs 8 --report report.json
 ```
+
+### Options de `mpforge validate`
+
+```bash
+mpforge validate --config <fichier.yaml> [options]
+```
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--config <path>` | Fichier de configuration YAML (obligatoire) | - |
+| `--report <path>` | Exporte le résultat en JSON | - |
+| `-v` / `-vv` / `-vvv` | Verbosité progressive | - |
 
 Neuf vérifications sont effectuées :
 
@@ -198,49 +141,35 @@ Exemple de sortie :
 Config valid. (7/7 checks passed)
 ```
 
-Les variables d'environnement non définies sont signalées :
+Code de sortie : `0` si valide, `1` si invalide. Le rapport JSON est exploitable en CI/CD.
 
-```
-  ⚠ Unresolved environment variable: ${DATA_ROOT} (not set)
-```
+### Parallélisation
 
-Le rapport peut être exporté en JSON pour intégration CI/CD :
+`mpforge` utilise la bibliothèque **rayon** (Rust) pour distribuer le traitement sur N workers indépendants via l'option `--jobs`. Chaque worker ouvre ses propres datasets GDAL — aucun état partagé entre threads.
 
 ```bash
-mpforge validate --config config.yaml --report validation.json
-```
+# Séquentiel (debug, pas de parallélisation)
+mpforge build --config config.yaml --jobs 1
 
-Code de sortie : `0` si valide, `1` si invalide.
-
-## Utilisation
-
-### Commande de base
-
-```bash
-# Mode séquentiel (debug)
-mpforge build --config config.yaml
-
-# Mode production (8 threads)
+# 8 threads (production)
 mpforge build --config config.yaml --jobs 8
-
-# Avec rapport JSON pour CI/CD
-mpforge build --config config.yaml --jobs 8 --report report.json
 ```
 
-### Options utiles
+| Dataset | `--jobs` recommandé | Speedup typique |
+|---------|---------------------|----------------|
+| < 50 tuiles | `1` (séquentiel) | - |
+| 50-500 tuiles | `4` | ~2x |
+| > 500 tuiles | `8` | ~2-3x |
 
-```bash
-# Prévisualiser sans écrire (dry-run)
-mpforge build --config config.yaml --dry-run
+!!! warning "Attention"
+    Une valeur `--jobs` supérieure au nombre de CPUs disponibles est signalée par un warning et peut dégrader les performances.
 
-# Reprendre un export interrompu
-mpforge build --config config.yaml --jobs 8 --skip-existing
+### Gestion d'erreurs
 
-# Verbosité progressive
-mpforge build --config config.yaml -v    # INFO
-mpforge build --config config.yaml -vv   # DEBUG (logs GDAL)
-mpforge build --config config.yaml -vvv  # TRACE (tout)
-```
+Deux modes configurables dans le YAML (`error_handling`) ou en CLI (`--fail-fast`) :
+
+- **`continue`** (défaut) — Les tuiles en erreur sont journalisées mais le traitement continue. Idéal pour la production où quelques tuiles problématiques ne doivent pas bloquer 2000 autres.
+- **`fail-fast`** — Arrêt immédiat à la première erreur. Idéal pour le développement et le débogage.
 
 ### Rapport JSON
 
@@ -256,91 +185,258 @@ mpforge build --config config.yaml -vvv  # TRACE (tout)
 }
 ```
 
-## Parallélisation
+## Configuration YAML
 
-mpforge utilise la bibliothèque **rayon** (Rust) pour distribuer le traitement sur N workers indépendants. Chaque worker ouvre ses propres datasets GDAL — aucun état partagé entre threads.
+`mpforge` utilise un fichier YAML déclaratif pour définir l'intégralité du pipeline. Ce fichier se compose de deux parties distinctes :
 
-| Dataset | Threads recommandés | Speedup typique |
-|---------|-------------------|----------------|
-| < 50 tuiles | 1 (séquentiel) | - |
-| 50-500 tuiles | 4 threads | ~2x |
-| > 500 tuiles | 8 threads | ~2-3x |
+1. **Le fichier de configuration des sources** — Définit les inputs, la grille, l'output, le header et les options de traitement
+2. **Le fichier de règles Garmin** — Définit les transformations d'attributs (types, labels, niveaux de zoom)
 
-## Sources supportées
+Le fichier de règles est référencé par le fichier de configuration via la directive `rules:`.
 
-mpforge lit **tous les formats fichier GDAL/OGR** :
+### Fichier de configuration des sources
 
-| Format | Type | Exemple |
-|--------|------|---------|
-| ESRI Shapefile | Fichier | `data/routes.shp` |
-| GeoPackage | Fichier | `data/bdtopo.gpkg` |
-| GeoJSON | Fichier | `data/features.geojson` |
-| KML/KMZ | Fichier | `data/map.kml` |
-
-!!! note "PostGIS"
-    Les chaînes de connexion PostGIS sont reconnues par le parseur de configuration, mais la lecture effective des données n'est pas encore implémentée dans le pipeline. Prévu dans une future version.
-
-## Gestion d'erreurs
-
-Deux modes pour s'adapter au contexte :
-
-- **`continue`** (défaut) — Les tuiles en erreur sont journalisées mais le traitement continue. Idéal pour la production où quelques tuiles problématiques ne doivent pas bloquer 2000 autres.
-- **`fail-fast`** — Arrêt immédiat à la première erreur. Idéal pour le développement et le débogage.
-
-## Filtrage spatial
-
-Pour les sources volumineuses (courbes de niveau, MNT...), mpforge permet de **filtrer spatialement les features** par une géométrie de référence avant le tuilage. Cela réduit drastiquement le volume de données traitées :
+Voici la structure complète, basée sur le fichier de production `sources-shp.yaml` :
 
 ```yaml
+version: 1
+
+grid:
+  cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
+
 inputs:
-  - path: "data/COURBES_NIVEAU.shp"
+  # Source simple avec reprojection
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+
+  # Source avec généralisation géométrique
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    generalize:
+      smooth: "chaikin"
+      iterations: 1
+      simplify: 0.00003
+
+  # Wildcards + filtrage spatial + filtre attributaire
+  - path: "${CONTOURS_DATA_ROOT}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
+    layer_alias: "COURBE"
     spatial_filter:
-      source: "data/COMMUNE.shp"    # Géométrie de référence
-      buffer: 500                     # Buffer en mètres (SRS source)
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
+
+output:
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
+  overwrite: true
+  base_id: ${BASE_ID}
+
+header:
+  name: "BDTOPO-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2025"
+  levels: "5"
+  level0: "24"
+  level1: "22"
+  level2: "20"
+  level3: "18"
+  level4: "16"
+  simplify_level: "0"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  lbl_coding: "9"
+  routing: "Y"
+
+# Référence vers le fichier de règles Garmin
+rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
+
+error_handling: "continue"
+
+# Filtre bbox (WGS84) — optionnel
+# filters:
+#   bbox: [5.0, 44.6, 6.4, 45.9]
 ```
 
-Le filtre fonctionne par union binaire (O(n log n)) des géométries de référence, avec pré-rejet par enveloppe pour optimiser les performances. Seules les features intersectant la géométrie résultante (avec buffer) sont conservées.
+#### Directives par source (`inputs`)
 
-## Généralisation géométrique
+Chaque entrée `inputs` peut contenir :
 
-mpforge intègre un pipeline de généralisation appliqué après le clipping et avant l'export :
+| Directive | Description | Obligatoire |
+|-----------|-------------|-------------|
+| `path` | Chemin vers le fichier source (supporte les wildcards `*`, `**`) | oui* |
+| `connection` | Chaîne de connexion PostGIS (non implémenté) | oui* |
+| `source_srs` | SRS des données source (ex: `"EPSG:2154"`) | non |
+| `target_srs` | SRS cible pour la reprojection (ex: `"EPSG:4326"`) | non |
+| `layers` | Liste de couches à lire (pour GeoPackage multi-couches) | non |
+| `layer_alias` | Nom de couche forcé (pour le matching des règles) | non |
+| `attribute_filter` | Filtre SQL sur les attributs (clause WHERE OGR) | non |
+| `generalize` | Configuration de généralisation géométrique (voir ci-dessous) | non |
+| `spatial_filter` | Configuration de filtrage spatial (voir ci-dessous) | non |
+
+\* `path` ou `connection`, l'un des deux est obligatoire (pas les deux).
+
+#### Filtrage spatial (`spatial_filter`)
+
+Pour les sources volumineuses (courbes de niveau, MNT...), `mpforge` permet de **filtrer spatialement les features** par une géométrie de référence avant le tuilage. Cela réduit drastiquement le volume de données traitées.
 
 ```yaml
 inputs:
-  - path: "data/COURBES_NIVEAU.shp"
-    smooth: "chaikin"     # Lissage Chaikin (corner-cutting)
-    iterations: 1         # Nombre de passes de lissage
-    simplify: 0.00005     # Tolérance Douglas-Peucker (en degrés)
+  - path: "${CONTOURS_DATA_ROOT}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"  # Géométrie de référence
+      buffer: 500                                         # Buffer en mètres (SRS source)
 ```
 
 | Option | Description | Défaut |
 |--------|-------------|--------|
-| `smooth` | Algorithme de lissage (`chaikin`) | - |
-| `iterations` | Nombre de passes de lissage (1-2) | 1 |
-| `simplify` | Tolérance Douglas-Peucker post-lissage | - |
+| `source` | Chemin vers le shapefile de référence (obligatoire) | - |
+| `buffer` | Distance de buffer en mètres, dans le SRS source | `0.0` |
+
+Le filtre fonctionne par union binaire (O(n log n)) des géométries de référence, avec pré-rejet par enveloppe pour optimiser les performances. Seules les features intersectant la géométrie résultante (avec buffer) sont conservées.
+
+#### Généralisation géométrique (`generalize`)
+
+`mpforge` intègre un pipeline de généralisation appliqué après le clipping et avant l'export. La directive `generalize` est un bloc imbriqué dans chaque source :
+
+```yaml
+inputs:
+  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    generalize:
+      smooth: "chaikin"       # Lissage Chaikin (corner-cutting)
+      iterations: 1           # Nombre de passes de lissage
+      simplify: 0.00003       # Tolérance Douglas-Peucker (en degrés)
+```
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `smooth` | Algorithme de lissage (seul `"chaikin"` est supporté) | - |
+| `iterations` | Nombre de passes de lissage (minimum 1) | `1` |
+| `simplify` | Tolérance Douglas-Peucker post-lissage (en degrés) | - |
 
 !!! tip "Impact en production"
     Sur les données BD TOPO (~35 Go), limitez les itérations à 1 pour éviter une consommation mémoire excessive. La simplification Douglas-Peucker est optionnelle et s'applique après le lissage.
 
-## Moteur de règles
+#### Variables d'environnement
 
-mpforge dispose d'un moteur de règles YAML pour transformer les attributs des features (catégorisation, réécriture de labels, affectation des types Garmin...) :
+Les fichiers de configuration supportent les **variables d'environnement** avec la syntaxe `${VAR}`. Elles sont substituées avant le parsing YAML :
 
 ```yaml
-# Opérateurs disponibles dans les conditions
-conditions:
-  - field: "NATURE"
-    operator: "in-list"          # Teste l'appartenance à une liste
-    values: ["Autoroute", "Nationale", "Départementale"]
+inputs:
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
 
-  - field: "NOM_VOIE"
-    operator: "starts-with"      # Teste le préfixe
-    value: "Chemin"
+output:
+  directory: "${OUTPUT_DIR}/tiles/"
+  base_id: ${BASE_ID}   # Fonctionne aussi pour les champs numériques
 ```
 
-Le fichier de règles est référencé dans la configuration et validé par `mpforge validate`.
+```bash
+# Les variables sont résolues au lancement
+DATA_ROOT=/data/bdtopo OUTPUT_DIR=/output BASE_ID=38 \
+  mpforge build --config config.yaml --jobs 8
+```
 
-### Formatage de casse des labels (`label_case`)
+Seuls les noms de variables POSIX valides sont reconnus (`[A-Za-z_][A-Za-z0-9_]*`). Les variables non définies sont laissées telles quelles — `mpforge validate` les signale comme warnings.
+
+#### Field mapping
+
+Les données BD TOPO utilisent des noms de champs comme `MP_TYPE`, `NAME`, `MPBITLEVEL`. Le format Polish Map attend `Type`, `Label`, `Levels`. Le field mapping fait le pont :
+
+```yaml
+# bdtopo-mapping.yaml
+field_mapping:
+  MP_TYPE: Type          # Code type Garmin
+  NAME: Label            # Nom de l'objet
+  Country: CountryName   # Pays
+  CityName: CityName     # Commune
+  MPBITLEVEL: Levels     # Niveaux de zoom
+```
+
+Cette séparation en deux fichiers (config + mapping) permet de **réutiliser** le même mapping pour plusieurs configurations.
+
+#### Header template
+
+Chaque tuile `.mp` a besoin d'un header avec des métadonnées (nom, copyright, niveaux de zoom). Le header peut être défini directement dans le YAML ou via un template externe :
+
+```yaml
+# Directement dans le YAML
+header:
+  name: "BDTOPO-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio"
+  levels: "5"
+  level0: "24"
+  level1: "22"
+  level2: "20"
+
+# OU via un template externe
+header:
+  template: "header_template.mp"
+```
+
+### Fichier de règles Garmin
+
+Le fichier de règles (`garmin-rules.yaml`) est un fichier YAML séparé, référencé dans la configuration via `rules:`. Il définit comment les attributs des features sources sont transformés en attributs Polish Map (types Garmin, labels, niveaux de zoom).
+
+#### Structure
+
+```yaml
+version: 1
+
+rulesets:
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "2"
+          Label: "~[0x04]${NUMERO}"
+
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "!Rond-point"
+        set:
+          Type: "0x04"
+          EndLevel: "2"
+          Label: "~[0x05]${NUMERO}"
+```
+
+Chaque **ruleset** cible une couche source (`source_layer`) et contient une liste de **règles** évaluées en **first-match-wins** : la première règle dont toutes les conditions `match` sont satisfaites est appliquée.
+
+#### Opérateurs de matching
+
+| Opérateur | Syntaxe | Description |
+|-----------|---------|-------------|
+| Égalité stricte | `"Autoroute"` | Valeur exacte |
+| Wildcard | `"*"` | Toujours vrai |
+| Non vide | `"!!"` | Le champ existe et n'est pas vide |
+| Vide | `""` | Le champ est absent ou vide |
+| In-list | `"in:val1,val2,val3"` | Appartenance à une liste |
+| Not-in-list | `"!in:val1,val2"` | Exclusion d'une liste |
+| Starts-with | `"^prefix"` | Le champ commence par `prefix` |
+| Starts-with (insensible) | `"^i:prefix"` | Idem, insensible à la casse |
+| Not-starts-with | `"!^prefix"` | Le champ ne commence pas par `prefix` |
+| Not-equal | `"!valeur"` | Différent de `valeur` |
+
+#### Substitution de champs
+
+Dans les valeurs `set`, la syntaxe `${FIELD}` substitue la valeur de l'attribut source :
+
+```yaml
+set:
+  Label: "~[0x04]${NUMERO}"   # → "~[0x04]A7"
+  Label: "${TOPONYME}"          # → "Mont Blanc"
+```
+
+#### Formatage de casse des labels (`label_case`)
 
 L'option `label_case` contrôle la casse des labels écrits dans les fichiers MP. Elle peut être définie au niveau du **ruleset** (défaut pour toutes les règles) ou au niveau d'une **règle individuelle** (override du ruleset).
 
@@ -366,6 +462,20 @@ Les préfixes Garmin (`~[0xNN]`) sont préservés : seule la partie texte est tr
         Label: "${GRAPHIE}"
       label_case: "upper"    # Override : sommets en majuscules
 ```
+
+## Sources supportées
+
+`mpforge` lit **tous les formats fichier GDAL/OGR** :
+
+| Format | Type | Exemple |
+|--------|------|---------|
+| ESRI Shapefile | Fichier | `data/routes.shp` |
+| GeoPackage | Fichier | `data/bdtopo.gpkg` |
+| GeoJSON | Fichier | `data/features.geojson` |
+| KML/KMZ | Fichier | `data/map.kml` |
+
+!!! note "PostGIS"
+    Les chaînes de connexion PostGIS sont reconnues par le parseur de configuration, mais la lecture effective des données n'est pas encore implémentée dans le pipeline. Prévu dans une future version.
 
 ## Installation
 
