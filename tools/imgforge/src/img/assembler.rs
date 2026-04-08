@@ -92,9 +92,20 @@ pub fn build_gmapsupp_with_meta_and_typ(
     }
 
     // Add TYP file if provided (mkgmap convention: family_id as filename)
+    // Patch FID/PID in the TYP header to match the map's family/product IDs.
+    // mkgmap TypSaver.java: FID at offset 0x2F, PID at offset 0x31 (little-endian u16).
     if let Some(typ) = typ_data {
         let typ_name = format!("{:08}", meta.family_id);
-        fs.add_file(&typ_name, "TYP", typ.to_vec());
+        let mut patched = typ.to_vec();
+        if patched.len() >= 0x33 {
+            let fid_bytes = meta.family_id.to_le_bytes();
+            let pid_bytes = meta.product_id.to_le_bytes();
+            patched[0x2F] = fid_bytes[0];
+            patched[0x30] = fid_bytes[1];
+            patched[0x31] = pid_bytes[0];
+            patched[0x32] = pid_bytes[1];
+        }
+        fs.add_file(&typ_name, "TYP", patched);
     }
 
     // Build and add MPS subfile
@@ -303,5 +314,47 @@ mod tests {
         assert!(result.is_ok());
         let img = result.unwrap();
         assert_eq!(&img[0x10..0x17], b"DSKIMG\0");
+    }
+
+    #[test]
+    fn test_typ_fid_pid_patched() {
+        // Build a fake TYP with FID=1100 PID=1 at offsets 0x2F-0x32
+        let mut fake_typ = vec![0u8; 256];
+        fake_typ[0..12].copy_from_slice(b"\xae\x00GARMIN TYP");
+        // Original FID=1100 (0x044C), PID=1
+        fake_typ[0x2F] = 0x4C;
+        fake_typ[0x30] = 0x04;
+        fake_typ[0x31] = 0x01;
+        fake_typ[0x32] = 0x00;
+
+        let tile = TileSubfiles {
+            map_number: "63240001".to_string(),
+            description: "Test".to_string(),
+            tre: vec![0x01; 200],
+            rgn: vec![0x02; 300],
+            lbl: vec![0x03; 150],
+            net: None,
+            nod: None,
+            dem: None,
+        };
+        let meta = GmapsuppMeta {
+            family_id: 6324,  // 0x18B4
+            product_id: 2,
+            family_name: "Test".to_string(),
+            area_name: String::new(),
+            codepage: 0,
+        };
+        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ));
+        assert!(result.is_ok());
+        let img = result.unwrap();
+
+        // Find the TYP data in the output — search for GARMIN TYP signature
+        let typ_pos = img.windows(10).position(|w| w == b"GARMIN TYP").unwrap();
+        let typ_start = typ_pos - 2; // header starts 2 bytes before signature
+        // FID should be patched to 6324 (0x18B4)
+        let fid = u16::from_le_bytes([img[typ_start + 0x2F], img[typ_start + 0x30]]);
+        let pid = u16::from_le_bytes([img[typ_start + 0x31], img[typ_start + 0x32]]);
+        assert_eq!(fid, 6324, "TYP FID should be patched to match family_id");
+        assert_eq!(pid, 2, "TYP PID should be patched to match product_id");
     }
 }
