@@ -369,7 +369,11 @@ fn build_multilevel_hierarchy(
                 area.bounds.max_lat(), area.bounds.max_lon(),
             );
             subdiv.parent = parent_num;
-            subdiv.is_last = i == sorted_areas.len() - 1;
+            // is_last marks the last child in each parent's group, NOT the last at the level.
+            // Since areas are sorted by parent, is_last is set when the next area has a different parent
+            // or this is the very last area.
+            let next_parent = sorted_parents.get(i + 1).copied();
+            subdiv.is_last = next_parent != Some(parent_num);
 
             // Capture ext positions before encoding
             let ext_areas_before = rgn.ext_areas_position();

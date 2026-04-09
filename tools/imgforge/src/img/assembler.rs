@@ -391,6 +391,7 @@ mod tests {
             family_name: "Test".to_string(),
             area_name: String::new(),
             codepage: 0,
+            typ_basename: None,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ), None);
         assert!(result.is_ok());
@@ -442,6 +443,7 @@ mod tests {
             family_name: "Test".to_string(),
             area_name: String::new(),
             codepage: 1252,
+            typ_basename: None,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None, None);
         assert!(result.is_ok());
