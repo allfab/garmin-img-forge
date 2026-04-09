@@ -308,15 +308,27 @@ fn build_multilevel_hierarchy(
         let (split_points, split_lines, split_shapes) =
             filter_features_for_level(mp, level_num, bounds);
 
-        if split_points.is_empty() && split_lines.is_empty() && split_shapes.is_empty() {
-            continue;
-        }
+        // mkgmap always creates at least one subdivision per declared level,
+        // even if no features pass the EndLevel filter. This ensures the full
+        // multi-level hierarchy is preserved — some Garmin firmware (Alpha 100)
+        // may require all declared levels to be present.
+        let has_features = !split_points.is_empty() || !split_lines.is_empty() || !split_shapes.is_empty();
 
-        let areas = splitter::split_features(
-            *bounds, level.resolution,
-            split_points, split_lines, split_shapes,
-        );
-        if areas.is_empty() { continue; }
+        let areas = if has_features {
+            let result = splitter::split_features(
+                *bounds, level.resolution,
+                split_points, split_lines, split_shapes,
+            );
+            if result.is_empty() {
+                // Splitter returned nothing — create one empty subdivision covering full bounds
+                vec![splitter::MapArea::new(*bounds, level.resolution)]
+            } else {
+                result
+            }
+        } else {
+            // No features at this level — create one empty subdivision (mkgmap convention)
+            vec![splitter::MapArea::new(*bounds, level.resolution)]
+        };
 
         // Determine parent for each area, then sort by parent to guarantee
         // contiguous child subdivision numbers per parent (Garmin format requirement:

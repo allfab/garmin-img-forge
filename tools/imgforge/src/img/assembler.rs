@@ -25,6 +25,9 @@ pub struct GmapsuppMeta {
     pub family_name: String,
     pub area_name: String,
     pub codepage: u16,
+    /// TYP filename stem (without extension), e.g. "I2023100" from "I2023100.typ".
+    /// If None, uses family_id formatted as 8-digit string.
+    pub typ_basename: Option<String>,
 }
 
 impl Default for GmapsuppMeta {
@@ -35,6 +38,7 @@ impl Default for GmapsuppMeta {
             family_name: "Map".to_string(),
             area_name: String::new(),
             codepage: 0,
+            typ_basename: None,
         }
     }
 }
@@ -77,6 +81,22 @@ pub fn build_gmapsupp_with_meta_and_typ(
 
     let mut fs = ImgFilesystem::new(description);
 
+    // --- File ordering matters! mkgmap order: MPS first, then tiles, TYP, SRT ---
+    // Some Garmin firmware (Alpha 100) expects MPS as the first subfile.
+
+    // Generate overview map (if not disabled) — needed for MPS entry
+    let include_overview = std::env::var("IMGFORGE_NO_OVERVIEW").is_err();
+    let overview_map_id = if include_overview {
+        compute_overview_map_id(meta.family_id)
+    } else {
+        0
+    };
+
+    // 1. MPS first (mkgmap convention)
+    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
+    fs.add_file("MAKEGMAP", "MPS", mps_data);
+
+    // 2. Tile subfiles
     for tile in tiles {
         let name = format!("{:>08}", tile.map_number);
         fs.add_file(&name, "TRE", tile.tre.clone());
@@ -93,11 +113,9 @@ pub fn build_gmapsupp_with_meta_and_typ(
         }
     }
 
-    // Add TYP file if provided (mkgmap convention: family_id as filename)
-    // Patch FID/PID in the TYP header to match the map's family/product IDs.
-    // mkgmap TypSaver.java: FID at offset 0x2F, PID at offset 0x31 (little-endian u16).
+    // 3. TYP file (mkgmap: after tiles, before SRT)
     if let Some(typ) = typ_data {
-        let typ_name = format!("{:08}", meta.family_id);
+        let typ_name = meta.typ_basename.clone().unwrap_or_else(|| format!("{:08}", meta.family_id));
         let mut patched = typ.to_vec();
         if patched.len() >= 0x33 {
             let fid_bytes = meta.family_id.to_le_bytes();
@@ -110,32 +128,31 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&typ_name, "TYP", patched);
     }
 
-    // Generate overview map with real polygon geometry (if not disabled)
-    let include_overview = std::env::var("IMGFORGE_NO_OVERVIEW").is_err();
-    let overview_map_id = if include_overview {
-        let id = compute_overview_map_id(meta.family_id);
+    // 4. SRT (sort descriptor) — required by some Garmin firmware (Alpha 100)
+    {
+        let srt_name = format!("{:08}", meta.family_id);
+        let srt_data = if meta.codepage == 1252 || meta.codepage == 0 {
+            super::srt::SRT_CP1252.to_vec()
+        } else {
+            super::srt::SRT_CP1252.to_vec()
+        };
+        fs.add_file(&srt_name, "SRT", srt_data);
+    }
+
+    // 5. Overview map (if enabled)
+    if include_overview {
+        let id = overview_map_id;
         let overview = overview_map::build_overview_map(tiles, id, meta.codepage);
         let ov_name = format!("{:>08}", overview.map_number);
         fs.add_file(&ov_name, "TRE", overview.tre);
         fs.add_file(&ov_name, "RGN", overview.rgn);
         fs.add_file(&ov_name, "LBL", overview.lbl);
-        id
-    } else {
-        0
-    };
-
-    // Add TDB as sub-file inside the gmapsupp (if provided and not disabled)
-    let include_tdb = std::env::var("IMGFORGE_NO_TDB").is_err();
-    if include_tdb {
-        if let Some(tdb) = tdb_data {
-            let tdb_name = format!("{:08}", meta.family_id);
-            fs.add_file(&tdb_name, "TDB", tdb.to_vec());
-        }
     }
 
-    // Build and add MPS subfile (with overview map entry if enabled)
-    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
-    fs.add_file("MAKEGMAP", "MPS", mps_data);
+    // 6. TDB (if provided and not disabled) — external companion, NOT inside gmapsupp
+    // mkgmap never embeds TDB in gmapsupp; doing so confuses some devices.
+    // TDB is only written as a separate file alongside the gmapsupp.
+    // (Removed from gmapsupp assembly)
 
     fs.sync()
 }

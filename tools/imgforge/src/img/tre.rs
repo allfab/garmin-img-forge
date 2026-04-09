@@ -191,9 +191,11 @@ impl TreWriter {
         // some Garmin firmware like Alpha 100 may require the magic 0x0607 at offset 134)
         {
             // extTypeOffsets: offset(4) + size(4) + itemSize(2) @124-133
+            // mkgmap: if section is empty, set itemSize to 0 (TREHeader.writeFileHeader)
             assert_eq!(buf.len(), 124);
             common_header::write_section(&mut buf, current_offset, ext_type_offsets_data.len() as u32);
-            buf.extend_from_slice(&13u16.to_le_bytes());
+            let eto_item_size: u16 = if ext_type_offsets_data.is_empty() { 0 } else { 13 };
+            buf.extend_from_slice(&eto_item_size.to_le_bytes());
             current_offset += ext_type_offsets_data.len() as u32;
 
             // Magic 0x0607 @134-137 (4 bytes, mkgmap put4)
@@ -202,7 +204,8 @@ impl TreWriter {
             // extTypeOverviews: offset(4) + size(4) + itemSize(2) @138-147
             assert_eq!(buf.len(), 138);
             common_header::write_section(&mut buf, current_offset, ext_type_overviews_data.len() as u32);
-            buf.extend_from_slice(&4u16.to_le_bytes());
+            let etov_item_size: u16 = if ext_type_overviews_data.is_empty() { 0 } else { 4 };
+            buf.extend_from_slice(&etov_item_size.to_le_bytes());
 
             // NumExtType counts @148-153
             let num_ext_lines = self.ext_polyline_overviews.len() as u16;

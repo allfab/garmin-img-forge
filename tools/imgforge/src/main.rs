@@ -273,6 +273,9 @@ fn main() -> Result<()> {
                 family_name: family_name.as_deref().unwrap_or("Map").to_string(),
                 area_name: area_name.as_deref().unwrap_or("").to_string(),
                 codepage: effective_codepage,
+                typ_basename: typ_file.as_ref().map(|p| {
+                    p.file_stem().and_then(|s| s.to_str()).unwrap_or("00000001").to_string()
+                }),
             };
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
