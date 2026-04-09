@@ -392,12 +392,25 @@ fn build_multilevel_hierarchy(
             ext_offsets.push((ext_areas_before, ext_lines_before, ext_points_before,
                               ext_areas_after, ext_lines_after, ext_points_after));
 
-            if !pts_data.is_empty() { subdiv.flags |= subdivision::HAS_POINTS; }
+            // mkgmap convention: at leaf level, points are written as "indexed points" (0x20)
+            // rather than regular points (0x10). Some Garmin firmware (Alpha 100) may
+            // only render points from the indexed points section.
+            if is_leaf && !pts_data.is_empty() {
+                subdiv.flags |= subdivision::HAS_IND_POINTS;
+            } else if !pts_data.is_empty() {
+                subdiv.flags |= subdivision::HAS_POINTS;
+            }
             if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
             if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
 
             // mkgmap: startRgnPointer = position() - HEADER_LEN → relative to RGN body
-            subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
+            // At leaf level, points go in ind_points slot (second section)
+            let (reg_pts, ind_pts) = if is_leaf {
+                (&[][..], &pts_data[..])
+            } else {
+                (&pts_data[..], &[][..])
+            };
+            subdiv.rgn_offset = rgn.write_subdivision(reg_pts, ind_pts, &lines_data, &polys_data);
 
             let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
             if total_rgn > MAX_RGN_SIZE {
