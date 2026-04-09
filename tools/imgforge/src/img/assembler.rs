@@ -4,7 +4,6 @@ use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
 use super::overview_map;
-use super::srt;
 
 
 /// Subfiles for a single tile
@@ -61,15 +60,16 @@ pub fn build_gmapsupp_with_meta(
     description: &str,
     meta: &GmapsuppMeta,
 ) -> Result<Vec<u8>, ImgError> {
-    build_gmapsupp_with_meta_and_typ(tiles, description, meta, None)
+    build_gmapsupp_with_meta_and_typ(tiles, description, meta, None, None)
 }
 
-/// Assemble with explicit metadata and optional TYP styling data
+/// Assemble with explicit metadata, optional TYP styling data, and optional TDB data
 pub fn build_gmapsupp_with_meta_and_typ(
     tiles: &[TileSubfiles],
     description: &str,
     meta: &GmapsuppMeta,
     typ_data: Option<&[u8]>,
+    tdb_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
@@ -110,17 +110,36 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&typ_name, "TYP", patched);
     }
 
-    // Add SRT (sort descriptor) — required by some Garmin firmware (Alpha 100, etc.)
-    if meta.codepage == 1252 || meta.codepage == 0 {
-        let srt_name = format!("{:08}", meta.family_id);
-        fs.add_file(&srt_name, "SRT", srt::SRT_CP1252.to_vec());
+    // Generate overview map with real polygon geometry
+    let overview_map_id = compute_overview_map_id(meta.family_id);
+    let overview = overview_map::build_overview_map(tiles, overview_map_id, meta.codepage);
+    let ov_name = format!("{:>08}", overview.map_number);
+    fs.add_file(&ov_name, "TRE", overview.tre);
+    fs.add_file(&ov_name, "RGN", overview.rgn);
+    fs.add_file(&ov_name, "LBL", overview.lbl);
+
+    // Add TDB as sub-file inside the gmapsupp (required by many Garmin devices)
+    if let Some(tdb) = tdb_data {
+        let tdb_name = format!("{:08}", meta.family_id);
+        fs.add_file(&tdb_name, "TDB", tdb.to_vec());
     }
 
-    // Build and add MPS subfile
-    let mps_data = build_mps_with_overview(tiles, meta, 0);
+    // Build and add MPS subfile (with overview map entry)
+    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     fs.sync()
+}
+
+/// Compute overview map ID from family_id
+/// Convention: family_id * 10000 + 0xFFFF-like high number
+/// Must fit in 8 decimal digits for FAT filename
+pub fn compute_overview_map_id(family_id: u16) -> u32 {
+    // Use family_id * 10000 + 1855 (matches MapSetToolkit pattern)
+    let base = (family_id as u32) * 10000;
+    let id = base + 1855;
+    // Ensure it fits in 8 decimal digits
+    if id > 99999999 { 99999999 } else { id }
 }
 
 /// Build MPS including an overview map entry
@@ -347,7 +366,7 @@ mod tests {
             area_name: String::new(),
             codepage: 0,
         };
-        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ));
+        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ), None);
         assert!(result.is_ok());
         let img = result.unwrap();
 
@@ -359,5 +378,52 @@ mod tests {
         let pid = u16::from_le_bytes([img[typ_start + 0x31], img[typ_start + 0x32]]);
         assert_eq!(fid, 6324, "TYP FID should be patched to match family_id");
         assert_eq!(pid, 2, "TYP PID should be patched to match product_id");
+    }
+
+    #[test]
+    fn test_overview_map_id_computation() {
+        assert_eq!(compute_overview_map_id(1100), 11001855);
+        assert_eq!(compute_overview_map_id(26038), 99999999); // capped
+        assert_eq!(compute_overview_map_id(1), 11855);
+    }
+
+    #[test]
+    fn test_gmapsupp_contains_overview() {
+        let mut tre = vec![0u8; 200];
+        // Set up minimal TRE bounds at offsets 21-32
+        tre[0] = 188; tre[1] = 0;
+        tre[2..12].copy_from_slice(b"GARMIN TRE");
+        // Some non-zero bounds
+        let n = 2143196i32; let e = 262632i32; let s = 2138930i32; let w = 255409i32;
+        tre[21..24].copy_from_slice(&n.to_le_bytes()[..3]);
+        tre[24..27].copy_from_slice(&e.to_le_bytes()[..3]);
+        tre[27..30].copy_from_slice(&s.to_le_bytes()[..3]);
+        tre[30..33].copy_from_slice(&w.to_le_bytes()[..3]);
+
+        let tile = TileSubfiles {
+            map_number: "11000001".to_string(),
+            description: "Test".to_string(),
+            tre,
+            rgn: vec![0x02; 300],
+            lbl: vec![0x03; 150],
+            net: None,
+            nod: None,
+            dem: None,
+        };
+        let meta = GmapsuppMeta {
+            family_id: 1100,
+            product_id: 1,
+            family_name: "Test".to_string(),
+            area_name: String::new(),
+            codepage: 1252,
+        };
+        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None, None);
+        assert!(result.is_ok());
+        let img = result.unwrap();
+        // Should find the overview map's GARMIN TRE + overview marker 0x00040101
+        // The overview map is a second TRE with the overview marker
+        let overview_marker = 0x00040101u32.to_le_bytes();
+        let has_overview = img.windows(4).any(|w| w == overview_marker);
+        assert!(has_overview, "gmapsupp should contain overview map with marker 0x00040101");
     }
 }

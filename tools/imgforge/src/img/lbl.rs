@@ -13,6 +13,10 @@ pub struct LblWriter {
     codepage: u16,
     sort_id1: u16,
     sort_id2: u16,
+    /// Label offset shift (mkgmap offsetMultiplier).
+    /// Stored value N means offsets are shifted right by N bits (actual_byte = stored << N).
+    /// mkgmap always uses 1 for format 9; Garmin devices expect this.
+    offset_shift: u8,
 }
 
 impl LblWriter {
@@ -22,6 +26,12 @@ impl LblWriter {
             LabelEncoding::Format9(cp) => cp,
             LabelEncoding::Format10 => 65001,
         };
+        // mkgmap always uses offsetMultiplier=1 for format 9/10.
+        // Format 6 uses 0. Garmin devices (Alpha 100) expect this.
+        let offset_shift = match encoding {
+            LabelEncoding::Format6 => 0,
+            _ => 1,
+        };
         Self {
             encoding,
             labels: vec![0], // offset 0 is reserved (empty label)
@@ -29,6 +39,7 @@ impl LblWriter {
             codepage,
             sort_id1: 0,
             sort_id2: 0,
+            offset_shift,
         }
     }
 
@@ -39,6 +50,7 @@ impl LblWriter {
 
     /// Add a label and return its offset — mkgmap LBLFile.newLabel
     /// Deduplicates: if same text was already added, returns existing offset.
+    /// Returns the shifted offset: byte_offset >> offset_shift.
     pub fn add_label(&mut self, text: &str) -> u32 {
         if text.is_empty() {
             return 0;
@@ -48,11 +60,19 @@ impl LblWriter {
             return offset;
         }
 
-        let offset = self.labels.len() as u32;
+        // Pad to alignment boundary (2^offset_shift bytes) — mkgmap LBLFile.newLabel
+        let align = 1usize << self.offset_shift;
+        while (self.labels.len() & (align - 1)) != 0 {
+            self.labels.push(0);
+        }
+
+        let byte_offset = self.labels.len() as u32;
         let encoded = self.encode_label(text);
         self.labels.extend_from_slice(&encoded);
-        self.label_cache.insert(text.to_string(), offset);
-        offset
+
+        let shifted = byte_offset >> self.offset_shift;
+        self.label_cache.insert(text.to_string(), shifted);
+        shifted
     }
 
     fn encode_label(&self, text: &str) -> Vec<u8> {
@@ -72,7 +92,10 @@ impl LblWriter {
         let common = CommonHeader::new(LBL_HEADER_LEN, "GARMIN LBL");
         common.write(&mut buf);
 
-        let label_data_offset = LBL_HEADER_LEN as u32;
+        // Sort descriptor blob: written between header and label data (mkgmap convention).
+        // Garmin devices and QMapShack read this for sort/collation info.
+        let sort_desc = self.build_sort_descriptor();
+        let label_data_offset = LBL_HEADER_LEN as u32 + sort_desc.len() as u32;
         let label_data_size = self.labels.len() as u32;
         // All empty PlacesHeader sections point to the end of label data
         let label_end = label_data_offset + label_data_size;
@@ -80,8 +103,10 @@ impl LblWriter {
         // --- LBL1 section: label data offset + size (offset 21-28) ---
         common_header::write_section(&mut buf, label_data_offset, label_data_size);
 
-        // Label offset multiplier (offset 29, 1 byte)
-        buf.push(0x00);
+        // Label offset multiplier (offset 29, 1 byte) — mkgmap LBLFile.offsetMultiplier
+        // Stored value is the shift: actual_byte_offset = stored_offset << shift.
+        // mkgmap always uses 1 for format 9/10 (align labels to 2-byte boundaries).
+        buf.push(self.offset_shift);
 
         // Encoding format (offset 30, 1 byte)
         buf.push(self.encoding.format_id());
@@ -131,8 +156,11 @@ impl LblWriter {
         buf.extend_from_slice(&self.sort_id2.to_le_bytes());
 
         // Sort description offset + length (offset 176-183)
-        buf.extend_from_slice(&(LBL_HEADER_LEN as u32).to_le_bytes()); // offset = header_len (no sort desc)
-        buf.extend_from_slice(&0u32.to_le_bytes());                      // length = 0
+        // Sort descriptor is placed right after the header, before label data.
+        let sort_desc_offset = LBL_HEADER_LEN as u32;
+        let sort_desc_length = sort_desc.len() as u32;
+        buf.extend_from_slice(&sort_desc_offset.to_le_bytes());
+        buf.extend_from_slice(&sort_desc_length.to_le_bytes());
 
         // Last position (offset 184, 4 bytes) — mkgmap: highwayData end pos = label_end for empty
         buf.extend_from_slice(&label_end.to_le_bytes());
@@ -144,10 +172,24 @@ impl LblWriter {
 
         assert_eq!(buf.len(), LBL_HEADER_LEN as usize);
 
+        // --- Sort descriptor blob (between header and label data) ---
+        buf.extend_from_slice(&sort_desc);
+
         // --- Label data ---
         buf.extend_from_slice(&self.labels);
 
         buf
+    }
+
+    /// Build sort descriptor blob — mkgmap convention.
+    /// For codepage-based encodings (format 9), includes "Western European sort\0".
+    fn build_sort_descriptor(&self) -> Vec<u8> {
+        match self.encoding {
+            LabelEncoding::Format9(cp) if cp == 1252 => {
+                b"Western European sort\0".to_vec()
+            }
+            _ => Vec::new(),
+        }
     }
 
     pub fn label_data_size(&self) -> usize {
@@ -182,7 +224,8 @@ mod tests {
         let mut lbl = LblWriter::new(LabelEncoding::Format10);
         let off1 = lbl.add_label("ROUTE");
         let off2 = lbl.add_label("HIGHWAY");
-        assert_eq!(off1, 1); // offset 0 is reserved
+        // With offset_shift=1 (format 10): byte offset 2 (after padding) >> 1 = 1
+        assert_eq!(off1, 1); // offset 0 is reserved, label at byte 2 → shifted 1
         assert!(off2 > off1);
     }
 

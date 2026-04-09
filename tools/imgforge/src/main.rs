@@ -276,15 +276,12 @@ fn main() -> Result<()> {
             };
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(&tile_subfiles, map_desc, &gmapsupp_meta, typ_data.as_deref())?;
-            std::fs::write(&output, &gmapsupp)?;
-
-            // Generate TDB companion file
-            {
+            // Build TDB data — needed both as companion file and embedded in gmapsupp
+            let tdb_data = {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
+                let overview_map_id = imgforge::img::assembler::compute_overview_map_id(fid);
                 let mut tdb = TdbWriter::new(fid, pid);
-                // overview_map_number = 0 : no overview map in gmapsupp
-                // (empty overviews break some Garmin firmware like Alpha 100)
+                tdb.overview_map_number = overview_map_id;
                 tdb.codepage = effective_codepage;
                 tdb.series_name = series_name.as_deref().unwrap_or("imgforge").to_string();
                 tdb.family_name = family_name.as_deref().unwrap_or("Map").to_string();
@@ -334,8 +331,20 @@ fn main() -> Result<()> {
                     });
                 }
 
+                tdb.build()
+            };
+
+            // Build gmapsupp with TDB + overview map embedded
+            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(
+                &tile_subfiles, map_desc, &gmapsupp_meta,
+                typ_data.as_deref(), Some(&tdb_data),
+            )?;
+            std::fs::write(&output, &gmapsupp)?;
+
+            // Also write TDB as companion file (for desktop software like BaseCamp)
+            {
                 let tdb_path = Path::new(&output).with_extension("tdb");
-                std::fs::write(&tdb_path, tdb.build())
+                std::fs::write(&tdb_path, &tdb_data)
                     .with_context(|| format!("Failed to write {}", tdb_path.display()))?;
             }
 
