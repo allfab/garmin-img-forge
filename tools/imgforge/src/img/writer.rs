@@ -208,6 +208,8 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     }
     tre.polyline_overviews.sort();
     tre.polyline_overviews.dedup();
+    // Background polygon overview — type 0x4B is added to every subdivision
+    tre.polygon_overviews.push(PolygonOverview::new(0x4B, 0));
     tre.polygon_overviews.sort();
     tre.polygon_overviews.dedup();
     tre.point_overviews.sort();
@@ -392,25 +394,17 @@ fn build_multilevel_hierarchy(
             ext_offsets.push((ext_areas_before, ext_lines_before, ext_points_before,
                               ext_areas_after, ext_lines_after, ext_points_after));
 
-            // mkgmap convention: at leaf level, points are written as "indexed points" (0x20)
-            // rather than regular points (0x10). Some Garmin firmware (Alpha 100) may
-            // only render points from the indexed points section.
-            if is_leaf && !pts_data.is_empty() {
-                subdiv.flags |= subdivision::HAS_IND_POINTS;
-            } else if !pts_data.is_empty() {
+            // mkgmap puts regular points in HAS_POINTS (0x10) and only city-indexed
+            // points in HAS_IND_POINTS (0x20). Since imgforge doesn't detect cities,
+            // all points go into the regular section at all levels.
+            if !pts_data.is_empty() {
                 subdiv.flags |= subdivision::HAS_POINTS;
             }
             if !lines_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYLINES; }
             if !polys_data.is_empty() { subdiv.flags |= subdivision::HAS_POLYGONS; }
 
-            // mkgmap: startRgnPointer = position() - HEADER_LEN → relative to RGN body
-            // At leaf level, points go in ind_points slot (second section)
-            let (reg_pts, ind_pts) = if is_leaf {
-                (&[][..], &pts_data[..])
-            } else {
-                (&pts_data[..], &[][..])
-            };
-            subdiv.rgn_offset = rgn.write_subdivision(reg_pts, ind_pts, &lines_data, &polys_data);
+            // All points in regular section — no indexed points without city detection
+            subdiv.rgn_offset = rgn.write_subdivision(&pts_data, &[], &lines_data, &polys_data);
 
             let total_rgn = pts_data.len() + lines_data.len() + polys_data.len();
             if total_rgn > MAX_RGN_SIZE {
@@ -903,6 +897,28 @@ fn encode_subdivision_rgn(
 
     // Polygons
     let mut polygons_data = Vec::new();
+
+    // Background polygon — mkgmap MapperBasedMapDataSource.addBackground()
+    // Type 0x4B covers the subdivision area, rendered behind all other polygons.
+    // mkgmap adds one 0x4B polygon covering the full map bounds, then the splitter
+    // clips it per subdivision. We achieve the same result by generating it directly
+    // from each subdivision's area bounds.
+    {
+        let bg_pts = vec![
+            Coord::new(area.bounds.min_lat(), area.bounds.min_lon()),
+            Coord::new(area.bounds.min_lat(), area.bounds.max_lon()),
+            Coord::new(area.bounds.max_lat(), area.bounds.max_lon()),
+            Coord::new(area.bounds.max_lat(), area.bounds.min_lon()),
+        ];
+        let bg = Polygon::new(0x4B, bg_pts.clone());
+        let bg_deltas = compute_deltas(&bg_pts, subdiv);
+        if let Some(bg_bs) = line_preparer::prepare_line(&bg_deltas, false, None, false) {
+            polygons_data.extend_from_slice(
+                &bg.write(subdiv.center_lat, subdiv.center_lon, shift, &bg_bs),
+            );
+        }
+    }
+
     for split_shape in &area.shapes {
         if split_shape.points.len() < 3 { continue; }
         // Remove duplicate closing vertex (shapefile convention: first == last)
