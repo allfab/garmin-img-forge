@@ -51,22 +51,29 @@ Le site est genere dans `_site/`.
 
 ### Styles TYP (`reference/styles-typ.md`)
 
-Cette page est generee par un script Python qui parse le fichier TYP texte et produit un catalogue visuel de tous les styles avec rendus SVG inline.
+Cette page est generee par un script Python qui parse un fichier TYP texte et produit un catalogue visuel de tous les styles avec rendus SVG inline.
+
+**Script** : `scripts/generate-typ-reference.py`
 
 ```bash
-# Generer/regenerer la page de reference des styles TYP
+# Usage par defaut (I2023100.txt → styles-typ.md)
 python3 scripts/generate-typ-reference.py
+
+# Fichier TYP personnalise
+python3 scripts/generate-typ-reference.py pipeline/resources/typfiles/OPENTOPO.txt -o site/docs/reference/styles-opentopo.md
 ```
 
-**Source** : `pipeline/resources/typfiles/I2023100.txt`
-**Script** : `scripts/generate-typ-reference.py`
-**Sortie** : `site/docs/reference/styles-typ.md`
+| Parametre | Description | Defaut |
+|-----------|-------------|--------|
+| `input` (positionnel) | Fichier TYP texte en entree | `pipeline/resources/typfiles/I2023100.txt` |
+| `-o, --output` | Fichier Markdown en sortie | `site/docs/reference/styles-typ.md` |
 
 Le script :
 
-1. Parse le fichier TYP texte (format Garmin) et extrait les 553 styles (130 polygones, 93 lignes, 330 points)
-2. Convertit chaque motif XPM en SVG inline
+1. Parse le fichier TYP texte (format Garmin) et extrait tous les styles (polygones, lignes, points)
+2. Convertit chaque motif XPM (y compris multi-chars par pixel) en SVG inline
 3. Genere une page Markdown avec tableaux HTML contenant : rendu visuel, code type, description GRMN, couleurs
+4. Le titre et le fichier source s'adaptent automatiquement au fichier en entree
 
 A relancer apres toute modification du fichier TYP pour garder la documentation a jour.
 
