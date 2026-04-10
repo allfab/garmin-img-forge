@@ -34,11 +34,13 @@ AUTO_EXTRACT=true
 DEBUG=false
 JSON_OUTPUT=""          # chemin fichier pour résumé JSON (vide = stdout)
 WITH_CONTOURS=false
-CONTOURS_DATA_ROOT="./pipeline/data/courbes"
+CONTOURS_DATA_ROOT="./pipeline/data/contours"
 WITH_OSM=false
 OSM_DATA_ROOT="./pipeline/data/osm"
 GEOFABRIK_BASE="https://download.geofabrik.de/europe/france"
-SCRIPT_VERSION="1.3.0"
+WITH_DEM=false
+DEM_DATA_ROOT="./pipeline/data/dem"
+SCRIPT_VERSION="1.4.0"
 
 # Métriques téléchargement — collecte pour résumé JSON (AC6)
 _LAST_DOWNLOAD_SIZE=0
@@ -206,9 +208,11 @@ OPTIONS :
     --dry-run           Simuler sans télécharger
     --json-output FILE  Écrire le résumé JSON dans un fichier (défaut: stdout)
     --with-contours     Télécharger aussi les courbes de niveau IGN (par département)
-    --contours-root DIR Racine données courbes (défaut: ./pipeline/data/courbes)
+    --contours-root DIR Racine données courbes (défaut: ./pipeline/data/contours)
     --with-osm          Télécharger aussi les données OSM depuis Geofabrik (.osm.pbf)
     --osm-root DIR      Racine données OSM (défaut: ./pipeline/data/osm)
+    --with-dem          Télécharger aussi le MNT BD ALTI v2 (ASC 25m, par département)
+    --dem-root DIR      Racine données DEM (défaut: ./pipeline/data/dem)
     --debug             Afficher les requêtes API et réponses
     --version           Version du script
     -h, --help          Aide
@@ -229,6 +233,8 @@ EXEMPLES :
     ./download-bdtopo.sh --region ARA --with-osm           # BDTOPO R84 + OSM auvergne + rhone-alpes
     ./download-bdtopo.sh --region FXX --with-osm            # France entière BDTOPO + OSM
     ./download-bdtopo.sh --with-osm --region ARA --dry-run  # Simuler téléchargement OSM
+    ./download-bdtopo.sh --zones D038 --with-dem           # BDTOPO + MNT BD ALTI v2 D038
+    ./download-bdtopo.sh --region ARA --with-dem           # BDTOPO + MNT 12 départements ARA
 EOF
     exit 0
 }
@@ -261,6 +267,8 @@ parse_args() {
             --contours-root) CONTOURS_DATA_ROOT="$2"; shift 2 ;;
             --with-osm)   WITH_OSM=true; shift ;;
             --osm-root)   OSM_DATA_ROOT="$2"; shift 2 ;;
+            --with-dem)   WITH_DEM=true; shift ;;
+            --dem-root)   DEM_DATA_ROOT="$2"; shift 2 ;;
             --debug)      DEBUG=true; shift ;;
             --version)    echo "download-bdtopo.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)    show_help ;;
@@ -553,20 +561,20 @@ download_file() {
     local url="$1" target_dir="$2" filename="$3" expected_md5="${4:-}"
     local filepath="${target_dir}/${filename}"
 
-    mkdir -p "$target_dir"
-
     if [[ "$DRY_RUN" == true ]]; then
         echo -e "    ${YELLOW}[DRY-RUN]${NC} curl -L -C - -o '$filepath' \\"
         echo -e "               '$url'"
         return 0
     fi
 
+    mkdir -p "$target_dir"
+
     # Skip si données déjà extraites (archive supprimée après extraction)
     if [[ "$SKIP_EXISTING" == true && ! -f "$filepath" ]]; then
-        local subdir_count shp_count
+        local subdir_count data_count
         subdir_count=$(find "$target_dir" -mindepth 1 -maxdepth 1 -type d ! -name '_extract_tmp' 2>/dev/null | wc -l)
-        shp_count=$(find "$target_dir" -maxdepth 1 -name '*.shp' -type f 2>/dev/null | wc -l)
-        if [[ "$subdir_count" -gt 0 || "$shp_count" -gt 0 ]]; then
+        data_count=$(find "$target_dir" -maxdepth 1 \( -name '*.shp' -o -name '*.asc' \) -type f 2>/dev/null | wc -l)
+        if [[ "$subdir_count" -gt 0 || "$data_count" -gt 0 ]]; then
             log_ok "  Données déjà extraites dans $target_dir — skip"
             _LAST_DOWNLOAD_SIZE=0
             _LAST_DOWNLOAD_STATUS="skipped"
@@ -1198,7 +1206,6 @@ download_osm_pbf() {
     if [[ ${#OSM_REGIONS[@]} -eq 0 ]]; then return 0; fi
 
     log_step "Téléchargement des données OSM (Geofabrik PBF)"
-    mkdir -p "$OSM_DATA_ROOT"
 
     declare -ga OSM_DOWNLOAD_FILES=()
     local total=${#OSM_REGIONS[@]} success=0 failed=0
@@ -1248,6 +1255,7 @@ download_osm_pbf() {
             fi
         fi
 
+        mkdir -p "$OSM_DATA_ROOT"
         log_info "  Téléchargement en cours..."
         if curl -L -C - --connect-timeout 30 --max-time 7200 --retry 3 --retry-delay 5 \
             -o "$filepath" "$url" 2>/dev/null; then
@@ -1344,6 +1352,261 @@ prepare_osm_gpkg() {
 }
 
 # =============================================================================
+# DEM — BD ALTI v2 (MNT 25m, ASC, par département)
+# =============================================================================
+
+# Résoudre les zones en D-codes pour le DEM (même logique que les courbes)
+resolve_dem_zones() {
+    declare -ga DEM_ZONES=()
+
+    if [[ -n "$REGION" ]]; then
+        if [[ -z "${REGIONS_TO_DEPARTMENTS[$REGION]+x}" ]]; then
+            log_error "Région inconnue pour DEM : $REGION"
+            exit 1
+        fi
+        IFS=' ' read -ra DEM_ZONES <<< "${REGIONS_TO_DEPARTMENTS[$REGION]}"
+        log_info "DEM — Région $REGION → ${#DEM_ZONES[@]} département(s)"
+        return
+    fi
+
+    for zone in "${ZONES[@]}"; do
+        if [[ "$zone" =~ ^D ]]; then
+            DEM_ZONES+=("$zone")
+        elif [[ -n "${REGIONS_TO_DEPARTMENTS[$zone]+x}" ]]; then
+            IFS=' ' read -ra dept_list <<< "${REGIONS_TO_DEPARTMENTS[$zone]}"
+            DEM_ZONES+=("${dept_list[@]}")
+            log_debug "DEM — $zone → ${#dept_list[@]} département(s)"
+        elif [[ "$zone" =~ ^R ]]; then
+            local found=false
+            for key in "${!REGIONS[@]}"; do
+                if [[ " ${REGIONS[$key]} " == *" $zone "* ]]; then
+                    if [[ -n "${REGIONS_TO_DEPARTMENTS[$key]+x}" ]]; then
+                        IFS=' ' read -ra dept_list <<< "${REGIONS_TO_DEPARTMENTS[$key]}"
+                        DEM_ZONES+=("${dept_list[@]}")
+                        log_debug "DEM — $zone (via $key) → ${#dept_list[@]} département(s)"
+                        found=true
+                        break
+                    fi
+                fi
+            done
+            if [[ "$found" == false ]]; then
+                log_warn "DEM — impossible de résoudre $zone en départements, ignoré"
+            fi
+        else
+            log_warn "DEM — zone $zone non supportée (attendu D-code ou R-code)"
+        fi
+    done
+
+    if [[ ${#DEM_ZONES[@]} -eq 0 ]]; then
+        log_error "DEM — aucune zone à télécharger"
+        exit 1
+    fi
+
+    # Dédupliquer
+    local -A seen
+    local unique=()
+    for z in "${DEM_ZONES[@]}"; do
+        if [[ -z "${seen[$z]+x}" ]]; then
+            seen[$z]=1
+            unique+=("$z")
+        fi
+    done
+    DEM_ZONES=("${unique[@]}")
+
+    log_info "DEM — ${#DEM_ZONES[@]} département(s) : ${DEM_ZONES[*]}"
+}
+
+# Découverte des datasets BD ALTI v2 via l'API
+discover_dem_downloads() {
+    log_step "Découverte des MNT BD ALTI v2 via l'API"
+
+    declare -ga DEM_DOWNLOAD_URLS=()
+    declare -ga DEM_DOWNLOAD_DIRS=()
+    declare -ga DEM_DOWNLOAD_NAMES=()
+    declare -ga DEM_DOWNLOAD_MD5S=()
+
+    for zone in "${DEM_ZONES[@]}"; do
+        log_info "Recherche DEM : $zone / ASC ..."
+
+        local probe_url="${API_BASE}/resource/BDALTI?zone=${zone}&format=ASC&page=1&limit=1"
+        local probe_response
+        probe_response=$(api_fetch "$probe_url") || {
+            log_warn "  API indisponible pour DEM $zone — ignoré"
+            continue
+        }
+
+        if [[ -z "$probe_response" ]]; then
+            log_warn "  Réponse vide pour DEM $zone — ignoré"
+            continue
+        fi
+
+        local total_entries
+        total_entries=$(echo "$probe_response" | grep -oP 'gpf_dl:totalentries="\K[0-9]+' | head -1 || echo "0")
+
+        if [[ "$total_entries" == "0" ]]; then
+            log_warn "  Aucun dataset DEM trouvé pour $zone"
+            continue
+        fi
+
+        # Récupérer le dataset le plus récent (dernière page)
+        local last_page_url="${API_BASE}/resource/BDALTI?zone=${zone}&format=ASC&page=${total_entries}&limit=1"
+        local last_page_response
+        last_page_response=$(api_fetch "$last_page_url") || {
+            log_warn "  Impossible de récupérer le dernier dataset DEM pour $zone"
+            continue
+        }
+
+        local dataset_name
+        dataset_name=$(echo "$last_page_response" | grep -oP '<entry>[\s\S]*?</entry>' | grep -oP '<title>\K[^<]+' | tail -1 || true)
+
+        if [[ -z "$dataset_name" ]]; then
+            dataset_name=$(echo "$last_page_response" | grep -oP '<title>[^<]*'"${zone}"'[^<]*</title>' | grep -oP '>\K[^<]+' | tail -1 || true)
+        fi
+
+        if [[ -z "$dataset_name" ]]; then
+            log_warn "  Aucun dataset DEM trouvé pour $zone"
+            continue
+        fi
+
+        log_debug "  Dataset DEM : $dataset_name"
+
+        local detail_url="${API_BASE}/resource/BDALTI/${dataset_name}"
+        local detail_response
+        detail_response=$(api_fetch "$detail_url") || {
+            log_warn "  Dataset DEM introuvable : $dataset_name"
+            continue
+        }
+
+        if [[ -z "$detail_response" ]]; then
+            log_warn "  Réponse vide pour le détail de $dataset_name"
+            continue
+        fi
+
+        local download_url
+        download_url=$(xml_get_download_links "$detail_response" | head -1)
+
+        if [[ -z "$download_url" ]]; then
+            log_warn "  Aucune URL de download pour DEM $dataset_name"
+            continue
+        fi
+
+        local md5_hash
+        md5_hash=$(echo "$detail_response" | grep -oP '<entry>[\s\S]*?<content>\K[a-f0-9]{32}' | head -1 || true)
+        if [[ -z "$md5_hash" ]]; then
+            md5_hash=$(echo "$detail_response" | grep -oP '<content>[a-f0-9]{32}</content>' | grep -oP '>[a-f0-9]{32}<' | grep -oP '[a-f0-9]{32}' | head -1 || true)
+        fi
+
+        local file_size
+        file_size=$(xml_get_link_length "$detail_response")
+
+        local filename
+        filename=$(basename "$download_url")
+
+        local target_dir="${DEM_DATA_ROOT}/${zone}"
+
+        DEM_DOWNLOAD_URLS+=("$download_url")
+        DEM_DOWNLOAD_DIRS+=("$target_dir")
+        DEM_DOWNLOAD_NAMES+=("$filename")
+        DEM_DOWNLOAD_MD5S+=("$md5_hash")
+
+        local size_info=""
+        if [[ -n "$file_size" && "$file_size" -gt 0 ]]; then
+            size_info=" ($(numfmt --to=iec "$file_size" 2>/dev/null || echo "${file_size} o"))"
+        fi
+
+        log_ok "  $zone → $filename${size_info}"
+    done
+
+    echo ""
+    if [[ ${#DEM_DOWNLOAD_URLS[@]} -eq 0 ]]; then
+        log_warn "Aucun dataset DEM trouvé."
+    else
+        log_ok "${#DEM_DOWNLOAD_URLS[@]} fichier(s) DEM à télécharger"
+    fi
+}
+
+# Téléchargement des fichiers DEM
+download_dem() {
+    if [[ ${#DEM_DOWNLOAD_URLS[@]} -eq 0 ]]; then return 0; fi
+
+    log_step "Téléchargement des MNT BD ALTI v2"
+    local total=${#DEM_DOWNLOAD_URLS[@]} success=0 failed=0
+
+    for i in "${!DEM_DOWNLOAD_URLS[@]}"; do
+        _LAST_DOWNLOAD_SIZE=0
+        _LAST_DOWNLOAD_STATUS="failed"
+        echo -e "${BOLD}[$((i+1))/$total]${NC} ${DEM_DOWNLOAD_NAMES[$i]}"
+        if download_file "${DEM_DOWNLOAD_URLS[$i]}" "${DEM_DOWNLOAD_DIRS[$i]}" "${DEM_DOWNLOAD_NAMES[$i]}" "${DEM_DOWNLOAD_MD5S[$i]:-}"; then
+            success=$((success + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    echo ""
+    log_ok "DEM : $success/$total fichiers téléchargés"
+    if [[ $failed -gt 0 ]]; then log_warn "DEM : $failed en échec"; fi
+}
+
+# Extraction des archives DEM (structure : dossier racine contenant des .asc)
+extract_dem_archives() {
+    if [[ "$AUTO_EXTRACT" != true || "$DRY_RUN" == true ]]; then return 0; fi
+    if [[ ${#DEM_DOWNLOAD_URLS[@]} -eq 0 ]]; then return 0; fi
+
+    log_step "Extraction des archives DEM"
+    local extracted=0
+
+    for dir in "${DEM_DOWNLOAD_DIRS[@]}"; do
+    while IFS= read -r archive; do
+        local bn dir
+        bn=$(basename "$archive")
+        dir=$(dirname "$archive")
+
+        if [[ "$bn" =~ \.7z\.[0-9]+$ && ! "$bn" =~ \.7z\.001$ ]]; then continue; fi
+
+        log_info "Extraction DEM : $bn"
+        local tmp_extract="${dir}/_extract_tmp"
+        rm -rf "$tmp_extract"
+        mkdir -p "$tmp_extract"
+        _CURRENT_TMP_EXTRACT="$tmp_extract"
+
+        if 7z x -o"$tmp_extract" -y "$archive" &>/dev/null; then
+            # Déplacer le contenu extrait dans le répertoire cible
+            local asc_count=0
+            while IFS= read -r asc_file; do
+                local asc_name
+                asc_name=$(basename "$asc_file")
+                mv "$asc_file" "${dir}/"
+                asc_count=$((asc_count + 1))
+            done < <(find "$tmp_extract" -name "*.asc" -type f 2>/dev/null)
+
+            if [[ $asc_count -gt 0 ]]; then
+                log_ok "  → ${dir}/ ($asc_count fichiers ASC)"
+
+                rm -f "$archive"
+                local archive_base="${archive%.001}"
+                if [[ "$archive_base" != "$archive" ]]; then
+                    rm -f "${archive_base}."[0-9][0-9][0-9]
+                fi
+                log_ok "  Archive supprimée : $(basename "$archive")"
+
+                extracted=$((extracted + 1))
+            else
+                log_warn "  Aucun ASC trouvé dans l'archive DEM $bn"
+            fi
+            rm -rf "$tmp_extract"
+        else
+            log_error "  Échec extraction : $bn"
+            rm -rf "$tmp_extract"
+        fi
+        _CURRENT_TMP_EXTRACT=""
+    done < <(find "$dir" \( -name "*.7z" -o -name "*.7z.001" \) -type f 2>/dev/null | sort -u)
+    done
+
+    log_ok "$extracted archive(s) DEM extraite(s)"
+}
+
+# =============================================================================
 # MAIN
 # =============================================================================
 main() {
@@ -1376,6 +1639,15 @@ main() {
         download_osm_pbf
         prepare_osm_gpkg
         log_ok "Données OSM dans : $OSM_DATA_ROOT"
+    fi
+
+    # Passe 4 : DEM BD ALTI v2 (si --with-dem)
+    if [[ "$WITH_DEM" == true ]]; then
+        resolve_dem_zones
+        discover_dem_downloads
+        download_dem
+        extract_dem_archives
+        log_ok "Données DEM dans : $DEM_DATA_ROOT"
     fi
 
     show_next_steps
