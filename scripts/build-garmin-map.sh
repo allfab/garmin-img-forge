@@ -108,7 +108,18 @@ log_info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-log_step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
+log_step() {
+    local title="$*"
+    local width=60
+    local prefix="── ${title} "
+    local prefix_len=${#prefix}
+    local pad=$((width - prefix_len))
+    [[ $pad -lt 2 ]] && pad=2
+    local trail
+    trail=$(printf '─%.0s' $(seq 1 "$pad"))
+    echo ""
+    echo -e "${BOLD}${CYAN}${prefix}${trail}${NC}"
+}
 
 # ---------------------------------------------------------------------------
 # Aide
@@ -207,6 +218,13 @@ parse_args() {
     if [[ -z "$ZONES" ]]; then
         log_error "Le paramètre --zones est obligatoire"
         log_error "  Exemple : --zones D038 ou --zones D038,D069"
+        exit 1
+    fi
+
+    if [[ "$ZONES" == *" "* ]]; then
+        log_error "--zones : les zones doivent être séparées par des virgules, pas des espaces"
+        log_error "  Reçu   : --zones '$ZONES'"
+        log_error "  Attendu : --zones $(echo "$ZONES" | tr ' ' ',')"
         exit 1
     fi
 }
@@ -643,6 +661,7 @@ run_imgforge() {
     local -a cmd=(
         "$_IMGFORGE" build "$mp_dir"
         --output "${_OUTPUT_DIR}/img/gmapsupp.img"
+        --report "$_IMGFORGE_REPORT_FILE"
         --jobs "$JOBS"
         --family-id "$FAMILY_ID"
         --product-id "$PRODUCT_ID"

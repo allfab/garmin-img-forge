@@ -712,15 +712,15 @@ extract_archives() {
     local extracted=0
 
     while IFS= read -r archive; do
-        local bn dir
+        local bn archive_dir
         bn=$(basename "$archive")
-        dir=$(dirname "$archive")
+        archive_dir=$(dirname "$archive")
 
         # Pour les splits, ne traiter que .7z.001
         if [[ "$bn" =~ \.7z\.[0-9]+$ && ! "$bn" =~ \.7z\.001$ ]]; then continue; fi
 
         log_info "Extraction : $bn"
-        local tmp_extract="${dir}/_extract_tmp"
+        local tmp_extract="${archive_dir}/_extract_tmp"
         rm -rf "$tmp_extract"
         mkdir -p "$tmp_extract"
         _CURRENT_TMP_EXTRACT="$tmp_extract"
@@ -743,12 +743,12 @@ extract_archives() {
                     while IFS= read -r theme_folder; do
                         local theme_name
                         theme_name=$(basename "$theme_folder")
-                        rm -rf "${dir}/${theme_name}"
-                        mv "$theme_folder" "${dir}/${theme_name}"
+                        rm -rf "${archive_dir}/${theme_name}"
+                        mv "$theme_folder" "${archive_dir}/${theme_name}"
                         count=$((count + 1))
                     done < <(find "$themes_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
 
-                    log_ok "  → ${dir}/ ($count dossiers thématiques)"
+                    log_ok "  → ${archive_dir}/ ($count dossiers thématiques)"
                     rm -rf "$tmp_extract"
 
                     # Supprimer l'archive après extraction réussie
@@ -1083,15 +1083,15 @@ extract_contour_archives() {
     # Itérer seulement sur les répertoires téléchargés dans ce run (pas tout CONTOURS_DATA_ROOT)
     for dir in "${CONTOUR_DOWNLOAD_DIRS[@]}"; do
     while IFS= read -r archive; do
-        local bn dir
+        local bn archive_dir
         bn=$(basename "$archive")
-        dir=$(dirname "$archive")
+        archive_dir=$(dirname "$archive")
 
         # Pour les splits, ne traiter que .7z.001
         if [[ "$bn" =~ \.7z\.[0-9]+$ && ! "$bn" =~ \.7z\.001$ ]]; then continue; fi
 
         log_info "Extraction courbes : $bn"
-        local tmp_extract="${dir}/_extract_tmp"
+        local tmp_extract="${archive_dir}/_extract_tmp"
         rm -rf "$tmp_extract"
         mkdir -p "$tmp_extract"
         _CURRENT_TMP_EXTRACT="$tmp_extract"
@@ -1109,22 +1109,27 @@ extract_contour_archives() {
                 src_dir=$(dirname "$shp_file")
                 for ext in shp dbf shx prj cpg; do
                     if [[ -f "${src_dir}/${shp_base}.${ext}" ]]; then
-                        mv "${src_dir}/${shp_base}.${ext}" "${dir}/"
+                        mv "${src_dir}/${shp_base}.${ext}" "${archive_dir}/"
                     fi
                 done
                 shp_count=$((shp_count + 1))
             done < <(find "$tmp_extract" -name "*.shp" -type f 2>/dev/null)
 
             if [[ $shp_count -gt 0 ]]; then
-                log_ok "  → ${dir}/ ($shp_count fichiers SHP)"
-
-                # Supprimer l'archive après extraction réussie
-                rm -f "$archive"
-                local archive_base="${archive%.001}"
-                if [[ "$archive_base" != "$archive" ]]; then
-                    rm -f "${archive_base}."[0-9][0-9][0-9]
+                # Vérifier que l'extraction est complète avant de supprimer l'archive
+                local expected_shp
+                expected_shp=$(7z l "$archive" 2>/dev/null | grep -c '\.shp$' || echo "0")
+                if [[ "$expected_shp" -gt 0 && "$shp_count" -lt "$expected_shp" ]]; then
+                    log_warn "  Extraction partielle : $shp_count/$expected_shp fichiers SHP — archive conservée"
+                else
+                    log_ok "  → ${archive_dir}/ ($shp_count fichiers SHP)"
+                    rm -f "$archive"
+                    local archive_base="${archive%.001}"
+                    if [[ "$archive_base" != "$archive" ]]; then
+                        rm -f "${archive_base}."[0-9][0-9][0-9]
+                    fi
+                    log_ok "  Archive supprimée : $(basename "$archive")"
                 fi
-                log_ok "  Archive supprimée : $(basename "$archive")"
 
                 extracted=$((extracted + 1))
             else
@@ -1558,14 +1563,14 @@ extract_dem_archives() {
 
     for dir in "${DEM_DOWNLOAD_DIRS[@]}"; do
     while IFS= read -r archive; do
-        local bn dir
+        local bn archive_dir
         bn=$(basename "$archive")
-        dir=$(dirname "$archive")
+        archive_dir=$(dirname "$archive")
 
         if [[ "$bn" =~ \.7z\.[0-9]+$ && ! "$bn" =~ \.7z\.001$ ]]; then continue; fi
 
         log_info "Extraction DEM : $bn"
-        local tmp_extract="${dir}/_extract_tmp"
+        local tmp_extract="${archive_dir}/_extract_tmp"
         rm -rf "$tmp_extract"
         mkdir -p "$tmp_extract"
         _CURRENT_TMP_EXTRACT="$tmp_extract"
@@ -1576,19 +1581,25 @@ extract_dem_archives() {
             while IFS= read -r asc_file; do
                 local asc_name
                 asc_name=$(basename "$asc_file")
-                mv "$asc_file" "${dir}/"
+                mv "$asc_file" "${archive_dir}/"
                 asc_count=$((asc_count + 1))
             done < <(find "$tmp_extract" -name "*.asc" -type f 2>/dev/null)
 
             if [[ $asc_count -gt 0 ]]; then
-                log_ok "  → ${dir}/ ($asc_count fichiers ASC)"
-
-                rm -f "$archive"
-                local archive_base="${archive%.001}"
-                if [[ "$archive_base" != "$archive" ]]; then
-                    rm -f "${archive_base}."[0-9][0-9][0-9]
+                # Vérifier que l'extraction est complète avant de supprimer l'archive
+                local expected_asc
+                expected_asc=$(7z l "$archive" 2>/dev/null | grep -c '\.asc$' || echo "0")
+                if [[ "$expected_asc" -gt 0 && "$asc_count" -lt "$expected_asc" ]]; then
+                    log_warn "  Extraction partielle : $asc_count/$expected_asc fichiers ASC — archive conservée"
+                else
+                    log_ok "  → ${archive_dir}/ ($asc_count fichiers ASC)"
+                    rm -f "$archive"
+                    local archive_base="${archive%.001}"
+                    if [[ "$archive_base" != "$archive" ]]; then
+                        rm -f "${archive_base}."[0-9][0-9][0-9]
+                    fi
+                    log_ok "  Archive supprimée : $(basename "$archive")"
                 fi
-                log_ok "  Archive supprimée : $(basename "$archive")"
 
                 extracted=$((extracted + 1))
             else

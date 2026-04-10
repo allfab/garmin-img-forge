@@ -1241,6 +1241,10 @@ impl SourceReader {
             resolved_paths.extend(matches);
         }
 
+        // Deduplicate in case brace expansion produces overlapping patterns
+        resolved_paths.sort();
+        resolved_paths.dedup();
+
         if resolved_paths.is_empty() {
             return Err(anyhow!(
                 "No files matched spatial_filter.source pattern: {}",
@@ -1272,11 +1276,21 @@ impl SourceReader {
             let mut layer = dataset.layer(0)
                 .with_context(|| format!("Failed to access layer 0 in: {}", path_str))?;
 
-            // Capture SRS from first file
+            // Capture SRS from first file, warn if subsequent files differ
+            let file_srs = layer.spatial_ref().and_then(|srs| {
+                srs.auth_code().ok().map(|code| format!("EPSG:{}", code))
+            });
             if srs_def.is_none() {
-                srs_def = layer.spatial_ref().and_then(|srs| {
-                    srs.auth_code().ok().map(|code| format!("EPSG:{}", code))
-                });
+                srs_def = file_srs.clone();
+            } else if let Some(ref current_srs) = file_srs {
+                if srs_def.as_ref() != Some(current_srs) {
+                    warn!(
+                        file = %path_str,
+                        expected = ?srs_def,
+                        found = %current_srs,
+                        "SRS mismatch in spatial filter sources — geometries may be incorrect"
+                    );
+                }
             }
 
             for feature in layer.features() {

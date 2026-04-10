@@ -594,7 +594,9 @@ pub fn expand_braces(pattern: &str) -> Vec<String> {
 
     alternatives
         .split(',')
-        .map(|alt| format!("{}{}{}", prefix, alt.trim(), suffix))
+        .map(|alt| alt.trim())
+        .filter(|alt| !alt.is_empty())
+        .map(|alt| format!("{}{}{}", prefix, alt, suffix))
         .collect()
 }
 
@@ -613,6 +615,10 @@ fn resolve_wildcard_paths(pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
             .collect();
         paths.extend(matched);
     }
+
+    // Deduplicate in case brace expansion produces overlapping patterns
+    paths.sort();
+    paths.dedup();
 
     if paths.is_empty() {
         warn!(pattern, "No files matched wildcard pattern");
@@ -1838,6 +1844,16 @@ output:
         assert_eq!(
             expand_braces("data/{ D038 , D001 }/file"),
             vec!["data/D038/file", "data/D001/file"]
+        );
+
+        // Empty alternatives are filtered out
+        assert_eq!(
+            expand_braces("data/{D038,}/file"),
+            vec!["data/D038/file"]
+        );
+        assert_eq!(
+            expand_braces("data/{,D038}/file"),
+            vec!["data/D038/file"]
         );
     }
 
