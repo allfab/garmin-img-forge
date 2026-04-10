@@ -15,7 +15,7 @@ from pathlib import Path
 
 def parse_typ_file(filepath):
     """Parse le fichier TYP et retourne les sections polygon, line, point."""
-    with open(filepath, "r", encoding="latin-1") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
 
     sections = {"polygon": [], "line": [], "point": []}
@@ -67,7 +67,7 @@ def parse_section(body, section_type):
         elif line.startswith("String"):
             m = re.match(r'String(\d+)=(.+)', line)
             if m:
-                info["strings"][int(m.group(1))] = m.group(2).strip()
+                info["strings"][int(m.group(1))] = m.group(2).strip().replace('\ufffd', '')
         elif line.startswith("LineWidth="):
             info["line_width"] = int(line.split("=", 1)[1].strip())
         elif line.startswith("BorderWidth="):
