@@ -675,7 +675,6 @@ run_imgforge() {
     local -a cmd=(
         "$_IMGFORGE" build "$mp_dir"
         --output "${_OUTPUT_DIR}/img/gmapsupp.img"
-        --report "$_IMGFORGE_REPORT_FILE"
         --jobs "$JOBS"
         --family-id "$FAMILY_ID"
         --product-id "$PRODUCT_ID"
