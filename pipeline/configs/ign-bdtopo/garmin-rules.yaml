@@ -269,7 +269,7 @@ rulesets:
           NOM: "*"
         set:
           Type: "0x54"
-          EndLevel: "2"
+          EndLevel: "5"
           Label: "${NOM}"
           CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
@@ -293,7 +293,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
-          EndLevel: "3"
+          EndLevel: "5"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -940,7 +940,7 @@ rulesets:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "2"
+          EndLevel: "5"
           Label: "Bois"
 
       # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
