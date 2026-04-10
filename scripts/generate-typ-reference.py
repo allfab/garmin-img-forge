@@ -5,11 +5,12 @@ de référence avec des rendus SVG inline pour chaque style.
 """
 
 import argparse
+import html
 import re
 import sys
-import html
-from pathlib import Path
+from collections import Counter
 from datetime import datetime
+from pathlib import Path
 
 
 def parse_typ_file(filepath):
@@ -199,17 +200,29 @@ def xpm_to_svg(xpm_data, scale=2, is_line=False, line_width=None):
 
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {total_w} {total_h}" shape-rendering="crispEdges">'
 
-    # Background - use the most common color
-    bg_color = None
-    for c in colors.values():
-        if c != "none":
-            bg_color = c
-            break
-    if bg_color:
-        svg += f'<rect width="{total_w}" height="{total_h}" fill="{bg_color}"/>'
-
     # Draw pixels (handle cpp > 1)
     cpp = xpm_data.get("cpp", 1)
+
+    # Background - determine by pixel frequency (most common color = background)
+    char_counts = Counter()
+    for row in pixels:
+        for ci in range(0, len(row), cpp):
+            key = row[ci:ci + cpp]
+            char_counts[key] += 1
+
+    bg_color = None
+    if char_counts:
+        most_common_key = char_counts.most_common(1)[0][0]
+        bg_color = colors.get(most_common_key)
+
+    if bg_color and bg_color != "none":
+        svg += f'<rect width="{total_w}" height="{total_h}" fill="{bg_color}"/>'
+    else:
+        # Transparent background → render as white (map background on Garmin)
+        # Reset bg_color to None so the pixel loop draws all non-none colors
+        bg_color = None
+        svg += f'<rect width="{total_w}" height="{total_h}" fill="#FFFFFF"/>'
+
     for ty in range(tile_y):
         for row_idx, row in enumerate(pixels):
             y = ty * h + row_idx
@@ -247,7 +260,7 @@ def point_xpm_to_svg(xpm_data, scale=2):
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w}" height="{svg_h}" viewBox="0 0 {w} {h}" shape-rendering="crispEdges">'
 
     # Transparent background
-    svg += f'<rect width="{w}" height="{h}" fill="#F8F8F8"/>'
+    svg += f'<rect width="{w}" height="{h}" fill="#FFFFFF"/>'
 
     cpp = xpm_data.get("cpp", 1)
     for row_idx, row in enumerate(pixels):
