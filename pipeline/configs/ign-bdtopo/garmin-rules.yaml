@@ -293,7 +293,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
-          EndLevel: "1"
+          EndLevel: "3"
           Label: "${TOPONYME}"
 
   # ==========================================================================
