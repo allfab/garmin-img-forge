@@ -1,7 +1,7 @@
 ; I2023100.typ
 ; Longueur: 116620 octets
-; Fichier TYP compilé     18/09/2025     16:21:42
-; Décompilé le 10/04/2026 à 12:32:25
+; Fichier TYP compilï¿½     18/09/2025     16:21:42
+; Dï¿½compilï¿½ le 10/04/2026 ï¿½ 12:32:25
 
 [_id]
 ProductCode=1
@@ -2567,6 +2567,54 @@ Xpm="32 32 2 1"
 
 
 [_polygon]
+Type=0x10a04
+;GRMN_TYPE: Park Areas/NATIONAL_PARK_OTHER(NT)/Small or misc sized national park/NT
+ExtendedLabels=Y
+FontStyle=NormalFont
+CustomColor=DayAndNight
+DaycustomColor:#006400
+NightcustomColor:#006400
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #006400"
+"# c #B8EE98"
+"################################"
+"########!#######################"
+"#######!!!######################"
+"######!!!!!#####################"
+"#####!!!!!!!####################"
+"#######!!!######################"
+"######!!!!!#####################"
+"#####!!!!!!!####################"
+"####!!!!!!!!!###################"
+"########!#######################"
+"########!#######################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"###################!############"
+"##################!!!###########"
+"#################!!!!!##########"
+"################!!!!!!!#########"
+"##################!!!###########"
+"#################!!!!!##########"
+"################!!!!!!!#########"
+"###############!!!!!!!!!########"
+"###################!############"
+"###################!############"
+"################################"
+"################################"
+"################################"
+"################################"
+;12345678901234567890123456789012
+[end]
+
+
+[_polygon]
 Type=0x10b02
 ;GRMN_TYPE: Water Areas/SEA(NT)/Sea/NT
 ExtendedLabels=Y
@@ -2934,7 +2982,7 @@ Xpm="0 0 2 0"
 Type=0x10c09
 ;GRMN_TYPE: //
 String1=0x04,RICE FIELD
-String2=0x01,RIZIÈRE
+String2=0x01,RIZIï¿½RE
 String3=0x02,REISFELD
 ExtendedLabels=N
 Xpm="32 32 2 1"
@@ -2981,7 +3029,7 @@ Type=0x10f00
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_1/Customizable area/Non NT, NT
 String1=0x04,RAILWAY AREA
 String2=0x01,VOIE DE TRIAGE
-String3=0x02,BAHNGELÄNDE
+String3=0x02,BAHNGELï¿½NDE
 String4=0x00,VOIE DE TRIAGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3016,9 +3064,9 @@ Xpm="0 0 1 0"
 Type=0x10f02
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_3/Customizable area/Non NT, NT
 String1=0x04,WATER TOWER
-String2=0x01,CHÂTEAU D'EAU
+String2=0x01,CHï¿½TEAU D'EAU
 String3=0x02,WASSERTURM
-String4=0x00,CHÂTEAU D'EAU
+String4=0x00,CHï¿½TEAU D'EAU
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3086,9 +3134,9 @@ Xpm="32 32 2 1"
 Type=0x10f04
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_5/Customizable area/Non NT, NT
 String1=0x04,AGRICULTURAL BUILDING
-String2=0x01,BÂTIMENT AGRICOLE
-String3=0x02,LANDWIRTSCHAFTLICHES GEBÄUDE
-String4=0x00,BÂTIMENT AGRICOLE
+String2=0x01,Bï¿½TIMENT AGRICOLE
+String3=0x02,LANDWIRTSCHAFTLICHES GEBï¿½UDE
+String4=0x00,Bï¿½TIMENT AGRICOLE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3158,9 +3206,9 @@ Xpm="0 0 1 0"
 Type=0x10f08
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_9/Customizable area/Non NT, NT
 String1=0x04,AMPHITHEATER
-String2=0x01,ARÈNE OU THÉÂTRE ANTIQUE
+String2=0x01,ARï¿½NE OU THï¿½ï¿½TRE ANTIQUE
 String3=0x02,AMPHITHEATER
-String4=0x00,ARÈNE OU THÉÂTRE ANTIQUE
+String4=0x00,ARï¿½NE OU THï¿½ï¿½TRE ANTIQUE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3194,9 +3242,9 @@ Xpm="0 0 1 0"
 Type=0x10f0a
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_11/Customizable area/Non NT, NT
 String1=0x04,CASTLE
-String2=0x01,CHÂTEAU
+String2=0x01,CHï¿½TEAU
 String3=0x02,SCHLOSS
-String4=0x00,CHÂTEAU
+String4=0x00,CHï¿½TEAU
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3266,9 +3314,9 @@ Xpm="0 0 1 0"
 Type=0x10f0e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_15/Customizable area/Non NT, NT
 String1=0x04,TICKET OFFICE
-String2=0x01,PÉAGE
-String3=0x02,KASSENGEBÄUDE
-String4=0x00,PÉAGE
+String2=0x01,Pï¿½AGE
+String3=0x02,KASSENGEBï¿½UDE
+String4=0x00,Pï¿½AGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3284,9 +3332,9 @@ Xpm="0 0 1 0"
 Type=0x10f0f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_16/Customizable area/Non NT, NT
 String1=0x04,PREFECTURE
-String2=0x01,PRÉFECTURE
-String3=0x02,PRÄFEKTUR
-String4=0x00,PRÉFECTURE
+String2=0x01,PRï¿½FECTURE
+String3=0x02,PRï¿½FEKTUR
+String4=0x00,PRï¿½FECTURE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3302,9 +3350,9 @@ Xpm="0 0 1 0"
 Type=0x10f10
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_17/Customizable area/Non NT, NT
 String1=0x04,PREFECTURE
-String2=0x01,SOUS-PRÉFECTURE
-String3=0x02,UNTERPRÄFEKTUR
-String4=0x00,SOUS-PRÉFECTURE
+String2=0x01,SOUS-PRï¿½FECTURE
+String3=0x02,UNTERPRï¿½FEKTUR
+String4=0x00,SOUS-PRï¿½FECTURE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3339,7 +3387,7 @@ Type=0x10f12
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_19/Customizable area/Non NT, NT
 String1=0x04,TRIBUNE
 String2=0x01,TRIBUNE
-String3=0x02,TRIBÜNE
+String3=0x02,TRIBï¿½NE
 String4=0x00,TRIBUNE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3357,7 +3405,7 @@ Type=0x10f13
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_20/Customizable area/Non NT, NT
 String1=0x04,CEMETARY(MILITAR)
 String2=0x01,CIMETIERE(MILITAIRE)
-String3=0x02,MILITÄRFRIEDHOF
+String3=0x02,MILITï¿½RFRIEDHOF
 String4=0x00,CIMETIERE(MILITAIRE)
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3568,9 +3616,9 @@ Xpm="0 0 1 0"
 Type=0x10f1e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_31/Customizable area/Non NT, NT
 String1=0x04,DECIDUOUS FOREST
-String2=0x01,FORÊT DE FEUILLUS
+String2=0x01,FORï¿½T DE FEUILLUS
 String3=0x02,LAUBWALD
-String4=0x00,FORÊT DE FEUILLUS
+String4=0x00,FORï¿½T DE FEUILLUS
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3622,9 +3670,9 @@ Xpm="32 32 4 1"
 Type=0x10f1f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_32/Customizable area/Non NT, NT
 String1=0x04,CONIFEROUS FOREST
-String2=0x01,FORÊT DE CONIFÈRES
+String2=0x01,FORï¿½T DE CONIFï¿½RES
 String3=0x02,NADELWALD
-String4=0x00,FORÊT DE CONIFÈRES
+String4=0x00,FORï¿½T DE CONIFï¿½RES
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3676,9 +3724,9 @@ Xpm="32 32 4 1"
 Type=0x11000
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_33/Customizable area/Non NT, NT
 String1=0x04,OPEN FOREST
-String2=0x01,FORÊT OUVERTE
+String2=0x01,FORï¿½T OUVERTE
 String3=0x02,LICHTER WALD
-String4=0x00,FORÊT OUVERTE
+String4=0x00,FORï¿½T OUVERTE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3982,9 +4030,9 @@ Xpm="32 32 4 1"
 Type=0x11007
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_40/Customizable area/Non NT, NT
 String1=0x04,SUGAR CANE
-String2=0x01,CANNE À SUCRE
+String2=0x01,CANNE ï¿½ SUCRE
 String3=0x02,ZUCKERROHR
-String4=0x00,CANNE À SUCRE
+String4=0x00,CANNE ï¿½ SUCRE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4212,9 +4260,9 @@ Xpm="32 32 2 1"
 Type=0x1100c
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_45/Customizable area/Non NT, NT
 String1=0x04,SPORT BUILDING
-String2=0x01,BÂTIMENT SPORTIF
-String3=0x02,SPORTGEBÄUDE
-String4=0x00,BÂTIMENT SPORTIF
+String2=0x01,Bï¿½TIMENT SPORTIF
+String3=0x02,SPORTGEBï¿½UDE
+String4=0x00,Bï¿½TIMENT SPORTIF
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -4230,9 +4278,9 @@ Xpm="0 0 1 0"
 Type=0x1100d
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_46/Customizable area/Non NT, NT
 String1=0x04,INDUSTRIAL BUILDING
-String2=0x01,BÂTIMENT INDUSTRIEL
-String3=0x02,INDUSTRIEGEBÄUDE
-String4=0x00,BÂTIMENT INDUSTRIEL
+String2=0x01,Bï¿½TIMENT INDUSTRIEL
+String3=0x02,INDUSTRIEGEBï¿½UDE
+String4=0x00,Bï¿½TIMENT INDUSTRIEL
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4249,7 +4297,7 @@ Type=0x1100e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_47/Customizable area/Non NT, NT
 String1=0x04,GOVERNMENT BUILDING
 String2=0x01,MAIRIE
-String3=0x02,VERWALTUNGSGEBÄUDE
+String3=0x02,VERWALTUNGSGEBï¿½UDE
 String4=0x00,MAIRIE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -4266,9 +4314,9 @@ Xpm="0 0 1 0"
 Type=0x1100f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_48/Customizable area/Non NT, NT
 String1=0x04,RELIGIOUS BUILDING
-String2=0x01,BÂTIMENT RELIGIEUX
-String3=0x02,RELIGIONSGEBÄUDE
-String4=0x00,BÂTIMENT RELIGIEUX
+String2=0x01,Bï¿½TIMENT RELIGIEUX
+String3=0x02,RELIGIONSGEBï¿½UDE
+String4=0x00,Bï¿½TIMENT RELIGIEUX
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4336,9 +4384,9 @@ Xpm="32 32 2 1"
 Type=0x11012
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_51/Customizable area/Non NT, NT
 String1=0x04,COMMERCIAL BUILDING
-String2=0x01,BÂTIMENT COMMERCIAL
-String3=0x02,GEWERBEGEBÄUDE
-String4=0x00,BÂTIMENT COMMERCIAL
+String2=0x01,Bï¿½TIMENT COMMERCIAL
+String3=0x02,GEWERBEGEBï¿½UDE
+String4=0x00,Bï¿½TIMENT COMMERCIAL
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4492,9 +4540,9 @@ Xpm="32 32 2 1"
 Type=0x11015
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_54/Customizable area/Non NT, NT
 String1=0x04,TOLL
-String2=0x01,PÉAGE
+String2=0x01,Pï¿½AGE
 String3=0x02,MAUTSTELLE
-String4=0x00,PÉAGE
+String4=0x00,Pï¿½AGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4609,9 +4657,9 @@ Xpm="32 32 2 1"
 Type=0x11018
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_57/Customizable area/Non NT, NT
 String1=0x04,RECREATION AREA
-String2=0x01,TERRAIN DE RÉCRÉATION
+String2=0x01,TERRAIN DE Rï¿½CRï¿½ATION
 String3=0x02,FREIZEITANLAGE
-String4=0x00,TERRAIN DE RÉCRÉATION
+String4=0x00,TERRAIN DE Rï¿½CRï¿½ATION
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4663,9 +4711,9 @@ Xpm="32 32 4 1"
 Type=0x11019
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_58/Customizable area/Non NT, NT
 String1=0x04,LOCK
-String2=0x01,ÉCLUSE
+String2=0x01,ï¿½CLUSE
 String3=0x02,SCHLEUSE
-String4=0x00,ÉCLUSE
+String4=0x00,ï¿½CLUSE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4733,7 +4781,7 @@ Xpm="32 32 2 1"
 Type=0x1101b
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_60/Customizable area/Non NT, NT
 String1=0x01,MILITAIRE
-String2=0x02,MILITÄR
+String2=0x02,MILITï¿½R
 String3=0x00,MILITARY
 ExtendedLabels=Y
 FontStyle=Default
@@ -4783,8 +4831,8 @@ Xpm="32 32 2 1"
 [_polygon]
 Type=0x1101c
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_61/Customizable area/Non NT, NT
-String1=0x01,BÂTIMENT
-String2=0x02,GEBÄUDE
+String1=0x01,Bï¿½TIMENT
+String2=0x02,GEBï¿½UDE
 String3=0x00,BUILDING
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -5710,9 +5758,9 @@ Xpm="32 3 2  1"
 "    !       !       !       !   "
 ;12345678901234567890123456789012
 String1=0x04,MATERIAL TRANSPORT
-String2=0x01,CÂBLE TRANSPORTEUR
+String2=0x01,Cï¿½BLE TRANSPORTEUR
 String3=0x02,MATERIALSEILBAHN
-String4=0x00,CÂBLE TRANSPORTEUR
+String4=0x00,Cï¿½BLE TRANSPORTEUR
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5734,9 +5782,9 @@ Xpm="32 3 2  1"
 "   !!!       !!!        !!!     "
 ;12345678901234567890123456789012
 String1=0x04,SKILIFT, TELEPHERIC
-String2=0x01,TÉLÉCABINE, TÉLEPHÉRIQUE
+String2=0x01,Tï¿½Lï¿½CABINE, Tï¿½LEPHï¿½RIQUE
 String3=0x02,SEILBAHN, SKILIFT
-String4=0x00,TÉLÉCABINE, TÉLEPHÉRIQUE
+String4=0x00,Tï¿½Lï¿½CABINE, Tï¿½LEPHï¿½RIQUE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5784,9 +5832,9 @@ Xpm="32 4 2  1"
 "################################"
 ;12345678901234567890123456789012
 String1=0x04,DISUSED TRACK
-String2=0x01,VOIE NON EXPLOITÉE
+String2=0x01,VOIE NON EXPLOITï¿½E
 String3=0x02,STILLGELEGTES GLEIS
-String4=0x00,VOIE NON EXPLOITÉE
+String4=0x00,VOIE NON EXPLOITï¿½E
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -5832,9 +5880,9 @@ Xpm="32 3 2  1"
 "  !!!     !!!     !!!     !!!   "
 ;12345678901234567890123456789012
 String1=0x04,MOUNTAIN RAIL
-String2=0x01,FUNICULAIRE OU CRÉMAILLÈRE
+String2=0x01,FUNICULAIRE OU CRï¿½MAILLï¿½RE
 String3=0x02,ZAHNRADBAHN
-String4=0x00,FUNICULAIRE OU CRÉMAILLÈRE
+String4=0x00,FUNICULAIRE OU CRï¿½MAILLï¿½RE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5880,9 +5928,9 @@ Xpm="32 3 2  1"
 "!!!!!   !!!!!   !!!!!   !!!!!   "
 ;12345678901234567890123456789012
 String1=0x04,TUNNEL DISUSED TRACK
-String2=0x01,TUNNEL VOIE NON EXPLOITÉE
+String2=0x01,TUNNEL VOIE NON EXPLOITï¿½E
 String3=0x02,TUNNEL STILLGELEGTES GLEIS
-String4=0x00,TUNNEL VOIE NON EXPLOITÉE
+String4=0x00,TUNNEL VOIE NON EXPLOITï¿½E
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5928,9 +5976,9 @@ Xpm="32 3 2  1"
 "!!!!!   !!!!!   !!!!!   !!!!!   "
 ;12345678901234567890123456789012
 String1=0x04,TUNNEL MOUNTAIN RAIL
-String2=0x01,TUNNEL CREMALLÈRE
+String2=0x01,TUNNEL CREMALLï¿½RE
 String3=0x02,TUNNEL BERGBAHN
-String4=0x00,TUNNEL CREMALLÈRE
+String4=0x00,TUNNEL CREMALLï¿½RE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6043,9 +6091,9 @@ LineWidth=3
 Xpm="0 0 1 0"
 "1 c #2090F8"
 String1=0x04,LOCK
-String2=0x01,ÉCLUSE
+String2=0x01,ï¿½CLUSE
 String3=0x02,SCHLEUSE
-String4=0x00,ÉCLUSE
+String4=0x00,ï¿½CLUSE
 ExtendedLabels=Y
 FontStyle=SmallFont
 CustomColor=DayAndNight
@@ -6064,7 +6112,7 @@ Xpm="0 0 1 0"
 "1 c #68B8F8"
 String1=0x04,CANAL BRIDGE
 String2=0x01,PONT-CANAL
-String3=0x02,KANALBRÜCKE
+String3=0x02,KANALBRï¿½CKE
 String4=0x00,PONT-CANAL
 ExtendedLabels=Y
 FontStyle=Default
@@ -6154,7 +6202,7 @@ Xpm="32 2 2  1"
 ;12345678901234567890123456789012
 String1=0x04,BULKHEAD
 String2=0x01,MUR ANTI-BRUIT
-String3=0x02,LÄRMSCHUTZWAND
+String3=0x02,Lï¿½RMSCHUTZWAND
 String4=0x00,MUR ANTI-BRUIT
 ExtendedLabels=Y
 FontStyle=Default
@@ -6178,7 +6226,7 @@ Xpm="32 3 2  1"
 ;12345678901234567890123456789012
 String1=0x04,BRIDGE
 String2=0x01,PONT
-String3=0x02,BRÜCKE
+String3=0x02,BRï¿½CKE
 String4=0x00,PONT
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6245,9 +6293,9 @@ Xpm="32 3 2  1"
 "!   !   !   !   !   !   !   !   "
 ;12345678901234567890123456789012
 String1=0x04,LEVEE
-String2=0x01,LEVÉE
+String2=0x01,LEVï¿½E
 String3=0x02,DAMM
-String4=0x00,LEVÉE
+String4=0x00,LEVï¿½E
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6270,9 +6318,9 @@ Xpm="32 4 2  1"
 "                                "
 ;12345678901234567890123456789012
 String1=0x04,RETAIN WALL
-String2=0x01,MUR DE SOUTÉNEMENT
-String3=0x02,STÜTZMAUER
-String4=0x00,MUR DE SOUTÉNEMENT
+String2=0x01,MUR DE SOUTï¿½NEMENT
+String3=0x02,STï¿½TZMAUER
+String4=0x00,MUR DE SOUTï¿½NEMENT
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6297,7 +6345,7 @@ Xpm="32 5 2  1"
 ;12345678901234567890123456789012
 String1=0x04,EMBANKMENT
 String2=0x01,TALUS
-String3=0x02,BÖSCHUNG
+String3=0x02,Bï¿½SCHUNG
 String4=0x00,TALUS
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6324,9 +6372,9 @@ Xpm="32 7 2  1"
 "                                "
 ;12345678901234567890123456789012
 String1=0x04,EMBANKMENT
-String2=0x01,CARRIÈRE
-String3=0x02,HANGBÖSCHUNG
-String4=0x00,CARRIÈRE
+String2=0x01,CARRIï¿½RE
+String3=0x02,HANGBï¿½SCHUNG
+String4=0x00,CARRIï¿½RE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6451,7 +6499,7 @@ Xpm="32 13 2  1"
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 ;12345678901234567890123456789012
 String1=0x04,CLUB VOSGIEN TRAILS
-String2=0x01,CLUB VOSGIEN RANDONNÉE
+String2=0x01,CLUB VOSGIEN RANDONNï¿½E
 String3=0x02,CLUB VOSGIEN WANDERWEG
 ExtendedLabels=Y
 FontStyle=Default
@@ -6546,7 +6594,7 @@ LineWidth=1
 Xpm="0 0 1 0"
 "1 c #B85870"
 String1=0x01,BASE MILITAIRE
-String2=0x02,MILITÄRSTÜTZPUNKT
+String2=0x02,MILITï¿½RSTï¿½TZPUNKT
 String3=0x00,MILITARY BASE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6587,7 +6635,7 @@ Xpm="0 0 2 0"
 "1 c #000000"
 "2 c #F8FCF8"
 String1=0x04,CEMETERY
-String2=0x01,CIMETIÈRE
+String2=0x01,CIMETIï¿½RE
 String3=0x02,FRIEDHOF
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6605,7 +6653,7 @@ Xpm="0 0 1 0"
 "1 c #B83000"
 String1=0x04,MILITARY
 String2=0x01,MILITAIRE
-String3=0x02,MILITÄR
+String3=0x02,MILITï¿½R
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=No
@@ -6631,7 +6679,7 @@ Xpm="32 7 4  1"
 "            !!!!!!!             "
 ;12345678901234567890123456789012
 String1=0x04,SKI LIFT
-String2=0x01,REMONTÉE MÉCANIQUE
+String2=0x01,REMONTï¿½E Mï¿½CANIQUE
 String3=0x02,SKILIFT
 ExtendedLabels=N
 [end]
@@ -6758,7 +6806,7 @@ Xpm="32 3 2  1"
 "!!  !!  !!  !!  !!  !!  !!  !!  "
 ;12345678901234567890123456789012
 String1=0x04,FENCE
-String2=0x01,CLÔTURE
+String2=0x01,CLï¿½TURE
 String3=0x02,ZAUN
 ExtendedLabels=N
 [end]
@@ -15957,9 +16005,9 @@ Type=0x115
 SubType=0x00
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_1/User customizable point type/Non NT, NT
 String1=0x04,PYLON
-String2=0x01,PYLÔNE
+String2=0x01,PYLï¿½NE
 String3=0x02,MAST
-String4=0x00,PYLÔNE
+String4=0x00,PYLï¿½NE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -16070,7 +16118,7 @@ DayXpm="9 13 2 1"   Colormode=16
 Type=0x115
 SubType=0x04
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_5/User customizable point type/Non NT, NT
-String1=0x01,CHEMINÉE
+String1=0x01,CHEMINï¿½E
 String2=0x02,SCHORNSTEIN
 String3=0x00,CHIMNEY
 ExtendedLabels=Y
@@ -16098,7 +16146,7 @@ Type=0x115
 SubType=0x05
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_6/User customizable point type/Non NT, NT
 String1=0x04,WIND GENERATOR
-String2=0x01,ÉOLIENNE
+String2=0x01,ï¿½OLIENNE
 String3=0x02,WINDRAD
 String4=0x00,WIND GENERATOR
 ExtendedLabels=Y
@@ -16230,7 +16278,7 @@ SubType=0x09
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_10/User customizable point type/Non NT, NT
 String1=0x04,CAVE HOUSING PLACE
 String2=0x01,HABITATION TROGLODYTIQUE
-String3=0x02,HÖHLENWOHNPLATZ
+String3=0x02,Hï¿½HLENWOHNPLATZ
 String4=0x00,HABITATION TROGLODYTIQUE
 ExtendedLabels=Y
 FontStyle=Default
@@ -16297,8 +16345,8 @@ Type=0x115
 SubType=0x0b
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_12/User customizable point type/Non NT, NT
 String1=0x04,ARCHEOLOGIC SITE
-String2=0x01,VESTIGES ARCHÉOLOGIQUES
-String3=0x02,ARCHÄOLOGISCHE FUNDSTÄTTE
+String2=0x01,VESTIGES ARCHï¿½OLOGIQUES
+String3=0x02,ARCHï¿½OLOGISCHE FUNDSTï¿½TTE
 String4=0x00,ARCHEOLOGIC SITE
 ExtendedLabels=Y
 FontStyle=Default
@@ -16394,8 +16442,8 @@ Type=0x115
 SubType=0x0e
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_15/User customizable point type/Non NT, NT
 String1=0x04,PLANTATION
-String2=0x01,LIEU-DIT NON HABITÉ
-String3=0x02,ANBAUFLÄCHE
+String2=0x01,LIEU-DIT NON HABITï¿½
+String3=0x02,ANBAUFLï¿½CHE
 String4=0x00,PLANTATION
 ExtendedLabels=Y
 FontStyle=Default
@@ -16422,7 +16470,7 @@ Type=0x115
 SubType=0x0f
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_16/User customizable point type/Non NT, NT
 String1=0x04,CASTLE
-String2=0x01,CHÂTEAU
+String2=0x01,CHï¿½TEAU
 String3=0x02,SCHLOSS
 ExtendedLabels=N
 DayXpm="16 16 2 1"   Colormode=16
@@ -16482,7 +16530,7 @@ Type=0x115
 SubType=0x11
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_18/User customizable point type/Non NT, NT
 String1=0x04,HOUSING SITE
-String2=0x01,LIEU-DIT HABITÉ
+String2=0x01,LIEU-DIT HABITï¿½
 String3=0x02,WOHNPLATZ
 String4=0x00,HOUSING SITE
 ExtendedLabels=Y
@@ -16512,7 +16560,7 @@ SubType=0x12
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_19/User customizable point type/Non NT, NT
 String1=0x04,MILL
 String2=0x01,MOULIN
-String3=0x02,MÜHLE
+String3=0x02,Mï¿½HLE
 String4=0x00,MILL
 ExtendedLabels=Y
 FontStyle=Default
@@ -16605,7 +16653,7 @@ SubType=0x15
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_22/User customizable point type/Non NT, NT
 String1=0x04,CAVE, PIT CAVE
 String2=0x01,GROTTE, GOUFFRE
-String3=0x02,HÖHLE, SCHACHTHÖHLE
+String3=0x02,Hï¿½HLE, SCHACHTHï¿½HLE
 ExtendedLabels=N
 DayXpm="16 16 2 1"   Colormode=16
 "!	c #008000"
@@ -17000,7 +17048,7 @@ SubType=0x1c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_29/User customizable point type/Non NT, NT
 String1=0x04,RING, GREEN
 String2=0x01,ANNEAU, VERT
-String3=0x02,RING, GRÜN
+String3=0x02,RING, GRï¿½N
 ExtendedLabels=N
 DayXpm="17 17 4 1"   Colormode=16
 "!	c #F8FCF8"
@@ -17169,7 +17217,7 @@ Type=0x115
 SubType=0x1f
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_32/User customizable point type/Non NT, NT
 String1=0x04,LIFEGUAD
-String2=0x01,BAIGNADE SURVEILLÉE
+String2=0x01,BAIGNADE SURVEILLï¿½E
 ExtendedLabels=N
 DayXpm="12 12 2 1"   Colormode=16
 "!	c #000000"
@@ -17212,8 +17260,8 @@ Type=0x116
 SubType=0x00
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_33/User customizable point type/Non NT, NT
 String1=0x04,ECOMUSEUM
-String2=0x01,ECOMUSÉE
-String3=0x02,ÖKOMUSEUM
+String2=0x01,ECOMUSï¿½E
+String3=0x02,ï¿½KOMUSEUM
 ExtendedLabels=N
 DayXpm="15 9 2 1"   Colormode=16
 "!	c #008000"
@@ -17236,7 +17284,7 @@ Type=0x116
 SubType=0x01
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_34/User customizable point type/Non NT, NT
 String1=0x04,SPORT FACILITY
-String2=0x01,ÉQUIPEMENT SPORTIF
+String2=0x01,ï¿½QUIPEMENT SPORTIF
 String3=0x02,SPORTANLAGE
 ExtendedLabels=N
 DayXpm="9 9 2 1"   Colormode=16
@@ -17317,7 +17365,7 @@ SubType=0x03
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_36/User customizable point type/Non NT, NT
 String1=0x04,X-CROSS, GREEN
 String2=0x01,CHEVALET, VERT
-String3=0x02,LIEGENDES KREUZ, GRÜN
+String3=0x02,LIEGENDES KREUZ, GRï¿½N
 ExtendedLabels=N
 DayXpm="18 17 3 1"   Colormode=16
 "!	c #000000"
@@ -17541,7 +17589,7 @@ SubType=0x07
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_40/User customizable point type/Non NT, NT
 String1=0x04,CROSS, GREEN
 String2=0x01,CROIX, VERT
-String3=0x02,KREUZ, GRÜN
+String3=0x02,KREUZ, GRï¿½N
 ExtendedLabels=N
 DayXpm="17 17 3 1"   Colormode=16
 "!	c #008000"
@@ -17649,7 +17697,7 @@ SubType=0x09
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_42/User customizable point type/Non NT, NT
 String1=0x04,RECTANGLE, WHITE-GREEN
 String2=0x01,RECTANGLE, BLANC-VERT
-String3=0x02,RECHTECK, WEISS-GRÜN
+String3=0x02,RECHTECK, WEISS-GRï¿½N
 ExtendedLabels=N
 DayXpm="19 8 3 1"   Colormode=0
 "!	c #000000"
@@ -17686,7 +17734,7 @@ Type=0x116
 SubType=0x0a
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_43/User customizable point type/Non NT, NT
 String1=0x04,BICYCLE SERVICE
-String2=0x01,SERVICE DÉDIÉ AUX VÉLOS
+String2=0x01,SERVICE Dï¿½DIï¿½ AUX Vï¿½LOS
 String3=0x02,FAHRRADSERVICE
 ExtendedLabels=N
 DayXpm="17 16 3 1"   Colormode=16
@@ -17718,8 +17766,8 @@ Type=0x116
 SubType=0x0b
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_44/User customizable point type/Non NT, NT
 String1=0x04,LEVEL CROSSING
-String2=0x01,PASSAGE À NIVEAU
-String3=0x02,BAHNÜBERGANG
+String2=0x01,PASSAGE ï¿½ NIVEAU
+String3=0x02,BAHNï¿½BERGANG
 ExtendedLabels=N
 DayXpm="16 15 2 1"   Colormode=16
 "!	c #000000"
@@ -17748,7 +17796,7 @@ Type=0x116
 SubType=0x0c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_45/User customizable point type/Non NT, NT
 String1=0x04,BARRIER
-String2=0x01,BARRIÈRE
+String2=0x01,BARRIï¿½RE
 String3=0x02,SPERRE
 ExtendedLabels=N
 DayXpm="13 10 3 1"   Colormode=16
@@ -17775,7 +17823,7 @@ SubType=0x0d
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_46/User customizable point type/Non NT, NT
 String1=0x04,PUBLIC SPACE
 String2=0x01,ESPACE PUBLIC
-String3=0x02,ÖFFENTLICHER RAUM
+String3=0x02,ï¿½FFENTLICHER RAUM
 ExtendedLabels=N
 DayXpm="15 15 2 1"   Colormode=16
 "!	c #505050"
@@ -17929,7 +17977,7 @@ SubType=0x10
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_49/User customizable point type/Non NT, NT
 String1=0x04,DISC, GREEN
 String2=0x01,DISQUE, VERT
-String3=0x02,PUNKT, GRÜN
+String3=0x02,PUNKT, GRï¿½N
 ExtendedLabels=N
 DayXpm="15 15 3 1"   Colormode=16
 "!	c #008000"
@@ -18125,7 +18173,7 @@ SubType=0x14
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_53/User customizable point type/Non NT, NT
 String1=0x04,DIAMOND, GREEN
 String2=0x01,LOSANGE, VERT
-String3=0x02,RAUTE, GRÜN
+String3=0x02,RAUTE, GRï¿½N
 ExtendedLabels=N
 DayXpm="17 13 3 1"   Colormode=16
 "!	c #008000"
@@ -18317,7 +18365,7 @@ SubType=0x18
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_57/User customizable point type/Non NT, NT
 String1=0x04,TRIANGLE, GREEN
 String2=0x01,TRIANGLE, VERT
-String3=0x02,DREIECK, GRÜN
+String3=0x02,DREIECK, GRï¿½N
 ExtendedLabels=N
 DayXpm="17 13 3 1"   Colormode=16
 "!	c #008000"
@@ -18503,7 +18551,7 @@ SubType=0x1c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_61/User customizable point type/Non NT, NT
 String1=0x04,RECTANGLE, GREEN
 String2=0x01,RECTANGLE, VERT
-String3=0x02,RECHTECK, GRÜN
+String3=0x02,RECHTECK, GRï¿½N
 ExtendedLabels=N
 DayXpm="17 13 2 1"   Colormode=0
 "!	c #000000"
@@ -19301,7 +19349,7 @@ DayXpm="20 20 96 2"   Colormode=16
 Type=0x150
 SubType=0x03
 ;GRMN_TYPE: //
-String1=0x01,Vêtements
+String1=0x01,Vï¿½tements
 String2=0x04,Clothes
 ExtendedLabels=N
 DayXpm="20 20 44 2"   Colormode=16
@@ -19377,7 +19425,7 @@ DayXpm="20 20 44 2"   Colormode=16
 Type=0x150
 SubType=0x04
 ;GRMN_TYPE: //
-String1=0x01,Commodité
+String1=0x01,Commoditï¿½
 String2=0x04,Convenience
 ExtendedLabels=N
 DayXpm="20 20 78 2"   Colormode=16
@@ -19487,7 +19535,7 @@ DayXpm="20 20 78 2"   Colormode=16
 Type=0x150
 SubType=0x05
 ;GRMN_TYPE: //
-String1=0x01,Réparation auto
+String1=0x01,Rï¿½paration auto
 String2=0x04,Car repair
 ExtendedLabels=N
 DayXpm="20 20 94 2"   Colormode=16
@@ -19613,7 +19661,7 @@ DayXpm="20 20 94 2"   Colormode=16
 Type=0x150
 SubType=0x06
 ;GRMN_TYPE: //
-String1=0x01,Supermarché
+String1=0x01,Supermarchï¿½
 String2=0x04,Supermarket
 ExtendedLabels=N
 DayXpm="20 20 100 2"   Colormode=16
@@ -20016,7 +20064,7 @@ DayXpm="20 20 112 2"   Colormode=16
 Type=0x150
 SubType=0x09
 ;GRMN_TYPE: //
-String1=0x01,Beauté
+String1=0x01,Beautï¿½
 String2=0x04,Beauty
 ExtendedLabels=N
 DayXpm="20 20 118 2"   Colormode=16
@@ -20266,7 +20314,7 @@ DayXpm="20 20 68 2"   Colormode=16
 Type=0x150
 SubType=0x0b
 ;GRMN_TYPE: //
-String1=0x01,decorationDécoration
+String1=0x01,decorationDï¿½coration
 String2=0x04,Interior decoration
 ExtendedLabels=N
 DayXpm="20 20 102 2"   Colormode=16
@@ -20482,7 +20530,7 @@ DayXpm="20 20 50 2"   Colormode=16
 Type=0x150
 SubType=0x0d
 ;GRMN_TYPE: //
-String1=0x01,Fruits et légumes
+String1=0x01,Fruits et lï¿½gumes
 String2=0x04,Greengrocer
 ExtendedLabels=N
 DayXpm="20 20 109 2"   Colormode=16
@@ -21901,7 +21949,7 @@ DayXpm="20 20 101 2"   Colormode=16
 Type=0x150
 SubType=0x1a
 ;GRMN_TYPE: //
-String1=0x01,Téléphone Mobile
+String1=0x01,Tï¿½lï¿½phone Mobile
 String2=0x04,Mobile phone
 ExtendedLabels=N
 DayXpm="20 20 52 2"   Colormode=16
@@ -22079,7 +22127,7 @@ DayXpm="20 20 62 2"   Colormode=16
 Type=0x150
 SubType=0x1c
 ;GRMN_TYPE: //
-String1=0x01,Fais le toi-même
+String1=0x01,Fais le toi-mï¿½me
 String2=0x04,Do it yourself
 ExtendedLabels=N
 DayXpm="20 20 64 2"   Colormode=16
@@ -22175,7 +22223,7 @@ DayXpm="20 20 64 2"   Colormode=16
 Type=0x150
 SubType=0x1d
 ;GRMN_TYPE: //
-String1=0x01,Pâtisserie
+String1=0x01,Pï¿½tisserie
 String2=0x04,Pastry
 ExtendedLabels=N
 DayXpm="20 20 106 2"   Colormode=16
@@ -22313,7 +22361,7 @@ DayXpm="20 20 106 2"   Colormode=16
 Type=0x150
 SubType=0x1e
 ;GRMN_TYPE: //
-String1=0x01,Magasin de variétés
+String1=0x01,Magasin de variï¿½tï¿½s
 String2=0x04,Variety store
 ExtendedLabels=N
 DayXpm="20 20 36 2"   Colormode=16
@@ -22486,7 +22534,7 @@ DayXpm="20 20 73 2"   Colormode=16
 Type=0x151
 SubType=0x00
 ;GRMN_TYPE: //
-String1=0x01,Produits de beauté
+String1=0x01,Produits de beautï¿½
 String2=0x04,Cosmetics
 ExtendedLabels=N
 DayXpm="20 20 91 2"   Colormode=16
@@ -23792,7 +23840,7 @@ DayXpm="20 20 59 2"   Colormode=16
 Type=0x152
 SubType=0x01
 ;GRMN_TYPE: //
-String1=0x01,Bar à bière
+String1=0x01,Bar ï¿½ biï¿½re
 String2=0x04,Beer bar
 ExtendedLabels=N
 DayXpm="20 20 96 2"   Colormode=16
@@ -23920,7 +23968,7 @@ DayXpm="20 20 96 2"   Colormode=16
 Type=0x152
 SubType=0x02
 ;GRMN_TYPE: //
-String1=0x01,Café
+String1=0x01,Cafï¿½
 String2=0x04,Cafe
 ExtendedLabels=N
 DayXpm="20 20 78 2"   Colormode=16
@@ -24455,7 +24503,7 @@ DayXpm="20 20 56 2"   Colormode=16
 Type=0x152
 SubType=0x07
 ;GRMN_TYPE: //
-String1=0x01,Bibliothèque
+String1=0x01,Bibliothï¿½que
 String2=0x04,Library
 ExtendedLabels=N
 DayXpm="20 20 105 2"   Colormode=16
@@ -24592,7 +24640,7 @@ DayXpm="20 20 105 2"   Colormode=16
 Type=0x152
 SubType=0x08
 ;GRMN_TYPE: //
-String1=0x01,Parking à vélo
+String1=0x01,Parking ï¿½ vï¿½lo
 String2=0x04,Parking bicycle
 ExtendedLabels=N
 DayXpm="20 20 133 2"   Colormode=16
@@ -24757,7 +24805,7 @@ DayXpm="20 20 133 2"   Colormode=16
 Type=0x152
 SubType=0x09
 ;GRMN_TYPE: //
-String1=0x01,Station de réparation de vélos
+String1=0x01,Station de rï¿½paration de vï¿½los
 String2=0x04,Bicycle repair station
 ExtendedLabels=N
 DayXpm="20 20 146 2"   Colormode=16
@@ -25715,7 +25763,7 @@ DayXpm="20 20 86 2"   Colormode=16
 Type=0x152
 SubType=0x11
 ;GRMN_TYPE: //
-String1=0x01,Hôpital
+String1=0x01,Hï¿½pital
 String2=0x04,Hospital
 ExtendedLabels=N
 DayXpm="20 20 70 2"   Colormode=16
@@ -25877,7 +25925,7 @@ DayXpm="20 20 28 2"   Colormode=16
 Type=0x152
 SubType=0x13
 ;GRMN_TYPE: //
-String1=0x01,Vétérinaire
+String1=0x01,Vï¿½tï¿½rinaire
 String2=0x04,Veterinary
 ExtendedLabels=N
 DayXpm="20 20 126 2"   Colormode=16
@@ -26875,7 +26923,7 @@ NightXpm="15 15 3 1"   Colormode=16
 Type=0x155
 SubType=0x00
 ;GRMN_TYPE: //
-String1=0x01,Héliport
+String1=0x01,Hï¿½liport
 String2=0x04,Heliport
 ExtendedLabels=N
 DayXpm="16 16 38 2"   Colormode=16
@@ -26941,7 +26989,7 @@ DayXpm="16 16 38 2"   Colormode=16
 Type=0x155
 SubType=0x01
 ;GRMN_TYPE: //
-String1=0x01,Télécabine, Téléphérique, Télésiège, Téléski
+String1=0x01,Tï¿½lï¿½cabine, Tï¿½lï¿½phï¿½rique, Tï¿½lï¿½siï¿½ge, Tï¿½lï¿½ski
 String2=0x04,Cable car, Cable car, Chairlift, Ski lift
 ExtendedLabels=N
 DayXpm="16 16 16 1"   Colormode=16
