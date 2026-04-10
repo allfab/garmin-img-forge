@@ -2568,7 +2568,7 @@ Xpm="32 32 2 1"
 
 [_polygon]
 Type=0x10a04
-;GRMN_TYPE: Park Areas/NATIONAL_PARK_OTHER(NT)/Small or misc sized national park/NT
+;GRMN_TYPE: Park Areas/NATIONAL_FOREST(NT)/National or communal forest/NT
 ExtendedLabels=Y
 FontStyle=NormalFont
 CustomColor=DayAndNight
