@@ -66,7 +66,18 @@ log_info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-log_step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
+log_step() {
+    local title="$*"
+    local width=60
+    local prefix="── ${title} "
+    local prefix_len=${#prefix}
+    local pad=$((width - prefix_len))
+    [[ $pad -lt 2 ]] && pad=2
+    local trail
+    trail=$(printf '─%.0s' $(seq 1 "$pad"))
+    echo ""
+    echo -e "${BOLD}${CYAN}${prefix}${trail}${NC}"
+}
 log_debug() { [[ "$DEBUG" == true ]] && echo -e "${YELLOW}[DEBUG]${NC} $*" || true; }
 
 # ---------------------------------------------------------------------------
@@ -550,6 +561,19 @@ download_file() {
         return 0
     fi
 
+    # Skip si données déjà extraites (archive supprimée après extraction)
+    if [[ "$SKIP_EXISTING" == true && ! -f "$filepath" ]]; then
+        local subdir_count shp_count
+        subdir_count=$(find "$target_dir" -mindepth 1 -maxdepth 1 -type d ! -name '_extract_tmp' 2>/dev/null | wc -l)
+        shp_count=$(find "$target_dir" -maxdepth 1 -name '*.shp' -type f 2>/dev/null | wc -l)
+        if [[ "$subdir_count" -gt 0 || "$shp_count" -gt 0 ]]; then
+            log_ok "  Données déjà extraites dans $target_dir — skip"
+            _LAST_DOWNLOAD_SIZE=0
+            _LAST_DOWNLOAD_STATUS="skipped"
+            return 0
+        fi
+    fi
+
     # Skip si déjà complet
     if [[ "$SKIP_EXISTING" == true && -f "$filepath" ]]; then
         local local_size
@@ -655,7 +679,7 @@ download_all() {
     for i in "${!DOWNLOAD_URLS[@]}"; do
         _LAST_DOWNLOAD_SIZE=0
         _LAST_DOWNLOAD_STATUS="failed"
-        echo -e "\n${BOLD}[$((i+1))/$total]${NC} ${DOWNLOAD_NAMES[$i]}"
+        echo -e "${BOLD}[$((i+1))/$total]${NC} ${DOWNLOAD_NAMES[$i]}"
         if download_file "${DOWNLOAD_URLS[$i]}" "${DOWNLOAD_DIRS[$i]}" "${DOWNLOAD_NAMES[$i]}" "${DOWNLOAD_MD5S[$i]:-}"; then
             success=$((success + 1))
         else
@@ -718,6 +742,16 @@ extract_archives() {
 
                     log_ok "  → ${dir}/ ($count dossiers thématiques)"
                     rm -rf "$tmp_extract"
+
+                    # Supprimer l'archive après extraction réussie
+                    rm -f "$archive"
+                    # Supprimer les éventuels fichiers split associés (.7z.002, .7z.003, ...)
+                    local archive_base="${archive%.001}"
+                    if [[ "$archive_base" != "$archive" ]]; then
+                        rm -f "${archive_base}."[0-9][0-9][0-9]
+                    fi
+                    log_ok "  Archive supprimée : $(basename "$archive")"
+
                     extracted=$((extracted + 1))
                 else
                     log_error "  Structure inattendue dans 1_DONNEES_LIVRAISON — structure thématique introuvable"
@@ -752,8 +786,7 @@ show_summary() {
     fi
     echo -e "  ${BOLD}Sortie :${NC}   $DATA_ROOT"
     echo -e "  ${BOLD}Fichiers :${NC} ${#DOWNLOAD_URLS[@]}"
-    if [[ "$DRY_RUN" == true ]]; then echo -e "\n  ${YELLOW}${BOLD}MODE DRY-RUN${NC}"; fi
-    echo ""
+    if [[ "$DRY_RUN" == true ]]; then echo -e "  ${YELLOW}${BOLD}MODE DRY-RUN${NC}"; fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1076,6 +1109,15 @@ extract_contour_archives() {
 
             if [[ $shp_count -gt 0 ]]; then
                 log_ok "  → ${dir}/ ($shp_count fichiers SHP)"
+
+                # Supprimer l'archive après extraction réussie
+                rm -f "$archive"
+                local archive_base="${archive%.001}"
+                if [[ "$archive_base" != "$archive" ]]; then
+                    rm -f "${archive_base}."[0-9][0-9][0-9]
+                fi
+                log_ok "  Archive supprimée : $(basename "$archive")"
+
                 extracted=$((extracted + 1))
             else
                 log_warn "  Aucun SHP trouvé dans l'archive courbes $bn"
@@ -1305,12 +1347,11 @@ prepare_osm_gpkg() {
 # MAIN
 # =============================================================================
 main() {
-    echo -e "${BOLD}${CYAN}"
-    echo "  ┌─────────────────────────────────────────────────────┐"
-    echo "  │  download-bdtopo.sh — Téléchargement BD TOPO® IGN  │"
-    echo "  │  API Géoplateforme · data.geopf.fr                 │"
-    echo "  └─────────────────────────────────────────────────────┘"
-    echo -e "${NC}"
+    echo ""
+    echo -e "${BOLD}${CYAN}  ┌──────────────────────────────────────────────┐${NC}"
+    echo -e "${BOLD}${CYAN}  │  download-bdtopo.sh v${SCRIPT_VERSION}                   │${NC}"
+    echo -e "${BOLD}${CYAN}  │  Téléchargement BD TOPO IGN - data.geopf.fr  │${NC}"
+    echo -e "${BOLD}${CYAN}  └──────────────────────────────────────────────┘${NC}"
 
     parse_args "$@"
     check_prerequisites
