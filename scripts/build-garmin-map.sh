@@ -33,6 +33,12 @@ BASE_ID=""              # Auto-calculé depuis le premier département
 DATA_DIR="./pipeline/data"
 OUTPUT_BASE="./pipeline/output"
 
+# Chemins sources (si vide : dérivé de DATA_DIR)
+CONTOURS_DIR=""         # défaut: ${DATA_DIR}/contours
+DEM_DIR=""              # défaut: ${DATA_DIR}/dem
+OSM_DIR=""              # défaut: ${DATA_DIR}/osm
+HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
+
 # mpforge
 CONFIG_FILE=""          # si vide : utilise sources-shp.yaml avec envsubst
 JOBS=8
@@ -140,6 +146,10 @@ OPTIONS GÉOGRAPHIQUES :
 
 CHEMINS :
     --data-dir DIR          Racine des données (défaut: ./pipeline/data)
+    --contours-dir DIR      Racine courbes de niveau (défaut: ${data-dir}/contours)
+    --dem-dir DIR           Racine MNT BD ALTI (défaut: ${data-dir}/dem)
+    --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
+    --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
     --config FILE           Config YAML mpforge custom (défaut: sources-shp.yaml)
 
@@ -192,6 +202,10 @@ parse_args() {
             --version)       VERSION="$2"; shift 2 ;;
             --base-id)       BASE_ID="$2"; shift 2 ;;
             --data-dir)      DATA_DIR="$2"; shift 2 ;;
+            --contours-dir)  CONTOURS_DIR="$2"; shift 2 ;;
+            --dem-dir)       DEM_DIR="$2"; shift 2 ;;
+            --osm-dir)       OSM_DIR="$2"; shift 2 ;;
+            --hiking-trails-dir) HIKING_TRAILS_DIR="$2"; shift 2 ;;
             --output-base)   OUTPUT_BASE="$2"; shift 2 ;;
             --config)        CONFIG_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
@@ -390,10 +404,10 @@ auto_detect_year_version() {
 # ---------------------------------------------------------------------------
 resolve_paths() {
     _DATA_ROOT="${DATA_DIR}/bdtopo/${YEAR}/${VERSION}"
-    _CONTOURS_DATA_ROOT="${DATA_DIR}/contours"
-    _DEM_DATA_ROOT="${DATA_DIR}/dem"
-    _OSM_DATA_ROOT="${DATA_DIR}/osm"
-    _HIKING_TRAILS_DATA_ROOT="${DATA_DIR}/hiking-trails"
+    _CONTOURS_DATA_ROOT="${CONTOURS_DIR:-${DATA_DIR}/contours}"
+    _DEM_DATA_ROOT="${DEM_DIR:-${DATA_DIR}/dem}"
+    _OSM_DATA_ROOT="${OSM_DIR:-${DATA_DIR}/osm}"
+    _HIKING_TRAILS_DATA_ROOT="${HIKING_TRAILS_DIR:-${DATA_DIR}/hiking-trails}"
 
     # Nom de la carte pour l'output
     local zones_label

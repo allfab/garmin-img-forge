@@ -16,7 +16,15 @@ Si vous utilisez `build-garmin-map.sh`, la compilation est automatique (étape 2
 ./scripts/build-garmin-map.sh --zones D038,D069 \
     --family-id 1100 --series-name "IGN-BDTOPO-MAP" \
     --levels "24,22,20,18,16" --no-dem
+
+# Pointer vers un répertoire DEM personnalisé
+./scripts/build-garmin-map.sh --zones D038 \
+    --dem-dir ./pipeline/data/bdaltiv2 --jobs 4
 ```
+
+Le script gère automatiquement le DEM multi-zones : pour chaque zone dans `--zones`, il passe un `--dem {dem-dir}/{zone}` à imgforge. Si le répertoire DEM d'une zone n'existe pas, un warning est affiché et la zone est ignorée (la compilation continue sans DEM pour cette zone).
+
+Voir l'[étape 3 (tuilage)](etape-3-tuilage.md#options-de-build-garmin-mapsh) pour la référence complète des options de `build-garmin-map.sh`.
 
 ## Commande imgforge directe
 

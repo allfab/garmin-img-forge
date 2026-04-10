@@ -26,7 +26,80 @@ Le script :
 - Enchaîne mpforge (tuilage) puis imgforge (compilation) automatiquement
 - Gère le DEM multi-zones (un `--dem` par département)
 
-Voir `./scripts/build-garmin-map.sh --help` pour toutes les options.
+### Options de `build-garmin-map.sh`
+
+#### Géographie
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--zones ZONES` | Départements (obligatoire) : `D038`, `D038,D069` | — |
+| `--year YYYY` | Année BDTOPO | auto-détecté |
+| `--version vYYYY.MM` | Version BDTOPO | auto-détecté |
+| `--base-id N` | Base ID Garmin (IDs tuiles = base × 10000 + seq) | premier code département |
+
+#### Chemins des données
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--data-dir DIR` | Racine des données (chemin BDTOPO = `{data-dir}/bdtopo/{year}/{version}`) | `./pipeline/data` |
+| `--contours-dir DIR` | Racine des courbes de niveau | `{data-dir}/contours` |
+| `--dem-dir DIR` | Racine des données DEM (BD ALTI) | `{data-dir}/dem` |
+| `--osm-dir DIR` | Racine des données OSM | `{data-dir}/osm` |
+| `--hiking-trails-dir DIR` | Racine des sentiers GR | `{data-dir}/hiking-trails` |
+| `--output-base DIR` | Base des répertoires de sortie | `./pipeline/output` |
+| `--config FILE` | Config YAML mpforge custom | `sources-shp.yaml` |
+
+Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` permettent de pointer vers des répertoires existants sans avoir à respecter l'arborescence par défaut. Si omises, elles sont dérivées de `--data-dir`.
+
+#### mpforge
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--jobs N` | Workers parallèles | `8` |
+| `--skip-existing` | Passer les tuiles .mp déjà présentes | — |
+
+#### imgforge
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--family-id N` | Family ID Garmin (u16) | `1100` |
+| `--product-id N` | Product ID Garmin (u16) | `1` |
+| `--family-name STR` | Nom de la carte | `IGN-BDTOPO-{ZONES}-{VERSION}` |
+| `--series-name STR` | Nom de la série | `IGN-BDTOPO-MAP` |
+| `--code-page N` | Code page encodage | `1252` |
+| `--levels STR` | Niveaux de zoom (décroissants) | `24,22,20,18,16` |
+| `--typ FILE` | Fichier TYP styles | `pipeline/resources/typfiles/I2023100.typ` |
+| `--copyright STR` | Message copyright | auto |
+| `--no-route` | Désactiver le routage | — |
+| `--no-dem` | Désactiver le DEM (relief ombré) | — |
+
+#### Contrôle
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Simuler sans exécuter |
+| `-v`, `--verbose` | Mode verbeux (`-vv` pour très verbeux) |
+| `--version-info` | Version du script |
+
+### Exemple complet
+
+```bash
+export PROJ_DATA=/usr/share/proj
+export OSM_CONFIG_FILE=./pipeline/configs/osm/osmconf.ini
+export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
+export OSM_MAX_TMPFILE_SIZE=1024
+
+./scripts/build-garmin-map.sh \
+  --zones D038 \
+  --year 2025 \
+  --version v2025.12 \
+  --data-dir ./pipeline/data \
+  --contours-dir ./pipeline/data/courbes \
+  --dem-dir ./pipeline/data/bdaltiv2 \
+  --output-base ./pipeline/output \
+  --jobs 4 \
+  -v
+```
 
 ## Commande mpforge directe
 
