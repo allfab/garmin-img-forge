@@ -1096,7 +1096,7 @@ rulesets:
           NATURE: "Aérodrome"
         set:
           Type: "0x02d0b"
-          EndLevel: "0"
+          EndLevel: "5"
           Label: "${GRAPHIE}"
 
       # 2. Altiport
