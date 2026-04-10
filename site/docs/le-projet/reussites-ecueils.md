@@ -30,6 +30,33 @@ Générer les sous-fichiers NET et NOD pour le calcul d'itinéraire turn-by-turn
 
 L'intégration du DEM (Digital Elevation Model) avec support natif des formats HGT (SRTM) et ASC (BDAltiv2 IGN), reprojection intégrée et encodage multi-niveaux, permet de produire des cartes avec ombrage du relief et profils d'altitude — directement sur le GPS, sans post-traitement.
 
+### La compatibilité Garmin Alpha 100 (avril 2026)
+
+L'une des batailles les plus techniques du projet a été de rendre les fichiers `gmapsupp.img` produits par imgforge compatibles avec le **Garmin Alpha 100** — un GPS de terrain avec un firmware particulièrement strict sur la structure binaire des cartes.
+
+Les cartes compilées par imgforge fonctionnaient parfaitement sur Garmin BaseCamp (logiciel PC), mais le GPS physique affichait systématiquement « pas de données » ou ignorait complètement le fichier.
+
+**La méthodologie d'investigation** a été chirurgicale :
+
+1. Compilation de la même tuile `.mp` avec les deux outils (imgforge et mkgmap)
+2. Comparaison binaire des sous-fichiers (TRE, RGN, LBL) octet par octet
+3. **Tests hybrides** : remplacement de sous-fichiers entre les deux outils pour isoler le composant défaillant
+4. Tests itératifs sur le GPS physique, cycle après cycle
+
+Les tests hybrides ont été la clé : en combinant le TRE+RGN de mkgmap avec le LBL d'imgforge, le GPS fonctionnait. L'inverse ne marchait pas. Le problème était donc localisé dans le **TRE+RGN** (index spatial + données features) et pas dans le LBL (labels).
+
+**10 corrections** ont été nécessaires avant d'obtenir un fichier fonctionnel :
+
+| Phase | Corrections |
+|-------|-------------|
+| **Structure gmapsupp** | Ordre des sous-fichiers (MPS en premier), SRT sort descriptor obligatoire, TYP obligatoire, TDB interdit dans le conteneur |
+| **TRE (index spatial)** | Demi-largeur des subdivisions (half-extent vs full), sections ext type toujours présentes, niveaux de zoom complets même vides, flag `is_last` par groupe parent |
+| **RGN (données)** | **Background polygon 0x4B** manquant dans chaque subdivision, points mal classés en section indexed (0x20) au lieu de regular (0x10) |
+
+Les deux dernières corrections — le **polygone background 0x4B** et la **classification des points** — ont résolu le problème. mkgmap ajoute automatiquement un polygone de type 0x4B couvrant la zone de chaque subdivision (c'est le « fond de carte »), et classe les points normaux dans la section regular du RGN. imgforge ne faisait ni l'un ni l'autre.
+
+Cette investigation a mobilisé l'analyse du code source de mkgmap (~100 000 lignes Java), de cGPSmapper, et la comparaison structurelle de dizaines de fichiers IMG. Le détail complet est documenté dans [`docs/investigation-imgforge-alpha100.md`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/docs/investigation-imgforge-alpha100.md).
+
 ---
 
 ## Écueils et difficultés
@@ -72,3 +99,7 @@ Le passage UTF-8 (données sources) vers CP1252 (format Polish Map par défaut) 
 4. **La configuration déclarative YAML** rend le pipeline accessible aux non-développeurs. On décrit *ce qu'on veut*, pas *comment le faire*.
 
 5. **L'ingénierie inverse est un marathon**, pas un sprint. Il faut accepter de ne pas comprendre certaines structures pendant des semaines, puis d'avoir un éclair de compréhension en comparant deux fichiers hexadécimaux.
+
+6. **Tester sur le matériel cible** est irremplaçable. Un fichier qui fonctionne sur BaseCamp peut échouer silencieusement sur un GPS physique. Le firmware Garmin Alpha 100 impose des contraintes non documentées (polygone background obligatoire, structure RGN stricte) que seul un test sur device peut révéler.
+
+7. **Les tests hybrides** (mélanger des sous-fichiers de deux sources) sont une technique de débogage redoutablement efficace pour les formats binaires. En remplaçant un composant à la fois, on isole le coupable en quelques itérations au lieu de chercher dans des centaines de milliers d'octets.
