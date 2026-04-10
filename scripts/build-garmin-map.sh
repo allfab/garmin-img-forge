@@ -24,6 +24,7 @@ set -euo pipefail
 SCRIPT_VERSION="2.0.0"
 DATA_ROOT="./pipeline/data/bdtopo"
 CONTOURS_DATA_ROOT="./pipeline/data/courbes"
+RANDO_DATA_ROOT="./pipeline/data/randonnee"
 OUTPUT_DIR="./pipeline/output"
 REPORT_FILE=""              # calculé après parse_args (dépend de OUTPUT_DIR)
 IMGFORGE_REPORT_FILE=""     # calculé après parse_args
@@ -415,7 +416,7 @@ prepare_config() {
             local tmp_expanded
             tmp_expanded=$(mktemp /tmp/mpforge-config-expanded-XXXXXX.yaml)
             _TMP_CONFIG="$tmp_expanded"
-            export DATA_ROOT CONTOURS_DATA_ROOT OUTPUT_DIR RULES_FILE
+            export DATA_ROOT CONTOURS_DATA_ROOT RANDO_DATA_ROOT OUTPUT_DIR RULES_FILE
             envsubst < "$CONFIG_FILE" > "$tmp_expanded"
             if grep -qE '\$\{[A-Z_]+\}' "$tmp_expanded" 2>/dev/null; then
                 log_warn "Des placeholders non résolus subsistent — vérifiez vos variables d'environnement (DATA_ROOT, OUTPUT_DIR…)"

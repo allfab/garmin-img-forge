@@ -205,6 +205,18 @@ inputs:
       source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
+  # ==========================================================================
+  # RANDONNÉE — Sentiers de Grande Randonnée (GR)
+  # Source : pipeline/data/randonnee/FRANCE-GR.shp (tracké dans git)
+  # Déjà en EPSG:4326 — pas de reprojection nécessaire
+  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # ==========================================================================
+  - path: "${RANDO_DATA_ROOT}/FRANCE-GR.shp"
+    layer_alias: "FRANCE_GR"
+    spatial_filter:
+      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
 output:
   directory: "${OUTPUT_DIR}/mp/"
   filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
