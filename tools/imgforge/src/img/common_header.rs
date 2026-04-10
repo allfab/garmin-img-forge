@@ -1,6 +1,7 @@
 /// CommonHeader — shared 21-byte Garmin subfile header, faithful to mkgmap CommonHeader.java
 
-pub const COMMON_HEADER_LEN: usize = 21;
+#[cfg(test)]
+const COMMON_HEADER_LEN: usize = 21;
 const TYPE_LEN: usize = 10;
 
 pub struct CommonHeader {
@@ -64,7 +65,8 @@ fn write_creation_time(buf: &mut Vec<u8>) {
 }
 
 /// Write a specific date as 7-byte Garmin creation time
-pub fn write_creation_time_fixed(buf: &mut Vec<u8>, year: u16, month: u8, day: u8, hour: u8, min: u8, sec: u8) {
+#[cfg(test)]
+fn write_creation_time_fixed(buf: &mut Vec<u8>, year: u16, month: u8, day: u8, hour: u8, min: u8, sec: u8) {
     buf.extend_from_slice(&year.to_le_bytes());
     buf.push(month);
     buf.push(day);

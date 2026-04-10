@@ -52,7 +52,7 @@ fn main() {
         codepage: 1252,
     };
     let typ = include_bytes!("/tmp/mkgmap-tiles-extracted/typ.bin");
-    let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(typ), None).unwrap();
+    let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(typ)).unwrap();
     std::fs::write("/tmp/test-3tiles/gmapsupp-hybrid.img", &gmapsupp).unwrap();
     println!("Written {} bytes", gmapsupp.len());
 }

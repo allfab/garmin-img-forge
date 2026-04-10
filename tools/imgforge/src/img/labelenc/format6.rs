@@ -44,7 +44,8 @@ pub fn encode(text: &str) -> Vec<u8> {
 }
 
 /// Decode Format6 bytes back to string
-pub fn decode(data: &[u8]) -> String {
+#[cfg(test)]
+fn decode(data: &[u8]) -> String {
     let mut result = String::new();
     let total_bits = data.len() * 8;
     let mut i = 0;
@@ -90,6 +91,7 @@ fn put6(buf: &mut [u8], off: usize, c: u8) {
 }
 
 /// Reverse of put6 — extracts one 6-bit character
+#[cfg(test)]
 fn get6(buf: &[u8], off: usize) -> u8 {
     let bit_off = off * 6;
     let byte_off = bit_off / 8;

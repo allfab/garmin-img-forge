@@ -15,7 +15,8 @@ pub enum LabelEncoding {
 
 impl LabelEncoding {
     /// Create encoder from charset string (mkgmap CodeFunctions.createEncoderForLBL)
-    pub fn from_charset(charset: &str) -> Self {
+    #[cfg(test)]
+    fn from_charset(charset: &str) -> Self {
         match charset.to_lowercase().as_str() {
             "ascii" => LabelEncoding::Format6,
             "cp1252" | "latin1" | "iso-8859-1" => LabelEncoding::Format9(1252),

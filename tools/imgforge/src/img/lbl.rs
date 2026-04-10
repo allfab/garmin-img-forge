@@ -192,9 +192,6 @@ impl LblWriter {
         }
     }
 
-    pub fn label_data_size(&self) -> usize {
-        self.labels.len()
-    }
 }
 
 /// Write an empty PlacesHeader section: offset(4) + size(4) + recSize(2) + reserved(4) = 14 bytes

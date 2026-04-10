@@ -64,16 +64,15 @@ pub fn build_gmapsupp_with_meta(
     description: &str,
     meta: &GmapsuppMeta,
 ) -> Result<Vec<u8>, ImgError> {
-    build_gmapsupp_with_meta_and_typ(tiles, description, meta, None, None)
+    build_gmapsupp_with_meta_and_typ(tiles, description, meta, None)
 }
 
-/// Assemble with explicit metadata, optional TYP styling data, and optional TDB data
+/// Assemble with explicit metadata and optional TYP styling data
 pub fn build_gmapsupp_with_meta_and_typ(
     tiles: &[TileSubfiles],
     description: &str,
     meta: &GmapsuppMeta,
     typ_data: Option<&[u8]>,
-    tdb_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
@@ -129,13 +128,10 @@ pub fn build_gmapsupp_with_meta_and_typ(
     }
 
     // 4. SRT (sort descriptor) — required by some Garmin firmware (Alpha 100)
+    // Only CP1252 SRT is available; other codepages fall back to it.
     {
         let srt_name = format!("{:08}", meta.family_id);
-        let srt_data = if meta.codepage == 1252 || meta.codepage == 0 {
-            super::srt::SRT_CP1252.to_vec()
-        } else {
-            super::srt::SRT_CP1252.to_vec()
-        };
+        let srt_data = super::srt::SRT_CP1252.to_vec();
         fs.add_file(&srt_name, "SRT", srt_data);
     }
 
@@ -148,11 +144,6 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&ov_name, "RGN", overview.rgn);
         fs.add_file(&ov_name, "LBL", overview.lbl);
     }
-
-    // 6. TDB (if provided and not disabled) — external companion, NOT inside gmapsupp
-    // mkgmap never embeds TDB in gmapsupp; doing so confuses some devices.
-    // TDB is only written as a separate file alongside the gmapsupp.
-    // (Removed from gmapsupp assembly)
 
     fs.sync()
 }
@@ -393,7 +384,7 @@ mod tests {
             codepage: 0,
             typ_basename: None,
         };
-        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ), None);
+        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ));
         assert!(result.is_ok());
         let img = result.unwrap();
 
@@ -445,7 +436,7 @@ mod tests {
             codepage: 1252,
             typ_basename: None,
         };
-        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None, None);
+        let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None);
         assert!(result.is_ok());
         let img = result.unwrap();
         // Should find the overview map's GARMIN TRE + overview marker 0x00040101

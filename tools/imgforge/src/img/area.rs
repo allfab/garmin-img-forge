@@ -20,17 +20,6 @@ impl Area {
         }
     }
 
-    /// Create from WGS84 degrees
-    pub fn from_degrees(min_lat: f64, min_lon: f64, max_lat: f64, max_lon: f64) -> Self {
-        use super::coord::to_map_unit;
-        Self::new(
-            to_map_unit(min_lat),
-            to_map_unit(min_lon),
-            to_map_unit(max_lat),
-            to_map_unit(max_lon),
-        )
-    }
-
     /// Compute bounding box from a list of coords — mkgmap Area.getBBox
     pub fn from_coords(coords: &[Coord]) -> Self {
         let mut min_lat = i32::MAX;
@@ -86,12 +75,9 @@ impl Area {
             && self.max_lon >= other.min_lon
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.min_lat >= self.max_lat || self.min_lon >= self.max_lon
-    }
-
     /// Intersection of two areas
-    pub fn intersect(&self, other: &Area) -> Area {
+    #[cfg(test)]
+    fn intersect(&self, other: &Area) -> Area {
         Area::new(
             self.min_lat.max(other.min_lat),
             self.min_lon.max(other.min_lon),

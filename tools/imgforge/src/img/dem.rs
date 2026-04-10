@@ -62,10 +62,6 @@ impl DemBitWriter {
         bytes
     }
 
-    #[allow(dead_code)]
-    fn bit_count(&self) -> usize {
-        self.bits.len()
-    }
 }
 
 // ─── DemTile: single 64×64 tile compression ───
@@ -1012,14 +1008,12 @@ fn get_tile_info(dem_points: i32, dem_dist: i32) -> (u32, u32) {
 /// DEM subfile writer (like TreWriter, RgnWriter, etc.)
 pub struct DemWriter {
     sections: Vec<DemSection>,
-    adjusted_bounds: Option<GeoBounds>,
 }
 
 impl DemWriter {
     pub fn new() -> Self {
         Self {
             sections: Vec::new(),
-            adjusted_bounds: None,
         }
     }
 
@@ -1065,7 +1059,6 @@ impl DemWriter {
             if s_north > adj.north { adj.north = s_north; }
         }
 
-        self.adjusted_bounds = Some(adj.clone());
         adj
     }
 

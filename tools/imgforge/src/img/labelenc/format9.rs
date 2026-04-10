@@ -22,7 +22,8 @@ pub fn encode(text: &str, codepage: u16) -> Vec<u8> {
 }
 
 /// Decode single-byte codepage bytes to string. Stops at null terminator.
-pub fn decode(data: &[u8], codepage: u16) -> String {
+#[cfg(test)]
+fn decode(data: &[u8], codepage: u16) -> String {
     let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
     data[..end].iter().map(|&b| match codepage {
         1250 => cp1250_to_unicode(b),
@@ -324,6 +325,7 @@ fn unicode_to_cp1250(c: char) -> Option<u8> {
 }
 
 /// Map CP1250 byte to Unicode character
+#[cfg(test)]
 fn cp1250_to_unicode(b: u8) -> char {
     // 0x00-0x7F: ASCII (direct)
     if b <= 0x7F { return b as char; }
@@ -447,6 +449,7 @@ fn unicode_to_cp1251(c: char) -> Option<u8> {
 }
 
 /// Map CP1251 byte to Unicode character
+#[cfg(test)]
 fn cp1251_to_unicode(b: u8) -> char {
     if b <= 0x7F { return b as char; }
     // Cyrillic block: 0xC0-0xFF → U+0410-U+044F

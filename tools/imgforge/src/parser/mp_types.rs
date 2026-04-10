@@ -69,10 +69,6 @@ pub struct MpPoint {
     pub label: String,
     pub coord: Coord,
     pub end_level: Option<u8>,
-    pub city_name: Option<String>,
-    pub region_name: Option<String>,
-    pub country_name: Option<String>,
-    pub zip: Option<String>,
 }
 
 /// [POLYLINE] section

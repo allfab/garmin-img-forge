@@ -2,20 +2,12 @@
 // Polygons are encoded identically to polylines in RGN format
 
 use super::coord::Coord;
-use super::map_object::MapObject;
-
 /// A polygon on the map
 #[derive(Debug, Clone)]
 pub struct Polygon {
     pub type_code: u32,
     pub label_offset: u32,
     pub points: Vec<Coord>,
-}
-
-impl MapObject for Polygon {
-    fn type_code(&self) -> u32 { self.type_code }
-    fn label_offset(&self) -> u32 { self.label_offset }
-    fn coords(&self) -> &[Coord] { &self.points }
 }
 
 impl Polygon {

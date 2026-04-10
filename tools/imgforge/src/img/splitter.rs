@@ -118,10 +118,6 @@ impl MapArea {
         !self.points.is_empty() || !self.lines.is_empty() || !self.shapes.is_empty()
     }
 
-    pub fn has_points(&self) -> bool { !self.points.is_empty() }
-    pub fn has_lines(&self) -> bool { !self.lines.is_empty() }
-    pub fn has_shapes(&self) -> bool { !self.shapes.is_empty() }
-
     /// Must split — mkgmap hard limits (MapSplitter.addAreasToList)
     fn must_split(&self) -> bool {
         self.lines.len() > MAX_NUM_LINES

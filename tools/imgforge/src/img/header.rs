@@ -42,7 +42,6 @@ pub struct ImgHeader {
     pub block_size: u32,
     pub directory_start_entry: u8,
     pub description: String,
-    pub is_gmapsupp: bool,
     pub num_blocks: u32,
 }
 
@@ -52,7 +51,6 @@ impl ImgHeader {
             block_size,
             directory_start_entry: 2,
             description: description.to_string(),
-            is_gmapsupp: false,
             num_blocks: 0,
         }
     }

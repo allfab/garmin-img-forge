@@ -63,8 +63,6 @@ impl RgnWriter {
         let ind_points_off = current;
         current += ind_points_data.len();
         let polylines_off = current;
-        current += polylines_data.len();
-        let _polygons_off = current;
 
         // Write pointers (2-byte offsets relative to subdivision start)
         if has_ind_points && has_points {

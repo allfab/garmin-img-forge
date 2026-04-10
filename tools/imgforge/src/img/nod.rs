@@ -153,28 +153,6 @@ impl TableBEntry {
     }
 }
 
-/// Build NOD2 bitstream from node_flags for all roads (legacy format).
-/// Returns (nod2_data, nod2_byte_offset_per_road).
-pub fn build_nod2_bitstream(all_node_flags: &[Vec<bool>]) -> (Vec<u8>, Vec<u32>) {
-    use super::bit_writer::BitWriter;
-
-    let total_bits: usize = all_node_flags.iter().map(|f| f.len()).sum();
-    let mut bw = BitWriter::with_capacity((total_bits + 7) / 8 + 8);
-    let mut offsets = Vec::with_capacity(all_node_flags.len());
-
-    for flags in all_node_flags {
-        while bw.bit_position() % 8 != 0 {
-            bw.put1(false);
-        }
-        offsets.push((bw.bit_position() / 8) as u32);
-        for &is_node in flags {
-            bw.put1(is_node);
-        }
-    }
-
-    (bw.bytes().to_vec(), offsets)
-}
-
 /// NOD2 per-road record info for the mkgmap format
 pub struct Nod2RoadInfo {
     pub road_class: u8,
@@ -953,49 +931,6 @@ mod tests {
             | ((nod1[ta_start + 1] as u32) << 8)
             | ((nod1[ta_start + 2] as u32) << 16);
         assert_eq!(patched & 0x3FFFFF, 42);
-    }
-
-    #[test]
-    fn test_build_nod2_bitstream_simple() {
-        // 1 road, 3 vertices: node, geometry, node → bits: 1, 0, 1
-        let flags = vec![vec![true, false, true]];
-        let (data, offsets) = build_nod2_bitstream(&flags);
-        assert_eq!(offsets.len(), 1);
-        assert_eq!(offsets[0], 0);
-        assert!(!data.is_empty());
-        // First byte: bits 101 (LSB-first) = 0b00000101 = 0x05
-        assert_eq!(data[0] & 0x07, 0x05);
-    }
-
-    #[test]
-    fn test_build_nod2_offsets() {
-        // 2 roads: road0 has 3 vertices, road1 has 5 vertices
-        let flags = vec![
-            vec![true, false, true],       // 3 bits → padded to 8 bits (1 byte)
-            vec![true, false, false, false, true], // 5 bits
-        ];
-        let (data, offsets) = build_nod2_bitstream(&flags);
-        assert_eq!(offsets.len(), 2);
-        assert_eq!(offsets[0], 0);
-        // After 3 bits + 5 padding bits = 1 full byte, road1 starts at byte 1
-        assert_eq!(offsets[1], 1);
-        assert!(!data.is_empty());
-        // Total: 8 bits (road0 padded) + 5 bits (road1) = 13 bits → 2 bytes
-        assert_eq!(data.len(), 2);
-    }
-
-    #[test]
-    fn test_build_nod2_offsets_cross_byte() {
-        // Road0: 9 vertices (9 bits → padded to 16 bits = 2 bytes)
-        // Road1: starts at byte 2
-        let flags = vec![
-            vec![true; 9],
-            vec![true, false, true],
-        ];
-        let (data, offsets) = build_nod2_bitstream(&flags);
-        assert_eq!(offsets[0], 0);
-        assert_eq!(offsets[1], 2); // 9 bits padded to 16 bits = 2 bytes
-        assert!(data.len() >= 3);
     }
 
     /// R8: Full pipeline test — prepare → patch with real NetWriter offsets → build

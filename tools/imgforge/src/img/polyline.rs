@@ -1,8 +1,6 @@
 // Polyline — polyline encoding, faithful to mkgmap Polyline.java
 
 use super::coord::Coord;
-use super::map_object::MapObject;
-
 /// A polyline on the map
 #[derive(Debug, Clone)]
 pub struct Polyline {
@@ -13,12 +11,6 @@ pub struct Polyline {
     pub has_net_info: bool,
     pub net_offset: u32,
     pub road_id: Option<u32>,
-}
-
-impl MapObject for Polyline {
-    fn type_code(&self) -> u32 { self.type_code }
-    fn label_offset(&self) -> u32 { self.label_offset }
-    fn coords(&self) -> &[Coord] { &self.points }
 }
 
 impl Polyline {

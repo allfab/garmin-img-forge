@@ -6,7 +6,6 @@ pub const DELTA_SHIFT: i32 = HIGH_PREC_BITS - 24; // = 6
 pub const FACTOR_HP: f64 = (1i64 << HIGH_PREC_BITS) as f64;
 pub const R_WGS84: f64 = 6378137.0;
 pub const U_WGS84: f64 = R_WGS84 * 2.0 * PI;
-pub const MEAN_EARTH_RADIUS: f64 = 6371000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Coord {
@@ -44,7 +43,8 @@ impl Coord {
     }
 
     /// From 30-bit high precision values — mkgmap makeHighPrecCoord
-    pub fn from_high_prec(lat_hp: i32, lon_hp: i32) -> Self {
+    #[cfg(test)]
+    fn from_high_prec(lat_hp: i32, lon_hp: i32) -> Self {
         let rounding = 1 << (DELTA_SHIFT - 1);
         let lat24 = (lat_hp + rounding) >> DELTA_SHIFT;
         let lon24 = (lon_hp + rounding) >> DELTA_SHIFT;
@@ -173,7 +173,8 @@ fn hp_to_radians(hp: i32) -> f64 {
 }
 
 /// Convert 24-bit map units to 32-bit semicircles (for NOD)
-pub fn to_semicircles(map_unit: i32) -> i32 {
+#[cfg(test)]
+fn to_semicircles(map_unit: i32) -> i32 {
     ((map_unit as i64) << 8) as i32
 }
 

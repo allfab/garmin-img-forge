@@ -25,7 +25,7 @@ fn main() {
     };
     
     let gmapsupp = build_gmapsupp_with_meta_and_typ(
-        &[tile], "IGN BDTOPO D038", &meta, Some(&typ), None,
+        &[tile], "IGN BDTOPO D038", &meta, Some(&typ),
     ).expect("build failed");
     
     fs::write("/tmp/gmapsupp-mkgmap-hybrid-typ.img", &gmapsupp).unwrap();

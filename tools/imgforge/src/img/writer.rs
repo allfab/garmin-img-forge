@@ -1093,9 +1093,6 @@ struct RoutingContext {
     net1_offsets_by_mp_index: HashMap<usize, u32>,
     /// mp_index → road_idx (index in the NET writer's road list)
     mp_index_to_road_idx: HashMap<usize, usize>,
-    /// Junction set for recalculating node_flags on split polylines (P4, currently disabled)
-    #[allow(dead_code)]
-    junctions: HashSet<(i32, i32)>,
 }
 
 fn pre_compute_routing(
@@ -1195,7 +1192,6 @@ fn pre_compute_routing(
         let routing_ctx = RoutingContext {
             net1_offsets_by_mp_index,
             mp_index_to_road_idx,
-            junctions,
         };
         return (Some(routing_ctx), Some(net_writer), None);
     }
@@ -1264,7 +1260,6 @@ fn pre_compute_routing(
     let routing_ctx = RoutingContext {
         net1_offsets_by_mp_index,
         mp_index_to_road_idx,
-        junctions,
     };
 
     (Some(routing_ctx), Some(net_writer), Some(nod_data))

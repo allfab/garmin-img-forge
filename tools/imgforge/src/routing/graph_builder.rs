@@ -93,18 +93,6 @@ pub fn compute_node_flags(
     }).collect()
 }
 
-/// Build route nodes from routable polylines
-/// Returns a list of RouteNodes with arcs connecting them
-pub fn build_graph(
-    road_polylines: &[(Vec<Coord>, usize, RouteParams)],
-) -> Vec<RouteNode> {
-    if road_polylines.is_empty() {
-        return Vec::new();
-    }
-    let junction_set = find_junctions(road_polylines);
-    build_graph_with_junctions(road_polylines, &junction_set)
-}
-
 /// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call)
 pub fn build_graph_with_junctions(
     road_polylines: &[(Vec<Coord>, usize, RouteParams)],
@@ -201,16 +189,6 @@ pub fn build_graph_with_junctions(
     nodes
 }
 
-/// Calculate haversine distance between two coords in meters
-pub fn haversine_distance(a: &Coord, b: &Coord) -> f64 {
-    a.distance(b)
-}
-
-/// Calculate bearing from a to b in degrees
-pub fn bearing(a: &Coord, b: &Coord) -> f64 {
-    a.bearing_to(b)
-}
-
 /// Convert bearing in degrees to Garmin direction byte: round(deg * 256 / 360) as i8.
 /// Uses wrapping cast to match Java's `(byte)` behavior.
 pub fn direction_from_degrees(deg: f64) -> i8 {
@@ -260,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_empty_graph() {
-        let nodes = build_graph(&[]);
+        let nodes = build_graph_with_junctions(&[], &HashSet::new());
         assert!(nodes.is_empty());
     }
 
@@ -274,13 +252,11 @@ mod tests {
             (road1, 0, RouteParams::default()),
             (road2, 1, RouteParams::default()),
         ];
-        let nodes = build_graph(&roads);
+        let junctions = find_junctions(&roads);
+        let nodes = build_graph_with_junctions(&roads, &junctions);
 
-        // The shared point is a junction, plus endpoints that are unique aren't junctions
-        // Actually shared point appears in both roads → junction
         assert!(!nodes.is_empty());
 
-        // Find the junction node at (100, 100)
         let junction = nodes.iter().find(|n| n.lat == 100 && n.lon == 100);
         assert!(junction.is_some());
     }
@@ -289,7 +265,7 @@ mod tests {
     fn test_haversine() {
         let a = Coord::from_degrees(48.5734, 7.7521);
         let b = Coord::from_degrees(48.5834, 7.7621);
-        let d = haversine_distance(&a, &b);
+        let d = a.distance(&b);
         assert!(d > 500.0 && d < 2000.0);
     }
 

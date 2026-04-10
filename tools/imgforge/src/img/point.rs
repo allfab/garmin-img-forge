@@ -1,8 +1,6 @@
 // Point — POI encoding, faithful to mkgmap Point.java
 
 use super::coord::Coord;
-use super::map_object::MapObject;
-
 /// A point/POI on the map
 #[derive(Debug, Clone)]
 pub struct Point {
@@ -12,13 +10,6 @@ pub struct Point {
     pub coord: Coord,
     pub is_poi: bool,
     pub has_sub_type: bool,
-}
-
-impl MapObject for Point {
-    fn type_code(&self) -> u32 { self.type_code }
-    fn sub_type(&self) -> u8 { self.sub_type }
-    fn label_offset(&self) -> u32 { self.label_offset }
-    fn coords(&self) -> &[Coord] { std::slice::from_ref(&self.coord) }
 }
 
 impl Point {

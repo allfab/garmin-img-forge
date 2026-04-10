@@ -291,10 +291,9 @@ fn main() -> Result<()> {
                 if let Some(ref an) = area_name { tdb.area_name = an.clone(); }
                 if let Some(ref cm) = copyright_message { tdb.copyright = cm.clone(); }
                 if let Some(pv) = product_version { tdb.product_version = pv; }
-                if let Some(ref cn) = country_name { tdb.country_name = cn.clone(); }
-                if let Some(ref ca) = country_abbr { tdb.country_abbr = ca.clone(); }
-                if let Some(ref rn) = region_name { tdb.region_name = rn.clone(); }
-                if let Some(ref ra) = region_abbr { tdb.region_abbr = ra.clone(); }
+                // country_name, country_abbr, region_name, region_abbr: parsed from CLI
+                // but not yet serialized into TDB format (reserved for future use)
+                let _ = (&country_name, &country_abbr, &region_name, &region_abbr);
 
                 // Enable profile/elevation display if any tile has DEM data
                 if tile_subfiles.iter().any(|t| t.dem.is_some()) {
@@ -337,10 +336,10 @@ fn main() -> Result<()> {
                 tdb.build()
             };
 
-            // Build gmapsupp with TDB + overview map embedded
+            // Build gmapsupp with overview map embedded
             let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(
                 &tile_subfiles, map_desc, &gmapsupp_meta,
-                typ_data.as_deref(), Some(&tdb_data),
+                typ_data.as_deref(),
             )?;
             std::fs::write(&output, &gmapsupp)?;
 

@@ -60,10 +60,6 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
                 label: String::new(),
                 coord: Coord::new(0, 0),
                 end_level: None,
-                city_name: None,
-                region_name: None,
-                country_name: None,
-                zip: None,
             });
             continue;
         }
@@ -192,10 +188,7 @@ fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usiz
         "type" => point.type_code = parse_type(value),
         "label" => point.label = value.to_string(),
         "endlevel" => point.end_level = value.parse().ok(),
-        "cityname" => point.city_name = Some(value.to_string()),
-        "regionname" => point.region_name = Some(value.to_string()),
-        "countryname" => point.country_name = Some(value.to_string()),
-        "zip" => point.zip = Some(value.to_string()),
+        "cityname" | "regionname" | "countryname" | "zip" => {} // parsed but not used
         k if k.starts_with("data") => {
             let coords = parse_coords(value, line_num)?;
             if let Some(c) = coords.first() {

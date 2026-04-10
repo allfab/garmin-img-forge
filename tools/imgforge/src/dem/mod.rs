@@ -60,14 +60,6 @@ pub struct GeoBounds {
     pub west: f64,
 }
 
-impl GeoBounds {
-    pub fn width(&self) -> f64 {
-        self.east - self.west
-    }
-    pub fn height(&self) -> f64 {
-        self.north - self.south
-    }
-}
 
 /// Interpolation method for DEM resampling
 #[derive(Clone, Debug, PartialEq)]
@@ -235,45 +227,3 @@ fn scan_dem_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Merge multiple elevation grids to cover a target bounding box.
-/// Grids are queried in order; first grid covering a point wins.
-#[allow(dead_code)]
-fn merge_grids(grids: &[ElevationGrid], bounds: &GeoBounds, cellsize: f64) -> ElevationGrid {
-    let width = ((bounds.east - bounds.west) / cellsize).ceil() as u32 + 1;
-    let height = ((bounds.north - bounds.south) / cellsize).ceil() as u32 + 1;
-
-    let nodata = -99999.0;
-    let mut data = vec![nodata; (width * height) as usize];
-
-    for row in 0..height {
-        let lat = bounds.north - row as f64 * cellsize;
-        for col in 0..width {
-            let lon = bounds.west + col as f64 * cellsize;
-            let idx = (row * width + col) as usize;
-
-            // First grid covering this point wins
-            for grid in grids {
-                if !grid.contains(lat, lon) {
-                    continue;
-                }
-                // Nearest-neighbor lookup in source grid
-                let src_row = ((grid.bounds.north - lat) / grid.cellsize_lat).round() as u32;
-                let src_col = ((lon - grid.bounds.west) / grid.cellsize_lon).round() as u32;
-                if let Some(val) = grid.get(src_row, src_col) {
-                    data[idx] = val;
-                    break;
-                }
-            }
-        }
-    }
-
-    ElevationGrid {
-        width,
-        height,
-        data,
-        nodata,
-        bounds: bounds.clone(),
-        cellsize_lat: cellsize,
-        cellsize_lon: cellsize,
-    }
-}

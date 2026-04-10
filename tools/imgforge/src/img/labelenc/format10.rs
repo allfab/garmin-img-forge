@@ -9,7 +9,8 @@ pub fn encode(text: &str) -> Vec<u8> {
 }
 
 /// Decode UTF-8 bytes to string. Stops at null terminator.
-pub fn decode(data: &[u8]) -> String {
+#[cfg(test)]
+fn decode(data: &[u8]) -> String {
     let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
     String::from_utf8_lossy(&data[..end]).to_string()
 }

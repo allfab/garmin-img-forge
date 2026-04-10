@@ -8,11 +8,9 @@ pub const NET_HEADER_LEN: u16 = 55;
 pub const NO_CAR: u16 = 0x0001;
 pub const NO_BUS: u16 = 0x0002;
 pub const NO_TAXI: u16 = 0x0004;
-pub const CARPOOL: u16 = 0x0008;
 pub const NO_FOOT: u16 = 0x0010;
 pub const NO_BIKE: u16 = 0x0020;
 pub const NO_TRUCK: u16 = 0x0040;
-pub const NO_THROUGHROUTE: u16 = 0x0080;
 pub const NO_DELIVERY: u16 = 0x4000;
 pub const NO_EMERGENCY: u16 = 0x8000;
 

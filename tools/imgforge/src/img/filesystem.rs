@@ -7,15 +7,13 @@ use crate::error::ImgError;
 
 /// Sequential block allocator — mkgmap BlockManager.java
 pub struct BlockManager {
-    block_size: u32,
     current_block: u32,
     max_block: u32,
 }
 
 impl BlockManager {
-    pub fn new(block_size: u32, initial_block: u32) -> Self {
+    pub fn new(_block_size: u32, initial_block: u32) -> Self {
         Self {
-            block_size,
             current_block: initial_block,
             max_block: 0xFFFE,
         }
@@ -31,10 +29,6 @@ impl BlockManager {
         }
         self.current_block += 1;
         Ok(n as u16)
-    }
-
-    pub fn block_size(&self) -> u32 {
-        self.block_size
     }
 
     pub fn current_block(&self) -> u32 {

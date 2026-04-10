@@ -8,8 +8,7 @@ pub const HAS_IND_POINTS: u8 = 0x20;
 pub const HAS_POLYLINES: u8 = 0x40;
 pub const HAS_POLYGONS: u8 = 0x80;
 
-/// Subdivision record size: 14 bytes without children, 16 with (end pointer)
-pub const SUBDIV_REC_SIZE: usize = 14;
+/// Subdivision record size with end pointer (16 bytes)
 pub const SUBDIV_REC_SIZE_WITH_END: usize = 16;
 
 /// A subdivision in the TRE hierarchy
@@ -148,11 +147,12 @@ impl Subdivision {
         buf
     }
 
-    pub fn record_size(&self) -> usize {
+    #[cfg(test)]
+    fn record_size(&self) -> usize {
         if self.has_children {
-            SUBDIV_REC_SIZE_WITH_END
+            16 // with end pointer
         } else {
-            SUBDIV_REC_SIZE
+            14 // without end pointer
         }
     }
 }
