@@ -10,22 +10,22 @@ inputs:
   # ==========================================================================
 
   # Routes (couche principale — la plus volumineuse)
-  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Voies ferrées
-  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Pistes d'aérodrome
-  - path: "${DATA_ROOT}/TRANSPORT/PISTE_D_AERODROME.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/PISTE_D_AERODROME.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Transport par câble (téléphériques, télésièges)
-  - path: "${DATA_ROOT}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -34,12 +34,12 @@ inputs:
   # ==========================================================================
 
   # Communes (POI chef-lieu + polygone limites)
-  - path: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Zones d'habitation
-  - path: "${DATA_ROOT}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     generalize:
@@ -52,17 +52,17 @@ inputs:
   # ==========================================================================
 
   # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
-  - path: "${DATA_ROOT}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
-  - path: "${DATA_ROOT}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Détails hydrographiques (POI : sources, cascades, etc.)
-  - path: "${DATA_ROOT}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -71,37 +71,37 @@ inputs:
   # ==========================================================================
 
   # Bâtiments (polygon — couche volumineuse)
-  - path: "${DATA_ROOT}/BATI/BATIMENT.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/BATIMENT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Cimetières
-  - path: "${DATA_ROOT}/BATI/CIMETIERE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CIMETIERE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Constructions linéaires (murs, digues)
-  - path: "${DATA_ROOT}/BATI/CONSTRUCTION_LINEAIRE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_LINEAIRE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Constructions ponctuelles (châteaux d'eau, monuments)
-  - path: "${DATA_ROOT}/BATI/CONSTRUCTION_PONCTUELLE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_PONCTUELLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Pylônes (POI)
-  - path: "${DATA_ROOT}/BATI/PYLONE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/PYLONE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Terrains de sport
-  - path: "${DATA_ROOT}/BATI/TERRAIN_DE_SPORT.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/TERRAIN_DE_SPORT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Lignes orographiques (FME 07-OROGRAPHIE)
-  - path: "${DATA_ROOT}/BATI/LIGNE_OROGRAPHIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/LIGNE_OROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -110,7 +110,7 @@ inputs:
   # ==========================================================================
 
   # Zones de végétation (forêts, haies — couche volumineuse)
-  - path: "${DATA_ROOT}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -119,12 +119,12 @@ inputs:
   # ==========================================================================
 
   # Zones d'activité ou d'intérêt (zones industrielles, touristiques)
-  - path: "${DATA_ROOT}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   # Lignes électriques
-  - path: "${DATA_ROOT}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -133,7 +133,7 @@ inputs:
   # ==========================================================================
 
   # Forêts publiques (ONF)
-  - path: "${DATA_ROOT}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -142,7 +142,7 @@ inputs:
   # ==========================================================================
 
   # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
-  - path: "${DATA_ROOT}/LIEUX_NOMMES/TOPONYMIE.shp"
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/TOPONYMIE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
@@ -150,13 +150,13 @@ inputs:
   # COURBES DE NIVEAU (produit IGN séparé)
   # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
   # ==========================================================================
-  - path: "${CONTOURS_DATA_ROOT}/**/COURBE_*.shp"
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
     layer_alias: "COURBE"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # ==========================================================================
@@ -174,47 +174,47 @@ inputs:
   - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
     layer_alias: "osm_amenity"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Shop POIs (boulangeries, supermarchés, etc.) ---
   - path: "${OSM_DATA_ROOT}/gpkg/*-shop-points.gpkg"
     layer_alias: "osm_shop"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Natural features linéaires (arêtes, crêtes, falaises) ---
   - path: "${OSM_DATA_ROOT}/gpkg/*-natural-lines.gpkg"
     layer_alias: "osm_natural_lines"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Natural features ponctuelles (grottes, rochers, dolines) ---
   - path: "${OSM_DATA_ROOT}/gpkg/*-natural-points.gpkg"
     layer_alias: "osm_natural_points"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Tourism viewpoints ---
   - path: "${OSM_DATA_ROOT}/gpkg/*-tourism-points.gpkg"
     layer_alias: "osm_tourism"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : pipeline/data/randonnee/FRANCE-GR.shp (tracké dans git)
+  # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
   # Déjà en EPSG:4326 — pas de reprojection nécessaire
   # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
   # ==========================================================================
-  - path: "${RANDO_DATA_ROOT}/FRANCE-GR.shp"
+  - path: "${HIKING_TRAILS_DATA_ROOT}/FRANCE-GR.shp"
     layer_alias: "FRANCE_GR"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
 output:

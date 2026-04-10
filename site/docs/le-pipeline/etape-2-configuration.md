@@ -20,50 +20,64 @@ Ces trois fichiers fonctionnent ensemble mais sont séparés pour permettre la r
 C'est le fichier central qui pilote `mpforge` :
 
 ```yaml
-# france-bdtopo.yaml
+# sources-shp.yaml
 version: 1
 
 # --- Grille de tuilage ---
 grid:
   cell_size: 0.15        # Taille de cellule en degrés (~16.5 km)
-  overlap: 0.01          # Chevauchement entre tuiles (évite les artefacts)
-  origin: [-5.0, 41.0]   # Coin sud-ouest de la grille (optionnel)
+  overlap: 0.005         # Léger chevauchement pour éviter les artefacts aux bords
 
 # --- Sources de données ---
 inputs:
-  # Option A : Shapefiles (un fichier par couche)
-  - path: "data/bdtopo/2026/v3.0/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
-  - path: "data/bdtopo/2026/v3.0/D038/HYDROGRAPHIE/*.shp"
+  # BDTOPO Shapefiles — multi-zones via brace expansion
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
 
-  # Option B : GeoPackage (toutes les couches dans un fichier)
-  - path: "data/bdtopo/2026/v3.0/D038/BDTOPO.gpkg"
-    layers:
-      - "batiment"
-      - "troncon_de_route"
-      - "cours_d_eau"
-      - "plan_d_eau"
-      - "zone_vegetation"
-      - "lieu_dit_non_habite"
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
 
-  # Option C : Wildcards (tous les shapefiles d'un dossier)
-  - path: "data/bdtopo/**/*.shp"
+  # Courbes de niveau — wildcards + brace expansion
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # OSM POIs — données régionales, filtrées sur les communes des zones sélectionnées
+  - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
+    layer_alias: "osm_amenity"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 
 # --- Sortie ---
 output:
-  directory: "output/tiles/"
-  filename_pattern: "{col:03}_{row:03}.mp"   # Zero-padded à 3 chiffres
-  field_mapping_path: "configs/bdtopo-mapping.yaml"
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
+  overwrite: true
+  base_id: ${BASE_ID}
 
 # --- Header Polish Map ---
 header:
-  template: "configs/header_template.mp"
+  name: "BDTOPO-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2025"
+  levels: "5"
+  level0: "24"
+  level1: "22"
+  level2: "20"
+  level3: "18"
+  level4: "16"
+  routing: "Y"
 
-# --- Filtres optionnels ---
-filters:
-  bbox: [-5.0, 41.0, 10.0, 51.5]  # France métropolitaine
+# Règles de transformation BDTOPO → types Garmin
+rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
 
 # --- Comportement en cas d'erreur ---
-error_handling: "continue"   # "continue" ou "fail-fast"
+error_handling: "continue"
 ```
 
 ### Variables d'environnement
@@ -81,10 +95,13 @@ output:
 ```
 
 ```bash
-export DATA_ROOT=/data/bdtopo/2026/v3.0/D038
-export CONTOURS_DATA_ROOT=/data/contours
-export OUTPUT_DIR=/output
+export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12
+export CONTOURS_DATA_ROOT=./pipeline/data/contours
+export OSM_DATA_ROOT=./pipeline/data/osm
+export HIKING_TRAILS_DATA_ROOT=./pipeline/data/hiking-trails
+export OUTPUT_DIR=./pipeline/output/2025/v2025.12/D038
 export BASE_ID=38
+export ZONES=D038
 
 mpforge build --config config.yaml --jobs 8
 ```
@@ -96,6 +113,26 @@ mpforge build --config config.yaml --jobs 8
     ```
 
 Seuls les noms POSIX valides sont reconnus : lettres, chiffres et underscores, commençant par une lettre ou un underscore (ex: `DATA_ROOT`, `_MY_VAR`). Les patterns comme `${123}` ou `${foo bar}` sont ignorés.
+
+### Brace expansion (multi-zones)
+
+En plus des wildcards classiques (`*`, `?`, `**`), mpforge supporte la **brace expansion** dans les chemins de fichiers. Cela permet de cibler plusieurs sous-dossiers sans matcher tout le contenu d'un répertoire :
+
+```yaml
+inputs:
+  # Un seul département
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  # Avec ZONES=D038 → résolu en : data/.../D038/TRANSPORT/TRONCON_DE_ROUTE.shp
+
+  # Multi-départements
+  # Avec ZONES=D038,D069 → résolu en 2 entrées :
+  #   data/.../D038/TRANSPORT/TRONCON_DE_ROUTE.shp
+  #   data/.../D069/TRANSPORT/TRONCON_DE_ROUTE.shp
+```
+
+Le fichier de configuration `sources-shp.yaml` du projet utilise cette syntaxe pour toutes les couches BDTOPO. Le script `build-garmin-map.sh` se charge de définir les variables `ZONES`, `DATA_ROOT`, etc. automatiquement depuis ses paramètres CLI.
+
+La brace expansion fonctionne aussi dans `spatial_filter.source` : les géométries de tous les fichiers matchés sont automatiquement unies en un seul filtre spatial.
 
 ### Paramètres de la grille
 
@@ -242,32 +279,27 @@ Pour intégrer les données OpenStreetMap, ajoutez des entrées PBF dans la sect
 
 ```yaml
 inputs:
-  # --- Sources BD TOPO (existantes) ---
-  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  # --- Sources BD TOPO (multi-zones via brace expansion) ---
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
-  # --- Sources OSM PBF ---
-  # Nécessite : export OSM_CONFIG_FILE=pipeline/configs/osm/osmconf.ini
-  # Nécessite : export OSM_MAX_TMPFILE_SIZE=1024
-  # Recommandé : export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
+  # --- Sources OSM GPKG ---
+  # Les PBF Geofabrik sont pré-convertis en GPKG par download-bdtopo.sh (--with-osm)
+  # Le spatial_filter utilise les communes de TOUTES les zones sélectionnées
 
   # Amenity POIs (restaurants, pharmacies, parking, etc.)
-  - path: "${OSM_DATA_ROOT}/**/*.osm.pbf"
-    layers: ["points"]
+  - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
     layer_alias: "osm_amenity"
-    attribute_filter: "amenity IS NOT NULL"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # Shop POIs (boulangeries, supermarchés, etc.)
-  - path: "${OSM_DATA_ROOT}/**/*.osm.pbf"
-    layers: ["points"]
+  - path: "${OSM_DATA_ROOT}/gpkg/*-shop-points.gpkg"
     layer_alias: "osm_shop"
-    attribute_filter: "shop IS NOT NULL"
     spatial_filter:
-      source: "${DATA_ROOT}/ADMINISTRATIF/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 ```
 

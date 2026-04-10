@@ -4,7 +4,21 @@ C'est l'étape finale du pipeline logiciel : `imgforge` compile toutes les tuile
 
 ---
 
-## Commande de base
+## Via le script de build (recommandé)
+
+Si vous utilisez `build-garmin-map.sh`, la compilation est automatique (étape 2/2). Le script passe tous les paramètres imgforge :
+
+```bash
+# Tout-en-un : mpforge + imgforge
+./scripts/build-garmin-map.sh --zones D038 --jobs 4
+
+# Personnaliser imgforge via le script
+./scripts/build-garmin-map.sh --zones D038,D069 \
+    --family-id 1100 --series-name "IGN-BDTOPO-MAP" \
+    --levels "24,22,20,18,16" --no-dem
+```
+
+## Commande imgforge directe
 
 ```bash
 imgforge build output/tiles/ --output output/gmapsupp.img --jobs 8
@@ -23,23 +37,19 @@ imgforge va :
 Pour une carte de qualité production avec toutes les options :
 
 ```bash
-imgforge build output/tiles/ \
-    --output output/gmapsupp.img \
-    --jobs 8 \
-    --family-id 1234 \
-    --product-id 1 \
-    --series-name "BDTOPO France" \
-    --family-name "IGN BDTOPO" \
-    --area-name "France métropolitaine" \
-    --country-name "France" \
-    --country-abbr "FRA" \
-    --copyright-message "IGN BDTOPO 2026 - Licence Etalab 2.0" \
-    --product-version 200 \
-    --latin1 \
-    --reduce-point-density 3.0 \
-    --min-size-polygon 8 \
-    --typ-file resources/bdtopo.typ \
-    --dem ./data/srtm_hgt/ \
+imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
+    --output ./pipeline/output/2025/v2025.12/D038/img/gmapsupp.img \
+    --jobs 4 \
+    --family-id 1100 --product-id 1 \
+    --family-name "IGN-BDTOPO-D038-v2025.12" \
+    --series-name "IGN-BDTOPO-MAP" \
+    --code-page 1252 --lower-case \
+    --levels "24,22,20,18,16" \
+    --route \
+    --typ-file pipeline/resources/typfiles/I2023100.typ \
+    --copyright-message "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap" \
+    --dem ./pipeline/data/dem/D038/ \
+    --dem-source-srs EPSG:2154 \
     --keep-going
 ```
 
@@ -88,9 +98,11 @@ Le fichier TYP définit le rendu visuel : couleurs des routes, motifs de remplis
 ### DEM / Hill Shading
 
 ```bash
---dem ./data/srtm_hgt/                  # Données SRTM (HGT)
-# ou
---dem ./data/bdaltiv2/ --dem-source-srs EPSG:2154  # BDAltiv2 (ASC, Lambert 93)
+--dem ./pipeline/data/dem/D038/                    # BDAltiv2 (ASC, Lambert 93)
+--dem-source-srs EPSG:2154
+
+# Multi-zones : un --dem par département
+--dem ./pipeline/data/dem/D038/ --dem ./pipeline/data/dem/D069/ --dem-source-srs EPSG:2154
 ```
 
 Active l'ombrage du relief et les profils d'altitude sur les GPS compatibles.
@@ -127,16 +139,16 @@ Chaque valeur correspond à un niveau de zoom (dans l'ordre de `--levels`). Plus
 #### Exemple complet avec DEM optimisé
 
 ```bash
-imgforge build output/tiles/ \
-    --output output/gmapsupp.img \
-    --jobs 8 \
-    --dem ./data/bdaltiv2/D038/ \
+imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
+    --output ./pipeline/output/2025/v2025.12/D038/img/gmapsupp.img \
+    --jobs 4 \
+    --dem ./pipeline/data/dem/D038/ \
     --dem-source-srs EPSG:2154 \
     --dem-dists 3,3,4,6,8,12,16,24,32 \
     --dem-interpolation bicubic \
-    --latin1 \
-    --levels "24,20,16" \
-    --typ-file resources/bdtopo.typ \
+    --code-page 1252 --lower-case \
+    --levels "24,22,20,18,16" \
+    --typ-file pipeline/resources/typfiles/I2023100.typ \
     --keep-going \
     -vv
 ```

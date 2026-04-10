@@ -1214,6 +1214,115 @@ impl SourceReader {
         })
     }
 
+    /// Build a spatial filter geometry from a pattern that may contain brace expansion
+    /// or glob wildcards (e.g., `data/{D038,D069}/COMMUNE.shp`).
+    ///
+    /// Resolves the pattern to concrete file paths, loads geometries from each,
+    /// unions everything into a single filter geometry, then applies the buffer.
+    pub fn build_spatial_filter_from_pattern(
+        source_pattern: &str,
+        buffer_distance: f64,
+    ) -> Result<SpatialFilterGeometry> {
+        use crate::config::expand_braces;
+
+        // If no brace/glob markers, delegate to the single-file method
+        if !source_pattern.contains('{') && !source_pattern.contains('*') && !source_pattern.contains('?') {
+            return Self::build_spatial_filter_geometry(source_pattern, buffer_distance);
+        }
+
+        // Expand braces then glob each resulting pattern
+        let expanded = expand_braces(source_pattern);
+        let mut resolved_paths: Vec<std::path::PathBuf> = Vec::new();
+        for pat in &expanded {
+            let matches: Vec<std::path::PathBuf> = glob::glob(pat)
+                .with_context(|| format!("Invalid glob pattern in spatial_filter.source: {}", pat))?
+                .filter_map(|e| e.ok())
+                .collect();
+            resolved_paths.extend(matches);
+        }
+
+        if resolved_paths.is_empty() {
+            return Err(anyhow!(
+                "No files matched spatial_filter.source pattern: {}",
+                source_pattern
+            ));
+        }
+
+        if resolved_paths.len() == 1 {
+            return Self::build_spatial_filter_geometry(
+                &resolved_paths[0].to_string_lossy(),
+                buffer_distance,
+            );
+        }
+
+        info!(
+            pattern = %source_pattern,
+            files = resolved_paths.len(),
+            "Building multi-file spatial filter geometry"
+        );
+
+        // Collect geometries from all matched files
+        let mut all_geometries: Vec<gdal::vector::Geometry> = Vec::new();
+        let mut srs_def: Option<String> = None;
+
+        for path in &resolved_paths {
+            let path_str = path.to_string_lossy();
+            let dataset = Dataset::open(path.as_path())
+                .with_context(|| format!("Failed to open spatial filter source: {}", path_str))?;
+            let mut layer = dataset.layer(0)
+                .with_context(|| format!("Failed to access layer 0 in: {}", path_str))?;
+
+            // Capture SRS from first file
+            if srs_def.is_none() {
+                srs_def = layer.spatial_ref().and_then(|srs| {
+                    srs.auth_code().ok().map(|code| format!("EPSG:{}", code))
+                });
+            }
+
+            for feature in layer.features() {
+                if let Some(g) = feature.geometry() {
+                    all_geometries.push(g.clone());
+                }
+            }
+        }
+
+        if all_geometries.is_empty() {
+            return Err(anyhow!(
+                "No geometries found across {} spatial filter source files",
+                resolved_paths.len()
+            ));
+        }
+
+        let united_count = all_geometries.len();
+        let geom = binary_tree_union(all_geometries)?;
+
+        let buffered = if buffer_distance != 0.0 {
+            geom.buffer(buffer_distance, 30)
+                .with_context(|| format!("Buffer({}) failed on union geometry", buffer_distance))?
+        } else {
+            geom
+        };
+
+        let envelope = buffered.envelope();
+
+        info!(
+            pattern = %source_pattern,
+            files = resolved_paths.len(),
+            features_united = united_count,
+            buffer_m = buffer_distance,
+            "Multi-file spatial filter geometry built"
+        );
+
+        let wkb = buffered.wkb()
+            .with_context(|| "Failed to serialize spatial filter geometry to WKB")?;
+
+        Ok(SpatialFilterGeometry {
+            wkb,
+            srs: srs_def,
+            envelope: [envelope.MinX, envelope.MinY, envelope.MaxX, envelope.MaxY],
+        })
+    }
+
     /// Load features intersecting a single tile from all sources.
     ///
     /// Uses `set_spatial_filter_rect()` to leverage GDAL's native spatial filtering.

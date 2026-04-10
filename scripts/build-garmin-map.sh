@@ -5,7 +5,7 @@
 #
 # Enchaîne mpforge build et imgforge build pour produire une carte Garmin :
 #
-#   1. Prépare la config YAML (fournie ou générée depuis DATA_ROOT)
+#   1. Résout les chemins data depuis les paramètres (zones, année, version)
 #   2. Lance mpforge build (génère les tuiles .mp)
 #   3. Vérifie le code de sortie et le rapport JSON
 #   4. Lance imgforge build (compile .mp → gmapsupp.img)
@@ -13,7 +13,7 @@
 #
 # Pipeline : download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
 #
-# Prérequis : mpforge (ou cd tools/mpforge && cargo build --release), imgforge (idem tools/imgforge)
+# Prérequis : mpforge, imgforge (ou cargo build --release dans tools/*)
 # =============================================================================
 
 set -euo pipefail
@@ -21,26 +21,42 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration par défaut
 # ---------------------------------------------------------------------------
-SCRIPT_VERSION="2.0.0"
-DATA_ROOT="./pipeline/data/bdtopo"
-CONTOURS_DATA_ROOT="./pipeline/data/courbes"
-RANDO_DATA_ROOT="./pipeline/data/randonnee"
-OUTPUT_DIR="./pipeline/output"
-REPORT_FILE=""              # calculé après parse_args (dépend de OUTPUT_DIR)
-IMGFORGE_REPORT_FILE=""     # calculé après parse_args
+SCRIPT_VERSION="3.0.0"
+
+# Paramètres géographiques
+ZONES=""                # D038 | D038,D069 | (obligatoire)
+YEAR=""                 # 2025 (auto-détecté si vide)
+VERSION=""              # v2025.12 (auto-détecté si vide)
+BASE_ID=""              # Auto-calculé depuis le premier département
+
+# Chemins racine
+DATA_DIR="./pipeline/data"
+OUTPUT_BASE="./pipeline/output"
+
+# mpforge
+CONFIG_FILE=""          # si vide : utilise sources-shp.yaml avec envsubst
 JOBS=8
+
+# imgforge
+FAMILY_ID=1100
+PRODUCT_ID=1
+FAMILY_NAME=""          # Auto-calculé : IGN-BDTOPO-{ZONES}-{VERSION}
+SERIES_NAME="IGN-BDTOPO-MAP"
+CODE_PAGE=1252
+LEVELS="24,22,20,18,16"
+TYP_FILE="pipeline/resources/typfiles/I2023100.typ"
+COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+
+# Contrôle
 DRY_RUN=false
-CONFIG_FILE=""              # si vide : génération automatique depuis DATA_ROOT
-RULES_FILE="${RULES_FILE:-}" # si vide : auto-découverte de bdtopo-garmin-rules.yaml
-FAMILY_ID=6324              # remplace MKGMAP_FAMILY_ID
-DESCRIPTION="BDTOPO Garmin" # remplace MKGMAP_FAMILY_NAME
-TYP_FILE=""                 # fichier TYP styles (optionnel)
 SKIP_EXISTING=false
-VERBOSE_COUNT=0             # 0=warn, 1=-v, 2=-vv
+VERBOSE_COUNT=0         # 0=warn, 1=-v, 2=-vv
+WITH_ROUTE=true
+WITH_DEM=true
 
 # Binaires résolus
 _MPFORGE=""
-_IMGFORGE=""            # binaire imgforge résolu
+_IMGFORGE=""
 
 # Métriques mpforge
 BUILD_START_TIME=0
@@ -55,17 +71,25 @@ IMGFORGE_TILES_COMPILED=0
 IMGFORGE_TILES_FAILED=0
 IMGFORGE_DURATION=0
 IMGFORGE_IMG_SIZE=0
-IMGFORGE_ROUTING_NODES=0
-IMGFORGE_ROUTING_ARCS=0
 
-# Fichier config temporaire généré automatiquement
+# Fichier config temporaire
 _TMP_CONFIG=""
 
-# État pipeline : tuiles en échec malgré exit 0 de mpforge (error_handling=continue)
+# État pipeline
 PARTIAL_FAILURE=false
 
+# Chemins résolus (calculés dans resolve_paths)
+_DATA_ROOT=""
+_CONTOURS_DATA_ROOT=""
+_DEM_DATA_ROOT=""
+_OSM_DATA_ROOT=""
+_HIKING_TRAILS_DATA_ROOT=""
+_OUTPUT_DIR=""
+_REPORT_FILE=""
+_IMGFORGE_REPORT_FILE=""
+
 # ---------------------------------------------------------------------------
-# Nettoyage — supprime le config temporaire si interruption (SIGINT/SIGTERM/EXIT)
+# Nettoyage
 # ---------------------------------------------------------------------------
 cleanup_trap() {
     if [[ -n "$_TMP_CONFIG" && -f "$_TMP_CONFIG" ]]; then
@@ -94,42 +118,54 @@ show_help() {
 build-garmin-map.sh — Pipeline mpforge → imgforge → gmapsupp.img
 
 USAGE :
-    ./scripts/build-garmin-map.sh [OPTIONS]
+    ./scripts/build-garmin-map.sh --zones D038 [OPTIONS]
+    ./scripts/build-garmin-map.sh --zones D038,D069 --year 2025 --version v2025.12
 
-OPTIONS :
-    --config FILE           Config YAML mpforge (défaut: génération auto depuis --data-root)
-    --rules FILE            Fichier de règles YAML (défaut: auto-découverte bdtopo-garmin-rules.yaml)
+OPTIONS GÉOGRAPHIQUES :
+    --zones ZONES           Départements (obligatoire) : D038 | D038,D069 | D001,D038,D039
+    --year YYYY             Année BDTOPO (défaut: auto-détecté)
+    --version vYYYY.MM      Version BDTOPO (défaut: auto-détecté)
+    --base-id N             Base ID Garmin (défaut: premier code département)
+
+CHEMINS :
+    --data-dir DIR          Racine des données (défaut: ./pipeline/data)
+    --output-base DIR       Base des sorties (défaut: ./pipeline/output)
+    --config FILE           Config YAML mpforge custom (défaut: sources-shp.yaml)
+
+MPFORGE :
     --jobs N                Parallélisation (défaut: 8)
-    --output DIR            Répertoire de sortie tiles/ + gmapsupp.img (défaut: ./pipeline/output)
-    --imgforge FILE     Chemin binaire imgforge (défaut: auto-découverte)
-    --family-id N           Family ID Garmin (défaut: 6324)
-    --description STR       Description de la carte (défaut: "BDTOPO Garmin")
-    --typ FILE              Fichier TYP styles personnalisés (optionnel)
-    --data-root DIR         Racine des données BDTOPO (défaut: ./pipeline/data/bdtopo)
-    --contours-root DIR     Racine des courbes de niveau (défaut: ./pipeline/data/courbes)
-    --skip-existing         Passer les tuiles déjà présentes (idempotence)
-    --dry-run               Simuler sans exécuter les commandes
+    --skip-existing         Passer les tuiles .mp déjà présentes
+
+IMGFORGE :
+    --family-id N           Family ID Garmin (défaut: 1100)
+    --product-id N          Product ID Garmin (défaut: 1)
+    --family-name STR       Nom de la carte (défaut: auto IGN-BDTOPO-{ZONES}-{VERSION})
+    --series-name STR       Nom de la série (défaut: IGN-BDTOPO-MAP)
+    --code-page N           Code page encodage (défaut: 1252)
+    --levels STR            Niveaux de zoom (défaut: 24,22,20,18,16)
+    --typ FILE              Fichier TYP styles (défaut: pipeline/resources/typfiles/I2023100.typ)
+    --copyright STR         Message copyright
+    --no-route              Désactiver le routage
+    --no-dem                Désactiver le DEM (relief ombré)
+
+CONTRÔLE :
+    --dry-run               Simuler sans exécuter
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
-    --version               Version du script
+    --version-info          Version du script
     -h, --help              Aide
 
 EXEMPLES :
-    ./scripts/build-garmin-map.sh                                     # Auto-découverte de tout
-    ./scripts/build-garmin-map.sh --data-root pipeline/data/bdtopo/2025/v2025.12/D038
-    ./scripts/build-garmin-map.sh --config pipeline/configs/france-bdtopo.yaml --jobs 16
-    ./scripts/build-garmin-map.sh --dry-run                          # Simuler le pipeline
-    ./scripts/build-garmin-map.sh --skip-existing --jobs 4           # Reprise partielle
+    # Un département
+    ./scripts/build-garmin-map.sh --zones D038
 
-PRÉREQUIS :
-    mpforge   (ou cargo build --release dans tools/mpforge/)
-    imgforge  (ou cargo build --release dans tools/imgforge/)
+    # Multi-départements
+    ./scripts/build-garmin-map.sh --zones D038,D069 --jobs 4
 
-STRUCTURE DE SORTIE :
-    ./pipeline/output/
-    ├── tiles/              ← tuiles .mp générées par mpforge
-    ├── gmapsupp.img        ← carte Garmin finale générée par imgforge
-    ├── mpforge-report.json ← rapport mpforge
-    └── imgforge-report.json ← rapport imgforge
+    # Forcer année/version
+    ./scripts/build-garmin-map.sh --zones D038 --year 2025 --version v2025.12
+
+    # Dry-run pour vérifier les chemins
+    ./scripts/build-garmin-map.sh --zones D038,D069 --dry-run
 EOF
     exit 0
 }
@@ -140,37 +176,135 @@ EOF
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --zones)         ZONES="$2"; shift 2 ;;
+            --year)          YEAR="$2"; shift 2 ;;
+            --version)       VERSION="$2"; shift 2 ;;
+            --base-id)       BASE_ID="$2"; shift 2 ;;
+            --data-dir)      DATA_DIR="$2"; shift 2 ;;
+            --output-base)   OUTPUT_BASE="$2"; shift 2 ;;
             --config)        CONFIG_FILE="$2"; shift 2 ;;
-            --rules)         RULES_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
-            --output)        OUTPUT_DIR="$2"; shift 2 ;;
-            --imgforge)  _IMGFORGE="$2"; shift 2 ;;
-            --family-id)     FAMILY_ID="$2"; shift 2 ;;
-            --description)   DESCRIPTION="$2"; shift 2 ;;
-            --typ)           TYP_FILE="$2"; shift 2 ;;
-            --data-root)     DATA_ROOT="$2"; shift 2 ;;
-            --contours-root) CONTOURS_DATA_ROOT="$2"; shift 2 ;;
             --skip-existing) SKIP_EXISTING=true; shift ;;
+            --family-id)     FAMILY_ID="$2"; shift 2 ;;
+            --product-id)    PRODUCT_ID="$2"; shift 2 ;;
+            --family-name)   FAMILY_NAME="$2"; shift 2 ;;
+            --series-name)   SERIES_NAME="$2"; shift 2 ;;
+            --code-page)     CODE_PAGE="$2"; shift 2 ;;
+            --levels)        LEVELS="$2"; shift 2 ;;
+            --typ)           TYP_FILE="$2"; shift 2 ;;
+            --copyright)     COPYRIGHT="$2"; shift 2 ;;
+            --no-route)      WITH_ROUTE=false; shift ;;
+            --no-dem)        WITH_DEM=false; shift ;;
             --dry-run)       DRY_RUN=true; shift ;;
             -v|--verbose)    VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
             -vv)             VERBOSE_COUNT=2; shift ;;
-            --version)       echo "build-garmin-map.sh v${SCRIPT_VERSION}"; exit 0 ;;
+            --version-info)  echo "build-garmin-map.sh v${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help)       show_help ;;
             *)               log_error "Option inconnue : $1"; exit 1 ;;
         esac
     done
 
-    REPORT_FILE="${OUTPUT_DIR}/mpforge-report.json"
-    IMGFORGE_REPORT_FILE="${OUTPUT_DIR}/imgforge-report.json"
+    if [[ -z "$ZONES" ]]; then
+        log_error "Le paramètre --zones est obligatoire"
+        log_error "  Exemple : --zones D038 ou --zones D038,D069"
+        exit 1
+    fi
 }
 
 # ---------------------------------------------------------------------------
-# Auto-découverte binaire mpforge
+# Auto-détection année/version depuis l'arborescence data
 # ---------------------------------------------------------------------------
-find_mpforge() {
+auto_detect_year_version() {
+    local bdtopo_dir="${DATA_DIR}/bdtopo"
+
+    if [[ ! -d "$bdtopo_dir" ]]; then
+        log_error "Répertoire BDTOPO introuvable : $bdtopo_dir"
+        log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        exit 1
+    fi
+
+    # Auto-détection année (prend la plus récente)
+    if [[ -z "$YEAR" ]]; then
+        YEAR=$(ls -1d "${bdtopo_dir}"/[0-9]* 2>/dev/null | sort -r | head -1 | xargs basename 2>/dev/null || echo "")
+        if [[ -z "$YEAR" ]]; then
+            log_error "Aucune année détectée dans : $bdtopo_dir"
+            log_error "  → Spécifiez --year YYYY"
+            exit 1
+        fi
+        log_info "Année auto-détectée : $YEAR"
+    fi
+
+    # Auto-détection version (prend la plus récente)
+    if [[ -z "$VERSION" ]]; then
+        VERSION=$(ls -1d "${bdtopo_dir}/${YEAR}"/v* 2>/dev/null | sort -r | head -1 | xargs basename 2>/dev/null || echo "")
+        if [[ -z "$VERSION" ]]; then
+            log_error "Aucune version détectée dans : ${bdtopo_dir}/${YEAR}"
+            log_error "  → Spécifiez --version vYYYY.MM"
+            exit 1
+        fi
+        log_info "Version auto-détectée : $VERSION"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Résolution des chemins
+# ---------------------------------------------------------------------------
+resolve_paths() {
+    _DATA_ROOT="${DATA_DIR}/bdtopo/${YEAR}/${VERSION}"
+    _CONTOURS_DATA_ROOT="${DATA_DIR}/contours"
+    _DEM_DATA_ROOT="${DATA_DIR}/dem"
+    _OSM_DATA_ROOT="${DATA_DIR}/osm"
+    _HIKING_TRAILS_DATA_ROOT="${DATA_DIR}/hiking-trails"
+
+    # Nom de la carte pour l'output
+    local zones_label
+    zones_label=$(echo "$ZONES" | tr ',' '-')
+    local map_name="${zones_label}-${VERSION}"
+
+    _OUTPUT_DIR="${OUTPUT_BASE}/${YEAR}/${VERSION}/${zones_label}"
+    _REPORT_FILE="${_OUTPUT_DIR}/mpforge-report.json"
+    _IMGFORGE_REPORT_FILE="${_OUTPUT_DIR}/imgforge-report.json"
+
+    # Auto-calcul base_id depuis le premier département
+    if [[ -z "$BASE_ID" ]]; then
+        local first_zone
+        first_zone=$(echo "$ZONES" | cut -d',' -f1)
+        # Extraire le numéro : D038 → 38, D02A → 2 (cas Corse simplifié)
+        BASE_ID=$(echo "$first_zone" | sed 's/^D0*//' | sed 's/[A-Za-z]//g')
+        if [[ -z "$BASE_ID" ]]; then
+            BASE_ID=1
+        fi
+    fi
+
+    # Auto-calcul family-name
+    if [[ -z "$FAMILY_NAME" ]]; then
+        FAMILY_NAME="IGN-BDTOPO-${zones_label}-${VERSION}"
+    fi
+
+    # Validation : vérifier que les données existent pour chaque zone
+    local missing=false
+    IFS=',' read -ra zone_array <<< "$ZONES"
+    for zone in "${zone_array[@]}"; do
+        if [[ ! -d "${_DATA_ROOT}/${zone}" ]]; then
+            log_error "Données BDTOPO manquantes pour ${zone} : ${_DATA_ROOT}/${zone}"
+            missing=true
+        fi
+    done
+
+    if [[ "$missing" == true ]]; then
+        log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Auto-découverte binaire mpforge / imgforge
+# ---------------------------------------------------------------------------
+find_binary() {
+    local name="$1"
     local candidates=(
-        "./tools/mpforge/target/release/mpforge"
-        "../tools/mpforge/target/release/mpforge"
+        "./tools/${name}/target/release/${name}"
+        "../tools/${name}/target/release/${name}"
     )
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
@@ -178,50 +312,10 @@ find_mpforge() {
             return 0
         fi
     done
-    if command -v mpforge &>/dev/null; then
-        command -v mpforge
+    if command -v "$name" &>/dev/null; then
+        command -v "$name"
         return 0
     fi
-    echo ""
-}
-
-# ---------------------------------------------------------------------------
-# Auto-découverte binaire imgforge
-# ---------------------------------------------------------------------------
-find_imgforge() {
-    local candidates=(
-        "./tools/imgforge/target/release/imgforge"
-        "../tools/imgforge/target/release/imgforge"
-    )
-    for c in "${candidates[@]}"; do
-        if [[ -x "$c" ]]; then
-            echo "$c"
-            return 0
-        fi
-    done
-    if command -v imgforge &>/dev/null; then
-        command -v imgforge
-        return 0
-    fi
-    echo ""
-}
-
-# ---------------------------------------------------------------------------
-# Auto-découverte fichier de règles
-# ---------------------------------------------------------------------------
-find_rules_file() {
-    local candidates=(
-        "./tools/mpforge/rules/bdtopo-garmin-rules.yaml"
-        "../tools/mpforge/rules/bdtopo-garmin-rules.yaml"
-        "./rules/bdtopo-garmin-rules.yaml"
-        "./bdtopo-garmin-rules.yaml"
-    )
-    for c in "${candidates[@]}"; do
-        if [[ -f "$c" ]]; then
-            echo "$c"
-            return 0
-        fi
-    done
     echo ""
 }
 
@@ -233,55 +327,41 @@ check_prerequisites() {
 
     # --- mpforge ---
     if [[ -z "$_MPFORGE" ]]; then
-        _MPFORGE=$(find_mpforge)
+        _MPFORGE=$(find_binary mpforge)
     fi
-
     if [[ -z "$_MPFORGE" ]]; then
-        if command -v cargo &>/dev/null; then
-            log_warn "mpforge non trouvé comme binaire — fallback 'cargo run --release'"
-            _MPFORGE="__CARGO_RUN__"
-        else
-            log_error "mpforge introuvable (ni binaire ni cargo)"
-            log_error "  → Compilez avec : cd tools/mpforge && cargo build --release"
-            exit 1
-        fi
-    else
-        log_ok "mpforge : $_MPFORGE"
+        log_error "mpforge introuvable"
+        log_error "  → Compilez avec : cd tools/mpforge && cargo build --release"
+        exit 1
     fi
+    log_ok "mpforge : $_MPFORGE"
 
     # --- imgforge ---
     if [[ -z "$_IMGFORGE" ]]; then
-        _IMGFORGE=$(find_imgforge)
+        _IMGFORGE=$(find_binary imgforge)
     fi
-
     if [[ -z "$_IMGFORGE" ]]; then
-        if command -v cargo &>/dev/null; then
-            log_warn "imgforge non trouvé comme binaire — fallback 'cargo run --release'"
-            _IMGFORGE="__CARGO_RUN_IMGFORGE__"
-        else
-            log_error "imgforge introuvable"
-            log_error "  → Compilez avec : cd tools/imgforge && cargo build --release"
-            exit 1
-        fi
-    else
-        log_ok "imgforge : $_IMGFORGE"
+        log_error "imgforge introuvable"
+        log_error "  → Compilez avec : cd tools/imgforge && cargo build --release"
+        exit 1
     fi
+    log_ok "imgforge : $_IMGFORGE"
 
-    # --- Validation fichier config (si fourni explicitement) ---
-    if [[ -n "$CONFIG_FILE" && ! -f "$CONFIG_FILE" ]]; then
-        log_error "Config mpforge introuvable : $CONFIG_FILE"
+    # --- TYP file ---
+    if [[ -n "$TYP_FILE" && ! -f "$TYP_FILE" ]]; then
+        log_error "Fichier TYP introuvable : $TYP_FILE"
         exit 1
     fi
 
-    # --- Validation fichier rules (si fourni explicitement) ---
-    if [[ -n "$RULES_FILE" && ! -f "$RULES_FILE" ]]; then
-        log_error "Fichier de règles introuvable : $RULES_FILE"
+    # --- Config file (si custom) ---
+    if [[ -n "$CONFIG_FILE" && ! -f "$CONFIG_FILE" ]]; then
+        log_error "Config mpforge introuvable : $CONFIG_FILE"
         exit 1
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Extraction valeur entière depuis rapport JSON (bash natif, sans jq)
+# Extraction valeur entière depuis rapport JSON (sans jq)
 # ---------------------------------------------------------------------------
 json_extract_int() {
     local json_file="$1" key="$2" default="${3:-0}"
@@ -292,188 +372,69 @@ json_extract_int() {
 }
 
 # ---------------------------------------------------------------------------
-# Affichage des erreurs depuis le rapport JSON (AC2)
+# Affichage des erreurs depuis le rapport JSON
 # ---------------------------------------------------------------------------
 show_report_errors() {
     local report="$1"
     [[ -f "$report" ]] || return 0
 
     log_error "── Erreurs du rapport JSON ──────────────────────────────"
-    # Extraire les messages d'erreur avec contexte tuile si disponible
     if grep -q '"tile":' "$report" 2>/dev/null; then
-        # Format imgforge : errors[{tile, error}] — afficher avec contexte tuile
         grep -o '"tile":"[^"]*","error":"[^"]*"' "$report" 2>/dev/null \
             | sed 's/"tile":"//;s/","error":"/ : /;s/"$//' \
             | while IFS= read -r msg; do
                 [[ -n "$msg" ]] && log_error "  • tuile $msg"
             done || true
     else
-        # Format mpforge : "message":"..."
         grep -o '"message":"[^"]*"\|"error":"[^"]*"' "$report" 2>/dev/null \
             | sed 's/"message":"//;s/"error":"//;s/"$//' \
             | while IFS= read -r msg; do
                 [[ -n "$msg" ]] && log_error "  • $msg"
             done || true
     fi
-
-    local failed
-    failed=$(json_extract_int "$report" "tiles_failed" 0)
-    [[ "$failed" -gt 0 ]] && log_error "  $failed tuile(s) en échec"
     log_error "─────────────────────────────────────────────────────────"
 }
 
 # ---------------------------------------------------------------------------
-# Génération dynamique du config YAML mpforge depuis DATA_ROOT
-# Option 1 recommandée (Dev Notes) : découverte auto des .shp (21 couches BDTOPO)
-# Les règles sont injectées dans le YAML (pas de --rules CLI dans mpforge)
-# ---------------------------------------------------------------------------
-generate_config() {
-    local data_dir="$1"
-    local out_dir="$2"
-    local rules_path="$3"
-    local tmp_config
-    tmp_config=$(mktemp /tmp/mpforge-config-XXXXXX.yaml)
-    _TMP_CONFIG="$tmp_config"
-
-    # 21 couches BDTOPO dans l'ordre FME
-    local -a LAYERS=(
-        "TRANSPORT/TRONCON_DE_ROUTE"
-        "TRANSPORT/TRONCON_DE_VOIE_FERREE"
-        "TRANSPORT/PISTE_D_AERODROME"
-        "TRANSPORT/TRANSPORT_PAR_CABLE"
-        "ADMINISTRATIF/COMMUNE"
-        "LIEUX_NOMMES/ZONE_D_HABITATION"
-        "HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE"
-        "HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE"
-        "HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE"
-        "BATI/BATIMENT"
-        "BATI/CIMETIERE"
-        "BATI/CONSTRUCTION_LINEAIRE"
-        "BATI/CONSTRUCTION_PONCTUELLE"
-        "BATI/PYLONE"
-        "BATI/TERRAIN_DE_SPORT"
-        "BATI/LIGNE_OROGRAPHIQUE"
-        "OCCUPATION_DU_SOL/ZONE_DE_VEGETATION"
-        "SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET"
-        "SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE"
-        "ZONES_REGLEMENTEES/FORET_PUBLIQUE"
-        "LIEUX_NOMMES/TOPONYMIE"
-    )
-
-    {
-        echo "# Config générée automatiquement par build-garmin-map.sh v${SCRIPT_VERSION}"
-        echo "# Source des données : $data_dir"
-        echo "# Généré le : $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "version: 1"
-        echo ""
-        echo "grid:"
-        echo "  cell_size: 0.15       # ~16.5 km par tuile"
-        echo "  overlap: 0.005        # Léger chevauchement"
-        echo ""
-        echo "inputs:"
-
-        for layer in "${LAYERS[@]}"; do
-            local layer_name
-            layer_name=$(basename "$layer")
-            while IFS= read -r shp; do
-                echo "  - path: \"${shp}\""
-                echo "    source_srs: \"EPSG:2154\""
-                echo "    target_srs: \"EPSG:4326\""
-            done < <(find "$data_dir" -name "${layer_name}.shp" -type f 2>/dev/null | sort)
-        done
-
-        echo ""
-        echo "output:"
-        echo "  directory: \"${out_dir}/tiles/\""
-        echo "  filename_pattern: \"tile_{col}_{row}.mp\""
-        echo "  overwrite: true"
-        echo ""
-        echo "rules: \"${rules_path}\""
-        echo ""
-        echo "error_handling: \"continue\""
-    } > "$tmp_config"
-
-    echo "$tmp_config"
-}
-
-# ---------------------------------------------------------------------------
-# Préparation de la configuration mpforge (résolution règles + config)
+# Préparation de la configuration mpforge
 # ---------------------------------------------------------------------------
 prepare_config() {
     log_step "Préparation de la configuration"
 
-    # Config : fournie explicitement ou générée dynamiquement
-    if [[ -n "$CONFIG_FILE" ]]; then
-        # M1 : détecter les placeholders envsubst (${DATA_ROOT}, ${OUTPUT_DIR}…)
-        if grep -qE '\$\{[A-Z_]+\}' "$CONFIG_FILE" 2>/dev/null; then
-            if ! command -v envsubst &>/dev/null; then
-                log_error "Config '$CONFIG_FILE' contient des placeholders \${...} mais 'envsubst' est introuvable"
-                log_error "  → Installez     : apt install gettext-base"
-                log_error "  → Ou substituez : envsubst < $CONFIG_FILE > /tmp/config.yaml"
-                log_error "                    puis relancez avec --config /tmp/config.yaml"
-                exit 1
-            fi
-            local tmp_expanded
-            tmp_expanded=$(mktemp /tmp/mpforge-config-expanded-XXXXXX.yaml)
-            _TMP_CONFIG="$tmp_expanded"
-            export DATA_ROOT CONTOURS_DATA_ROOT RANDO_DATA_ROOT OUTPUT_DIR RULES_FILE
-            envsubst < "$CONFIG_FILE" > "$tmp_expanded"
-            if grep -qE '\$\{[A-Z_]+\}' "$tmp_expanded" 2>/dev/null; then
-                log_warn "Des placeholders non résolus subsistent — vérifiez vos variables d'environnement (DATA_ROOT, OUTPUT_DIR…)"
-            fi
-            CONFIG_FILE="$tmp_expanded"
-            log_info "Config    : $CONFIG_FILE (placeholders substitués via envsubst)"
-        else
-            log_info "Config    : $CONFIG_FILE (fournie explicitement)"
-        fi
-    else
-        # M2 : résolution des règles uniquement pour la génération dynamique de config
-        if [[ -z "$RULES_FILE" ]]; then
-            RULES_FILE=$(find_rules_file)
-            if [[ -z "$RULES_FILE" ]]; then
-                log_error "Fichier de règles bdtopo-garmin-rules.yaml introuvable"
-                log_error "  → Utilisez : --rules /chemin/vers/bdtopo-garmin-rules.yaml"
-                exit 1
-            fi
-            log_info "Règles    : $RULES_FILE (auto-découverte)"
-        else
-            log_info "Règles    : $RULES_FILE"
-        fi
-
-        log_info "Config    : génération automatique depuis $DATA_ROOT"
-
-        if [[ ! -d "$DATA_ROOT" ]]; then
-            log_error "DATA_ROOT introuvable : $DATA_ROOT"
-            log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh"
-            log_error "  → Ou spécifiez : --data-root /chemin/vers/bdtopo"
-            exit 1
-        fi
-
-        local shp_count
-        shp_count=$(find "$DATA_ROOT" -name "*.shp" -type f 2>/dev/null | wc -l)
-        if [[ "$shp_count" -eq 0 ]]; then
-            log_error "Aucun fichier .shp trouvé dans : $DATA_ROOT"
-            log_error "  → Vérifiez que les archives BDTOPO sont extraites"
-            exit 1
-        fi
-        log_info "  → $shp_count fichier(s) .shp disponible(s)"
-
-        # L3 : mkdir déplacé dans run_mpforge() — valide aussi pour --config explicite
-        CONFIG_FILE=$(generate_config "$DATA_ROOT" "$OUTPUT_DIR" "$RULES_FILE")
-
-        local layers_in_config
-        layers_in_config=$(grep -c "^  - path:" "$CONFIG_FILE" 2>/dev/null || echo 0)
-        log_ok "Config générée : $CONFIG_FILE ($layers_in_config couche(s) BDTOPO)"
-
-        if [[ "$layers_in_config" -eq 0 ]]; then
-            log_error "Aucune couche BDTOPO reconnue dans : $DATA_ROOT"
-            log_error "  → Vérifiez la structure : $DATA_ROOT/TRANSPORT/TRONCON_DE_ROUTE.shp"
-            exit 1
-        fi
+    if [[ -z "$CONFIG_FILE" ]]; then
+        CONFIG_FILE="pipeline/configs/ign-bdtopo/sources-shp.yaml"
     fi
 
-    log_info "Jobs      : $JOBS"
-    log_info "Sortie    : $OUTPUT_DIR"
+    log_info "Config source : $CONFIG_FILE"
+    log_info "Zones         : $ZONES"
+    log_info "Données       : $_DATA_ROOT"
+    log_info "Sortie        : $_OUTPUT_DIR"
+    log_info "Base ID       : $BASE_ID"
+    log_info "Jobs          : $JOBS"
+
+    # Exporter les variables pour la substitution interne de mpforge
+    export DATA_ROOT="$_DATA_ROOT"
+    export CONTOURS_DATA_ROOT="$_CONTOURS_DATA_ROOT"
+    export OSM_DATA_ROOT="$_OSM_DATA_ROOT"
+    export HIKING_TRAILS_DATA_ROOT="$_HIKING_TRAILS_DATA_ROOT"
+    export OUTPUT_DIR="$_OUTPUT_DIR"
+    export BASE_ID
+    export ZONES
+
+    # Compter les .shp disponibles
+    IFS=',' read -ra zone_array <<< "$ZONES"
+    local shp_count=0
+    for zone in "${zone_array[@]}"; do
+        local count
+        count=$(find "${_DATA_ROOT}/${zone}" -name "*.shp" -type f 2>/dev/null | wc -l)
+        shp_count=$(( shp_count + count ))
+    done
+
+    if [[ "$shp_count" -eq 0 ]]; then
+        log_error "Aucun fichier .shp trouvé dans les zones : $ZONES"
+        exit 1
+    fi
+    log_ok "$shp_count fichier(s) .shp disponible(s) dans ${#zone_array[@]} zone(s)"
 }
 
 # ---------------------------------------------------------------------------
@@ -482,36 +443,28 @@ prepare_config() {
 run_mpforge() {
     log_step "Étape 1/2 — mpforge build"
 
-    mkdir -p "$OUTPUT_DIR"
+    mkdir -p "${_OUTPUT_DIR}/mp"
 
-    # Construction de la commande
-    local -a cmd=()
-
-    if [[ "$_MPFORGE" == "__CARGO_RUN__" ]]; then
-        # Fallback cargo run (mode dev)
-        local mpforge_dir
-        mpforge_dir=$(find . -maxdepth 3 -name "Cargo.toml" \
-                      -exec grep -l 'name.*=.*"mpforge"' {} \; 2>/dev/null \
-                      | head -1 | xargs dirname 2>/dev/null || echo "")
-
-        if [[ -z "$mpforge_dir" ]]; then
-            # Essai d'un répertoire standard
-            mpforge_dir="./tools/mpforge"
+    # Nettoyage des .mp existants (sauf si --skip-existing)
+    if [[ "$SKIP_EXISTING" == false ]]; then
+        local existing_mp
+        existing_mp=$(find "${_OUTPUT_DIR}/mp" -name "*.mp" -type f 2>/dev/null | wc -l)
+        if [[ "$existing_mp" -gt 0 ]]; then
+            log_info "Nettoyage de $existing_mp tuile(s) .mp existante(s)"
+            rm -f "${_OUTPUT_DIR}"/mp/*.mp
         fi
-        cmd=(env PROJ_DATA=/usr/share/proj
-             cargo run --manifest-path "${mpforge_dir}/Cargo.toml" --release --)
-    else
-        cmd=("$_MPFORGE")
     fi
 
-    cmd+=(build
-          --config "${CONFIG_FILE}"
-          --report "${REPORT_FILE}"
-          --jobs   "${JOBS}")
+    local -a cmd=(
+        "$_MPFORGE" build
+        --config "$CONFIG_FILE"
+        --report "$_REPORT_FILE"
+        --jobs "$JOBS"
+    )
 
-    [[ "$SKIP_EXISTING"  == true ]] && cmd+=(--skip-existing)
-    [[ "$VERBOSE_COUNT"  -ge 1   ]] && cmd+=(-v)
-    [[ "$VERBOSE_COUNT"  -ge 2   ]] && cmd+=(-v)
+    [[ "$SKIP_EXISTING" == true ]] && cmd+=(--skip-existing)
+    [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
+    [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
 
     log_info "Commande : ${cmd[*]}"
 
@@ -524,26 +477,24 @@ run_mpforge() {
     local exit_code=0
     "${cmd[@]}" || exit_code=$?
 
-    # Arrêt immédiat sur échec mpforge
     if [[ "$exit_code" -ne 0 ]]; then
         log_error "mpforge a échoué (exit code : $exit_code)"
-        show_report_errors "$REPORT_FILE"
+        show_report_errors "$_REPORT_FILE"
         log_error "Pipeline arrêté — imgforge NON lancé"
         exit "$exit_code"
     fi
 
     log_ok "mpforge terminé avec succès"
 
-    # Lecture des métriques depuis le rapport JSON
-    if [[ -f "$REPORT_FILE" ]]; then
-        TILES_TOTAL=$(json_extract_int "$REPORT_FILE" "tiles_generated" 0)
-        TILES_FAILED=$(json_extract_int "$REPORT_FILE" "tiles_failed" 0)
+    # Métriques
+    if [[ -f "$_REPORT_FILE" ]]; then
+        TILES_TOTAL=$(json_extract_int "$_REPORT_FILE" "tiles_generated" 0)
+        TILES_FAILED=$(json_extract_int "$_REPORT_FILE" "tiles_failed" 0)
         TILES_SUCCESS=$(( TILES_TOTAL - TILES_FAILED ))
-        MPFORGE_DURATION=$(json_extract_int "$REPORT_FILE" "duration_seconds" 0)
-        FEATURES_PROCESSED=$(json_extract_int "$REPORT_FILE" "features_processed" 0)
+        MPFORGE_DURATION=$(json_extract_int "$_REPORT_FILE" "duration_seconds" 0)
+        FEATURES_PROCESSED=$(json_extract_int "$_REPORT_FILE" "features_processed" 0)
         log_info "  Tuiles   : ${TILES_SUCCESS}/${TILES_TOTAL} (${TILES_FAILED} échec(s))"
         [[ "$FEATURES_PROCESSED" -gt 0 ]] && log_info "  Features : ${FEATURES_PROCESSED}"
-        # Tuiles en échec avec error_handling=continue → carte incomplète sans exit non-zéro
         if [[ "$TILES_FAILED" -gt 0 ]]; then
             log_warn "${TILES_FAILED} tuile(s) en échec — le gmapsupp.img sera incomplet"
             PARTIAL_FAILURE=true
@@ -554,36 +505,51 @@ run_mpforge() {
 # ---------------------------------------------------------------------------
 # Étape 2/2 — Lancement imgforge build
 # ---------------------------------------------------------------------------
-run_imgforge_build() {
+run_imgforge() {
     log_step "Étape 2/2 — imgforge build"
 
-    local tiles_dir="${OUTPUT_DIR}/tiles"
+    local mp_dir="${_OUTPUT_DIR}/mp"
+    mkdir -p "${_OUTPUT_DIR}/img"
 
-    # Construction de la commande
-    local -a cmd=()
-
-    if [[ "$_IMGFORGE" == "__CARGO_RUN_IMGFORGE__" ]]; then
-        # Fallback cargo run (mode dev)
-        local imgforge_dir
-        imgforge_dir=$(find . -maxdepth 3 -name "Cargo.toml" \
-                       -exec grep -l 'name.*=.*"imgforge"' {} \; 2>/dev/null \
-                       | head -1 | xargs dirname 2>/dev/null || echo "")
-        if [[ -z "$imgforge_dir" ]]; then
-            imgforge_dir="./tools/imgforge"
-        fi
-        cmd=(cargo run --manifest-path "${imgforge_dir}/Cargo.toml" --release --)
-    else
-        cmd=("$_IMGFORGE")
+    # Nettoyage des .img existants
+    local existing_img
+    existing_img=$(find "${_OUTPUT_DIR}/img" -type f 2>/dev/null | wc -l)
+    if [[ "$existing_img" -gt 0 ]]; then
+        log_info "Nettoyage de $existing_img fichier(s) existant(s) dans img/"
+        rm -f "${_OUTPUT_DIR}"/img/*.*
     fi
 
-    cmd+=(build
-          "${tiles_dir}"
-          -o "${OUTPUT_DIR}/gmapsupp.img"
-          --family-id "${FAMILY_ID}"
-          --family-name "${DESCRIPTION}"
-          -j "${JOBS}")
+    local -a cmd=(
+        "$_IMGFORGE" build "$mp_dir"
+        --output "${_OUTPUT_DIR}/img/gmapsupp.img"
+        --jobs "$JOBS"
+        --family-id "$FAMILY_ID"
+        --product-id "$PRODUCT_ID"
+        --family-name "$FAMILY_NAME"
+        --series-name "$SERIES_NAME"
+        --code-page "$CODE_PAGE"
+        --lower-case
+        --levels "$LEVELS"
+        --copyright-message "$COPYRIGHT"
+    )
 
-    [[ -n "$TYP_FILE" ]] && cmd+=(--typ "${TYP_FILE}")
+    [[ "$WITH_ROUTE" == true ]] && cmd+=(--route)
+    [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
+
+    # DEM : ajouter les répertoires DEM pour chaque zone
+    if [[ "$WITH_DEM" == true ]]; then
+        IFS=',' read -ra zone_array <<< "$ZONES"
+        for zone in "${zone_array[@]}"; do
+            local dem_dir="${_DEM_DATA_ROOT}/${zone}"
+            if [[ -d "$dem_dir" ]]; then
+                cmd+=(--dem "$dem_dir")
+            else
+                log_warn "Données DEM manquantes pour ${zone} : $dem_dir (ignoré)"
+            fi
+        done
+        cmd+=(--dem-source-srs "EPSG:2154")
+    fi
+
     [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
     [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
 
@@ -595,45 +561,42 @@ run_imgforge_build() {
         return 0
     fi
 
-    # Vérifier la présence de tuiles .mp (après dry-run check)
+    # Vérifier la présence de tuiles .mp
     local mp_count
-    mp_count=$(find "$tiles_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
+    mp_count=$(find "$mp_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
     if [[ "$mp_count" -eq 0 ]]; then
-        log_error "Aucune tuile .mp trouvée dans : $tiles_dir"
+        log_error "Aucune tuile .mp trouvée dans : $mp_dir"
         exit 1
     fi
     log_info "  $mp_count tuile(s) .mp à compiler"
 
     local exit_code=0
-    "${cmd[@]}" || exit_code=$?
+    IMGFORGE_NO_OVERVIEW=1 "${cmd[@]}" || exit_code=$?
 
     if [[ "$exit_code" -ne 0 ]]; then
         log_error "imgforge a échoué (exit code : $exit_code)"
-        show_report_errors "$IMGFORGE_REPORT_FILE"
-        log_error "Pipeline arrêté"
+        show_report_errors "$_IMGFORGE_REPORT_FILE"
         exit "$exit_code"
     fi
 
-    [[ ! -f "${OUTPUT_DIR}/gmapsupp.img" ]] && {
-        log_error "gmapsupp.img non produit dans : $OUTPUT_DIR"
+    if [[ ! -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
+        log_error "gmapsupp.img non produit dans : ${_OUTPUT_DIR}/img/"
         exit 1
-    }
+    fi
 
-    log_ok "gmapsupp.img produit : ${OUTPUT_DIR}/gmapsupp.img"
+    log_ok "gmapsupp.img produit : ${_OUTPUT_DIR}/img/gmapsupp.img"
 
-    # Lecture métriques rapport imgforge
-    if [[ -f "$IMGFORGE_REPORT_FILE" ]]; then
-        IMGFORGE_TILES_COMPILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_compiled" 0)
-        IMGFORGE_TILES_FAILED=$(json_extract_int "$IMGFORGE_REPORT_FILE" "tiles_failed" 0)
-        IMGFORGE_DURATION=$(json_extract_int "$IMGFORGE_REPORT_FILE" "duration_seconds" 0)
-        IMGFORGE_IMG_SIZE=$(json_extract_int "$IMGFORGE_REPORT_FILE" "img_size_bytes" 0)
-        IMGFORGE_ROUTING_NODES=$(json_extract_int "$IMGFORGE_REPORT_FILE" "routing_nodes" 0)
-        IMGFORGE_ROUTING_ARCS=$(json_extract_int "$IMGFORGE_REPORT_FILE" "routing_arcs" 0)
+    # Métriques
+    if [[ -f "$_IMGFORGE_REPORT_FILE" ]]; then
+        IMGFORGE_TILES_COMPILED=$(json_extract_int "$_IMGFORGE_REPORT_FILE" "tiles_compiled" 0)
+        IMGFORGE_TILES_FAILED=$(json_extract_int "$_IMGFORGE_REPORT_FILE" "tiles_failed" 0)
+        IMGFORGE_DURATION=$(json_extract_int "$_IMGFORGE_REPORT_FILE" "duration_seconds" 0)
+        IMGFORGE_IMG_SIZE=$(json_extract_int "$_IMGFORGE_REPORT_FILE" "img_size_bytes" 0)
         log_info "  Tuiles compilées : ${IMGFORGE_TILES_COMPILED} (${IMGFORGE_TILES_FAILED} échec(s))"
-        [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]] && {
+        if [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]]; then
             log_warn "${IMGFORGE_TILES_FAILED} tuile(s) en échec — carte incomplète"
             PARTIAL_FAILURE=true
-        }
+        fi
     fi
 }
 
@@ -645,17 +608,20 @@ show_summary() {
 
     local total_duration=$(( SECONDS - BUILD_START_TIME ))
 
+    echo -e "  ${BOLD}Zones          :${NC}  $ZONES"
+    echo -e "  ${BOLD}Millésime      :${NC}  $YEAR / $VERSION"
+    echo ""
+
     if [[ "$DRY_RUN" == false ]]; then
         echo -e "  ${BOLD}[Phase 1 — mpforge]${NC}"
         echo -e "  Tuiles générées    : ${TILES_SUCCESS}/${TILES_TOTAL}"
-        if [[ "$TILES_FAILED" -gt 0 ]]; then
+        [[ "$TILES_FAILED" -gt 0 ]] && \
             echo -e "  ${YELLOW}${BOLD}Tuiles en échec  :${NC}  ${TILES_FAILED}"
-        fi
         [[ "$FEATURES_PROCESSED" -gt 0 ]] && \
             echo -e "  Features           : ${FEATURES_PROCESSED}"
         if [[ "$MPFORGE_DURATION" -gt 0 ]]; then
             local m=$(( MPFORGE_DURATION / 60 )) s=$(( MPFORGE_DURATION % 60 ))
-            echo -e "  mpforge        : ${m}m${s}s"
+            echo -e "  Durée mpforge      : ${m}m${s}s"
         fi
 
         echo ""
@@ -663,13 +629,9 @@ show_summary() {
         echo -e "  Tuiles compilées   : ${IMGFORGE_TILES_COMPILED}"
         [[ "$IMGFORGE_TILES_FAILED" -gt 0 ]] && \
             echo -e "  ${YELLOW}Tuiles en échec  : ${IMGFORGE_TILES_FAILED}${NC}"
-        [[ "$IMGFORGE_ROUTING_NODES" -gt 0 ]] && \
-            echo -e "  Nœuds routage      : ${IMGFORGE_ROUTING_NODES}"
-        [[ "$IMGFORGE_ROUTING_ARCS" -gt 0 ]] && \
-            echo -e "  Arcs routage       : ${IMGFORGE_ROUTING_ARCS}"
         if [[ "$IMGFORGE_DURATION" -gt 0 ]]; then
             local im=$(( IMGFORGE_DURATION / 60 )) is=$(( IMGFORGE_DURATION % 60 ))
-            echo -e "  imgforge       : ${im}m${is}s"
+            echo -e "  Durée imgforge     : ${im}m${is}s"
         fi
         echo ""
     fi
@@ -677,18 +639,18 @@ show_summary() {
     local total_m=$(( total_duration / 60 )) total_s=$(( total_duration % 60 ))
     echo -e "  ${BOLD}Temps total     :${NC}  ${total_m}m${total_s}s"
 
-    if [[ -f "${OUTPUT_DIR}/gmapsupp.img" ]]; then
+    if [[ -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
         local size_bytes
         if [[ "$IMGFORGE_IMG_SIZE" -gt 0 ]]; then
             size_bytes="$IMGFORGE_IMG_SIZE"
         else
-            size_bytes=$(stat -c%s "${OUTPUT_DIR}/gmapsupp.img" 2>/dev/null || echo 0)
+            size_bytes=$(stat -c%s "${_OUTPUT_DIR}/img/gmapsupp.img" 2>/dev/null || echo 0)
         fi
         local size_hr
         size_hr=$(numfmt --to=iec-i --suffix=B "$size_bytes" 2>/dev/null \
                   || echo "${size_bytes} octets")
         echo -e "  ${BOLD}Taille img      :${NC}  ${size_hr}"
-        echo -e "  ${BOLD}Emplacement     :${NC}  ${OUTPUT_DIR}/gmapsupp.img"
+        echo -e "  ${BOLD}Emplacement     :${NC}  ${_OUTPUT_DIR}/img/gmapsupp.img"
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -703,7 +665,7 @@ show_summary() {
 main() {
     echo -e "${BOLD}${CYAN}"
     echo "  ┌─────────────────────────────────────────────────────────────────┐"
-    echo "  │  build-garmin-map.sh — Pipeline mpforge → imgforge      │"
+    echo "  │  build-garmin-map.sh — Pipeline mpforge → imgforge             │"
     echo "  │  BDTOPO → tuiles .mp → gmapsupp.img · v${SCRIPT_VERSION}                │"
     echo "  └─────────────────────────────────────────────────────────────────┘"
     echo -e "${NC}"
@@ -711,17 +673,19 @@ main() {
     parse_args "$@"
     BUILD_START_TIME=$SECONDS
 
+    auto_detect_year_version
+    resolve_paths
     check_prerequisites
     prepare_config
     run_mpforge
-    run_imgforge_build
+    run_imgforge
     show_summary
 
     if [[ "$PARTIAL_FAILURE" == true ]]; then
-        log_warn "Pipeline terminé avec avertissements — carte partielle dans : ${OUTPUT_DIR}/"
+        log_warn "Pipeline terminé avec avertissements — carte partielle dans : ${_OUTPUT_DIR}/"
         exit 2
     fi
-    log_ok "Pipeline terminé — carte disponible dans : ${OUTPUT_DIR}/"
+    log_ok "Pipeline terminé — carte disponible dans : ${_OUTPUT_DIR}/img/"
 }
 
 main "$@"

@@ -11,7 +11,7 @@
 - **Parallélisation** : Traitement multi-thread pour datasets massifs (BDTOPO 35 GB)
 - **Tuilage spatial** : Découpage automatique en grille avec chevauchement configurable
 - **Filtrage** : Bounding box pour extraire des zones géographiques
-- **Wildcards** : Patterns de fichiers (`data/*.shp`, `data/**/*.gpkg`)
+- **Wildcards & Brace Expansion** : Patterns de fichiers (`data/*.shp`, `data/**/*.gpkg`, `data/{D038,D069}/*.shp`)
 - **Robustesse** : Modes `continue` (tolérant) ou `fail-fast` (strict)
 - **CI/CD** : Rapports JSON structurés et codes de sortie
 - **Performance** : Barre de progression temps réel et logs multi-niveaux
@@ -176,7 +176,8 @@ grid:
 inputs:
   # Shapefiles
   - path: "data/roads.shp"
-  - path: "data/*.shp"     # Wildcards supportés
+  - path: "data/*.shp"                      # Wildcards supportés
+  - path: "data/{D038,D069}/roads.shp"      # Brace expansion (multi-zones)
 
   # GeoPackage multi-couches
   - path: "data/bdtopo.gpkg"
@@ -216,6 +217,39 @@ Le champ `filename_pattern` contrôle le nommage des fichiers tuiles exportés. 
 **Variables :** `{col}` (index colonne), `{row}` (index ligne), `{seq}` (compteur 1-based).
 **Aliases :** `{x}` = `{col}`, `{y}` = `{row}`.
 **Zero-padding :** `{var:N}` pad à N chiffres avec des zéros à gauche.
+
+### Brace Expansion (multi-zones)
+
+mpforge supporte la **brace expansion** dans les chemins de fichiers, en plus des wildcards classiques (`*`, `?`, `**`). Cela permet de cibler précisément plusieurs sous-dossiers sans matcher tout le contenu d'un répertoire :
+
+```yaml
+inputs:
+  # Sélectionner les routes de 2 départements spécifiques
+  - path: "data/bdtopo/{D038,D069}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+
+  # Combiné avec des variables d'environnement
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+```
+
+Avec `ZONES=D038,D069`, mpforge :
+
+1. Substitue les variables : `data/bdtopo/{D038,D069}/HYDROGRAPHIE/...`
+2. Expande les accolades en 2 patterns : `data/bdtopo/D038/...` et `data/bdtopo/D069/...`
+3. Résout chaque pattern via glob (support `*` et `**`)
+
+La brace expansion fonctionne aussi dans `spatial_filter.source`, ce qui permet de construire un filtre spatial multi-zones :
+
+```yaml
+inputs:
+  - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+```
+
+Les géométries de tous les fichiers matchés sont automatiquement unies en un seul filtre spatial.
+
+**Rétro-compatibilité** : un chemin sans accolades fonctionne exactement comme avant.
 
 ### Exemples de configuration
 

@@ -624,7 +624,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                     buffer_m = sf.buffer,
                     "Building spatial filter geometry for source"
                 );
-                let built = SourceReader::build_spatial_filter_geometry(&sf.source, sf.buffer)
+                let built = SourceReader::build_spatial_filter_from_pattern(&sf.source, sf.buffer)
                     .with_context(|| format!(
                         "Failed to build spatial filter geometry from '{}' for source index {}",
                         sf.source, idx

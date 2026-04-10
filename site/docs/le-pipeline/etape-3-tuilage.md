@@ -4,35 +4,64 @@ C'est l'étape centrale du pipeline : `mpforge` lit les données géospatiales, 
 
 ---
 
-## Commande de base
+## Via le script de build (recommandé)
+
+Le script `build-garmin-map.sh` orchestre mpforge et imgforge en une seule commande :
 
 ```bash
-mpforge build --config configs/france-bdtopo.yaml --jobs 8
+# Un département
+./scripts/build-garmin-map.sh --zones D038
+
+# Multi-départements
+./scripts/build-garmin-map.sh --zones D038,D069 --jobs 4
+
+# Dry-run pour vérifier les chemins et commandes
+./scripts/build-garmin-map.sh --zones D038,D069 --dry-run
 ```
 
-C'est tout. mpforge va :
+Le script :
 
-1. Lire toutes les sources déclarées dans la configuration
-2. Indexer les features dans un R-tree spatial
-3. Calculer la grille de tuilage selon `cell_size` et `overlap`
-4. Distribuer les tuiles sur 8 workers parallèles
-5. Pour chaque tuile : clipper les géométries, appliquer le field mapping, exporter le `.mp`
-6. Afficher une barre de progression en temps réel
+- Auto-détecte l'année et la version des données BDTOPO
+- Exporte les variables d'environnement (`DATA_ROOT`, `ZONES`, `OUTPUT_DIR`...) pour mpforge
+- Enchaîne mpforge (tuilage) puis imgforge (compilation) automatiquement
+- Gère le DEM multi-zones (un `--dem` par département)
+
+Voir `./scripts/build-garmin-map.sh --help` pour toutes les options.
+
+## Commande mpforge directe
+
+Pour un contrôle fin, mpforge peut être appelé directement :
+
+```bash
+export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12
+export ZONES=D038
+export OUTPUT_DIR=./pipeline/output/2025/v2025.12/D038
+export BASE_ID=38
+
+mpforge build --config pipeline/configs/ign-bdtopo/sources-shp.yaml --jobs 8
+```
+
+mpforge va :
+
+1. Substituer les variables `${DATA_ROOT}`, `${ZONES}`, etc. dans le YAML
+2. Expandre les brace patterns `{D038,D069}` en chemins concrets
+3. Résoudre les wildcards (`*`, `**`) via glob
+4. Indexer les features dans un R-tree spatial
+5. Calculer la grille de tuilage selon `cell_size` et `overlap`
+6. Distribuer les tuiles sur N workers parallèles
+7. Pour chaque tuile : clipper les géométries, appliquer les règles, exporter le `.mp`
 
 ### Filtrage spatial (optionnel)
 
-Si des sources volumineuses (courbes de niveau, MNT...) sont configurées avec un `spatial_filter`, mpforge pré-filtre les features par une géométrie de référence avant le tuilage. Cela réduit drastiquement le temps de traitement :
+Si des sources volumineuses (courbes de niveau, OSM...) sont configurées avec un `spatial_filter`, mpforge pré-filtre les features par une géométrie de référence avant le tuilage. En multi-zones, les géométries de tous les fichiers matchés sont automatiquement unies :
 
 ```yaml
-# Dans la configuration YAML
 inputs:
-  - path: "data/COURBES_NIVEAU.shp"
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
     spatial_filter:
-      source: "data/COMMUNE.shp"
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 ```
-
-Voir la [documentation mpforge](../le-projet/mpforge.md#filtrage-spatial) pour les détails.
 
 ## Sortie
 

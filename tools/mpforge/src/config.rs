@@ -571,12 +571,48 @@ impl Config {
     }
 }
 
+/// Expand brace patterns like `{a,b,c}` into multiple strings.
+///
+/// Supports a single brace group per pattern (nested braces are not supported).
+/// If no braces are found, returns the original pattern unchanged.
+///
+/// Examples:
+///   `"data/{D038,D001}/TRANSPORT.shp"` → `["data/D038/TRANSPORT.shp", "data/D001/TRANSPORT.shp"]`
+///   `"data/D038/TRANSPORT.shp"` → `["data/D038/TRANSPORT.shp"]`
+pub fn expand_braces(pattern: &str) -> Vec<String> {
+    let Some(open) = pattern.find('{') else {
+        return vec![pattern.to_string()];
+    };
+    let Some(close) = pattern[open..].find('}') else {
+        return vec![pattern.to_string()];
+    };
+    let close = open + close;
+
+    let prefix = &pattern[..open];
+    let suffix = &pattern[close + 1..];
+    let alternatives = &pattern[open + 1..close];
+
+    alternatives
+        .split(',')
+        .map(|alt| format!("{}{}{}", prefix, alt.trim(), suffix))
+        .collect()
+}
+
 /// Resolve wildcard patterns to actual file paths.
+///
+/// Supports brace expansion (`{a,b}`) in addition to standard glob wildcards (`*`, `?`).
+/// Brace expansion is applied first, then each resulting pattern is resolved via glob.
 fn resolve_wildcard_paths(pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
-    let paths: Vec<PathBuf> = glob::glob(pattern)
-        .with_context(|| format!("Invalid glob pattern: {}", pattern))?
-        .filter_map(|entry| entry.ok())
-        .collect();
+    let expanded_patterns = expand_braces(pattern);
+    let mut paths = Vec::new();
+
+    for pat in &expanded_patterns {
+        let matched: Vec<PathBuf> = glob::glob(pat)
+            .with_context(|| format!("Invalid glob pattern: {}", pat))?
+            .filter_map(|entry| entry.ok())
+            .collect();
+        paths.extend(matched);
+    }
 
     if paths.is_empty() {
         warn!(pattern, "No files matched wildcard pattern");
@@ -629,7 +665,7 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     let mut expanded_inputs = Vec::new();
     for input in config.inputs {
         if let Some(pattern) = &input.path {
-            if pattern.contains('*') || pattern.contains('?') {
+            if pattern.contains('*') || pattern.contains('?') || pattern.contains('{') {
                 let resolved = resolve_wildcard_paths(pattern)?;
                 if resolved.is_empty() {
                     warn!(pattern, "Wildcard pattern matched 0 files — input dropped");
@@ -760,7 +796,7 @@ pub fn run_validate(
     let mut expanded_inputs = Vec::new();
     for input in config.inputs {
         if let Some(pattern) = &input.path {
-            if pattern.contains('*') || pattern.contains('?') {
+            if pattern.contains('*') || pattern.contains('?') || pattern.contains('{') {
                 let resolved = resolve_wildcard_paths(pattern)?;
                 if resolved.is_empty() {
                     warnings.push(format!("Wildcard pattern '{}' matched 0 files", pattern));
@@ -953,17 +989,42 @@ pub fn run_validate(
             let mut all_ok = true;
             let mut details_parts = Vec::new();
             for (i, source) in &sf_sources {
-                let path = std::path::Path::new(source);
-                if path.exists() {
-                    details_parts.push(format!("input #{}: {}", i, source));
+                // Support brace/glob patterns in spatial_filter.source
+                if source.contains('{') || source.contains('*') || source.contains('?') {
+                    let expanded = expand_braces(source);
+                    let mut matched = false;
+                    for pat in &expanded {
+                        if let Ok(entries) = glob::glob(pat) {
+                            if entries.filter_map(|e| e.ok()).next().is_some() {
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if matched {
+                        details_parts.push(format!("input #{}: {} (pattern)", i, source));
+                    } else {
+                        all_ok = false;
+                        let err_msg = format!(
+                            "Input #{}: spatial_filter.source pattern matched no files: {}",
+                            i, source
+                        );
+                        errors.push(err_msg.clone());
+                        details_parts.push(err_msg);
+                    }
                 } else {
-                    all_ok = false;
-                    let err_msg = format!(
-                        "Input #{}: spatial_filter.source file does not exist: {}",
-                        i, source
-                    );
-                    errors.push(err_msg.clone());
-                    details_parts.push(err_msg);
+                    let path = std::path::Path::new(source);
+                    if path.exists() {
+                        details_parts.push(format!("input #{}: {}", i, source));
+                    } else {
+                        all_ok = false;
+                        let err_msg = format!(
+                            "Input #{}: spatial_filter.source file does not exist: {}",
+                            i, source
+                        );
+                        errors.push(err_msg.clone());
+                        details_parts.push(err_msg);
+                    }
                 }
             }
             checks.push(ValidationCheck {
@@ -1726,6 +1787,58 @@ output:
         let pattern_no_match = format!("{}/*.xyz", temp_path.display());
         let resolved_empty = resolve_wildcard_paths(&pattern_no_match).unwrap();
         assert_eq!(resolved_empty.len(), 0);
+
+        // Test brace expansion with glob
+        let sub_a = temp_path.join("A");
+        let sub_b = temp_path.join("B");
+        let sub_c = temp_path.join("C");
+        fs::create_dir_all(&sub_a).unwrap();
+        fs::create_dir_all(&sub_b).unwrap();
+        fs::create_dir_all(&sub_c).unwrap();
+        fs::write(sub_a.join("data.shp"), "").unwrap();
+        fs::write(sub_b.join("data.shp"), "").unwrap();
+        fs::write(sub_c.join("data.shp"), "").unwrap();
+
+        let pattern_braces = format!("{}/{{A,B}}/data.shp", temp_path.display());
+        let resolved_braces = resolve_wildcard_paths(&pattern_braces).unwrap();
+        assert_eq!(resolved_braces.len(), 2);
+        assert!(resolved_braces.iter().any(|p| p.ends_with("A/data.shp")));
+        assert!(resolved_braces.iter().any(|p| p.ends_with("B/data.shp")));
+        // C must not be included
+        assert!(!resolved_braces.iter().any(|p| p.ends_with("C/data.shp")));
+    }
+
+    #[test]
+    fn test_expand_braces() {
+        // Single brace group
+        assert_eq!(
+            expand_braces("data/{D038,D001}/TRANSPORT.shp"),
+            vec!["data/D038/TRANSPORT.shp", "data/D001/TRANSPORT.shp"]
+        );
+
+        // Three alternatives
+        assert_eq!(
+            expand_braces("root/{a,b,c}/file"),
+            vec!["root/a/file", "root/b/file", "root/c/file"]
+        );
+
+        // No braces — passthrough
+        assert_eq!(
+            expand_braces("data/D038/TRANSPORT.shp"),
+            vec!["data/D038/TRANSPORT.shp"]
+        );
+
+        // Unclosed brace — passthrough
+        assert_eq!(
+            expand_braces("data/{D038/TRANSPORT.shp"),
+            vec!["data/{D038/TRANSPORT.shp"]
+        );
+
+        // Braces with spaces (trimmed)
+        assert_eq!(
+            expand_braces("data/{ D038 , D001 }/file"),
+            vec!["data/D038/file", "data/D001/file"]
+        );
     }
 
     // Story 7.4: field_mapping_path tests

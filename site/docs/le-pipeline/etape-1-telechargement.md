@@ -28,24 +28,24 @@ Le script `download-bdtopo.sh` automatise le téléchargement depuis le Géoport
 ### Par département
 
 ```bash
-# Télécharger un département (Isère)
-./scripts/download-bdtopo.sh --zones D038 --data-root ./data/bdtopo
+# Télécharger un département (Isère) avec toutes les données complémentaires
+./scripts/download-bdtopo.sh --zones D038 --with-contours --with-osm --with-dem
 
 # Plusieurs départements
-./scripts/download-bdtopo.sh --zones D038,D073,D074 --data-root ./data/bdtopo
+./scripts/download-bdtopo.sh --zones D038,D069 --with-contours --with-osm --with-dem
 ```
 
 ### Par région
 
 ```bash
 # Auvergne-Rhône-Alpes
-./scripts/download-bdtopo.sh --zones R84 --data-root ./data/bdtopo
+./scripts/download-bdtopo.sh --region ARA --with-contours --with-osm --with-dem
 ```
 
 ### France entière
 
 ```bash
-./scripts/download-bdtopo.sh --zones FRANCE --data-root ./data/bdtopo
+./scripts/download-bdtopo.sh --region FXX --with-contours --with-osm --with-dem
 ```
 
 ## Organisation des données
@@ -53,23 +53,43 @@ Le script `download-bdtopo.sh` automatise le téléchargement depuis le Géoport
 Le script organise automatiquement les fichiers téléchargés :
 
 ```
-data/bdtopo/
-└── 2026/
-    └── v3.0/
-        ├── D038/
-        │   ├── BDTOPO_3-0_TOUSTHEMES_SHP_LAMB93_D038/
-        │   │   ├── TRANSPORT/
-        │   │   │   ├── TRONCON_DE_ROUTE.shp
-        │   │   │   ├── TRONCON_DE_VOIE_FERREE.shp
-        │   │   │   └── ...
-        │   │   ├── HYDROGRAPHIE/
-        │   │   ├── VEGETATION/
-        │   │   ├── BATI/
-        │   │   └── ...
-        │   └── BDTOPO_3-0_TOUSTHEMES_GPKG_LAMB93_D038/
-        │       └── BDTOPO.gpkg
-        └── D073/
-            └── ...
+pipeline/data/
+├── bdtopo/
+│   └── 2025/
+│       └── v2025.12/
+│           ├── D038/
+│           │   ├── ADMINISTRATIF/
+│           │   ├── BATI/
+│           │   ├── HYDROGRAPHIE/
+│           │   ├── LIEUX_NOMMES/
+│           │   ├── OCCUPATION_DU_SOL/
+│           │   ├── SERVICES_ET_ACTIVITES/
+│           │   ├── TRANSPORT/
+│           │   │   ├── TRONCON_DE_ROUTE.shp
+│           │   │   ├── TRONCON_DE_VOIE_FERREE.shp
+│           │   │   └── ...
+│           │   └── ZONES_REGLEMENTEES/
+│           └── D069/
+│               └── ...  (même structure)
+├── contours/
+│   ├── D038/
+│   │   ├── COURBE_0800_6480.shp
+│   │   └── ...
+│   └── D069/
+├── dem/
+│   ├── D038/
+│   │   ├── BDALTIV2_25M_*.asc
+│   │   └── ...
+│   └── D069/
+├── osm/
+│   ├── auvergne-latest.osm.pbf
+│   ├── rhone-alpes-latest.osm.pbf
+│   └── gpkg/
+│       ├── auvergne-latest-amenity-points.gpkg
+│       ├── rhone-alpes-latest-shop-points.gpkg
+│       └── ...
+└── hiking-trails/
+    └── FRANCE-GR.shp
 ```
 
 ## Codes des zones
@@ -112,7 +132,7 @@ Les fichiers HGT sont directement utilisables par imgforge (`--dem ./srtm_hgt/`)
 
 ### BDAltiv2 (IGN) — haute résolution France
 
-Les fichiers ASC au format ESRI ASCII Grid, en projection Lambert 93, sont supportés nativement par imgforge avec reprojection intégrée (`--dem ./bdaltiv2/ --dem-source-srs EPSG:2154`).
+Les fichiers ASC au format ESRI ASCII Grid (25 m), en projection Lambert 93, sont téléchargés automatiquement par `download-bdtopo.sh` avec `--with-dem` et stockés dans `pipeline/data/dem/{zone}/`. imgforge les utilise avec reprojection intégrée (`--dem ./pipeline/data/dem/D038/ --dem-source-srs EPSG:2154`). En multi-zones, le script `build-garmin-map.sh` passe un `--dem` par département.
 
 ## Données OSM (OpenStreetMap)
 
@@ -138,45 +158,41 @@ Le script `download-bdtopo.sh` gère aussi le téléchargement des fichiers `.os
 
 ### Organisation des données OSM
 
+Les fichiers PBF Geofabrik sont automatiquement convertis en GPKG par `download-bdtopo.sh` (`--with-osm`), ce qui élimine les erreurs mémoire du driver GDAL OSM sur les gros PBF.
+
 ```
 pipeline/data/osm/
-├── auvergne-latest.osm.pbf
+├── auvergne-latest.osm.pbf           ← PBF source (conservé)
 ├── rhone-alpes-latest.osm.pbf
-└── ...
+└── gpkg/                             ← GPKG extraits (utilisés par mpforge)
+    ├── auvergne-latest-amenity-points.gpkg
+    ├── auvergne-latest-shop-points.gpkg
+    ├── auvergne-latest-natural-lines.gpkg
+    ├── auvergne-latest-natural-points.gpkg
+    ├── auvergne-latest-tourism-points.gpkg
+    └── ...
 ```
 
-Les fichiers PBF sont directement utilisables par mpforge via le driver GDAL OSM — pas d'extraction nécessaire.
-
-### Configuration OSM requise
-
-Un fichier `osmconf.ini` personnalisé est nécessaire pour exposer les tags OSM (`amenity`, `shop`, `tourism`, `natural`) comme attributs GDAL directs :
-
-```bash
-export OSM_CONFIG_FILE=pipeline/configs/osm/osmconf.ini
-
-# Augmenter le buffer du driver OSM (défaut 100 Mo, nécessaire pour les gros PBF régionaux)
-export OSM_MAX_TMPFILE_SIZE=1024
-
-# Accepter les géométries OSM avec des anneaux non fermés (supprime les warnings GDAL)
-export OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES
-```
-
-Ce fichier est fourni dans `pipeline/configs/osm/osmconf.ini`.
-
-!!! warning "Couche multipolygons non supportée"
-    Seules les couches `points` et `lines` des PBF sont utilisées. La couche `multipolygons` provoque des erreurs mémoire du driver GDAL OSM ("Too many features accumulated"). Les POIs mappés comme polygones dans OSM (grands supermarchés, hôpitaux) ne sont pas capturés.
+Les GPKG sont directement utilisables par mpforge — pas de configuration OSM (`osmconf.ini`) nécessaire pour les GPKG.
 
 ## Courbes de niveau vectorielles
 
 !!! note "DEM et courbes de niveau : ne pas confondre"
     Les **courbes de niveau** (isolignes au pas de 10 m) sont des **données vectorielles** issues des couches altimétriques de l'IGN. Elles sont intégrées au pipeline comme n'importe quelle source de données via la configuration YAML de mpforge. Le **DEM** (BDAltiv2, SRTM) est un modèle numérique de terrain en raster, utilisé par imgforge (`--dem`) pour l'**ombrage du relief** (hill shading) et les **profils d'altitude**. Ce sont deux données complémentaires mais distinctes.
 
-Les courbes de niveau au pas de 10 m sont disponibles sous forme de données vectorielles (Shapefile ou GeoPackage) auprès de l'IGN. Elles peuvent être intégrées au pipeline comme n'importe quelle autre source de données : il suffit de les déclarer dans le fichier de configuration YAML de mpforge.
+Les courbes de niveau au pas de 10 m sont disponibles sous forme de données vectorielles (Shapefile) auprès de l'IGN. Elles sont téléchargées automatiquement par `download-bdtopo.sh` avec l'option `--with-contours` et stockées dans `pipeline/data/contours/{zone}/`.
 
 ```yaml
 inputs:
-  # Courbes de niveau vectorielles IGN
-  - path: "data/courbes_niveau/*.shp"
+  # Courbes de niveau — multi-zones via brace expansion
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 ```
+
+Le `spatial_filter` est important pour les courbes : il restreint le traitement aux communes des zones sélectionnées, évitant de charger des dalles de courbes inutiles.
 
 Les courbes de niveau seront alors découpées en tuiles Polish Map et compilées dans la carte Garmin finale, indépendamment du DEM utilisé par imgforge pour le hill shading.
