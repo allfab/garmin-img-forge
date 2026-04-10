@@ -212,6 +212,127 @@ parse_args() {
 }
 
 # ---------------------------------------------------------------------------
+# Validation des paramètres
+# ---------------------------------------------------------------------------
+validate_params() {
+    local errors=0
+
+    # --- zones : format DXXX (D suivi de 2-3 caractères alphanumériques) ---
+    IFS=',' read -ra zone_array <<< "$ZONES"
+    for zone in "${zone_array[@]}"; do
+        if [[ ! "$zone" =~ ^D[0-9]{2}[0-9A-B]?$ ]]; then
+            log_error "--zones : format invalide '${zone}'"
+            log_error "  Format attendu : D suivi du code département (D038, D02A, D974)"
+            log_error "  Exemples valides : D038 | D069 | D02A | D974"
+            errors=$(( errors + 1 ))
+        fi
+    done
+
+    # --- base-id : validé séparément dans validate_base_id() après resolve_paths ---
+    # (peut être auto-calculé depuis le premier département)
+
+    # --- jobs : entier positif ---
+    if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || [[ "$JOBS" -lt 1 ]]; then
+        log_error "--jobs : doit être un entier positif, reçu '${JOBS}'"
+        errors=$(( errors + 1 ))
+    elif [[ "$JOBS" -gt 64 ]]; then
+        log_warn "--jobs ${JOBS} : valeur élevée, ${JOBS} workers GDAL en parallèle consommeront beaucoup de RAM"
+    fi
+
+    # --- family-id : u16 (0..65535) ---
+    # Raison : le champ Family ID dans le format TDB Garmin est encodé sur 16 bits.
+    # BaseCamp/MapInstall utilisent ce champ pour regrouper les cartes d'une même famille.
+    if ! [[ "$FAMILY_ID" =~ ^[0-9]+$ ]] || [[ "$FAMILY_ID" -gt 65535 ]]; then
+        log_error "--family-id : doit être un entier 0-65535, reçu '${FAMILY_ID}'"
+        log_error "  Raison : encodé sur 16 bits (u16) dans le format TDB Garmin"
+        errors=$(( errors + 1 ))
+    fi
+
+    # --- product-id : u16 (0..65535) ---
+    if ! [[ "$PRODUCT_ID" =~ ^[0-9]+$ ]] || [[ "$PRODUCT_ID" -gt 65535 ]]; then
+        log_error "--product-id : doit être un entier 0-65535, reçu '${PRODUCT_ID}'"
+        log_error "  Raison : encodé sur 16 bits (u16) dans le format TDB Garmin"
+        errors=$(( errors + 1 ))
+    fi
+
+    # --- code-page : valeurs connues ---
+    # Raison : le code page détermine l'encodage des labels dans le fichier IMG.
+    # Les GPS Garmin ne supportent qu'un nombre limité d'encodages.
+    case "$CODE_PAGE" in
+        1252|1250|1251|1253|1254|1255|1256|1257|1258|65001|0)
+            ;; # Valeurs connues et supportées
+        *)
+            log_warn "--code-page ${CODE_PAGE} : valeur inhabituelle"
+            log_warn "  Valeurs courantes : 1252 (Latin-1, Europe occidentale), 65001 (UTF-8)"
+            ;;
+    esac
+
+    # --- levels : format "N,N,N" avec valeurs 1-24, décroissantes ---
+    if [[ -n "$LEVELS" ]]; then
+        if ! [[ "$LEVELS" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+            log_error "--levels : format invalide '${LEVELS}'"
+            log_error "  Format attendu : liste de nombres séparés par des virgules"
+            log_error "  Exemple : 24,22,20,18,16"
+            errors=$(( errors + 1 ))
+        else
+            IFS=',' read -ra level_array <<< "$LEVELS"
+            local prev=99
+            for lvl in "${level_array[@]}"; do
+                if [[ "$lvl" -lt 1 || "$lvl" -gt 24 ]]; then
+                    log_error "--levels : niveau ${lvl} hors intervalle 1-24"
+                    log_error "  Raison : les niveaux de zoom Garmin vont de 1 (le plus large) à 24 (le plus détaillé)"
+                    errors=$(( errors + 1 ))
+                    break
+                fi
+                if [[ "$lvl" -ge "$prev" ]]; then
+                    log_error "--levels : les niveaux doivent être décroissants (${lvl} >= ${prev})"
+                    log_error "  Raison : le premier niveau est le plus détaillé (zoom max), le dernier le plus large"
+                    log_error "  Exemple : 24,22,20,18,16 (détaillé → large)"
+                    errors=$(( errors + 1 ))
+                    break
+                fi
+                prev=$lvl
+            done
+        fi
+    fi
+
+    # --- year : format YYYY ---
+    if [[ -n "$YEAR" && ! "$YEAR" =~ ^[0-9]{4}$ ]]; then
+        log_error "--year : format invalide '${YEAR}', attendu YYYY (ex: 2025)"
+        errors=$(( errors + 1 ))
+    fi
+
+    # --- version : format vYYYY.MM ---
+    if [[ -n "$VERSION" && ! "$VERSION" =~ ^v[0-9]{4}\.[0-9]{1,2}$ ]]; then
+        log_error "--version : format invalide '${VERSION}', attendu vYYYY.MM (ex: v2025.12)"
+        errors=$(( errors + 1 ))
+    fi
+
+    if [[ "$errors" -gt 0 ]]; then
+        log_error "${errors} erreur(s) de validation — abandon"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Validation base_id (après resolve_paths qui peut l'auto-calculer)
+# ---------------------------------------------------------------------------
+validate_base_id() {
+    if ! [[ "$BASE_ID" =~ ^[0-9]+$ ]]; then
+        log_error "base-id : doit être un entier, reçu '${BASE_ID}'"
+        log_error "  Raison : mpforge génère des IDs Garmin = base_id × 10000 + seq"
+        exit 1
+    fi
+    if [[ "$BASE_ID" -lt 1 || "$BASE_ID" -gt 9999 ]]; then
+        log_error "base-id : doit être dans l'intervalle 1-9999, reçu ${BASE_ID}"
+        log_error "  Raison : mpforge génère des IDs Garmin = base_id × 10000 + seq"
+        log_error "  L'ID résultant doit tenir sur 8 chiffres (format IMG Garmin)"
+        log_error "  Exemple : --base-id 38 → IDs 00380001, 00380002, etc."
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Auto-détection année/version depuis l'arborescence data
 # ---------------------------------------------------------------------------
 auto_detect_year_version() {
@@ -673,8 +794,10 @@ main() {
     parse_args "$@"
     BUILD_START_TIME=$SECONDS
 
+    validate_params
     auto_detect_year_version
     resolve_paths
+    validate_base_id
     check_prerequisites
     prepare_config
     run_mpforge
