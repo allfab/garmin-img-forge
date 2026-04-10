@@ -45,7 +45,7 @@ inputs:
     generalize:
       smooth: "chaikin"
       iterations: 1
-      simplify: 0.00003
+      simplify: 0.00005
 
   # ==========================================================================
   # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
