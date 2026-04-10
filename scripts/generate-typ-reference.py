@@ -4,6 +4,7 @@ Parse un fichier TYP texte (I2023100.txt) et génère une page Markdown
 de référence avec des rendus SVG inline pour chaque style.
 """
 
+import argparse
 import re
 import sys
 import html
@@ -377,16 +378,17 @@ def render_table_section(items, section_type):
     return table
 
 
-def generate_markdown(sections, output_path):
+def generate_markdown(sections, output_path, source_name="I2023100.txt"):
     """Génère la page Markdown complète avec tableaux HTML."""
 
+    stem = Path(source_name).stem
     md = []
-    md.append("# Styles TYP — Référence visuelle")
+    md.append(f"# Styles TYP — {stem}")
     md.append("")
-    md.append("Catalogue exhaustif des styles définis dans le fichier TYP `I2023100.txt`.")
+    md.append(f"Catalogue exhaustif des styles définis dans le fichier TYP `{source_name}`.")
     md.append("Chaque style est accompagné d'un aperçu du rendu (motif XPM) et de ses couleurs.")
     md.append("")
-    md.append(f"> **Fichier source** : `pipeline/resources/typfiles/I2023100.txt`")
+    md.append(f"> **Fichier source** : `{source_name}`")
     md.append(f"> **Généré le** : {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
     md.append("")
     md.append("---")
@@ -440,16 +442,38 @@ def generate_markdown(sections, output_path):
 
 def main():
     base = Path(__file__).resolve().parent.parent
-    typ_file = base / "pipeline" / "resources" / "typfiles" / "I2023100.txt"
-    output = base / "site" / "docs" / "reference" / "styles-typ.md"
+
+    parser = argparse.ArgumentParser(
+        description="Génère une page Markdown de référence visuelle à partir d'un fichier TYP texte."
+    )
+    parser.add_argument(
+        "input",
+        nargs="?",
+        default=str(base / "pipeline" / "resources" / "typfiles" / "I2023100.txt"),
+        help="Fichier TYP texte en entrée (défaut: pipeline/resources/typfiles/I2023100.txt)",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Fichier Markdown en sortie (défaut: site/docs/reference/styles-typ.md)",
+    )
+    args = parser.parse_args()
+
+    typ_file = Path(args.input)
+    if args.output:
+        output = Path(args.output)
+    else:
+        output = base / "site" / "docs" / "reference" / "styles-typ.md"
 
     if not typ_file.exists():
         print(f"Fichier TYP introuvable : {typ_file}")
         sys.exit(1)
 
+    output.parent.mkdir(parents=True, exist_ok=True)
+
     print(f"Parsing {typ_file}...")
     sections = parse_typ_file(str(typ_file))
-    generate_markdown(sections, str(output))
+    generate_markdown(sections, str(output), source_name=typ_file.name)
 
 
 if __name__ == "__main__":
