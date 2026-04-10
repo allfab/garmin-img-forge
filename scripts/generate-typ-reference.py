@@ -105,14 +105,11 @@ def parse_section(body, section_type):
                         cl = lines[j].strip()
                         j += 1
                         if cl.startswith('"'):
-                            # Parse: "CHAR c #RRGGBB" or "CHAR c none"
-                            cm = re.match(r'"(.)\s+c\s+(#[0-9A-Fa-f]{6}|none)"', cl)
+                            # Parse color: "KEY c #RRGGBB" or "KEY c none"
+                            # KEY is cpp characters (1 or 2), separated by tab or spaces
+                            cm = re.match(r'"(.{' + str(cpp) + r'})\s+c\s+(#[0-9A-Fa-f]{6}|none)"', cl)
                             if not cm:
-                                # Try with tab separator
-                                cm = re.match(r'"(.)\tc\s+(#[0-9A-Fa-f]{6}|none)"', cl)
-                            if not cm:
-                                # Try "N c #RRGGBB" format (digit char)
-                                cm = re.match(r'"(\d)\s+c\s+(#[0-9A-Fa-f]{6}|none)"', cl)
+                                cm = re.match(r'"(.{' + str(cpp) + r'})\tc\s+(#[0-9A-Fa-f]{6}|none)"', cl)
                             if cm:
                                 colors[cm.group(1)] = cm.group(2)
                             break
@@ -210,7 +207,8 @@ def xpm_to_svg(xpm_data, scale=2, is_line=False, line_width=None):
     if bg_color:
         svg += f'<rect width="{total_w}" height="{total_h}" fill="{bg_color}"/>'
 
-    # Draw pixels
+    # Draw pixels (handle cpp > 1)
+    cpp = xpm_data.get("cpp", 1)
     for ty in range(tile_y):
         for row_idx, row in enumerate(pixels):
             y = ty * h + row_idx
@@ -218,12 +216,11 @@ def xpm_to_svg(xpm_data, scale=2, is_line=False, line_width=None):
                 continue
             x = 0
             for tx in range(tile_x):
-                for char in row:
-                    color = colors.get(char)
+                for ci in range(0, len(row), cpp):
+                    key = row[ci:ci + cpp]
+                    color = colors.get(key)
                     if color and color != "none" and color != bg_color:
                         svg += f'<rect x="{x}" y="{y}" width="1" height="1" fill="{color}"/>'
-                    elif color == "none" and bg_color:
-                        svg += f'<rect x="{x}" y="{y}" width="1" height="1" fill="none" opacity="0"/>'
                     x += 1
 
     svg += '</svg>'
@@ -251,13 +248,17 @@ def point_xpm_to_svg(xpm_data, scale=2):
     # Transparent background
     svg += f'<rect width="{w}" height="{h}" fill="#F8F8F8"/>'
 
+    cpp = xpm_data.get("cpp", 1)
     for row_idx, row in enumerate(pixels):
         if not row:
             continue
-        for col_idx, char in enumerate(row):
-            color = colors.get(char)
+        col = 0
+        for ci in range(0, len(row), cpp):
+            key = row[ci:ci + cpp]
+            color = colors.get(key)
             if color and color != "none":
-                svg += f'<rect x="{col_idx}" y="{row_idx}" width="1" height="1" fill="{color}"/>'
+                svg += f'<rect x="{col}" y="{row_idx}" width="1" height="1" fill="{color}"/>'
+            col += 1
 
     svg += '</svg>'
     return svg
