@@ -3,8 +3,6 @@
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
-use super::overview_map;
-
 
 /// Subfiles for a single tile
 pub struct TileSubfiles {
@@ -83,16 +81,8 @@ pub fn build_gmapsupp_with_meta_and_typ(
     // --- File ordering matters! mkgmap order: MPS first, then tiles, TYP, SRT ---
     // Some Garmin firmware (Alpha 100) expects MPS as the first subfile.
 
-    // Generate overview map (if not disabled) — needed for MPS entry
-    let include_overview = std::env::var("IMGFORGE_NO_OVERVIEW").is_err();
-    let overview_map_id = if include_overview {
-        compute_overview_map_id(meta.family_id)
-    } else {
-        0
-    };
-
-    // 1. MPS first (mkgmap convention)
-    let mps_data = build_mps_with_overview(tiles, meta, overview_map_id);
+    // 1. MPS first (mkgmap convention) — no overview map (causes issues on Alpha 100)
+    let mps_data = build_mps(tiles, meta);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     // 2. Tile subfiles
@@ -135,16 +125,6 @@ pub fn build_gmapsupp_with_meta_and_typ(
         fs.add_file(&srt_name, "SRT", srt_data);
     }
 
-    // 5. Overview map (if enabled)
-    if include_overview {
-        let id = overview_map_id;
-        let overview = overview_map::build_overview_map(tiles, id, meta.codepage);
-        let ov_name = format!("{:>08}", overview.map_number);
-        fs.add_file(&ov_name, "TRE", overview.tre);
-        fs.add_file(&ov_name, "RGN", overview.rgn);
-        fs.add_file(&ov_name, "LBL", overview.lbl);
-    }
-
     fs.sync()
 }
 
@@ -159,8 +139,8 @@ pub fn compute_overview_map_id(family_id: u16) -> u32 {
     if id > 99999999 { 99999999 } else { id }
 }
 
-/// Build MPS including an overview map entry
-fn build_mps_with_overview(tiles: &[TileSubfiles], meta: &GmapsuppMeta, overview_map_id: u32) -> Vec<u8> {
+/// Build MPS entries for tiles (no overview map — causes rendering issues on Alpha 100)
+fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
     let mut mps = MpsWriter::new();
     mps.codepage = meta.codepage;
 
@@ -185,18 +165,6 @@ fn build_mps_with_overview(tiles: &[TileSubfiles], meta: &GmapsuppMeta, overview
             map_number: map_num,
             map_name: desc.clone(),
             map_description: desc,
-            area_name: meta.area_name.clone(),
-        });
-    }
-
-    // Overview map entry
-    if overview_map_id > 0 {
-        mps.add_map(MpsMapEntry {
-            product_id: meta.product_id,
-            family_id: meta.family_id,
-            map_number: overview_map_id,
-            map_name: meta.family_name.clone(),
-            map_description: meta.family_name.clone(),
             area_name: meta.area_name.clone(),
         });
     }
@@ -406,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_gmapsupp_contains_overview() {
+    fn test_gmapsupp_no_overview() {
         let mut tre = vec![0u8; 200];
         // Set up minimal TRE bounds at offsets 21-32
         tre[0] = 188; tre[1] = 0;
@@ -439,10 +407,9 @@ mod tests {
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None);
         assert!(result.is_ok());
         let img = result.unwrap();
-        // Should find the overview map's GARMIN TRE + overview marker 0x00040101
-        // The overview map is a second TRE with the overview marker
+        // Overview map marker 0x00040101 should NOT be present (causes Alpha 100 issues)
         let overview_marker = 0x00040101u32.to_le_bytes();
         let has_overview = img.windows(4).any(|w| w == overview_marker);
-        assert!(has_overview, "gmapsupp should contain overview map with marker 0x00040101");
+        assert!(!has_overview, "gmapsupp should NOT contain overview map");
     }
 }

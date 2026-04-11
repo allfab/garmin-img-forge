@@ -724,7 +724,7 @@ run_imgforge() {
     log_info "  $mp_count tuile(s) .mp à compiler"
 
     local exit_code=0
-    IMGFORGE_NO_OVERVIEW=1 "${cmd[@]}" || exit_code=$?
+    "${cmd[@]}" || exit_code=$?
 
     if [[ "$exit_code" -ne 0 ]]; then
         log_error "imgforge a échoué (exit code : $exit_code)"
