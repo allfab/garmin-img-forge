@@ -106,6 +106,11 @@ declare -A REGIONS=(
     [FRANCE-SUD]="R75 R76 R84 R93 R94"              # 5 régions Sud
     [FRANCE-NORD]="R11 R24 R27 R28 R32 R44 R52 R53" # 8 régions Nord
     [FXX]="R11 R24 R27 R28 R32 R44 R52 R53 R75 R76 R84 R93 R94" # France métro (13 fichiers)
+    # Quadrants Garmin (couverture TOPO France v7 PRO — mix R-codes régions complètes + D-codes départements isolés)
+    [FRANCE-SE]="R84 R93 R94 D011 D030 D034 D048 D066"                    # ARA+PAC+COR + 5 depts Languedoc-Roussillon
+    [FRANCE-SO]="R75 D009 D012 D031 D032 D046 D065 D081 D082"             # NAQ + 8 depts Midi-Pyrénées
+    [FRANCE-NE]="R27 R32 R44 R11 D027 D076"                               # BFC+HDF+GES+IDF + 2 depts Haute-Normandie
+    [FRANCE-NO]="R24 R52 R53 R11 D014 D050 D061"                          # CVL+PDL+BRE+IDF + 3 depts Basse-Normandie
 )
 
 # Mapping région → départements INSEE (pour les courbes de niveau, livrées par département)
@@ -127,6 +132,11 @@ declare -A REGIONS_TO_DEPARTMENTS=(
     [FRANCE-SUD]="D009 D011 D012 D016 D017 D019 D023 D024 D030 D031 D032 D033 D034 D040 D046 D047 D048 D064 D065 D066 D079 D081 D082 D086 D087 D004 D005 D006 D013 D083 D084 D001 D003 D007 D015 D026 D038 D042 D043 D063 D069 D073 D074 D02A D02B"
     [FRANCE-NORD]="D075 D077 D078 D091 D092 D093 D094 D095 D018 D028 D036 D037 D041 D045 D021 D025 D039 D058 D070 D071 D089 D090 D014 D027 D050 D061 D076 D002 D059 D060 D062 D080 D044 D049 D053 D072 D085 D022 D029 D035 D056 D008 D010 D051 D052 D054 D055 D057 D067 D068 D088"
     [FXX]="D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D012 D013 D014 D015 D016 D017 D018 D019 D02A D02B D021 D022 D023 D024 D025 D026 D027 D028 D029 D030 D031 D032 D033 D034 D035 D036 D037 D038 D039 D040 D041 D042 D043 D044 D045 D046 D047 D048 D049 D050 D051 D052 D053 D054 D055 D056 D057 D058 D059 D060 D061 D062 D063 D064 D065 D066 D067 D068 D069 D070 D071 D072 D073 D074 D075 D076 D077 D078 D079 D080 D081 D082 D083 D084 D085 D086 D087 D088 D089 D090 D091 D092 D093 D094 D095"
+    # Quadrants Garmin (couverture TOPO France v7 PRO)
+    [FRANCE-SE]="D001 D003 D004 D005 D006 D007 D011 D013 D015 D02A D02B D026 D030 D034 D038 D042 D043 D048 D063 D066 D069 D073 D074 D083 D084"
+    [FRANCE-SO]="D009 D012 D016 D017 D019 D023 D024 D031 D032 D033 D040 D046 D047 D064 D065 D079 D081 D082 D086 D087"
+    [FRANCE-NE]="D002 D008 D010 D021 D025 D027 D039 D051 D052 D054 D055 D057 D058 D059 D060 D062 D067 D068 D070 D071 D075 D076 D077 D078 D080 D088 D089 D090 D091 D092 D093 D094 D095"
+    [FRANCE-NO]="D014 D018 D022 D028 D029 D035 D036 D037 D041 D044 D045 D049 D050 D053 D056 D061 D072 D075 D077 D078 D085 D091 D092 D093 D094 D095"
 )
 
 # Mapping régions modernes → anciennes régions Geofabrik (pour OSM PBF)
@@ -148,6 +158,11 @@ declare -A REGIONS_TO_GEOFABRIK=(
     [FRANCE-SUD]="aquitaine limousin poitou-charentes languedoc-roussillon midi-pyrenees auvergne rhone-alpes provence-alpes-cote-d-azur corse"
     [FRANCE-NORD]="ile-de-france centre bourgogne franche-comte basse-normandie haute-normandie nord-pas-de-calais picardie pays-de-la-loire bretagne alsace champagne-ardenne lorraine"
     [FXX]="france"
+    # Quadrants Garmin (couverture TOPO France v7 PRO)
+    [FRANCE-SE]="auvergne rhone-alpes provence-alpes-cote-d-azur corse languedoc-roussillon"
+    [FRANCE-SO]="aquitaine limousin poitou-charentes midi-pyrenees"
+    [FRANCE-NE]="bourgogne franche-comte nord-pas-de-calais picardie alsace champagne-ardenne lorraine ile-de-france haute-normandie"
+    [FRANCE-NO]="centre bretagne pays-de-la-loire ile-de-france basse-normandie"
 )
 
 # Mapping département → code région (pour résoudre D038 → ARA → Geofabrik)
@@ -195,6 +210,12 @@ OPTIONS :
                           Groupes  : FRANCE-SUD (R75,R76,R84,R93,R94)
                                      FRANCE-NORD (R11,R24,R27,R28,R32,R44,R52,R53)
                                      FXX (France métro complète — 13 fichiers)
+                          Quadrants Garmin (couverture TOPO France v7 PRO) :
+                                     FRANCE-SE (ARA+PAC+COR + Languedoc-Roussillon)
+                                     FRANCE-SO (NAQ + Midi-Pyrénées)
+                                     FRANCE-NE (BFC+HDF+GES+IDF + Haute-Normandie)
+                                     FRANCE-NO (CVL+PDL+BRE+IDF + Basse-Normandie)
+                                     Note : IDF est partagée entre NE et NO (conforme Garmin)
     --format FORMAT     SHP (défaut) | GPKG | SQL
     --product PRODUCT   FULL (défaut) | DIFF | EXPRESS
                           FULL    → par département (D038) ou région (R84)
@@ -235,6 +256,8 @@ EXEMPLES :
     ./download-bdtopo.sh --with-osm --region ARA --dry-run  # Simuler téléchargement OSM
     ./download-bdtopo.sh --zones D038 --with-dem           # BDTOPO + MNT BD ALTI v2 D038
     ./download-bdtopo.sh --region ARA --with-dem           # BDTOPO + MNT 12 départements ARA
+    ./download-bdtopo.sh --region FRANCE-SE --dry-run      # Quadrant Garmin Sud-Est (ARA+PAC+COR+LR)
+    ./download-bdtopo.sh --region FRANCE-NO --with-contours --with-dem  # Quadrant Garmin Nord-Ouest complet
 EOF
     exit 0
 }
@@ -324,6 +347,18 @@ resolve_zones() {
     if [[ ${#ZONES[@]} -eq 0 ]]; then
         log_error "Aucune zone. Utilisez --zones D038, --zones R84, ou --region ARA"
         exit 1
+    fi
+
+    # DIFF ne supporte que les R-codes — avertir si des D-codes sont présents
+    if [[ "$PRODUCT" == "DIFF" ]]; then
+        local has_dcodes=false
+        for z in "${ZONES[@]}"; do
+            [[ "$z" =~ ^D ]] && has_dcodes=true && break
+        done
+        if [[ "$has_dcodes" == true ]]; then
+            log_warn "DIFF : certaines zones sont des D-codes (départements) — le produit DIFF n'est disponible que par région (R-codes)"
+            log_warn "  Les D-codes seront ignorés par l'API. Utilisez --product FULL pour un téléchargement par département."
+        fi
     fi
 }
 
