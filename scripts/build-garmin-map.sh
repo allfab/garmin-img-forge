@@ -96,7 +96,36 @@ _REPORT_FILE=""
 _IMGFORGE_REPORT_FILE=""
 
 # ---------------------------------------------------------------------------
-# Régions → départements (même mapping que download-bdtopo.sh)
+# Régions → zones de données BDTOPO (même mapping que REGIONS dans download-bdtopo.sh)
+# Mix R-codes (régions complètes) + D-codes (départements isolés) = répertoires sur disque
+# ---------------------------------------------------------------------------
+declare -A REGIONS_TO_ZONES=(
+    [ARA]="R84"
+    [BFC]="R27"
+    [BRE]="R53"
+    [CVL]="R24"
+    [COR]="R94"
+    [GES]="R44"
+    [HDF]="R32"
+    [IDF]="R11"
+    [NOR]="R28"
+    [NAQ]="R75"
+    [OCC]="R76"
+    [PDL]="R52"
+    [PAC]="R93"
+    # Groupements multi-régions
+    [FRANCE-SUD]="R75,R76,R84,R93,R94"
+    [FRANCE-NORD]="R11,R24,R27,R28,R32,R44,R52,R53"
+    [FXX]="R11,R24,R27,R28,R32,R44,R52,R53,R75,R76,R84,R93,R94"
+    # Quadrants Garmin (couverture TOPO France v7 PRO — mix R-codes + D-codes)
+    [FRANCE-SE]="R84,R93,R94,D011,D030,D034,D048,D066"
+    [FRANCE-SO]="R75,D009,D012,D031,D032,D046,D065,D081,D082"
+    [FRANCE-NE]="R27,R32,R44,R11,D027,D076"
+    [FRANCE-NO]="R24,R52,R53,R11,D014,D050,D061"
+)
+
+# ---------------------------------------------------------------------------
+# Régions → départements (pour DEM et courbes de niveau, livrés par département)
 # ---------------------------------------------------------------------------
 declare -A REGIONS_TO_DEPARTMENTS=(
     [ARA]="D001,D003,D007,D015,D026,D038,D042,D043,D063,D069,D073,D074"
@@ -272,19 +301,19 @@ parse_args() {
         esac
     done
 
-    # Résolution --region → --zones
+    # Résolution --region → --zones (zones de données = répertoires sur disque)
     if [[ -n "$REGION" ]]; then
         if [[ -n "$ZONES" ]]; then
             log_error "--region et --zones sont mutuellement exclusifs"
             exit 1
         fi
-        if [[ -z "${REGIONS_TO_DEPARTMENTS[$REGION]+x}" ]]; then
+        if [[ -z "${REGIONS_TO_ZONES[$REGION]+x}" ]]; then
             log_error "Région inconnue : $REGION"
-            log_error "  Disponibles : ${!REGIONS_TO_DEPARTMENTS[*]}"
+            log_error "  Disponibles : ${!REGIONS_TO_ZONES[*]}"
             exit 1
         fi
-        ZONES="${REGIONS_TO_DEPARTMENTS[$REGION]}"
-        log_info "Région $REGION → $(echo "$ZONES" | tr ',' '\n' | wc -l) département(s)"
+        ZONES="${REGIONS_TO_ZONES[$REGION]}"
+        log_info "Région $REGION → zones de données : $ZONES"
     fi
 
     if [[ -z "$ZONES" ]]; then
@@ -307,13 +336,12 @@ parse_args() {
 validate_params() {
     local errors=0
 
-    # --- zones : format DXXX (D suivi de 2-3 caractères alphanumériques) ---
+    # --- zones : format DXXX (département) ou RXX (région) ---
     IFS=',' read -ra zone_array <<< "$ZONES"
     for zone in "${zone_array[@]}"; do
-        if [[ ! "$zone" =~ ^D[0-9]{2}[0-9A-B]?$ ]]; then
+        if [[ ! "$zone" =~ ^D[0-9]{2}[0-9A-B]?$ ]] && [[ ! "$zone" =~ ^R[0-9]{2}$ ]]; then
             log_error "--zones : format invalide '${zone}'"
-            log_error "  Format attendu : D suivi du code département (D038, D02A, D974)"
-            log_error "  Exemples valides : D038 | D069 | D02A | D974"
+            log_error "  Format attendu : D-code (D038, D02A) ou R-code (R84, R11)"
             errors=$(( errors + 1 ))
         fi
     done
@@ -430,7 +458,11 @@ auto_detect_year_version() {
 
     if [[ ! -d "$bdtopo_dir" ]]; then
         log_error "Répertoire BDTOPO introuvable : $bdtopo_dir"
-        log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        if [[ -n "$REGION" ]]; then
+            log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --region ${REGION}"
+        else
+            log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        fi
         exit 1
     fi
 
@@ -507,7 +539,11 @@ resolve_paths() {
     done
 
     if [[ "$missing" == true ]]; then
-        log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        if [[ -n "$REGION" ]]; then
+            log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --region ${REGION}"
+        else
+            log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+        fi
         exit 1
     fi
 }
@@ -751,15 +787,21 @@ run_imgforge() {
     [[ "$WITH_ROUTE" == true ]] && cmd+=(--route)
     [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
 
-    # DEM : ajouter les répertoires DEM pour chaque zone
+    # DEM : ajouter les répertoires DEM pour chaque département
+    # Le DEM est livré par département (D-codes), pas par région (R-codes)
     if [[ "$WITH_DEM" == true ]]; then
-        IFS=',' read -ra zone_array <<< "$ZONES"
-        for zone in "${zone_array[@]}"; do
-            local dem_dir="${_DEM_DATA_ROOT}/${zone}"
+        local -a dem_departments
+        if [[ -n "$REGION" && -n "${REGIONS_TO_DEPARTMENTS[$REGION]+x}" ]]; then
+            IFS=',' read -ra dem_departments <<< "${REGIONS_TO_DEPARTMENTS[$REGION]}"
+        else
+            IFS=',' read -ra dem_departments <<< "$ZONES"
+        fi
+        for dept in "${dem_departments[@]}"; do
+            local dem_dir="${_DEM_DATA_ROOT}/${dept}"
             if [[ -d "$dem_dir" ]]; then
                 cmd+=(--dem "$dem_dir")
             else
-                log_warn "Données DEM manquantes pour ${zone} : $dem_dir (ignoré)"
+                log_warn "Données DEM manquantes pour ${dept} : $dem_dir (ignoré)"
             fi
         done
         cmd+=(--dem-source-srs "EPSG:2154")
