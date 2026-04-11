@@ -24,7 +24,8 @@ set -euo pipefail
 SCRIPT_VERSION="3.0.0"
 
 # Paramètres géographiques
-ZONES=""                # D038 | D038,D069 | (obligatoire)
+ZONES=""                # D038 | D038,D069 | (obligatoire sauf si --region)
+REGION=""               # Raccourci région (ARA, FRANCE-SE, etc.)
 YEAR=""                 # 2025 (auto-détecté si vide)
 VERSION=""              # v2025.12 (auto-détecté si vide)
 BASE_ID=""              # Auto-calculé depuis le premier département
@@ -95,6 +96,34 @@ _REPORT_FILE=""
 _IMGFORGE_REPORT_FILE=""
 
 # ---------------------------------------------------------------------------
+# Régions → départements (même mapping que download-bdtopo.sh)
+# ---------------------------------------------------------------------------
+declare -A REGIONS_TO_DEPARTMENTS=(
+    [ARA]="D001,D003,D007,D015,D026,D038,D042,D043,D063,D069,D073,D074"
+    [BFC]="D021,D025,D039,D058,D070,D071,D089,D090"
+    [BRE]="D022,D029,D035,D056"
+    [CVL]="D018,D028,D036,D037,D041,D045"
+    [COR]="D02A,D02B"
+    [GES]="D008,D010,D051,D052,D054,D055,D057,D067,D068,D088"
+    [HDF]="D002,D059,D060,D062,D080"
+    [IDF]="D075,D077,D078,D091,D092,D093,D094,D095"
+    [NOR]="D014,D027,D050,D061,D076"
+    [NAQ]="D016,D017,D019,D023,D024,D033,D040,D047,D064,D079,D086,D087"
+    [OCC]="D009,D011,D012,D030,D031,D032,D034,D046,D048,D065,D066,D081,D082"
+    [PDL]="D044,D049,D053,D072,D085"
+    [PAC]="D004,D005,D006,D013,D083,D084"
+    # Groupements multi-régions
+    [FRANCE-SUD]="D001,D003,D004,D005,D006,D007,D009,D011,D012,D013,D015,D016,D017,D019,D023,D024,D026,D02A,D02B,D030,D031,D032,D033,D034,D038,D040,D042,D043,D046,D047,D048,D063,D064,D065,D066,D069,D073,D074,D079,D081,D082,D083,D084,D086,D087"
+    [FRANCE-NORD]="D002,D008,D010,D014,D018,D021,D022,D025,D027,D028,D029,D035,D036,D037,D039,D041,D044,D045,D049,D050,D051,D052,D053,D054,D055,D056,D057,D058,D059,D060,D061,D062,D067,D068,D070,D071,D072,D075,D076,D077,D078,D080,D085,D088,D089,D090,D091,D092,D093,D094,D095"
+    [FXX]="D001,D002,D003,D004,D005,D006,D007,D008,D009,D010,D011,D012,D013,D014,D015,D016,D017,D018,D019,D02A,D02B,D021,D022,D023,D024,D025,D026,D027,D028,D029,D030,D031,D032,D033,D034,D035,D036,D037,D038,D039,D040,D041,D042,D043,D044,D045,D046,D047,D048,D049,D050,D051,D052,D053,D054,D055,D056,D057,D058,D059,D060,D061,D062,D063,D064,D065,D066,D067,D068,D069,D070,D071,D072,D073,D074,D075,D076,D077,D078,D079,D080,D081,D082,D083,D084,D085,D086,D087,D088,D089,D090,D091,D092,D093,D094,D095"
+    # Quadrants Garmin (couverture TOPO France v7 PRO)
+    [FRANCE-SE]="D001,D003,D004,D005,D006,D007,D011,D013,D015,D02A,D02B,D026,D030,D034,D038,D042,D043,D048,D063,D066,D069,D073,D074,D083,D084"
+    [FRANCE-SO]="D009,D012,D016,D017,D019,D023,D024,D031,D032,D033,D040,D046,D047,D064,D065,D079,D081,D082,D086,D087"
+    [FRANCE-NE]="D002,D008,D010,D021,D025,D027,D039,D051,D052,D054,D055,D057,D058,D059,D060,D062,D067,D068,D070,D071,D075,D076,D077,D078,D080,D088,D089,D090,D091,D092,D093,D094,D095"
+    [FRANCE-NO]="D014,D018,D022,D028,D029,D035,D036,D037,D041,D044,D045,D049,D050,D053,D056,D061,D072,D075,D077,D078,D085,D091,D092,D093,D094,D095"
+)
+
+# ---------------------------------------------------------------------------
 # Nettoyage
 # ---------------------------------------------------------------------------
 cleanup_trap() {
@@ -136,10 +165,17 @@ build-garmin-map.sh — Pipeline mpforge → imgforge → gmapsupp.img
 
 USAGE :
     ./scripts/build-garmin-map.sh --zones D038 [OPTIONS]
+    ./scripts/build-garmin-map.sh --region FRANCE-SE [OPTIONS]
     ./scripts/build-garmin-map.sh --zones D038,D069 --year 2025 --version v2025.12
 
 OPTIONS GÉOGRAPHIQUES :
-    --zones ZONES           Départements (obligatoire) : D038 | D038,D069 | D001,D038,D039
+    --zones ZONES           Départements : D038 | D038,D069 | D001,D038,D039
+    --region CODE           Raccourci région (alternatif à --zones) :
+                              Régions  : ARA BFC BRE CVL COR GES HDF IDF NOR NAQ OCC PDL PAC
+                              Groupes  : FRANCE-SUD FRANCE-NORD FXX
+                              Quadrants Garmin (couverture TOPO France v7 PRO) :
+                                         FRANCE-SE FRANCE-SO FRANCE-NE FRANCE-NO
+                                         Note : IDF partagée entre NE et NO (conforme Garmin)
     --year YYYY             Année BDTOPO (défaut: auto-détecté)
     --version vYYYY.MM      Version BDTOPO (défaut: auto-détecté)
     --base-id N             Base ID Garmin (défaut: premier code département)
@@ -187,6 +223,12 @@ EXEMPLES :
 
     # Dry-run pour vérifier les chemins
     ./scripts/build-garmin-map.sh --zones D038,D069 --dry-run
+
+    # Quadrant Garmin Sud-Est (25 départements)
+    ./scripts/build-garmin-map.sh --region FRANCE-SE
+
+    # Région Auvergne-Rhône-Alpes
+    ./scripts/build-garmin-map.sh --region ARA --year 2025 --version v2025.12
 EOF
     exit 0
 }
@@ -198,6 +240,7 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --zones)         ZONES="$2"; shift 2 ;;
+            --region)        REGION="${2^^}"; shift 2 ;;
             --year)          YEAR="$2"; shift 2 ;;
             --version)       VERSION="$2"; shift 2 ;;
             --base-id)       BASE_ID="$2"; shift 2 ;;
@@ -229,9 +272,24 @@ parse_args() {
         esac
     done
 
+    # Résolution --region → --zones
+    if [[ -n "$REGION" ]]; then
+        if [[ -n "$ZONES" ]]; then
+            log_error "--region et --zones sont mutuellement exclusifs"
+            exit 1
+        fi
+        if [[ -z "${REGIONS_TO_DEPARTMENTS[$REGION]+x}" ]]; then
+            log_error "Région inconnue : $REGION"
+            log_error "  Disponibles : ${!REGIONS_TO_DEPARTMENTS[*]}"
+            exit 1
+        fi
+        ZONES="${REGIONS_TO_DEPARTMENTS[$REGION]}"
+        log_info "Région $REGION → $(echo "$ZONES" | tr ',' '\n' | wc -l) département(s)"
+    fi
+
     if [[ -z "$ZONES" ]]; then
-        log_error "Le paramètre --zones est obligatoire"
-        log_error "  Exemple : --zones D038 ou --zones D038,D069"
+        log_error "Le paramètre --zones ou --region est obligatoire"
+        log_error "  Exemple : --zones D038 ou --region FRANCE-SE"
         exit 1
     fi
 
@@ -411,7 +469,11 @@ resolve_paths() {
 
     # Nom de la carte pour l'output
     local zones_label
-    zones_label=$(echo "$ZONES" | tr ',' '-')
+    if [[ -n "$REGION" ]]; then
+        zones_label="$REGION"
+    else
+        zones_label=$(echo "$ZONES" | tr ',' '-')
+    fi
     local map_name="${zones_label}-${VERSION}"
 
     _OUTPUT_DIR="${OUTPUT_BASE}/${YEAR}/${VERSION}/${zones_label}"
