@@ -47,7 +47,7 @@ Le script :
 | `--osm-dir DIR` | Racine des données OSM | `{data-dir}/osm` |
 | `--hiking-trails-dir DIR` | Racine des sentiers GR | `{data-dir}/hiking-trails` |
 | `--output-base DIR` | Base des répertoires de sortie | `./pipeline/output` |
-| `--config FILE` | Config YAML mpforge custom | `sources-shp.yaml` |
+| `--config FILE` | Config YAML mpforge custom | `sources.yaml` |
 
 Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` permettent de pointer vers des répertoires existants sans avoir à respecter l'arborescence par défaut. Si omises, elles sont dérivées de `--data-dir`.
 
@@ -111,7 +111,7 @@ export ZONES=D038
 export OUTPUT_DIR=./pipeline/output/2025/v2025.12/D038
 export BASE_ID=38
 
-mpforge build --config pipeline/configs/ign-bdtopo/sources-shp.yaml --jobs 8
+mpforge build --config pipeline/configs/ign-bdtopo/sources.yaml --jobs 8
 ```
 
 mpforge va :

@@ -41,7 +41,7 @@ OSM_DIR=""              # défaut: ${DATA_DIR}/osm
 HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
 
 # mpforge
-CONFIG_FILE=""          # si vide : utilise sources-shp.yaml avec envsubst
+CONFIG_FILE=""          # si vide : utilise sources.yaml avec envsubst
 JOBS=8
 
 # imgforge
@@ -277,7 +277,7 @@ CHEMINS :
     --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
     --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
-    --config FILE           Config YAML mpforge custom (défaut: sources-shp.yaml)
+    --config FILE           Config YAML mpforge custom (défaut: sources.yaml)
 
 MPFORGE :
     --jobs N                Parallélisation (défaut: 8)
@@ -794,7 +794,7 @@ prepare_config() {
     log_step "Préparation de la configuration"
 
     if [[ -z "$CONFIG_FILE" ]]; then
-        CONFIG_FILE="pipeline/configs/ign-bdtopo/sources-shp.yaml"
+        CONFIG_FILE="pipeline/configs/ign-bdtopo/sources.yaml"
     fi
 
     log_info "Config source : $CONFIG_FILE"

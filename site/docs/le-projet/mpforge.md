@@ -196,7 +196,7 @@ Le fichier de règles est référencé par le fichier de configuration via la di
 
 ### Fichier de configuration des sources
 
-Voici la structure complète, basée sur le fichier de production `sources-shp.yaml` :
+Voici la structure complète, basée sur le fichier de production `sources.yaml` :
 
 ```yaml
 version: 1

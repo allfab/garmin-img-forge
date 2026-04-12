@@ -1,12 +1,11 @@
 version: 1
 
-# Dédup global par attribut : le champ `ID` des SHP BDTOPO contient le CLEABS
-# IGN (le format DBF/SHP tronque les noms de colonnes à 10 chars, donc "cleabs"
-# → "ID" à la livraison). En GPKG l'attribut s'appelle "cleabs" non tronqué.
-# Les sources qui n'ont pas ce champ (OSM, contours) sont préservées intactes.
+# Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
+# BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque
+# les noms de colonnes à 10 chars, donc "cleabs" → "ID" à la livraison).
 # Pourquoi : certaines livraisons IGN (p.ex. D038 v2025.09) contiennent chaque
-# feature 2× (mêmes CLEABS, mêmes géométries).
-default_dedup_by_field: ID
+# feature 2× (mêmes CLEABS, mêmes géométries). Les sources OSM, contours et
+# randonnée ne déclarent pas ce champ et restent préservées intactes (sans warning).
 
 grid:
   cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
@@ -21,21 +20,25 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Voies ferrées
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Pistes d'aérodrome
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/PISTE_D_AERODROME.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Transport par câble (téléphériques, télésièges)
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # ADMINISTRATIF / LIEUX NOMMÉS (2 couches — FME 01-TRANSPORT chef-lieu)
@@ -45,11 +48,13 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Zones d'habitation
   - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
     generalize:
       smooth: "chaikin"
       iterations: 1
@@ -63,16 +68,19 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Détails hydrographiques (POI : sources, cascades, etc.)
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
@@ -82,36 +90,43 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/BATIMENT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Cimetières
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CIMETIERE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Constructions linéaires (murs, digues)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_LINEAIRE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Constructions ponctuelles (châteaux d'eau, monuments)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_PONCTUELLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Pylônes (POI)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/PYLONE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Terrains de sport
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/TERRAIN_DE_SPORT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Lignes orographiques (FME 07-OROGRAPHIE)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/LIGNE_OROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # VEGETATION (1 couche — FME 05-VEGETATION)
@@ -121,6 +136,7 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # SERVICES & ACTIVITÉS (2 couches — FME 03-SERVICES)
@@ -130,11 +146,13 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Lignes électriques
   - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # ZONES RÉGLEMENTÉES (1 couche — FME 02-ZONES_REG)
@@ -144,6 +162,7 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
@@ -153,6 +172,7 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/TOPONYMIE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # ==========================================================================
   # COURBES DE NIVEAU (produit IGN séparé)

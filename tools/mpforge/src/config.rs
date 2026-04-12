@@ -87,6 +87,10 @@ pub struct InputSource {
     /// Spatial filter: clip features using a reference geometry (e.g., COMMUNE.shp) + buffer.
     #[serde(default)]
     pub spatial_filter: Option<SpatialFilterConfig>,
+    /// Per-source dedup-by-attribute field. When set, overrides `Config::default_dedup_by_field`.
+    /// Absent = pas de dedup pour cette source (et pas de warning "field not present").
+    #[serde(default)]
+    pub dedup_by_field: Option<String>,
 }
 
 /// Configuration for geometry generalization (smoothing + simplification).

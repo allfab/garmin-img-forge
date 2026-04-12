@@ -1634,7 +1634,7 @@ impl SourceReader {
                         input.target_srs.as_deref(),
                         None, // attribute_filter already set on layer above
                         input.layer_alias.as_deref(),
-                        config.default_dedup_by_field.as_deref(),
+                        input.dedup_by_field.as_deref().or(config.default_dedup_by_field.as_deref()),
                     )?;
 
                 // Clear attribute filter before clearing spatial filter
@@ -1701,7 +1701,7 @@ impl SourceReader {
                 "Loading source"
             );
 
-            match Self::read_file_source_with_error_handling(input, &config.error_handling, config.default_dedup_by_field.as_deref()) {
+            match Self::read_file_source_with_error_handling(input, &config.error_handling, input.dedup_by_field.as_deref().or(config.default_dedup_by_field.as_deref())) {
                 Ok((features, unsupported, multi_geom)) => {
                     let count = features.len();
                     all_unsupported.merge(&unsupported);

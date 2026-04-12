@@ -20,7 +20,7 @@ Ces trois fichiers fonctionnent ensemble mais sont séparés pour permettre la r
 C'est le fichier central qui pilote `mpforge` :
 
 ```yaml
-# sources-shp.yaml
+# sources.yaml
 version: 1
 
 # --- Grille de tuilage ---
@@ -130,7 +130,7 @@ inputs:
   #   data/.../D069/TRANSPORT/TRONCON_DE_ROUTE.shp
 ```
 
-Le fichier de configuration `sources-shp.yaml` du projet utilise cette syntaxe pour toutes les couches BDTOPO. Le script `build-garmin-map.sh` se charge de définir les variables `ZONES`, `DATA_ROOT`, etc. automatiquement depuis ses paramètres CLI.
+Le fichier de configuration `sources.yaml` du projet utilise cette syntaxe pour toutes les couches BDTOPO. Le script `build-garmin-map.sh` se charge de définir les variables `ZONES`, `DATA_ROOT`, etc. automatiquement depuis ses paramètres CLI.
 
 La brace expansion fonctionne aussi dans `spatial_filter.source` : les géométries de tous les fichiers matchés sont automatiquement unies en un seul filtre spatial.
 
