@@ -106,11 +106,11 @@ declare -A REGIONS=(
     [FRANCE-SUD]="R75 R76 R84 R93 R94"              # 5 régions Sud
     [FRANCE-NORD]="R11 R24 R27 R28 R32 R44 R52 R53" # 8 régions Nord
     [FXX]="R11 R24 R27 R28 R32 R44 R52 R53 R75 R76 R84 R93 R94" # France métro (13 fichiers)
-    # Quadrants Garmin (couverture TOPO France v7 PRO — mix R-codes régions complètes + D-codes départements isolés)
-    [FRANCE-SE]="R84 R93 R94 D011 D030 D034 D048 D066"                    # ARA+PAC+COR + 5 depts Languedoc-Roussillon
-    [FRANCE-SO]="R75 D009 D012 D031 D032 D046 D065 D081 D082"             # NAQ + 8 depts Midi-Pyrénées
-    [FRANCE-NE]="R27 R32 R44 R11 D027 D076"                               # BFC+HDF+GES+IDF + 2 depts Haute-Normandie
-    [FRANCE-NO]="R24 R52 R53 R11 D014 D050 D061"                          # CVL+PDL+BRE+IDF + 3 depts Basse-Normandie
+    # Quadrants Garmin (couverture TOPO France v7 PRO — départements uniquement, millésimes alignés)
+    [FRANCE-SE]="D001 D003 D004 D005 D006 D007 D011 D013 D015 D02A D02B D026 D030 D034 D038 D042 D043 D048 D063 D066 D069 D073 D074 D083 D084"
+    [FRANCE-SO]="D009 D012 D016 D017 D019 D023 D024 D031 D032 D033 D040 D046 D047 D064 D065 D079 D081 D082 D086 D087"
+    [FRANCE-NE]="D002 D008 D010 D021 D025 D027 D039 D051 D052 D054 D055 D057 D058 D059 D060 D062 D067 D068 D070 D071 D075 D076 D077 D078 D080 D088 D089 D090 D091 D092 D093 D094 D095"
+    [FRANCE-NO]="D014 D018 D022 D028 D029 D035 D036 D037 D041 D044 D045 D049 D050 D053 D056 D061 D072 D075 D077 D078 D085 D091 D092 D093 D094 D095"
 )
 
 # Mapping région → départements INSEE (pour les courbes de niveau, livrées par département)
@@ -210,12 +210,12 @@ OPTIONS :
                           Groupes  : FRANCE-SUD (R75,R76,R84,R93,R94)
                                      FRANCE-NORD (R11,R24,R27,R28,R32,R44,R52,R53)
                                      FXX (France métro complète — 13 fichiers)
-                          Quadrants Garmin (couverture TOPO France v7 PRO) :
-                                     FRANCE-SE (ARA+PAC+COR + Languedoc-Roussillon)
-                                     FRANCE-SO (NAQ + Midi-Pyrénées)
-                                     FRANCE-NE (BFC+HDF+GES+IDF + Haute-Normandie)
-                                     FRANCE-NO (CVL+PDL+BRE+IDF + Basse-Normandie)
-                                     Note : IDF est partagée entre NE et NO (conforme Garmin)
+                          Quadrants Garmin (couverture TOPO France v7 PRO, départements uniquement) :
+                                     FRANCE-SE (25 départements du sud-est)
+                                     FRANCE-SO (20 départements du sud-ouest)
+                                     FRANCE-NE (33 départements du nord-est)
+                                     FRANCE-NO (26 départements du nord-ouest)
+                                     Note : IDF (75,77,78,91,92,93,94,95) partagée entre NE et NO (conforme Garmin)
     --format FORMAT     SHP (défaut) | GPKG | SQL
     --product PRODUCT   FULL (défaut) | DIFF | EXPRESS
                           FULL    → par département (D038) ou région (R84)
@@ -256,8 +256,8 @@ EXEMPLES :
     ./download-bdtopo.sh --with-osm --region ARA --dry-run  # Simuler téléchargement OSM
     ./download-bdtopo.sh --zones D038 --with-dem           # BDTOPO + MNT BD ALTI v2 D038
     ./download-bdtopo.sh --region ARA --with-dem           # BDTOPO + MNT 12 départements ARA
-    ./download-bdtopo.sh --region FRANCE-SE --dry-run      # Quadrant Garmin Sud-Est (ARA+PAC+COR+LR)
-    ./download-bdtopo.sh --region FRANCE-NO --with-contours --with-dem  # Quadrant Garmin Nord-Ouest complet
+    ./download-bdtopo.sh --region FRANCE-SE --dry-run      # Quadrant Garmin Sud-Est (25 départements)
+    ./download-bdtopo.sh --region FRANCE-NO --with-contours --with-dem  # Quadrant Garmin Nord-Ouest (26 départements)
 EOF
     exit 0
 }
