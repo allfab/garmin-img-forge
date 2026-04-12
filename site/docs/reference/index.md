@@ -38,4 +38,12 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](limites-formats.md)
 
+-   **Convention `--base-id`**
+
+    ---
+
+    Plages de `base-id` par couverture (départements, régions, quadrants, national) — évite les collisions INSEE/DOM-COM.
+
+    [:octicons-arrow-right-24: Consulter](base-id-convention.md)
+
 </div>
