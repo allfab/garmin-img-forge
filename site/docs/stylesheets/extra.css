@@ -30,6 +30,15 @@
   color: rgba(255, 255, 255, 0.38);
 }
 
+.download-meta {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.78em;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.6));
+  line-height: 1.4;
+}
+
+
 /* ============================================================
    Dark Mode — Mermaid Diagram Overrides
    ============================================================ */

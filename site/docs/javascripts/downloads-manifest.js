@@ -30,6 +30,31 @@
         return v.toFixed(v < 10 && i > 0 ? 1 : 0) + ' ' + units[i];
     }
 
+    function formatDate(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        try {
+            return d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+        } catch (e) {
+            return iso.slice(0, 10);
+        }
+    }
+
+    function buildMetaBlock(version) {
+        if (!version || !version.published_at) return null;
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'download-meta';
+
+        var date = document.createElement('span');
+        date.className = 'download-meta-date';
+        date.textContent = '📅 ' + formatDate(version.published_at);
+        wrapper.appendChild(date);
+
+        return wrapper;
+    }
+
     function enhanceLink(link, manifest) {
         // link.href = URL absolue résolue par le browser (support href relatifs type ../files/...).
         var href = link.href || link.getAttribute('href') || '';
@@ -70,6 +95,16 @@
             if (size) label += ' (' + size + ' — ' + latestVersion + ')';
             else label += ' (' + latestVersion + ')';
             link.textContent = label;
+
+            // Bloc méta sous le bouton : date de publication + sha256 tronqué copiable
+            var meta = buildMetaBlock(latest);
+            if (meta && link.parentNode) {
+                if (link.nextSibling) {
+                    link.parentNode.insertBefore(meta, link.nextSibling);
+                } else {
+                    link.parentNode.appendChild(meta);
+                }
+            }
         }
 
         if (older.length === 0) return;
