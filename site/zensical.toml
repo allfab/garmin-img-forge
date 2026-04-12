@@ -56,7 +56,8 @@ Accueil = "index.md"
   { "2. Configuration" = "le-pipeline/etape-2-configuration.md" },
   { "3. Tuilage (mpforge)" = "le-pipeline/etape-3-tuilage.md" },
   { "4. Compilation (imgforge)" = "le-pipeline/etape-4-compilation.md" },
-  { "5. Installation GPS" = "le-pipeline/etape-5-installation.md" }
+  { "5. Installation GPS" = "le-pipeline/etape-5-installation.md" },
+  { "6. Publication" = "le-pipeline/etape-6-publication.md" }
 ]
 
 [[nav]]

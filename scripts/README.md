@@ -93,9 +93,11 @@ scripts/
     01-export-mp.sh            # Étape 1 : export PostGIS → .mp (à venir)
   common/
     02-build-img.sh            # Étape 2 : compilation .mp → gmapsupp.img
-  build-garmin-map.sh          # Pipeline tout-en-un (étapes 1+2)
+  build-garmin-map.sh          # Pipeline tout-en-un (étapes 1+2 + publication)
   check_environment.sh         # Vérification de l'environnement
   test-static-build.sh         # Validation du build statique
+  test-s3-connection.sh        # Test de la chaîne de publication S3 (Garage)
+  prune-s3.sh                  # Rétention des versions publiées sur S3
   release.sh                   # Création de release
   retag.sh                     # Re-tag d'une release
 
@@ -394,6 +396,51 @@ Structure de sortie :
   mpforge-report.json  ← rapport mpforge (métriques, erreurs)
   imgforge-report.json ← rapport imgforge (métriques, routage)
 ```
+
+---
+
+## Étape 3 : Publication (optionnelle)
+
+L'option `--publish` de `build-garmin-map.sh` publie le `gmapsupp.img` après compilation et met à jour `site/docs/telechargements/manifest.json` ainsi que les pages Markdown concernées.
+
+Deux cibles sélectionnables via `PUBLISH_TARGET` (ou `--publish-target`) :
+
+| Cible | Destination | Prérequis |
+|---|---|---|
+| `local` *(défaut)* | `site/docs/telechargements/files/` | `jq`, `sha256sum`, `python3` |
+| `s3` | Bucket Garage S3 via `rclone` | Ci-dessus + `rclone` + variables `RCLONE_CONFIG_GARAGE_*`, `S3_BUCKET`, `PUBLIC_URL_BASE` |
+
+```bash
+# Cible locale (défaut)
+./scripts/build-garmin-map.sh --region ARA --publish
+
+# Cible S3 (via .env : PUBLISH_TARGET=s3)
+./scripts/build-garmin-map.sh --region ARA --publish
+
+# Override ponctuel
+./scripts/build-garmin-map.sh --region ARA --publish --publish-target=s3
+```
+
+Voir `site/docs/le-pipeline/etape-6-publication.md` pour la configuration complète (Garage website, reverse proxy Caddy, firewall Proxmox).
+
+### test-s3-connection.sh — Vérification de la chaîne S3
+
+```bash
+./scripts/test-s3-connection.sh           # sortie concise
+./scripts/test-s3-connection.sh -v        # rclone -vv (dump headers HTTP signés)
+```
+
+Enchaîne 5 tests : présence des variables `.env`, `rclone lsd garage:`, listing du bucket `$S3_BUCKET`, aller-retour upload/lecture/SHA256/delete, requête HTTP publique sur `$PUBLIC_URL_BASE`. À lancer avant le premier `--publish --publish-target=s3`.
+
+### prune-s3.sh — Rétention des versions S3
+
+```bash
+./scripts/prune-s3.sh --dry-run                    # simulation
+./scripts/prune-s3.sh --keep 3                     # garder 3 versions/coverage
+./scripts/prune-s3.sh --coverage departement/d038 --keep 2
+```
+
+Supprime les anciennes versions du bucket et met à jour `manifest.json`. Le commit git reste à la main de l'utilisateur.
 
 ---
 
