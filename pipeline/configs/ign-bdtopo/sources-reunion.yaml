@@ -177,8 +177,10 @@ inputs:
   # ==========================================================================
   # COURBES DE NIVEAU (produit IGN séparé)
   # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
+  # DOM : livraison en UN fichier COURBE.shp (vs. dalles COURBE_XXXX_YYYY.shp
+  # en métropole) — le pattern COURBE*.shp couvre les deux conventions.
   # ==========================================================================
-  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE*.shp"
     source_srs: "EPSG:2975"
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
