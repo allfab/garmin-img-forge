@@ -584,8 +584,16 @@ resolve_paths() {
     if [[ -z "$BASE_ID" ]]; then
         local first_zone
         first_zone=$(echo "$ZONES" | cut -d',' -f1)
-        # Extraire le numéro : D038 → 38, D02A → 2 (cas Corse simplifié)
-        BASE_ID=$(echo "$first_zone" | sed 's/^D0*//' | sed 's/[A-Za-z]//g')
+        # Cas spéciaux Corse : 2A et 2B partagent le même numéro → mapping INSEE
+        # statistique 201/202 pour garantir l'unicité (indispensable Garmin).
+        case "$first_zone" in
+            D02A) BASE_ID=201 ;;
+            D02B) BASE_ID=202 ;;
+            *)
+                # Extraire le numéro : D038 → 38, D971 → 971
+                BASE_ID=$(echo "$first_zone" | sed 's/^D0*//' | sed 's/[A-Za-z]//g')
+                ;;
+        esac
         if [[ -z "$BASE_ID" ]]; then
             BASE_ID=1
         fi

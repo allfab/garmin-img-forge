@@ -32,9 +32,12 @@ Les `base-id` sont choisis pour **éviter toute collision avec les codes INSEE**
 | D001 (Ain) | `1` |
 | D038 (Isère) | `38` |
 | D075 (Paris) | `75` |
-| D02A (Corse-du-Sud) | `2` (simplifié par le script) |
-| D02B (Haute-Corse) | `2` (simplifié par le script) |
+| D02A (Corse-du-Sud) | `201` (code INSEE statistique) |
+| D02B (Haute-Corse) | `202` (code INSEE statistique) |
 | D095 (Val-d'Oise) | `95` |
+
+!!! warning "Cas particulier Corse"
+    Les départements `2A` et `2B` (Corse-du-Sud et Haute-Corse) partagent le préfixe numérique `2`, ce qui provoquerait une **collision Garmin** si on installait les deux cartes simultanément sur un même GPS. Le script applique donc le mapping **INSEE statistique** `2A → 201` / `2B → 202` (codes utilisés par l'INSEE dans les jeux de données numériques), garantissant leur unicité.
 
 **Outre-mer (DOM + COM) :**
 
