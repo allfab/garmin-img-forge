@@ -313,6 +313,7 @@ inputs:
 - Seules les couches `points` et `lines` sont supportées (pas `multipolygons` — limitation du driver GDAL OSM)
 - Positionner `OSM_MAX_TMPFILE_SIZE=1024` pour éviter l'erreur "Too many features accumulated" sur les gros PBF
 - Positionner `OGR_GEOMETRY_ACCEPT_UNCLOSED_RING=YES` pour supprimer les warnings de géométries invalides
+- Positionner `OSM_CONFIG_FILE=./pipeline/configs/osm/osmconf.ini` pour utiliser l'`osmconf.ini` personnalisé du projet : il expose les tags `amenity`, `shop`, `tourism`, `natural` comme attributs GDAL directs (au lieu de les regrouper dans `other_tags`), ce qui permet au moteur de règles mpforge de matcher dessus. Sans cette variable, les POI OSM (refuges, sources, sommets nommés, etc.) et les features linéaires `natural=ridge`/`cliff` restent invisibles dans la carte Garmin finale.
 
 ## Valider la configuration
 
