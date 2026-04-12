@@ -48,6 +48,33 @@ Le script `download-bdtopo.sh` automatise le téléchargement depuis le Géoport
 ./scripts/download-bdtopo.sh --region FXX --with-contours --with-osm --with-dem
 ```
 
+### Cibler un millésime précis
+
+Par défaut, le script télécharge **la dernière édition** publiée par l'IGN. Trois options permettent de figer un millésime antérieur (utile pour reproduire un build historique ou attendre qu'une édition soit intégralement publiée) :
+
+```bash
+# 1. Lister les millésimes disponibles pour une zone (ne télécharge rien)
+./scripts/download-bdtopo.sh --zones D038 --list-editions
+
+# 2. Résoudre via API la dernière édition d'un mois donné
+./scripts/download-bdtopo.sh --zones D038 --bdtopo-version v2025.09
+
+# 3. Forcer une date d'édition exacte
+./scripts/download-bdtopo.sh --zones D038 --date 2025-09-15
+```
+
+| Option | Comportement |
+|--------|--------------|
+| `--list-editions` | Interroge l'API IGN, affiche les millésimes disponibles par zone au format `vYYYY.MM (date: YYYY-MM-DD)`, puis quitte. |
+| `--bdtopo-version vYYYY.MM` | Résolution dynamique : le script interroge l'API, filtre les éditions du mois demandé et utilise la plus récente. |
+| `--date YYYY-MM-DD` | Date exacte injectée dans le nom de dataset, sans passage par l'API de listing. |
+
+!!! warning "Exclusivité"
+    `--bdtopo-version` et `--date` ne peuvent pas être combinés. Utilisez l'un ou l'autre selon que vous connaissez ou non la date exacte de publication IGN.
+
+!!! tip "Préparer un build reproductible"
+    Commencez par `--list-editions` sur votre zone, notez la version cible (ex `v2025.09`), puis lancez votre pipeline avec `--bdtopo-version` pour garantir que toutes les zones pointent vers le même millésime.
+
 ## Organisation des données
 
 Le script organise automatiquement les fichiers téléchargés :

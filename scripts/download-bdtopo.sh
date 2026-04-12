@@ -28,6 +28,8 @@ THEMES="TOUSTHEMES"     # TOUSTHEMES | TRANSPORT | HYDROGRAPHIE | etc.
 ZONES=()
 REGION=""
 EDITION_DATE=""          # YYYY-MM-DD — si vide, on prend le plus récent via l'API
+BDTOPO_VERSION=""        # vYYYY.MM — alias résolu dynamiquement vers EDITION_DATE
+LIST_EDITIONS=false      # --list-editions : liste les millésimes et quitte
 DRY_RUN=false
 SKIP_EXISTING=true
 AUTO_EXTRACT=true
@@ -223,6 +225,12 @@ OPTIONS :
                           EXPRESS → France entière en GPKG (zone=FXX, automatique)
     --themes THEMES     TOUSTHEMES (défaut) | TRANSPORT | HYDROGRAPHIE | etc.
     --date YYYY-MM-DD   Forcer une date d'édition (sinon la plus récente)
+    --bdtopo-version vYYYY.MM
+                        Alias de --date : résout dynamiquement via l'API
+                        vers la dernière édition publiée ce mois-là
+                        (ex: v2025.09 → 2025-09-15 si publiée à cette date)
+    --list-editions     Liste les millésimes BDTOPO disponibles pour les
+                        zones demandées puis quitte (ne télécharge rien)
     --data-root DIR     Racine des données (défaut: ./pipeline/data/bdtopo)
     --no-extract        Ne pas décompresser les .7z
     --no-skip           Re-télécharger même si déjà présent
@@ -248,6 +256,8 @@ EXEMPLES :
     ./download-bdtopo.sh --zones R84 --product DIFF         # Différentiel ARA (région uniquement)
     ./download-bdtopo.sh --product EXPRESS                  # Express France entière (GPKG)
     ./download-bdtopo.sh --zones D038 --date 2025-12-15     # Date forcée
+    ./download-bdtopo.sh --zones D038 --bdtopo-version v2025.09  # Dernière édition de sept 2025
+    ./download-bdtopo.sh --zones D038 --list-editions       # Lister les millésimes dispo
     DEBUG=1 ./download-bdtopo.sh --zones D038               # Mode debug
     ./download-bdtopo.sh --zones D038 --with-contours      # BDTOPO + courbes de niveau D038
     ./download-bdtopo.sh --region ARA --with-contours      # BDTOPO R84 + courbes 12 départements ARA
@@ -281,6 +291,13 @@ parse_args() {
                     exit 1
                 fi
                 EDITION_DATE="$2"; shift 2 ;;
+            --bdtopo-version)
+                if [[ ! "$2" =~ ^v[0-9]{4}\.[0-9]{2}$ ]]; then
+                    log_error "Format de version invalide : $2 (attendu vYYYY.MM, ex v2025.09)"
+                    exit 1
+                fi
+                BDTOPO_VERSION="$2"; shift 2 ;;
+            --list-editions) LIST_EDITIONS=true; shift ;;
             --data-root)  DATA_ROOT="$2"; shift 2 ;;
             --no-extract) AUTO_EXTRACT=false; shift ;;
             --no-skip)    SKIP_EXISTING=false; shift ;;
@@ -403,15 +420,25 @@ xml_get_all() {
 }
 
 # Extraire l'attribut href des balises <link> qui contiennent "download" dans le href
+# Exclut les fichiers de métadonnées (md5, sha256) car l'API expose parfois à la fois
+# l'archive et sa somme de contrôle en tant que liens "download" (cas des éditions
+# BDTOPO antérieures à la dernière publiée).
 xml_get_download_links() {
     local xml="$1"
-    echo "$xml" | grep -oP '<link[^>]+href="\K[^"]*download[^"]*' 2>/dev/null || true
+    echo "$xml" | grep -oP '<link[^>]+href="\K[^"]*download[^"]*' 2>/dev/null \
+        | grep -vE '\.(md5|sha256|sha1|sha512)$' || true
 }
 
-# Extraire l'attribut gpf_dl:length d'une balise <link>
+# Extraire l'attribut gpf_dl:length d'une balise <link> pointant vers un fichier
+# de données (pas une somme de contrôle). On parse les <link> complets, on exclut
+# ceux pointant vers .md5/.sha256/etc., puis on extrait la length du premier restant.
 xml_get_link_length() {
     local xml="$1"
-    echo "$xml" | grep -oP 'gpf_dl:length="\K[0-9]+' 2>/dev/null | head -1 || true
+    echo "$xml" \
+        | grep -oP '<link[^>]*href="[^"]*download[^"]*"[^/]*/>' 2>/dev/null \
+        | grep -vE 'href="[^"]*\.(md5|sha256|sha1|sha512)"' \
+        | grep -oP 'gpf_dl:length="\K[0-9]+' \
+        | head -1 || true
 }
 
 # ---------------------------------------------------------------------------
@@ -423,6 +450,110 @@ get_resource_name() {
         DIFF)    echo "BDTOPO-DIFF" ;;
         EXPRESS) echo "BDTOPO_EXPRESS" ;;
     esac
+}
+
+# ---------------------------------------------------------------------------
+# Liste TOUTES les éditions disponibles pour une zone+format donnés.
+# Sortie sur stdout, une ligne par édition : "YYYY-MM-DD <dataset_name>".
+# ---------------------------------------------------------------------------
+list_editions_for_zone() {
+    local zone="$1" format="$2"
+    local resource_name
+    resource_name=$(get_resource_name)
+
+    # Étape 1 : nombre total d'entrées
+    local probe_url="${API_BASE}/resource/${resource_name}?zone=${zone}&format=${format}&page=1&limit=1"
+    local probe_response
+    probe_response=$(api_fetch "$probe_url") || return 1
+
+    local total_entries
+    total_entries=$(echo "$probe_response" | grep -oP 'gpf_dl:totalentries="\K[0-9]+' | head -1 || echo "0")
+    [[ "$total_entries" == "0" ]] && return 0
+
+    # Étape 2 : itérer page par page (limit=1) et extraire title + editionDate
+    # On filtre les <title> contenant la zone (ex "_D038_") pour éviter le <title>
+    # du feed lui-même ("BD TOPO®").
+    local p title date
+    for ((p=1; p<=total_entries; p++)); do
+        local page_url="${API_BASE}/resource/${resource_name}?zone=${zone}&format=${format}&page=${p}&limit=1"
+        local page_resp
+        page_resp=$(api_fetch "$page_url") || continue
+        title=$(echo "$page_resp" | grep -oP '<title>\K[^<]+' | grep -F "_${zone}_" | tail -1 || true)
+        [[ -z "$title" ]] && continue
+        date=$(echo "$title" | grep -oP '[0-9]{4}-[0-9]{2}-[0-9]{2}$' || true)
+        [[ -z "$date" ]] && continue
+        echo "${date} ${title}"
+    done | sort -u -r
+}
+
+# ---------------------------------------------------------------------------
+# Affiche les millésimes disponibles pour toutes les zones demandées, puis exit.
+# Appelé uniquement si --list-editions est passé.
+# ---------------------------------------------------------------------------
+run_list_editions() {
+    log_step "Millésimes BDTOPO disponibles"
+
+    local resource_name
+    resource_name=$(get_resource_name)
+    log_info "Ressource API : ${resource_name} · format : ${FORMAT}"
+
+    for zone in "${ZONES[@]}"; do
+        echo ""
+        log_info "Zone ${zone} :"
+        local editions
+        editions=$(list_editions_for_zone "$zone" "$FORMAT") || {
+            log_warn "  Impossible d'interroger l'API pour ${zone}"
+            continue
+        }
+        if [[ -z "$editions" ]]; then
+            log_warn "  Aucune édition trouvée"
+            continue
+        fi
+        while IFS= read -r line; do
+            local d="${line%% *}"
+            local year="${d%%-*}"; local month="${d#*-}"; month="${month%%-*}"
+            printf "  • v%s.%s  (date: %s)\n" "$year" "$month" "$d"
+        done <<< "$editions"
+    done
+
+    echo ""
+    log_info "Pour télécharger une édition précise :"
+    log_info "  --date YYYY-MM-DD            (date exacte)"
+    log_info "  --bdtopo-version vYYYY.MM    (dernière édition du mois)"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Résout --bdtopo-version vYYYY.MM → EDITION_DATE via l'API.
+# Stratégie : interroge la 1ère zone, filtre les éditions du mois demandé,
+# prend la plus récente. Si la même date n'existe pas pour les autres zones,
+# l'API renverra simplement "non trouvé" lors de discover_downloads.
+# ---------------------------------------------------------------------------
+resolve_bdtopo_version() {
+    local version="$1"  # vYYYY.MM déjà validé par parse_args
+    local year="${version:1:4}"
+    local month="${version:6:2}"
+
+    local reference_zone="${ZONES[0]}"
+    log_info "Résolution ${version} via API (zone de référence : ${reference_zone})..."
+
+    local editions
+    editions=$(list_editions_for_zone "$reference_zone" "$FORMAT") || {
+        log_error "Impossible d'interroger l'API pour résoudre ${version}"
+        exit 1
+    }
+
+    local resolved
+    resolved=$(echo "$editions" | awk '{print $1}' | grep "^${year}-${month}-" | sort -r | head -1 || true)
+
+    if [[ -z "$resolved" ]]; then
+        log_error "Aucune édition trouvée pour ${version} sur ${reference_zone}"
+        log_info "Utilisez --list-editions pour voir les millésimes disponibles."
+        exit 1
+    fi
+
+    EDITION_DATE="$resolved"
+    log_ok "${version} → ${EDITION_DATE}"
 }
 
 # ---------------------------------------------------------------------------
@@ -537,13 +668,11 @@ discover_downloads() {
                 continue
             fi
 
-            # Extraire le hash MD5 (dans <content> de l'entry)
+            # Extraire le hash MD5 du fichier data (PAS de sa somme de contrôle).
+            # Pour les éditions antérieures, l'API liste 2 <content> : d'abord le MD5
+            # du .md5 lui-même, puis le MD5 du .7z. On prend donc le DERNIER.
             local md5_hash
-            md5_hash=$(echo "$detail_response" | grep -oP '<entry>[\s\S]*?<content>\K[a-f0-9]{32}' | head -1 || true)
-            # Fallback
-            if [[ -z "$md5_hash" ]]; then
-                md5_hash=$(echo "$detail_response" | grep -oP '<content>[a-f0-9]{32}</content>' | grep -oP '>[a-f0-9]{32}<' | grep -oP '[a-f0-9]{32}' | head -1 || true)
-            fi
+            md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
 
             # Extraire la taille
             local file_size
@@ -1049,11 +1178,9 @@ discover_contour_downloads() {
             continue
         fi
 
+        # MD5 du fichier data (dernier <content>, cf. note discover_downloads)
         local md5_hash
-        md5_hash=$(echo "$detail_response" | grep -oP '<entry>[\s\S]*?<content>\K[a-f0-9]{32}' | head -1 || true)
-        if [[ -z "$md5_hash" ]]; then
-            md5_hash=$(echo "$detail_response" | grep -oP '<content>[a-f0-9]{32}</content>' | grep -oP '>[a-f0-9]{32}<' | grep -oP '[a-f0-9]{32}' | head -1 || true)
-        fi
+        md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
 
         local file_size
         file_size=$(xml_get_link_length "$detail_response")
@@ -1530,11 +1657,9 @@ discover_dem_downloads() {
             continue
         fi
 
+        # MD5 du fichier data (dernier <content>, cf. note discover_downloads)
         local md5_hash
-        md5_hash=$(echo "$detail_response" | grep -oP '<entry>[\s\S]*?<content>\K[a-f0-9]{32}' | head -1 || true)
-        if [[ -z "$md5_hash" ]]; then
-            md5_hash=$(echo "$detail_response" | grep -oP '<content>[a-f0-9]{32}</content>' | grep -oP '>[a-f0-9]{32}<' | grep -oP '[a-f0-9]{32}' | head -1 || true)
-        fi
+        md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
 
         local file_size
         file_size=$(xml_get_link_length "$detail_response")
@@ -1665,6 +1790,21 @@ main() {
     parse_args "$@"
     check_prerequisites
     resolve_zones
+
+    # --list-editions : lister les millésimes puis quitter, avant tout téléchargement
+    if [[ "$LIST_EDITIONS" == true ]]; then
+        run_list_editions
+    fi
+
+    # --bdtopo-version vYYYY.MM → résolution en EDITION_DATE via API
+    if [[ -n "$BDTOPO_VERSION" ]]; then
+        if [[ -n "$EDITION_DATE" ]]; then
+            log_error "--bdtopo-version et --date sont mutuellement exclusifs"
+            exit 1
+        fi
+        resolve_bdtopo_version "$BDTOPO_VERSION"
+    fi
+
     discover_downloads
     show_summary
     download_all

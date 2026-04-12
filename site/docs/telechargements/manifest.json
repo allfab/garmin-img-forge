@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-12T14:12:39Z",
+  "generated_at": "2026-04-12T15:01:36Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -7,6 +7,14 @@
       "label": "Départements: D038",
       "latest": "v2025.12",
       "versions": [
+        {
+          "version": "v2025.09",
+          "published_at": "2026-04-12T15:01:36Z",
+          "size_bytes": 466591744,
+          "sha256": "dd6f1490299622ac66bc5560a3625dccaa09c4a368b33a6c257e16e81c52d84a",
+          "file": "IGN-BDTOPO-D038-v2025.09.img",
+          "path": "files/departement/d038/v2025.09/IGN-BDTOPO-D038-v2025.09.img"
+        },
         {
           "version": "v2025.12",
           "published_at": "2026-04-12T14:12:39Z",

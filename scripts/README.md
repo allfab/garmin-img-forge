@@ -134,6 +134,29 @@ Script : `scripts/download-bdtopo.sh`
 
 Les données sont organisées dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`.
 
+### Cibler un millésime particulier
+
+Par défaut le script prend l'édition la plus récente disponible via l'API Géoplateforme. Trois options permettent de cibler une version antérieure :
+
+```bash
+# Lister les millésimes disponibles pour une zone (ne télécharge rien)
+./scripts/download-bdtopo.sh --zones D038 --list-editions
+
+# Résolution mensuelle via API (dernière édition publiée en septembre 2025)
+./scripts/download-bdtopo.sh --zones D038 --bdtopo-version v2025.09
+
+# Date d'édition exacte (format IGN YYYY-MM-DD)
+./scripts/download-bdtopo.sh --zones D038 --date 2025-09-15
+```
+
+| Option | Effet |
+|---|---|
+| `--list-editions` | Liste les millésimes disponibles par zone puis quitte |
+| `--bdtopo-version vYYYY.MM` | Résout via API vers la dernière édition publiée ce mois-là |
+| `--date YYYY-MM-DD` | Force une date d'édition précise (bypass API pour la résolution) |
+
+> **Note** : `--bdtopo-version` et `--date` sont mutuellement exclusifs. `--list-editions` est non destructif — idéal pour préparer une reprise de build sur un millésime figé.
+
 ### Courbes de niveau
 
 Le produit IGN "Courbes de niveau" est livré séparément de la BD TOPO, par département. L'option `--with-contours` télécharge les courbes en parallèle de la BDTOPO.
