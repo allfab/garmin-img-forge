@@ -19,6 +19,18 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# Auto-chargement pipeline/.env (credentials S3, etc.) — sans écraser l'env existant
+# ---------------------------------------------------------------------------
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ENV_FILE="${_SCRIPT_DIR}/../pipeline/.env"
+if [[ -f "$_ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$_ENV_FILE"
+    set +a
+fi
+
+# ---------------------------------------------------------------------------
 # Configuration par défaut
 # ---------------------------------------------------------------------------
 SCRIPT_VERSION="3.0.0"
@@ -1010,7 +1022,9 @@ update_manifest() {
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     mkdir -p "$(dirname "$manifest")"
-    if [[ ! -f "$manifest" ]]; then
+    # Init si absent, vide, ou JSON invalide (jq sur fichier vide → sortie vide + rc=0
+    # qui écraserait manifest.json avec du vide).
+    if [[ ! -s "$manifest" ]] || ! jq empty "$manifest" >/dev/null 2>&1; then
         echo '{"generated_at":"","coverages":{}}' > "$manifest"
     fi
 

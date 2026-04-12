@@ -15,8 +15,19 @@
         ? new URL('../telechargements/', scriptSrc).href
         : '/telechargements/';
 
-    // Accepte n'importe quel nom de fichier .img dans latest/ (ex: IGN-BDTOPO-FRANCE-SE.img)
-    var HREF_RE = /\/telechargements\/files\/([^/]+)\/([^/]+)\/latest\/[^/]+\.img$/;
+    // Lien local (legacy) : .../telechargements/files/<type>/<slug>/latest/*.img
+    var HREF_RE_LOCAL = /\/telechargements\/files\/([^/]+)\/([^/]+)\/latest\/[^/]+\.img$/;
+    // Lien S3 absolu : <endpoint_public>/<type>/<slug>/<version>/*.img
+    // L'endpoint_public est lu depuis manifest.storage.endpoint_public (mode s3).
+    function matchS3Href(href, endpoint) {
+        if (!endpoint) return null;
+        var prefix = endpoint.replace(/\/+$/, '') + '/';
+        if (href.indexOf(prefix) !== 0) return null;
+        var tail = href.slice(prefix.length);
+        // type/slug/version/file.img
+        var m = tail.match(/^([^/]+)\/([^/]+)\/[^/]+\/[^/]+\.img$/);
+        return m ? { type: m[1], slug: m[2] } : null;
+    }
 
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return '';
@@ -60,9 +71,16 @@
     function enhanceLink(link, manifest) {
         // link.href = URL absolue résolue par le browser (support href relatifs type ../files/...).
         var href = link.href || link.getAttribute('href') || '';
-        var m = href.match(HREF_RE);
-        if (!m) return;
-        var key = m[1] + '/' + m[2];
+        var key = null;
+        var m = href.match(HREF_RE_LOCAL);
+        if (m) {
+            key = m[1] + '/' + m[2];
+        } else {
+            var endpoint = manifest.storage && manifest.storage.endpoint_public;
+            var s3 = matchS3Href(href, endpoint);
+            if (s3) key = s3.type + '/' + s3.slug;
+        }
+        if (!key) return;
         var entry = manifest.coverages && manifest.coverages[key];
 
         if (!entry) {
@@ -138,13 +156,10 @@
     }
 
     function run() {
-        // Sélecteur tolérant aux href relatifs (ex: ../files/...) — on filtre ensuite
-        // sur link.href (URL absolue résolue par le browser).
-        var links = Array.prototype.filter.call(
-            document.querySelectorAll('a[href*="files/"][href*="/latest/"][href$=".img"]'),
-            function (a) { return HREF_RE.test(a.href || a.getAttribute('href') || ''); }
-        );
-        if (links.length === 0) return;
+        // On cible large (tout <a> vers .img) puis on filtre dans enhanceLink via
+        // HREF_RE_LOCAL (legacy) ou matchS3Href (endpoint lu dans le manifest).
+        var candidates = document.querySelectorAll('a[href$=".img"]');
+        if (candidates.length === 0) return;
 
         fetch(MANIFEST_URL, { cache: 'no-cache' })
             .then(function (r) {
@@ -152,10 +167,12 @@
                 return r.json();
             })
             .then(function (manifest) {
-                links.forEach(function (link) { enhanceLink(link, manifest); });
+                Array.prototype.forEach.call(candidates, function (link) {
+                    enhanceLink(link, manifest);
+                });
             })
             .catch(function () {
-                // Fallback silencieux : les boutons restent fonctionnels vers latest/.
+                // Fallback silencieux : les boutons restent fonctionnels vers l'URL directe.
             });
     }
 
