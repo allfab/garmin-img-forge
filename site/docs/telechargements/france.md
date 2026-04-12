@@ -23,7 +23,7 @@ title: Téléchargements - France métropolitaine
     Couvre les 96 départements métropolitains (Corse incluse).
     Fichier unique — vérifiez la capacité libre de votre GPS.
 
-    [:material-download: Télécharger](#){ .md-button .md-button--primary }
+    [:material-download: Télécharger](files/national/fxx/latest/IGN-BDTOPO-FXX.img){ .md-button .md-button--primary }
 
 </div>
 
@@ -40,7 +40,7 @@ title: Téléchargements - France métropolitaine
     Couvre les régions : Hauts-de-France, Grand Est, Normandie, Île-de-France,
     Bretagne, Pays de la Loire, Bourgogne-Franche-Comté, Centre-Val de Loire
 
-    [:material-download: Télécharger](#){ .md-button .md-button--primary }
+    [:material-download: Télécharger](files/national/france-nord/latest/IGN-BDTOPO-FRANCE-NORD.img){ .md-button .md-button--primary }
 
 -   :fontawesome-regular-square-caret-down:{ .lg .middle } France SUD
 
@@ -51,7 +51,7 @@ title: Téléchargements - France métropolitaine
     Couvre les régions : Nouvelle-Aquitaine, Auvergne-Rhône-Alpes, Occitanie,
     Provence-Alpes-Côte d'Azur, Corse
 
-    [:material-download: Télécharger](#){ .md-button .md-button--primary }
+    [:material-download: Télécharger](files/national/france-sud/latest/IGN-BDTOPO-FRANCE-SUD.img){ .md-button .md-button--primary }
 
 </div>
 
@@ -70,7 +70,7 @@ les quadrants Nord-Est et Nord-Ouest, conformément au choix Garmin.
     26 départements. Régions couvertes (partielles) : Bretagne, Pays de la Loire,
     Normandie (ouest), Centre-Val de Loire, Île-de-France (ouest).
 
-    [:material-download: Télécharger](#){ .md-button }
+    [:material-download: Télécharger](files/quadrant/france-no/latest/IGN-BDTOPO-FRANCE-NO.img){ .md-button }
 
 -   :material-arrow-top-right:{ .lg .middle } France NORD-EST
 
@@ -79,7 +79,7 @@ les quadrants Nord-Est et Nord-Ouest, conformément au choix Garmin.
     33 départements. Régions couvertes (partielles) : Hauts-de-France, Grand Est,
     Bourgogne-Franche-Comté, Île-de-France (est), Normandie (est).
 
-    [:material-download: Télécharger](#){ .md-button }
+    [:material-download: Télécharger](files/quadrant/france-ne/latest/IGN-BDTOPO-FRANCE-NE.img){ .md-button }
 
 -   :material-arrow-bottom-left:{ .lg .middle } France SUD-OUEST
 
@@ -88,7 +88,7 @@ les quadrants Nord-Est et Nord-Ouest, conformément au choix Garmin.
     20 départements. Régions couvertes (partielles) : Nouvelle-Aquitaine,
     Occitanie (ouest).
 
-    [:material-download: Télécharger](#){ .md-button }
+    [:material-download: Télécharger](files/quadrant/france-so/latest/IGN-BDTOPO-FRANCE-SO.img){ .md-button }
 
 -   :material-arrow-bottom-right:{ .lg .middle } France SUD-EST
 
@@ -97,7 +97,7 @@ les quadrants Nord-Est et Nord-Ouest, conformément au choix Garmin.
     25 départements. Régions couvertes (partielles) : Auvergne-Rhône-Alpes,
     Provence-Alpes-Côte d'Azur, Occitanie (est), Corse.
 
-    [:material-download: Télécharger](#){ .md-button }
+    [:material-download: Télécharger](files/quadrant/france-se/latest/IGN-BDTOPO-FRANCE-SE.img){ .md-button }
 
 </div>
 

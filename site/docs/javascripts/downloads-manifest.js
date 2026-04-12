@@ -31,7 +31,8 @@
     }
 
     function enhanceLink(link, manifest) {
-        var href = link.getAttribute('href') || '';
+        // link.href = URL absolue résolue par le browser (support href relatifs type ../files/...).
+        var href = link.href || link.getAttribute('href') || '';
         var m = href.match(HREF_RE);
         if (!m) return;
         var key = m[1] + '/' + m[2];
@@ -44,6 +45,8 @@
             link.addEventListener('click', function (e) { e.preventDefault(); });
             return;
         }
+
+        link.classList.add('is-available');
 
         // Source de vérité = entry.latest (calculé côté serveur)
         var allVersions = entry.versions || [];
@@ -98,9 +101,11 @@
     }
 
     function run() {
+        // Sélecteur tolérant aux href relatifs (ex: ../files/...) — on filtre ensuite
+        // sur link.href (URL absolue résolue par le browser).
         var links = Array.prototype.filter.call(
-            document.querySelectorAll('a[href*="/telechargements/files/"][href*="/latest/"]'),
-            function (a) { return HREF_RE.test(a.getAttribute('href') || ''); }
+            document.querySelectorAll('a[href*="files/"][href*="/latest/"][href$=".img"]'),
+            function (a) { return HREF_RE.test(a.href || a.getAttribute('href') || ''); }
         );
         if (links.length === 0) return;
 

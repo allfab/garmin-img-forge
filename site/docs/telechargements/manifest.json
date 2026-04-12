@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-12T10:46:04Z",
+  "generated_at": "2026-04-12T14:12:39Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,12 +9,15 @@
       "versions": [
         {
           "version": "v2025.12",
-          "published_at": "2026-04-12T10:46:04Z",
+          "published_at": "2026-04-12T14:12:39Z",
           "size_bytes": 166727680,
-          "sha256": "2b094df577626c5ea29f3bb2e546b1f57c4de17775470eb9993632ee3d8c5c1b",
-          "path": "files/departement/d038/v2025.12/gmapsupp.img"
+          "sha256": "5306d67d7bc163174dd07124f298c44750f180ded4f1aa509c848c92283f6f48",
+          "file": "IGN-BDTOPO-D038-v2025.12.img",
+          "path": "files/departement/d038/v2025.12/IGN-BDTOPO-D038-v2025.12.img"
         }
-      ]
+      ],
+      "latest_file": "IGN-BDTOPO-D038.img",
+      "latest_path": "files/departement/d038/latest/IGN-BDTOPO-D038.img"
     }
   }
 }

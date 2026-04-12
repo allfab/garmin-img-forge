@@ -1,4 +1,36 @@
 /* ============================================================
+   Téléchargements — boutons disponibles / indisponibles
+   État appliqué par site/docs/javascripts/downloads-manifest.js
+   ============================================================ */
+
+.md-button.is-available {
+  background-color: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.md-button.is-available:hover,
+.md-button.is-available:focus {
+  background-color: #1b5e20;
+  border-color: #1b5e20;
+  color: #fff;
+}
+
+.md-button.is-unavailable {
+  background-color: transparent;
+  border-color: rgba(0, 0, 0, 0.26);
+  color: rgba(0, 0, 0, 0.38);
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+[data-md-color-scheme="slate"] .md-button.is-unavailable {
+  border-color: rgba(255, 255, 255, 0.26);
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* ============================================================
    Dark Mode — Mermaid Diagram Overrides
    ============================================================ */
 
