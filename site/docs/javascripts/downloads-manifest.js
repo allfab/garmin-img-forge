@@ -43,13 +43,15 @@
 
     function buildMetaBlock(version) {
         if (!version || !version.published_at) return null;
+        var formatted = formatDate(version.published_at);
+        if (!formatted) return null;  // Date invalide : ne pas injecter "📅 " nu.
 
         var wrapper = document.createElement('div');
         wrapper.className = 'download-meta';
 
         var date = document.createElement('span');
         date.className = 'download-meta-date';
-        date.textContent = '📅 ' + formatDate(version.published_at);
+        date.textContent = '📅 ' + formatted;
         wrapper.appendChild(date);
 
         return wrapper;

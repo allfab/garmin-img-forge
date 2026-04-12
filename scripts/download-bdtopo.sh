@@ -429,6 +429,26 @@ xml_get_download_links() {
         | grep -vE '\.(md5|sha256|sha1|sha512)$' || true
 }
 
+# Extraire le hash MD5 du fichier de données (pas d'une somme de contrôle) depuis
+# un feed détail Géoplateforme. On apparie les <link href="..."/> et les <content>
+# dans l'ordre d'apparition, on écarte les paires dont l'href pointe vers un
+# fichier de checksum (.md5/.sha*), et on retourne le hash de la dernière paire
+# data restante (robuste si l'API ajoute d'autres types de checksums).
+xml_get_data_md5() {
+    local xml="$1"
+    printf '%s' "$xml" | python3 - <<'PY' 2>/dev/null || true
+import sys, re
+xml = sys.stdin.read()
+links = re.findall(r'<link[^>]*href="([^"]*download[^"]*)"', xml)
+contents = re.findall(r'<content[^>]*>\s*([a-f0-9]{32})\s*</content>', xml)
+pairs = list(zip(links, contents))
+data = [c for href, c in pairs
+        if not re.search(r'\.(md5|sha1|sha256|sha512)(?:$|\?)', href, re.I)]
+if data:
+    print(data[-1])
+PY
+}
+
 # Extraire l'attribut gpf_dl:length d'une balise <link> pointant vers un fichier
 # de données (pas une somme de contrôle). On parse les <link> complets, on exclut
 # ceux pointant vers .md5/.sha256/etc., puis on extrait la length du premier restant.
@@ -461,7 +481,9 @@ list_editions_for_zone() {
     local resource_name
     resource_name=$(get_resource_name)
 
-    # Étape 1 : nombre total d'entrées
+    # Pagination par blocs de 50 (plafond raisonnable API Géoplateforme) pour éviter
+    # 1 requête par édition (N sequential calls → rate-limit + latence).
+    local page_size=50
     local probe_url="${API_BASE}/resource/${resource_name}?zone=${zone}&format=${format}&page=1&limit=1"
     local probe_response
     probe_response=$(api_fetch "$probe_url") || return 1
@@ -470,19 +492,22 @@ list_editions_for_zone() {
     total_entries=$(echo "$probe_response" | grep -oP 'gpf_dl:totalentries="\K[0-9]+' | head -1 || echo "0")
     [[ "$total_entries" == "0" ]] && return 0
 
-    # Étape 2 : itérer page par page (limit=1) et extraire title + editionDate
-    # On filtre les <title> contenant la zone (ex "_D038_") pour éviter le <title>
-    # du feed lui-même ("BD TOPO®").
-    local p title date
-    for ((p=1; p<=total_entries; p++)); do
-        local page_url="${API_BASE}/resource/${resource_name}?zone=${zone}&format=${format}&page=${p}&limit=1"
+    local total_pages=$(( (total_entries + page_size - 1) / page_size ))
+    local p
+    for ((p=1; p<=total_pages; p++)); do
+        local page_url="${API_BASE}/resource/${resource_name}?zone=${zone}&format=${format}&page=${p}&limit=${page_size}"
         local page_resp
         page_resp=$(api_fetch "$page_url") || continue
-        title=$(echo "$page_resp" | grep -oP '<title>\K[^<]+' | grep -F "_${zone}_" | tail -1 || true)
-        [[ -z "$title" ]] && continue
-        date=$(echo "$title" | grep -oP '[0-9]{4}-[0-9]{2}-[0-9]{2}$' || true)
-        [[ -z "$date" ]] && continue
-        echo "${date} ${title}"
+        # Un <title> par entrée ; on garde ceux contenant "_${zone}_" (exclut
+        # le <title> du feed lui-même), et on extrait la date terminale YYYY-MM-DD.
+        echo "$page_resp" \
+            | grep -oP '<title>\K[^<]+' \
+            | grep -F "_${zone}_" \
+            | while IFS= read -r title; do
+                local date
+                date=$(printf '%s' "$title" | grep -oP '[0-9]{4}-[0-9]{2}-[0-9]{2}$' || true)
+                [[ -n "$date" ]] && echo "${date} ${title}"
+            done
     done | sort -u -r
 }
 
@@ -554,6 +579,32 @@ resolve_bdtopo_version() {
 
     EDITION_DATE="$resolved"
     log_ok "${version} → ${EDITION_DATE}"
+
+    # Vérification cross-zones : IGN publie parfois à des dates différentes selon
+    # le département. Avertir explicitement si une zone demandée n'a pas la même
+    # date résolue (plutôt que de laisser discover_downloads échouer en silence).
+    if [[ "${#ZONES[@]}" -gt 1 ]]; then
+        local z zone_editions zone_date divergent=0
+        for z in "${ZONES[@]:1}"; do
+            zone_editions=$(list_editions_for_zone "$z" "$FORMAT") || {
+                log_warn "  ${z} : impossible de vérifier la disponibilité de ${EDITION_DATE}"
+                divergent=1
+                continue
+            }
+            zone_date=$(echo "$zone_editions" | awk '{print $1}' | grep "^${year}-${month}-" | sort -r | head -1 || true)
+            if [[ -z "$zone_date" ]]; then
+                log_warn "  ${z} : aucune édition pour ${version} (le téléchargement échouera pour cette zone)"
+                divergent=1
+            elif [[ "$zone_date" != "$EDITION_DATE" ]]; then
+                log_warn "  ${z} : édition ${version} publiée le ${zone_date} (≠ ${EDITION_DATE} de ${reference_zone})"
+                divergent=1
+            fi
+        done
+        if [[ "$divergent" -eq 1 ]]; then
+            log_warn "Dates de publication divergentes entre zones. Le téléchargement sera partiel pour les zones concernées."
+            log_warn "Utilisez --list-editions pour voir les millésimes par zone."
+        fi
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -672,7 +723,7 @@ discover_downloads() {
             # Pour les éditions antérieures, l'API liste 2 <content> : d'abord le MD5
             # du .md5 lui-même, puis le MD5 du .7z. On prend donc le DERNIER.
             local md5_hash
-            md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
+            md5_hash=$(xml_get_data_md5 "$detail_response")
 
             # Extraire la taille
             local file_size
@@ -1180,7 +1231,7 @@ discover_contour_downloads() {
 
         # MD5 du fichier data (dernier <content>, cf. note discover_downloads)
         local md5_hash
-        md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
+        md5_hash=$(xml_get_data_md5 "$detail_response")
 
         local file_size
         file_size=$(xml_get_link_length "$detail_response")
@@ -1659,7 +1710,7 @@ discover_dem_downloads() {
 
         # MD5 du fichier data (dernier <content>, cf. note discover_downloads)
         local md5_hash
-        md5_hash=$(echo "$detail_response" | grep -oP '<content>\K[a-f0-9]{32}' | tail -1 || true)
+        md5_hash=$(xml_get_data_md5 "$detail_response")
 
         local file_size
         file_size=$(xml_get_link_length "$detail_response")

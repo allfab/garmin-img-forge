@@ -640,23 +640,29 @@ resolve_paths() {
 # ---------------------------------------------------------------------------
 find_binary() {
     local name="$1"
+    local found=""
     # Priorité 1 : binaire installé dans le $PATH (ex: /usr/local/bin)
     if command -v "$name" &>/dev/null; then
-        command -v "$name"
-        return 0
+        found=$(command -v "$name")
+    else
+        # Fallback : build locale cargo release
+        local candidates=(
+            "./tools/${name}/target/release/${name}"
+            "../tools/${name}/target/release/${name}"
+        )
+        local c
+        for c in "${candidates[@]}"; do
+            if [[ -x "$c" ]]; then
+                found="$c"
+                break
+            fi
+        done
     fi
-    # Fallback : build locale cargo release
-    local candidates=(
-        "./tools/${name}/target/release/${name}"
-        "../tools/${name}/target/release/${name}"
-    )
-    for c in "${candidates[@]}"; do
-        if [[ -x "$c" ]]; then
-            echo "$c"
-            return 0
-        fi
-    done
-    echo ""
+    # Log sur stderr pour que stdout reste capturable par l'appelant ($(find_binary …))
+    if [[ -n "$found" && "${VERBOSE_COUNT:-0}" -ge 1 ]]; then
+        echo "[INFO]  find_binary: ${name} → ${found}" >&2
+    fi
+    echo "$found"
 }
 
 # ---------------------------------------------------------------------------
@@ -1222,8 +1228,17 @@ publish_coverage() {
 
     # Nettoyage d'un éventuel alias latest/ d'un nom différent (migration ou
     # changement de --family-name) pour éviter d'accumuler des fichiers morts.
-    find "$dest_latest" -maxdepth 1 -type f -name '*.img' \
-        ! -name "${_IMG_LATEST_NAME}" -delete 2>/dev/null || true
+    # Log explicite de chaque fichier supprimé + respect de --dry-run.
+    local stale
+    while IFS= read -r -d '' stale; do
+        if [[ "$DRY_RUN" == true ]]; then
+            log_info "  [dry-run] suppression alias obsolète : ${stale}"
+        else
+            log_info "  Suppression alias obsolète : ${stale}"
+            rm -f -- "$stale"
+        fi
+    done < <(find "$dest_latest" -maxdepth 1 -type f -name '*.img' \
+                 ! -name "${_IMG_LATEST_NAME}" -print0 2>/dev/null)
 
     # Copie atomique : écrit dans tmp puis mv (même FS)
     local tmp_version="${dest_version}/.${_IMG_FILENAME}.tmp"
