@@ -165,6 +165,12 @@ declare -A REGIONS_TO_GEOFABRIK=(
     [FRANCE-SO]="aquitaine limousin poitou-charentes midi-pyrenees"
     [FRANCE-NE]="bourgogne franche-comte nord-pas-de-calais picardie alsace champagne-ardenne lorraine ile-de-france haute-normandie"
     [FRANCE-NO]="centre bretagne pays-de-la-loire ile-de-france basse-normandie"
+    # DOM — Geofabrik publie les DOM sous europe/france/<nom>-latest.osm.pbf
+    [GUA]="guadeloupe"
+    [MAR]="martinique"
+    [GUY]="guyane"
+    [REU]="reunion"
+    [MAY]="mayotte"
 )
 
 # Mapping département → code région (pour résoudre D038 → ARA → Geofabrik)
@@ -193,6 +199,8 @@ declare -A DEPT_TO_REGION=(
     [D044]="PDL" [D049]="PDL" [D053]="PDL" [D072]="PDL" [D085]="PDL"
     [D004]="PAC" [D005]="PAC" [D006]="PAC" [D013]="PAC" [D083]="PAC"
     [D084]="PAC"
+    # DOM — Départements d'Outre-Mer
+    [D971]="GUA" [D972]="MAR" [D973]="GUY" [D974]="REU" [D976]="MAY"
 )
 
 # ---------------------------------------------------------------------------
