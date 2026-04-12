@@ -632,6 +632,12 @@ resolve_paths() {
 # ---------------------------------------------------------------------------
 find_binary() {
     local name="$1"
+    # Priorité 1 : binaire installé dans le $PATH (ex: /usr/local/bin)
+    if command -v "$name" &>/dev/null; then
+        command -v "$name"
+        return 0
+    fi
+    # Fallback : build locale cargo release
     local candidates=(
         "./tools/${name}/target/release/${name}"
         "../tools/${name}/target/release/${name}"
@@ -642,10 +648,6 @@ find_binary() {
             return 0
         fi
     done
-    if command -v "$name" &>/dev/null; then
-        command -v "$name"
-        return 0
-    fi
     echo ""
 }
 
