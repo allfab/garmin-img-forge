@@ -57,6 +57,7 @@ COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Cont
 # Contrôle
 DRY_RUN=false
 PUBLISH=false
+PUBLISH_TARGET="${PUBLISH_TARGET:-local}"  # local | s3
 SKIP_EXISTING=false
 VERBOSE_COUNT=0         # 0=warn, 1=-v, 2=-vv
 WITH_ROUTE=true
@@ -298,8 +299,10 @@ IMGFORGE :
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
-    --publish               Publier le .img vers site/docs/telechargements/
-                            (versionné: {family-name}.img, alias latest/ sans -vYYYY.MM)
+    --publish               Publier le .img (cible: --publish-target, défaut local)
+                            Local: copie vers site/docs/telechargements/
+                            S3   : upload vers bucket Garage (voir pipeline/.env)
+    --publish-target TGT    local | s3 (défaut: local ; env: PUBLISH_TARGET)
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
     --version-info          Version du script
     -h, --help              Aide
@@ -361,6 +364,8 @@ parse_args() {
             --no-dem)        WITH_DEM=false; shift ;;
             --dry-run)       DRY_RUN=true; shift ;;
             --publish)       PUBLISH=true; shift ;;
+            --publish-target=*) PUBLISH_TARGET="${1#*=}"; shift ;;
+            --publish-target)   PUBLISH_TARGET="$2"; shift 2 ;;
             -v|--verbose)    VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
             -vv)             VERBOSE_COUNT=2; shift ;;
             --version-info)  echo "build-garmin-map.sh v${SCRIPT_VERSION}"; exit 0 ;;
@@ -721,6 +726,29 @@ check_prerequisites() {
             exit 1
         fi
         log_ok "jq / sha256sum / python3 : disponibles"
+
+        case "$PUBLISH_TARGET" in
+            local) : ;;
+            s3)
+                if ! command -v rclone &>/dev/null; then
+                    log_error "rclone requis pour --publish-target=s3 (dnf install rclone)"
+                    exit 1
+                fi
+                local _v
+                for _v in RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY \
+                          RCLONE_CONFIG_GARAGE_ENDPOINT S3_BUCKET PUBLIC_URL_BASE; do
+                    if [[ -z "${!_v:-}" ]]; then
+                        log_error "Variable $_v manquante (voir pipeline/.env.example)"
+                        exit 1
+                    fi
+                done
+                log_ok "rclone + vars S3 : OK (bucket ${S3_BUCKET})"
+                ;;
+            *)
+                log_error "--publish-target invalide : '${PUBLISH_TARGET}' (attendu: local|s3)"
+                exit 1
+                ;;
+        esac
     fi
 }
 
@@ -976,6 +1004,7 @@ run_imgforge() {
 update_manifest() {
     local type="$1" slug="$2" label="$3" version="$4" size="$5" sha256="$6"
     local img_file="$7" latest_file="$8"
+    local public_url_base="${9:-}"
     local manifest="site/docs/telechargements/manifest.json"
     local now
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -986,8 +1015,18 @@ update_manifest() {
     fi
 
     local key="${type}/${slug}"
-    local rel_path="files/${type}/${slug}/${version}/${img_file}"
-    local latest_rel_path="files/${type}/${slug}/latest/${latest_file}"
+    local rel_path latest_rel_path storage_type storage_endpoint
+    if [[ -n "$public_url_base" ]]; then
+        rel_path="${public_url_base}/${type}/${slug}/${version}/${img_file}"
+        latest_rel_path=""  # latest_url calculé par jq depuis la version latest
+        storage_type="s3"
+        storage_endpoint="$public_url_base"
+    else
+        rel_path="files/${type}/${slug}/${version}/${img_file}"
+        latest_rel_path="files/${type}/${slug}/latest/${latest_file}"
+        storage_type="local"
+        storage_endpoint=""
+    fi
     local tmp="${manifest}.tmp"
 
     jq \
@@ -1002,16 +1041,24 @@ update_manifest() {
         --arg file "$img_file" \
         --arg latest_file "$latest_file" \
         --arg latest_path "$latest_rel_path" \
+        --arg storage_type "$storage_type" \
+        --arg storage_endpoint "$storage_endpoint" \
         --argjson size "$size" \
         '
         .generated_at = $now
+        | .storage = (
+            if $storage_type == "s3"
+            then {type:"s3", endpoint_public:$storage_endpoint}
+            else {type:"local"}
+            end
+          )
         | .coverages[$key] = (
             (.coverages[$key] // {type:$type, slug:$slug, label:$label, latest:"", versions:[]})
             | .type = $type
             | .slug = $slug
             | .label = $label
             | .latest_file = $latest_file
-            | .latest_path = $latest_path
+            | (if $latest_path != "" then .latest_path = $latest_path else del(.latest_path) end)
             | .versions = (
                 (.versions // [] | map(select(.version != $version)))
                 + [{
@@ -1025,6 +1072,8 @@ update_manifest() {
               )
             | .versions |= sort_by(.version)
             | .latest = (.versions | map(.version) | max // "")
+            | (.latest) as $lv
+            | .latest_url = ((.versions | map(select(.version == $lv)) | first // {path:""}).path)
           )
         ' "$manifest" > "$tmp" && mv "$tmp" "$manifest"
 
@@ -1036,6 +1085,7 @@ update_manifest() {
 # ---------------------------------------------------------------------------
 patch_download_page() {
     local type="$1" slug="$2" latest_file="$3"
+    local public_url_base="${4:-}" version="${5:-}" img_filename="${6:-}"
     local page=""
     local anchor=""
 
@@ -1091,8 +1141,14 @@ patch_download_page() {
             ;;
     esac
 
-    local url="files/${type}/${slug}/latest/${latest_file}"
-    local url_prefix="files/${type}/${slug}/latest/"
+    local url url_prefix
+    if [[ -n "$public_url_base" ]]; then
+        url="${public_url_base}/${type}/${slug}/${version}/${img_filename}"
+        url_prefix="${public_url_base}/${type}/${slug}/"
+    else
+        url="files/${type}/${slug}/latest/${latest_file}"
+        url_prefix="files/${type}/${slug}/latest/"
+    fi
 
     if [[ ! -f "$page" ]]; then
         log_warn "Page MD introuvable : $page"
@@ -1102,6 +1158,32 @@ patch_download_page() {
     if grep -qF "${url}" "$page"; then
         log_info "Lien déjà patché : ${url}"
         return 0
+    fi
+
+    # Migration cross-mode : en mode S3, remplacer un éventuel lien local
+    # "files/${type}/${slug}/latest/..." par la nouvelle URL absolue S3.
+    if [[ -n "$public_url_base" ]]; then
+        local legacy_prefix="files/${type}/${slug}/latest/"
+        if grep -qF "${legacy_prefix}" "$page"; then
+            local mig_rc=0
+            python3 - "$page" "$legacy_prefix" "$url" <<'PY' || mig_rc=$?
+import sys, re
+page, prefix, new_url = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(page, 'r', encoding='utf-8') as f:
+    src = f.read()
+pat = re.compile(r'\(' + re.escape(prefix) + r'[^)]+\)')
+new_src, n = pat.subn('(' + new_url + ')', src, count=1)
+if n == 1:
+    with open(page, 'w', encoding='utf-8') as f:
+        f.write(new_src)
+    sys.exit(0)
+sys.exit(2)
+PY
+            if [[ "$mig_rc" -eq 0 ]]; then
+                log_ok "Page MD migrée local→S3 : ${page} → ${url}"
+                return 0
+            fi
+        fi
     fi
 
     # Migration : si la page contient un ancien lien latest/ pour cette
@@ -1275,6 +1357,76 @@ publish_coverage() {
 }
 
 # ---------------------------------------------------------------------------
+# Publication S3 : upload gmapsupp.img vers bucket Garage via rclone
+# ---------------------------------------------------------------------------
+publish_coverage_s3() {
+    log_step "Publication S3 (Garage → ${S3_BUCKET})"
+
+    local src="${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
+    if [[ ! -f "$src" ]]; then
+        log_error "Source introuvable pour publication S3 : $src"
+        return 1
+    fi
+
+    if [[ ! "$VERSION" =~ ^v[0-9]{4}\.(0[1-9]|1[0-2])$ ]]; then
+        log_error "Format --version invalide pour publication : '$VERSION' (attendu vYYYY.MM)"
+        return 1
+    fi
+
+    resolve_coverage_info
+
+    if [[ -z "$_PUB_SLUG" ]]; then
+        log_error "Slug de publication vide — zones/region invalides"
+        return 1
+    fi
+
+    local key="${_PUB_TYPE}/${_PUB_SLUG}/${VERSION}/${_IMG_FILENAME}"
+    local remote="garage:${S3_BUCKET}/${key}"
+    local public_url="${PUBLIC_URL_BASE}/${key}"
+
+    local sha256 size
+    sha256=$(sha256sum "$src" | awk '{print $1}')
+    size=$(stat -c%s "$src")
+    local size_hr
+    size_hr=$(numfmt --to=iec-i --suffix=B "$size" 2>/dev/null || echo "${size} octets")
+
+    log_info "  Type   : ${_PUB_TYPE}"
+    log_info "  Slug   : ${_PUB_SLUG}"
+    log_info "  Label  : ${_PUB_LABEL}"
+    log_info "  Taille : ${size_hr}"
+    log_info "  sha256 : ${sha256:0:16}…"
+    log_info "  Remote : ${remote}"
+    log_info "  URL    : ${public_url}"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "  [dry-run] rclone copyto --checksum --s3-no-check-bucket \"$src\" \"$remote\""
+        log_info "  [dry-run] manifest.json non modifié"
+        return 0
+    fi
+
+    rclone copyto --checksum --s3-no-check-bucket "$src" "$remote"
+
+    # Verification post-upload : on re-calcule le sha256 en streamant l'objet
+    # distant (rclone cat) pour attraper une corruption post-upload. Plus fiable
+    # que `rclone hashsum` (Garage ne stocke pas sha256 en metadata native).
+    local remote_sha256
+    remote_sha256=$(rclone cat "$remote" | sha256sum | awk '{print $1}')
+    if [[ "$remote_sha256" != "$sha256" ]]; then
+        log_error "sha256 mismatch post-upload (local=${sha256:0:16}… remote=${remote_sha256:0:16}…)"
+        return 1
+    fi
+    log_ok "sha256 remote vérifié"
+
+    update_manifest "$_PUB_TYPE" "$_PUB_SLUG" "$_PUB_LABEL" "$VERSION" \
+                    "$size" "$sha256" "$_IMG_FILENAME" "$_IMG_LATEST_NAME" \
+                    "$PUBLIC_URL_BASE"
+    patch_download_page "$_PUB_TYPE" "$_PUB_SLUG" "$_IMG_LATEST_NAME" \
+                        "$PUBLIC_URL_BASE" "$VERSION" "$_IMG_FILENAME"
+
+    log_ok "Publié S3 : ${public_url}"
+}
+
+# ---------------------------------------------------------------------------
 # Résumé final
 # ---------------------------------------------------------------------------
 show_summary() {
@@ -1358,14 +1510,18 @@ main() {
     show_summary
 
     if [[ "$PUBLISH" == true ]]; then
-        if [[ "$DRY_RUN" == true ]]; then
+        if [[ "$DRY_RUN" == true && "$PUBLISH_TARGET" != "s3" ]]; then
             log_warn "--publish ignoré en mode --dry-run"
         elif [[ "$PARTIAL_FAILURE" == true ]]; then
             log_warn "--publish ignoré : build partiel (PARTIAL_FAILURE=true)"
         elif [[ ! -f "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" ]]; then
             log_warn "--publish ignoré : ${_IMG_FILENAME} manquant"
         else
-            publish_coverage
+            case "$PUBLISH_TARGET" in
+                local) publish_coverage ;;
+                s3)    publish_coverage_s3 ;;
+                *)     log_error "PUBLISH_TARGET invalide: ${PUBLISH_TARGET}"; exit 1 ;;
+            esac
         fi
     fi
 
