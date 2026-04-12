@@ -56,6 +56,7 @@ COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Cont
 
 # Contrôle
 DRY_RUN=false
+PUBLISH=false
 SKIP_EXISTING=false
 VERBOSE_COUNT=0         # 0=warn, 1=-v, 2=-vv
 WITH_ROUTE=true
@@ -153,6 +154,61 @@ declare -A REGIONS_TO_DEPARTMENTS=(
 )
 
 # ---------------------------------------------------------------------------
+# Publication : mapping R-code → trigramme, labels humains, résolution type/slug
+# ---------------------------------------------------------------------------
+declare -A R_CODE_TO_TRIGRAM=(
+    [R11]=IDF [R24]=CVL [R27]=BFC [R28]=NOR [R32]=HDF [R44]=GES
+    [R52]=PDL [R53]=BRE [R75]=NAQ [R76]=OCC [R84]=ARA [R93]=PAC [R94]=COR
+)
+
+declare -A REGION_LABELS=(
+    [IDF]="Île-de-France" [CVL]="Centre-Val de Loire" [BFC]="Bourgogne-Franche-Comté"
+    [NOR]="Normandie" [HDF]="Hauts-de-France" [GES]="Grand Est"
+    [PDL]="Pays de la Loire" [BRE]="Bretagne" [NAQ]="Nouvelle-Aquitaine"
+    [OCC]="Occitanie" [ARA]="Auvergne-Rhône-Alpes"
+    [PAC]="Provence-Alpes-Côte d'Azur" [COR]="Corse"
+    [FRANCE-SE]="France Sud-Est" [FRANCE-SO]="France Sud-Ouest"
+    [FRANCE-NE]="France Nord-Est" [FRANCE-NO]="France Nord-Ouest"
+    [FRANCE-SUD]="France Sud" [FRANCE-NORD]="France Nord"
+    [FXX]="France métropolitaine"
+)
+
+# Globals peuplés par resolve_coverage_info
+_PUB_TYPE=""
+_PUB_SLUG=""
+_PUB_LABEL=""
+
+to_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+resolve_coverage_info() {
+    _PUB_TYPE=""
+    _PUB_SLUG=""
+    _PUB_LABEL=""
+
+    if [[ -n "$REGION" ]]; then
+        case "$REGION" in
+            FRANCE-SE|FRANCE-SO|FRANCE-NE|FRANCE-NO)
+                _PUB_TYPE="quadrant"
+                ;;
+            FXX|FRANCE-SUD|FRANCE-NORD)
+                _PUB_TYPE="national"
+                ;;
+            *)
+                _PUB_TYPE="region"
+                ;;
+        esac
+        _PUB_SLUG=$(to_lower "$REGION")
+        _PUB_LABEL="${REGION_LABELS[$REGION]:-$REGION}"
+    else
+        _PUB_TYPE="departement"
+        local sorted
+        sorted=$(echo "$ZONES" | tr ',' '\n' | sort -u | paste -sd, -)
+        _PUB_SLUG=$(to_lower "$sorted" | tr ',' '-')
+        _PUB_LABEL="Départements: $sorted"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Nettoyage
 # ---------------------------------------------------------------------------
 cleanup_trap() {
@@ -236,6 +292,7 @@ IMGFORGE :
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
+    --publish               Publier gmapsupp.img vers site/docs/telechargements/
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
     --version-info          Version du script
     -h, --help              Aide
@@ -258,6 +315,9 @@ EXEMPLES :
 
     # Région Auvergne-Rhône-Alpes
     ./scripts/build-garmin-map.sh --region ARA --year 2025 --version v2025.12
+
+    # Build + publication dans le site
+    ./scripts/build-garmin-map.sh --region ARA --publish
 EOF
     exit 0
 }
@@ -293,6 +353,7 @@ parse_args() {
             --no-route)      WITH_ROUTE=false; shift ;;
             --no-dem)        WITH_DEM=false; shift ;;
             --dry-run)       DRY_RUN=true; shift ;;
+            --publish)       PUBLISH=true; shift ;;
             -v|--verbose)    VERBOSE_COUNT=$(( VERBOSE_COUNT + 1 > 2 ? 2 : VERBOSE_COUNT + 1 )); shift ;;
             -vv)             VERBOSE_COUNT=2; shift ;;
             --version-info)  echo "build-garmin-map.sh v${SCRIPT_VERSION}"; exit 0 ;;
@@ -609,6 +670,24 @@ check_prerequisites() {
         log_error "Config mpforge introuvable : $CONFIG_FILE"
         exit 1
     fi
+
+    # --- Outils requis uniquement si --publish (GNU coreutils, Linux uniquement) ---
+    if [[ "$PUBLISH" == true ]]; then
+        if ! command -v jq &>/dev/null; then
+            log_error "jq requis pour --publish (manipulation manifest.json)"
+            log_error "  → Installez : sudo dnf install jq  (ou apt install jq)"
+            exit 1
+        fi
+        if ! command -v sha256sum &>/dev/null; then
+            log_error "sha256sum requis pour --publish"
+            exit 1
+        fi
+        if ! command -v python3 &>/dev/null; then
+            log_error "python3 requis pour --publish (patch idempotent des pages MD)"
+            exit 1
+        fi
+        log_ok "jq / sha256sum / python3 : disponibles"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -858,6 +937,236 @@ run_imgforge() {
 }
 
 # ---------------------------------------------------------------------------
+# Publication : met à jour manifest.json (upsert version, recalcule latest)
+# ---------------------------------------------------------------------------
+update_manifest() {
+    local type="$1" slug="$2" label="$3" version="$4" size="$5" sha256="$6"
+    local manifest="site/docs/telechargements/manifest.json"
+    local now
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    mkdir -p "$(dirname "$manifest")"
+    if [[ ! -f "$manifest" ]]; then
+        echo '{"generated_at":"","coverages":{}}' > "$manifest"
+    fi
+
+    local key="${type}/${slug}"
+    local rel_path="files/${type}/${slug}/${version}/gmapsupp.img"
+    local tmp="${manifest}.tmp"
+
+    jq \
+        --arg key "$key" \
+        --arg type "$type" \
+        --arg slug "$slug" \
+        --arg label "$label" \
+        --arg version "$version" \
+        --arg now "$now" \
+        --arg path "$rel_path" \
+        --arg sha256 "$sha256" \
+        --argjson size "$size" \
+        '
+        .generated_at = $now
+        | .coverages[$key] = (
+            (.coverages[$key] // {type:$type, slug:$slug, label:$label, latest:"", versions:[]})
+            | .type = $type
+            | .slug = $slug
+            | .label = $label
+            | .versions = (
+                (.versions // [] | map(select(.version != $version)))
+                + [{
+                    version: $version,
+                    published_at: $now,
+                    size_bytes: $size,
+                    sha256: $sha256,
+                    path: $path
+                }]
+              )
+            | .versions |= sort_by(.version)
+            | .latest = (.versions | map(.version) | max // "")
+          )
+        ' "$manifest" > "$tmp" && mv "$tmp" "$manifest"
+
+    log_ok "manifest.json mis à jour (${key} → ${version})"
+}
+
+# ---------------------------------------------------------------------------
+# Publication : patch idempotent des pages MD (remplace (#) par le lien latest/)
+# ---------------------------------------------------------------------------
+patch_download_page() {
+    local type="$1" slug="$2"
+    local page=""
+    local anchor=""
+
+    case "$type" in
+        region)
+            page="site/docs/telechargements/regions.md"
+            local upper r_code found=""
+            upper=$(echo "$slug" | tr '[:lower:]' '[:upper:]')
+            for r_code in "${!R_CODE_TO_TRIGRAM[@]}"; do
+                if [[ "${R_CODE_TO_TRIGRAM[$r_code]}" == "$upper" ]]; then
+                    found="$r_code"
+                    break
+                fi
+            done
+            if [[ -z "$found" ]]; then
+                log_warn "Pas de R-code connu pour slug '$slug' — pas de patch MD"
+                return 0
+            fi
+            anchor=" - ${found}"
+            ;;
+        quadrant|national)
+            page="site/docs/telechargements/france.md"
+            case "$slug" in
+                france-nord) anchor="} France NORD" ;;
+                france-sud)  anchor="} France SUD" ;;
+                *)
+                    log_warn "france.md ne contient pas encore de section pour '${slug}' — pas de patch MD (v1)"
+                    return 0
+                    ;;
+            esac
+            ;;
+        departement)
+            log_info "Page département / outre-mer non patchée en v1 (slug=${slug})"
+            return 0
+            ;;
+        *)
+            log_warn "Type de couverture inconnu '${type}' — pas de patch MD"
+            return 0
+            ;;
+    esac
+
+    local url="files/${type}/${slug}/latest/gmapsupp.img"
+
+    if [[ ! -f "$page" ]]; then
+        log_warn "Page MD introuvable : $page"
+        return 0
+    fi
+
+    if grep -q "${url}" "$page"; then
+        log_info "Lien déjà patché : ${url}"
+        return 0
+    fi
+
+    local rc=0
+    python3 - "$page" "$anchor" "$url" <<'PY' || rc=$?
+import sys, re
+page, anchor, url = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(page, 'r', encoding='utf-8') as f:
+    src = f.read()
+
+# Les pages MD utilisent des cartes grid "-   ..." séparées par `\n\n-   `.
+# On scinde en préservant les séparateurs, puis on patche UNIQUEMENT le bloc
+# contenant l'ancre. Ça évite :
+#  - la collision "France SUD" ⊂ "France SUD-EST" (DOTALL greedy ancien)
+#  - les patches croisés entre cartes adjacentes.
+parts = re.split(r'(\n-   )', src)
+# parts = [preamble, sep1, block1, sep2, block2, ...]
+patched = False
+for i in range(2, len(parts), 2):
+    block = parts[i]
+    if anchor not in block:
+        continue
+    # Remplace le premier (et unique) `](#)` du bloc
+    new_block, n = re.subn(r'\]\(\#\)', '](' + url + ')', block, count=1)
+    if n == 1:
+        parts[i] = new_block
+        patched = True
+        break
+
+# Cas particulier : l'ancre est dans le préambule (titre) — rare, mais fallback
+if not patched:
+    block = parts[0]
+    if anchor in block:
+        new_block, n = re.subn(r'\]\(\#\)', '](' + url + ')', block, count=1)
+        if n == 1:
+            parts[0] = new_block
+            patched = True
+
+if patched:
+    with open(page, 'w', encoding='utf-8') as f:
+        f.write(''.join(parts))
+    sys.exit(0)
+sys.exit(2)
+PY
+    if [[ "$rc" -eq 0 ]]; then
+        log_ok "Page MD patchée : ${page} → ${url}"
+    else
+        log_warn "Aucun placeholder (#) trouvé pour l'ancre '${anchor}' dans ${page}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Publication : copie gmapsupp.img dans site/docs/telechargements/files/
+# ---------------------------------------------------------------------------
+publish_coverage() {
+    log_step "Publication vers le site"
+
+    local src="${_OUTPUT_DIR}/img/gmapsupp.img"
+    if [[ ! -f "$src" ]]; then
+        log_error "Source introuvable pour publication : $src"
+        return 1
+    fi
+
+    if [[ ! "$VERSION" =~ ^v[0-9]{4}\.(0[1-9]|1[0-2])$ ]]; then
+        log_error "Format --version invalide pour publication : '$VERSION' (attendu vYYYY.MM)"
+        return 1
+    fi
+
+    resolve_coverage_info
+
+    if [[ -z "$_PUB_SLUG" ]]; then
+        log_error "Slug de publication vide — zones/region invalides"
+        return 1
+    fi
+
+    local dest_root="site/docs/telechargements/files/${_PUB_TYPE}/${_PUB_SLUG}"
+    local dest_version="${dest_root}/${VERSION}"
+    local dest_latest="${dest_root}/latest"
+    local lockfile="site/docs/telechargements/.publish.lock"
+
+    mkdir -p "$dest_version" "$dest_latest" "$(dirname "$lockfile")"
+
+    # Verrou pour éviter les races entre 2 publications concurrentes
+    exec 200>"$lockfile"
+    if ! flock -n 200; then
+        log_info "Attente du verrou de publication…"
+        flock 200
+    fi
+
+    # Copie atomique : écrit dans tmp puis mv (même FS)
+    local tmp_version="${dest_version}/.gmapsupp.img.tmp"
+    cp "$src" "$tmp_version"
+    mv "$tmp_version" "${dest_version}/gmapsupp.img"
+
+    # latest/ = hardlink vers la version courante (atomique, zéro coût disque)
+    local tmp_latest="${dest_latest}/.gmapsupp.img.tmp"
+    rm -f "$tmp_latest"
+    if ! ln -f "${dest_version}/gmapsupp.img" "$tmp_latest" 2>/dev/null; then
+        cp "${dest_version}/gmapsupp.img" "$tmp_latest"
+    fi
+    mv "$tmp_latest" "${dest_latest}/gmapsupp.img"
+
+    local sha256 size
+    sha256=$(sha256sum "${dest_version}/gmapsupp.img" | awk '{print $1}')
+    size=$(stat -c%s "${dest_version}/gmapsupp.img")
+
+    local size_hr
+    size_hr=$(numfmt --to=iec-i --suffix=B "$size" 2>/dev/null || echo "${size} octets")
+
+    log_info "  Type   : ${_PUB_TYPE}"
+    log_info "  Slug   : ${_PUB_SLUG}"
+    log_info "  Label  : ${_PUB_LABEL}"
+    log_info "  Taille : ${size_hr}"
+    log_info "  sha256 : ${sha256:0:16}…"
+
+    update_manifest "$_PUB_TYPE" "$_PUB_SLUG" "$_PUB_LABEL" "$VERSION" "$size" "$sha256"
+    patch_download_page "$_PUB_TYPE" "$_PUB_SLUG"
+
+    log_ok "Publié : ${dest_version}/gmapsupp.img"
+    log_ok "Alias  : ${dest_latest}/gmapsupp.img"
+}
+
+# ---------------------------------------------------------------------------
 # Résumé final
 # ---------------------------------------------------------------------------
 show_summary() {
@@ -939,6 +1248,18 @@ main() {
     run_mpforge
     run_imgforge
     show_summary
+
+    if [[ "$PUBLISH" == true ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            log_warn "--publish ignoré en mode --dry-run"
+        elif [[ "$PARTIAL_FAILURE" == true ]]; then
+            log_warn "--publish ignoré : build partiel (PARTIAL_FAILURE=true)"
+        elif [[ ! -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
+            log_warn "--publish ignoré : gmapsupp.img manquant"
+        else
+            publish_coverage
+        fi
+    fi
 
     if [[ "$PARTIAL_FAILURE" == true ]]; then
         log_warn "Pipeline terminé avec avertissements — carte partielle dans : ${_OUTPUT_DIR}/"
