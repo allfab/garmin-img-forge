@@ -1145,7 +1145,13 @@ patch_download_page() {
                 log_info "Slug département multi-zones (${slug}) — pas de patch MD"
                 return 0
             fi
-            page="site/docs/telechargements/departement.md"
+            # DROM (D971/D972/D973/D974/D976) → outre-mer.md, sinon metropolitan.
+            case "$slug" in
+                d971|d972|d973|d974|d976)
+                    page="site/docs/telechargements/outre-mer.md" ;;
+                *)
+                    page="site/docs/telechargements/departement.md" ;;
+            esac
             # Ancre = code uppercase (ex: D038) en début de cellule du tableau
             anchor=$(printf '%s' "$slug" | tr '[:lower:]' '[:upper:]')
             ;;
