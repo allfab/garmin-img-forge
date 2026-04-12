@@ -15,7 +15,8 @@
         ? new URL('../telechargements/', scriptSrc).href
         : '/telechargements/';
 
-    var HREF_RE = /\/telechargements\/files\/([^/]+)\/([^/]+)\/latest\/gmapsupp\.img$/;
+    // Accepte n'importe quel nom de fichier .img dans latest/ (ex: IGN-BDTOPO-FRANCE-SE.img)
+    var HREF_RE = /\/telechargements\/files\/([^/]+)\/([^/]+)\/latest\/[^/]+\.img$/;
 
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return '';
@@ -97,8 +98,9 @@
     }
 
     function run() {
-        var links = document.querySelectorAll(
-            'a[href*="/telechargements/files/"][href$="/latest/gmapsupp.img"]'
+        var links = Array.prototype.filter.call(
+            document.querySelectorAll('a[href*="/telechargements/files/"][href*="/latest/"]'),
+            function (a) { return HREF_RE.test(a.getAttribute('href') || ''); }
         );
         if (links.length === 0) return;
 

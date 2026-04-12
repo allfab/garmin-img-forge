@@ -178,6 +178,10 @@ _PUB_TYPE=""
 _PUB_SLUG=""
 _PUB_LABEL=""
 
+# Noms de fichier .img (peuplés par resolve_paths après calcul de FAMILY_NAME)
+_IMG_FILENAME=""
+_IMG_LATEST_NAME=""
+
 to_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 resolve_coverage_info() {
@@ -281,7 +285,9 @@ MPFORGE :
 IMGFORGE :
     --family-id N           Family ID Garmin (défaut: 1100)
     --product-id N          Product ID Garmin (défaut: 1)
-    --family-name STR       Nom de la carte (défaut: auto IGN-BDTOPO-{ZONES}-{VERSION})
+    --family-name STR       Nom de la carte ET du fichier .img produit
+                            (défaut: auto IGN-BDTOPO-{ZONES}-{VERSION} →
+                            IGN-BDTOPO-FRANCE-SE-v2026.03.img)
     --series-name STR       Nom de la série (défaut: IGN-BDTOPO-MAP)
     --code-page N           Code page encodage (défaut: 1252)
     --levels STR            Niveaux de zoom (défaut: 24,22,20,18,16)
@@ -292,7 +298,8 @@ IMGFORGE :
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
-    --publish               Publier gmapsupp.img vers site/docs/telechargements/
+    --publish               Publier le .img vers site/docs/telechargements/
+                            (versionné: {family-name}.img, alias latest/ sans -vYYYY.MM)
     -v, --verbose           Mode verbeux (-vv pour très verbeux)
     --version-info          Version du script
     -h, --help              Aide
@@ -589,6 +596,17 @@ resolve_paths() {
         FAMILY_NAME="IGN-BDTOPO-${zones_label}-${VERSION}"
     fi
 
+    # Nom du fichier .img produit et nom stable pour l'alias latest/ :
+    # - _IMG_FILENAME     : fichier versionné (ex: IGN-BDTOPO-FRANCE-SE-v2026.03.img)
+    # - _IMG_LATEST_NAME  : alias stable sans suffixe de version (URL durable dans les pages MD)
+    #   Si FAMILY_NAME se termine par -v{YYYY.MM}, on strip ce suffixe ; sinon identique.
+    _IMG_FILENAME="${FAMILY_NAME}.img"
+    if [[ "$FAMILY_NAME" =~ ^(.+)-v[0-9]{4}\.(0[1-9]|1[0-2])$ ]]; then
+        _IMG_LATEST_NAME="${BASH_REMATCH[1]}.img"
+    else
+        _IMG_LATEST_NAME="${FAMILY_NAME}.img"
+    fi
+
     # Validation : vérifier que les données existent pour chaque zone
     local missing=false
     IFS=',' read -ra zone_array <<< "$ZONES"
@@ -851,7 +869,7 @@ run_imgforge() {
 
     local -a cmd=(
         "$_IMGFORGE" build "$mp_dir"
-        --output "${_OUTPUT_DIR}/img/gmapsupp.img"
+        --output "${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
         --jobs "$JOBS"
         --family-id "$FAMILY_ID"
         --product-id "$PRODUCT_ID"
@@ -915,12 +933,12 @@ run_imgforge() {
         exit "$exit_code"
     fi
 
-    if [[ ! -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
-        log_error "gmapsupp.img non produit dans : ${_OUTPUT_DIR}/img/"
+    if [[ ! -f "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" ]]; then
+        log_error "${_IMG_FILENAME} non produit dans : ${_OUTPUT_DIR}/img/"
         exit 1
     fi
 
-    log_ok "gmapsupp.img produit : ${_OUTPUT_DIR}/img/gmapsupp.img"
+    log_ok "${_IMG_FILENAME} produit : ${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
 
     # Métriques
     if [[ -f "$_IMGFORGE_REPORT_FILE" ]]; then
@@ -941,6 +959,7 @@ run_imgforge() {
 # ---------------------------------------------------------------------------
 update_manifest() {
     local type="$1" slug="$2" label="$3" version="$4" size="$5" sha256="$6"
+    local img_file="$7" latest_file="$8"
     local manifest="site/docs/telechargements/manifest.json"
     local now
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -951,7 +970,8 @@ update_manifest() {
     fi
 
     local key="${type}/${slug}"
-    local rel_path="files/${type}/${slug}/${version}/gmapsupp.img"
+    local rel_path="files/${type}/${slug}/${version}/${img_file}"
+    local latest_rel_path="files/${type}/${slug}/latest/${latest_file}"
     local tmp="${manifest}.tmp"
 
     jq \
@@ -963,6 +983,9 @@ update_manifest() {
         --arg now "$now" \
         --arg path "$rel_path" \
         --arg sha256 "$sha256" \
+        --arg file "$img_file" \
+        --arg latest_file "$latest_file" \
+        --arg latest_path "$latest_rel_path" \
         --argjson size "$size" \
         '
         .generated_at = $now
@@ -971,6 +994,8 @@ update_manifest() {
             | .type = $type
             | .slug = $slug
             | .label = $label
+            | .latest_file = $latest_file
+            | .latest_path = $latest_path
             | .versions = (
                 (.versions // [] | map(select(.version != $version)))
                 + [{
@@ -978,6 +1003,7 @@ update_manifest() {
                     published_at: $now,
                     size_bytes: $size,
                     sha256: $sha256,
+                    file: $file,
                     path: $path
                 }]
               )
@@ -993,7 +1019,7 @@ update_manifest() {
 # Publication : patch idempotent des pages MD (remplace (#) par le lien latest/)
 # ---------------------------------------------------------------------------
 patch_download_page() {
-    local type="$1" slug="$2"
+    local type="$1" slug="$2" latest_file="$3"
     local page=""
     local anchor=""
 
@@ -1049,16 +1075,41 @@ patch_download_page() {
             ;;
     esac
 
-    local url="files/${type}/${slug}/latest/gmapsupp.img"
+    local url="files/${type}/${slug}/latest/${latest_file}"
+    local url_prefix="files/${type}/${slug}/latest/"
 
     if [[ ! -f "$page" ]]; then
         log_warn "Page MD introuvable : $page"
         return 0
     fi
 
-    if grep -q "${url}" "$page"; then
+    if grep -qF "${url}" "$page"; then
         log_info "Lien déjà patché : ${url}"
         return 0
+    fi
+
+    # Migration : si la page contient un ancien lien latest/ pour cette
+    # couverture (ex: latest/gmapsupp.img ou nom de fichier précédent),
+    # on le remplace par la nouvelle URL plutôt que de tenter un re-patch du (#).
+    if grep -qF "${url_prefix}" "$page"; then
+        local mig_rc=0
+        python3 - "$page" "$url_prefix" "$url" <<'PY' || mig_rc=$?
+import sys, re
+page, prefix, new_url = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(page, 'r', encoding='utf-8') as f:
+    src = f.read()
+pat = re.compile(r'\(' + re.escape(prefix) + r'[^)]+\)')
+new_src, n = pat.subn('(' + new_url + ')', src, count=1)
+if n == 1:
+    with open(page, 'w', encoding='utf-8') as f:
+        f.write(new_src)
+    sys.exit(0)
+sys.exit(2)
+PY
+        if [[ "$mig_rc" -eq 0 ]]; then
+            log_ok "Page MD migrée : ${page} → ${url}"
+            return 0
+        fi
     fi
 
     local rc=0
@@ -1124,7 +1175,7 @@ PY
 publish_coverage() {
     log_step "Publication vers le site"
 
-    local src="${_OUTPUT_DIR}/img/gmapsupp.img"
+    local src="${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
     if [[ ! -f "$src" ]]; then
         log_error "Source introuvable pour publication : $src"
         return 1
@@ -1156,22 +1207,30 @@ publish_coverage() {
         flock 200
     fi
 
+    local dest_version_file="${dest_version}/${_IMG_FILENAME}"
+    local dest_latest_file="${dest_latest}/${_IMG_LATEST_NAME}"
+
+    # Nettoyage d'un éventuel alias latest/ d'un nom différent (migration ou
+    # changement de --family-name) pour éviter d'accumuler des fichiers morts.
+    find "$dest_latest" -maxdepth 1 -type f -name '*.img' \
+        ! -name "${_IMG_LATEST_NAME}" -delete 2>/dev/null || true
+
     # Copie atomique : écrit dans tmp puis mv (même FS)
-    local tmp_version="${dest_version}/.gmapsupp.img.tmp"
+    local tmp_version="${dest_version}/.${_IMG_FILENAME}.tmp"
     cp "$src" "$tmp_version"
-    mv "$tmp_version" "${dest_version}/gmapsupp.img"
+    mv "$tmp_version" "$dest_version_file"
 
     # latest/ = hardlink vers la version courante (atomique, zéro coût disque)
-    local tmp_latest="${dest_latest}/.gmapsupp.img.tmp"
+    local tmp_latest="${dest_latest}/.${_IMG_LATEST_NAME}.tmp"
     rm -f "$tmp_latest"
-    if ! ln -f "${dest_version}/gmapsupp.img" "$tmp_latest" 2>/dev/null; then
-        cp "${dest_version}/gmapsupp.img" "$tmp_latest"
+    if ! ln -f "$dest_version_file" "$tmp_latest" 2>/dev/null; then
+        cp "$dest_version_file" "$tmp_latest"
     fi
-    mv "$tmp_latest" "${dest_latest}/gmapsupp.img"
+    mv "$tmp_latest" "$dest_latest_file"
 
     local sha256 size
-    sha256=$(sha256sum "${dest_version}/gmapsupp.img" | awk '{print $1}')
-    size=$(stat -c%s "${dest_version}/gmapsupp.img")
+    sha256=$(sha256sum "$dest_version_file" | awk '{print $1}')
+    size=$(stat -c%s "$dest_version_file")
 
     local size_hr
     size_hr=$(numfmt --to=iec-i --suffix=B "$size" 2>/dev/null || echo "${size} octets")
@@ -1182,11 +1241,12 @@ publish_coverage() {
     log_info "  Taille : ${size_hr}"
     log_info "  sha256 : ${sha256:0:16}…"
 
-    update_manifest "$_PUB_TYPE" "$_PUB_SLUG" "$_PUB_LABEL" "$VERSION" "$size" "$sha256"
-    patch_download_page "$_PUB_TYPE" "$_PUB_SLUG"
+    update_manifest "$_PUB_TYPE" "$_PUB_SLUG" "$_PUB_LABEL" "$VERSION" \
+                    "$size" "$sha256" "$_IMG_FILENAME" "$_IMG_LATEST_NAME"
+    patch_download_page "$_PUB_TYPE" "$_PUB_SLUG" "$_IMG_LATEST_NAME"
 
-    log_ok "Publié : ${dest_version}/gmapsupp.img"
-    log_ok "Alias  : ${dest_latest}/gmapsupp.img"
+    log_ok "Publié : ${dest_version_file}"
+    log_ok "Alias  : ${dest_latest_file}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1228,18 +1288,18 @@ show_summary() {
     local total_m=$(( total_duration / 60 )) total_s=$(( total_duration % 60 ))
     echo -e "  ${BOLD}Temps total     :${NC}  ${total_m}m${total_s}s"
 
-    if [[ -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
+    if [[ -f "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" ]]; then
         local size_bytes
         if [[ "$IMGFORGE_IMG_SIZE" -gt 0 ]]; then
             size_bytes="$IMGFORGE_IMG_SIZE"
         else
-            size_bytes=$(stat -c%s "${_OUTPUT_DIR}/img/gmapsupp.img" 2>/dev/null || echo 0)
+            size_bytes=$(stat -c%s "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" 2>/dev/null || echo 0)
         fi
         local size_hr
         size_hr=$(numfmt --to=iec-i --suffix=B "$size_bytes" 2>/dev/null \
                   || echo "${size_bytes} octets")
         echo -e "  ${BOLD}Taille img      :${NC}  ${size_hr}"
-        echo -e "  ${BOLD}Emplacement     :${NC}  ${_OUTPUT_DIR}/img/gmapsupp.img"
+        echo -e "  ${BOLD}Emplacement     :${NC}  ${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -1277,8 +1337,8 @@ main() {
             log_warn "--publish ignoré en mode --dry-run"
         elif [[ "$PARTIAL_FAILURE" == true ]]; then
             log_warn "--publish ignoré : build partiel (PARTIAL_FAILURE=true)"
-        elif [[ ! -f "${_OUTPUT_DIR}/img/gmapsupp.img" ]]; then
-            log_warn "--publish ignoré : gmapsupp.img manquant"
+        elif [[ ! -f "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" ]]; then
+            log_warn "--publish ignoré : ${_IMG_FILENAME} manquant"
         else
             publish_coverage
         fi
