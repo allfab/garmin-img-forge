@@ -25,13 +25,33 @@ Les `base-id` sont choisis pour **éviter toute collision avec les codes INSEE**
 
 → Code INSEE direct (déjà déduit automatiquement par le script).
 
+**Métropole :**
+
 | Zone | `--base-id` |
 |------|-------------|
 | D001 (Ain) | `1` |
 | D038 (Isère) | `38` |
 | D075 (Paris) | `75` |
-| D971 (Guadeloupe) | `971` |
-| D988 (Nouvelle-Calédonie) | `988` |
+| D02A (Corse-du-Sud) | `2` (simplifié par le script) |
+| D02B (Haute-Corse) | `2` (simplifié par le script) |
+| D095 (Val-d'Oise) | `95` |
+
+**Outre-mer (DOM + COM) :**
+
+| Zone | Code INSEE | `--base-id` |
+|------|-----------|-------------|
+| Guadeloupe | 971 | `971` |
+| Martinique | 972 | `972` |
+| Guyane | 973 | `973` |
+| La Réunion | 974 | `974` |
+| Saint-Pierre-et-Miquelon | 975 | `975` |
+| Mayotte | 976 | `976` |
+| Saint-Barthélemy | 977 | `977` |
+| Saint-Martin | 978 | `978` |
+| Terres australes et antarctiques françaises (TAAF) | 984 | `984` |
+| Wallis-et-Futuna | 986 | `986` |
+| Polynésie française | 987 | `987` |
+| Nouvelle-Calédonie | 988 | `988` |
 
 ### Régions (palier 111–194)
 
