@@ -38,6 +38,14 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](limites-formats.md)
 
+-   **Styles TYP**
+
+    ---
+
+    Référence complète des styles TYP (POI, lignes, polygones) utilisés pour personnaliser le rendu des cartes Garmin.
+
+    [:octicons-arrow-right-24: Consulter](styles-typ.md)
+
 -   **Convention `--base-id`**
 
     ---
