@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-04-12T10:46:04Z",
+  "coverages": {
+    "departement/d038": {
+      "type": "departement",
+      "slug": "d038",
+      "label": "Départements: D038",
+      "latest": "v2025.12",
+      "versions": [
+        {
+          "version": "v2025.12",
+          "published_at": "2026-04-12T10:46:04Z",
+          "size_bytes": 166727680,
+          "sha256": "2b094df577626c5ea29f3bb2e546b1f57c4de17775470eb9993632ee3d8c5c1b",
+          "path": "files/departement/d038/v2025.12/gmapsupp.img"
+        }
+      ]
+    }
+  }
+}

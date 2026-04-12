@@ -34,9 +34,16 @@ Les cartes sont générées périodiquement depuis la BD TOPO IGN. Les télécha
 -   :material-map-search: **Par région**
 
     ---
-    11 régions métropolitaines
+    13 régions métropolitaines
 
     [:octicons-arrow-right-24: Télécharger](regions.md)
+
+-   :material-map-marker-radius: **Par département**
+
+    ---
+    96 départements métropolitains
+
+    [:octicons-arrow-right-24: Télécharger](departement.md)
 
 -   :material-island: **Outre-mer**
 

@@ -1016,18 +1016,32 @@ patch_download_page() {
             ;;
         quadrant|national)
             page="site/docs/telechargements/france.md"
+            # Ancres terminées par `$'\n'` pour éviter les collisions de préfixe
+            # (ex: "France NORD" ⊂ "France NORD-EST").
             case "$slug" in
-                france-nord) anchor="} France NORD" ;;
-                france-sud)  anchor="} France SUD" ;;
+                fxx)         anchor=$'} France métropolitaine\n' ;;
+                france-nord) anchor=$'} France NORD\n' ;;
+                france-sud)  anchor=$'} France SUD\n' ;;
+                france-ne)   anchor=$'} France NORD-EST\n' ;;
+                france-no)   anchor=$'} France NORD-OUEST\n' ;;
+                france-se)   anchor=$'} France SUD-EST\n' ;;
+                france-so)   anchor=$'} France SUD-OUEST\n' ;;
                 *)
-                    log_warn "france.md ne contient pas encore de section pour '${slug}' — pas de patch MD (v1)"
+                    log_warn "france.md ne contient pas encore de section pour '${slug}' — pas de patch MD"
                     return 0
                     ;;
             esac
             ;;
         departement)
-            log_info "Page département / outre-mer non patchée en v1 (slug=${slug})"
-            return 0
+            # Les slugs multi-zones (ex: d038-d069) n'ont pas de ligne dédiée
+            # dans departement.md → skip volontaire.
+            if [[ "$slug" == *-* ]]; then
+                log_info "Slug département multi-zones (${slug}) — pas de patch MD"
+                return 0
+            fi
+            page="site/docs/telechargements/departement.md"
+            # Ancre = code uppercase (ex: D038) en début de cellule du tableau
+            anchor=$(printf '%s' "$slug" | tr '[:lower:]' '[:upper:]')
             ;;
         *)
             log_warn "Type de couverture inconnu '${type}' — pas de patch MD"
@@ -1054,37 +1068,46 @@ page, anchor, url = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(page, 'r', encoding='utf-8') as f:
     src = f.read()
 
-# Les pages MD utilisent des cartes grid "-   ..." séparées par `\n\n-   `.
-# On scinde en préservant les séparateurs, puis on patche UNIQUEMENT le bloc
-# contenant l'ancre. Ça évite :
-#  - la collision "France SUD" ⊂ "France SUD-EST" (DOTALL greedy ancien)
-#  - les patches croisés entre cartes adjacentes.
-parts = re.split(r'(\n-   )', src)
-# parts = [preamble, sep1, block1, sep2, block2, ...]
 patched = False
-for i in range(2, len(parts), 2):
-    block = parts[i]
-    if anchor not in block:
-        continue
-    # Remplace le premier (et unique) `](#)` du bloc
-    new_block, n = re.subn(r'\]\(\#\)', '](' + url + ')', block, count=1)
-    if n == 1:
-        parts[i] = new_block
-        patched = True
-        break
 
-# Cas particulier : l'ancre est dans le préambule (titre) — rare, mais fallback
+# Stratégie 1 : ligne de tableau Markdown (ex: "| D038 | Isère | ...(#)... |")
+# L'ancre doit apparaître dans une cellule encadrée par `|` pour éviter les
+# faux positifs dans le préambule ou un bloc de code.
 if not patched:
-    block = parts[0]
-    if anchor in block:
+    lines = src.splitlines(keepends=True)
+    anchor_cell = re.compile(r'\|\s*' + re.escape(anchor) + r'\s*\|')
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith('|'):
+            continue
+        if not anchor_cell.search(line):
+            continue
+        new_line, n = re.subn(r'\]\(\#\)', '](' + url + ')', line, count=1)
+        if n == 1:
+            lines[i] = new_line
+            src = ''.join(lines)
+            patched = True
+            break
+
+# Stratégie 2 : carte grid "-   …" — patche UNIQUEMENT le bloc contenant
+# l'ancre. Évite la collision "France SUD" ⊂ "France SUD-EST" et les patches
+# croisés entre cartes adjacentes.
+if not patched:
+    parts = re.split(r'(\n-   )', src)
+    # parts = [preamble, sep1, block1, sep2, block2, ...]
+    for i in range(2, len(parts), 2):
+        block = parts[i]
+        if anchor not in block:
+            continue
         new_block, n = re.subn(r'\]\(\#\)', '](' + url + ')', block, count=1)
         if n == 1:
-            parts[0] = new_block
+            parts[i] = new_block
+            src = ''.join(parts)
             patched = True
+            break
 
 if patched:
     with open(page, 'w', encoding='utf-8') as f:
-        f.write(''.join(parts))
+        f.write(src)
     sys.exit(0)
 sys.exit(2)
 PY

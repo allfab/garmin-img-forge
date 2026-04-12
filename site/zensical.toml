@@ -80,6 +80,7 @@ Installation = [
   { "Vue d'ensemble" = "telechargements/index.md" },
   { "France métropolitaine" = "telechargements/france.md" },
   { "Par région" = "telechargements/regions.md" },
+  { "Par département" = "telechargements/departement.md" },
   { "Outre-mer" = "telechargements/outre-mer.md" }
 ]
 

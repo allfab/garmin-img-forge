@@ -31,3 +31,6 @@ data/
 # Build artifacts (CMake)
 **/build/
 pipeline/resources/typfiles/xIGNBBTOP.typ
+
+# Publication site (verrou runtime)
+site/docs/telechargements/.publish.lock
