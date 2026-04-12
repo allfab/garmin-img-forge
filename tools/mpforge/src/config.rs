@@ -32,6 +32,14 @@ pub struct Config {
     /// Optional path to YAML rules file for attribute transformation (Story 9.1)
     #[serde(default)]
     pub rules: Option<PathBuf>,
+    /// Global default: name of a field whose value uniquely identifies a feature
+    /// within a single layer read. When set, features with duplicate values are
+    /// skipped during reading. Features missing the field are always kept.
+    /// Why: some BDTOPO IGN deliveries (e.g. D038 v2025.09) ship `.shp` files
+    /// with every feature duplicated (same CLEABS, same geometry) — dedup makes
+    /// the pipeline robust against such malformed sources.
+    #[serde(default)]
+    pub default_dedup_by_field: Option<String>,
 }
 
 fn default_version() -> u32 {

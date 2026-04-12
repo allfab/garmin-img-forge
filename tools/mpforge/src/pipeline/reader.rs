@@ -419,7 +419,7 @@ impl SourceReader {
     pub fn read_file_source(
         input: &InputSource,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
-        Self::read_file_source_with_error_handling(input, "fail-fast")
+        Self::read_file_source_with_error_handling(input, "fail-fast", None)
     }
 
     /// Read features from a file-based GDAL source with configurable error handling.
@@ -438,6 +438,7 @@ impl SourceReader {
     fn read_file_source_with_error_handling(
         input: &InputSource,
         error_handling: &str,
+        default_dedup_by_field: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let path = input
             .path
@@ -461,7 +462,7 @@ impl SourceReader {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
                 let (features, unsupported, multi_geom) =
-                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref())?;
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field)?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -470,7 +471,7 @@ impl SourceReader {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
-                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref()) {
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field) {
                         Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
@@ -503,7 +504,7 @@ impl SourceReader {
         } else {
             // None: default behavior (load layer 0 only, no warning)
             let (features, unsupported, multi_geom) =
-                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref())?;
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field)?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -547,6 +548,7 @@ impl SourceReader {
         target_srs: Option<&str>,
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
+        dedup_by_field: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset.layer(layer_index).with_context(|| {
             format!(
@@ -555,7 +557,7 @@ impl SourceReader {
             )
         })?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field)
     }
 
     /// Load features from a layer by name.
@@ -573,12 +575,13 @@ impl SourceReader {
         target_srs: Option<&str>,
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
+        dedup_by_field: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset
             .layer_by_name(layer_name)
             .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field)
     }
 
     /// Load all features from a given layer with SRS transformation.
@@ -596,6 +599,7 @@ impl SourceReader {
         target_srs: Option<&str>,
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
+        dedup_by_field: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         // Apply OGR SQL attribute filter if configured
         if let Some(attr_filter) = attribute_filter {
@@ -680,6 +684,8 @@ impl SourceReader {
         let mut features = Vec::new();
         let mut unsupported_stats = UnsupportedTypeStats::default();
         let mut multi_geom_stats = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
+        let mut seen_dedup_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut dedup_skipped: usize = 0;
 
         // Story 9.3 - Subtask 1.2/1.3: Capture layer name for rules engine matching
         // Use layer_alias if configured to override GDAL native layer name
@@ -689,6 +695,30 @@ impl SourceReader {
         let source_name = extract_source_name(path);
 
         for gdal_feature in layer.features() {
+            // Dedup by attribute field (e.g. CLEABS for BDTOPO). If the field is
+            // missing on this feature, the feature is kept (dedup is skipped).
+            if let Some(field_name) = dedup_by_field {
+                let key = gdal_feature.fields().find_map(|(name, value)| {
+                    if name == field_name {
+                        match value {
+                            Some(gdal::vector::FieldValue::StringValue(s)) => Some(s),
+                            Some(gdal::vector::FieldValue::IntegerValue(i)) => Some(i.to_string()),
+                            Some(gdal::vector::FieldValue::Integer64Value(i)) => Some(i.to_string()),
+                            Some(gdal::vector::FieldValue::RealValue(r)) => Some(r.to_string()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                });
+                if let Some(k) = key {
+                    if !k.is_empty() && !seen_dedup_ids.insert(k) {
+                        dedup_skipped += 1;
+                        continue;
+                    }
+                }
+            }
+
             // Story 6.7 - Subtask 4.2: Detect multi-geometry BEFORE decomposition to record stats
             let is_multi_geometry = if let Some(geom) = gdal_feature.geometry() {
                 let geom_type = geom.geometry_type();
@@ -784,6 +814,15 @@ impl SourceReader {
                     warn!(error = %e, "Skipping invalid feature");
                 }
             }
+        }
+
+        if dedup_skipped > 0 {
+            info!(
+                path = %path,
+                field = dedup_by_field.unwrap_or(""),
+                skipped = dedup_skipped,
+                "Deduplicated features by attribute field"
+            );
         }
 
         Ok((features, unsupported_stats, multi_geom_stats))
@@ -1569,6 +1608,7 @@ impl SourceReader {
                         input.target_srs.as_deref(),
                         None, // attribute_filter already set on layer above
                         input.layer_alias.as_deref(),
+                        config.default_dedup_by_field.as_deref(),
                     )?;
 
                 // Clear attribute filter before clearing spatial filter
@@ -1635,7 +1675,7 @@ impl SourceReader {
                 "Loading source"
             );
 
-            match Self::read_file_source_with_error_handling(input, &config.error_handling) {
+            match Self::read_file_source_with_error_handling(input, &config.error_handling, config.default_dedup_by_field.as_deref()) {
                 Ok((features, unsupported, multi_geom)) => {
                     let count = features.len();
                     all_unsupported.merge(&unsupported);

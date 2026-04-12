@@ -1,5 +1,13 @@
 version: 1
 
+# Dédup global par attribut : le champ `ID` des SHP BDTOPO contient le CLEABS
+# IGN (le format DBF/SHP tronque les noms de colonnes à 10 chars, donc "cleabs"
+# → "ID" à la livraison). En GPKG l'attribut s'appelle "cleabs" non tronqué.
+# Les sources qui n'ont pas ce champ (OSM, contours) sont préservées intactes.
+# Pourquoi : certaines livraisons IGN (p.ex. D038 v2025.09) contiennent chaque
+# feature 2× (mêmes CLEABS, mêmes géométries).
+default_dedup_by_field: ID
+
 grid:
   cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
