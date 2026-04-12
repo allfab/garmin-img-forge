@@ -6,7 +6,7 @@ use gdal::spatial_ref::{CoordTransform, SpatialRef};
 use gdal::vector::{LayerAccess, OGRwkbGeometryType};
 use gdal::Dataset;
 use rstar::{RTree, RTreeObject, AABB};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tracing::{debug, info, instrument, trace, warn};
 
 /// Pre-built spatial filter geometry with metadata for thread-safe sharing.
@@ -416,6 +416,10 @@ impl SourceReader {
     /// * File not found or not readable
     /// * GDAL driver not available
     /// * Invalid layer name
+    /// NOTE: this helper does NOT activate Config.default_dedup_by_field (the
+    /// Config isn't available here). Used by tests and callers that work
+    /// feature-by-feature without pipeline-level config. If dedup is needed,
+    /// go through `read_all_features` / `read_features_for_tile`.
     pub fn read_file_source(
         input: &InputSource,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
@@ -438,7 +442,7 @@ impl SourceReader {
     fn read_file_source_with_error_handling(
         input: &InputSource,
         error_handling: &str,
-        default_dedup_by_field: Option<&str>,
+        dedup_by_field: Option<&str>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let path = input
             .path
@@ -462,7 +466,7 @@ impl SourceReader {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
                 let (features, unsupported, multi_geom) =
-                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field)?;
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field)?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -471,7 +475,7 @@ impl SourceReader {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
-                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field) {
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field) {
                         Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
@@ -504,7 +508,7 @@ impl SourceReader {
         } else {
             // None: default behavior (load layer 0 only, no warning)
             let (features, unsupported, multi_geom) =
-                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), default_dedup_by_field)?;
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field)?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -684,8 +688,30 @@ impl SourceReader {
         let mut features = Vec::new();
         let mut unsupported_stats = UnsupportedTypeStats::default();
         let mut multi_geom_stats = MultiGeometryStats::default(); // Story 6.7 - Subtask 4.1
-        let mut seen_dedup_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // Dedup (scope = this layer read, not persisted across tile calls).
+        // Resolve the field index ONCE via the layer definition to avoid scanning
+        // all attributes on every feature. If the field doesn't exist in this
+        // layer's schema, warn once and disable dedup for this layer.
+        let dedup_field_idx: Option<usize> = dedup_by_field.and_then(|name| {
+            match layer.defn().field_index(name) {
+                Ok(idx) => Some(idx),
+                Err(_) => {
+                    warn!(
+                        path = %path,
+                        field = name,
+                        "dedup_by_field not present in layer schema, dedup disabled for this layer"
+                    );
+                    None
+                }
+            }
+        });
+        // Pre-size the HashSet from the layer feature count (cap at 10M to guard
+        // against lying drivers or pathological layers).
+        let estimated_cap = layer.feature_count().min(10_000_000) as usize;
+        let mut seen_dedup_ids: HashSet<String> = HashSet::with_capacity(estimated_cap);
         let mut dedup_skipped: usize = 0;
+        let mut features_seen: usize = 0;
 
         // Story 9.3 - Subtask 1.2/1.3: Capture layer name for rules engine matching
         // Use layer_alias if configured to override GDAL native layer name
@@ -695,24 +721,14 @@ impl SourceReader {
         let source_name = extract_source_name(path);
 
         for gdal_feature in layer.features() {
-            // Dedup by attribute field (e.g. CLEABS for BDTOPO). If the field is
-            // missing on this feature, the feature is kept (dedup is skipped).
-            if let Some(field_name) = dedup_by_field {
-                let key = gdal_feature.fields().find_map(|(name, value)| {
-                    if name == field_name {
-                        match value {
-                            Some(gdal::vector::FieldValue::StringValue(s)) => Some(s),
-                            Some(gdal::vector::FieldValue::IntegerValue(i)) => Some(i.to_string()),
-                            Some(gdal::vector::FieldValue::Integer64Value(i)) => Some(i.to_string()),
-                            Some(gdal::vector::FieldValue::RealValue(r)) => Some(r.to_string()),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    }
-                });
-                if let Some(k) = key {
-                    if !k.is_empty() && !seen_dedup_ids.insert(k) {
+            features_seen += 1;
+            // Dedup by attribute field, O(1) per feature (index resolved once).
+            // Null / empty values keep the feature (dedup is skipped).
+            // field_as_string formats int/int64 natively and delegates f64 to
+            // GDAL's string cast (deterministic across reads of the same file).
+            if let Some(idx) = dedup_field_idx {
+                if let Ok(Some(key)) = gdal_feature.field_as_string(idx) {
+                    if !key.is_empty() && !seen_dedup_ids.insert(key) {
                         dedup_skipped += 1;
                         continue;
                     }
@@ -822,6 +838,16 @@ impl SourceReader {
                 field = dedup_by_field.unwrap_or(""),
                 skipped = dedup_skipped,
                 "Deduplicated features by attribute field"
+            );
+        } else if dedup_field_idx.is_some() && features_seen > 0 && seen_dedup_ids.is_empty() {
+            // Field exists in schema but every feature had a null/empty value.
+            // Likely config mistake (wrong field name cased differently, or the
+            // field is only populated on a sibling layer).
+            warn!(
+                path = %path,
+                field = dedup_by_field.unwrap_or(""),
+                features_seen,
+                "dedup_by_field present in schema but empty on every feature, dedup had no effect"
             );
         }
 

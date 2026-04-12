@@ -1430,6 +1430,7 @@ output:
             error_handling: "continue".to_string(),
             header: None,
             rules: None,
+            default_dedup_by_field: None,
         };
         let result = config.validate();
         assert!(result.is_err());
