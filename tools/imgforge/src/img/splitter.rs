@@ -9,6 +9,7 @@
 
 use super::area::Area;
 use super::coord::Coord;
+use super::line_clipper;
 
 // ── Splitting limits from mkgmap MapSplitter.java ──────────────────────────
 
@@ -178,26 +179,58 @@ impl MapArea {
             .min(MAX_DIVISION_SIZE / 2)
             .max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: distribute by first point, no clipping ──
+        // ── Lines: large objects go to a dedicated subdiv; otherwise clip to each
+        // overlapping cell so that intersection points are bit-exact across adjacent
+        // subdivisions (fixes contour discontinuities at subdivision boundaries).
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
             }
+            let line_bbox = Area::from_coords(&line.points);
+
+            // Large object: dedicated area covers the whole feature — no clipping
+            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
+                let mut dedicated = MapArea::new(line_bbox, self.resolution);
+                dedicated.add_line(line.clone());
+                sub_areas.push(dedicated);
+                continue;
+            }
+
             let first = &line.points[0];
-            let idx = pick_area(
+            let target = pick_area(
                 first.longitude() as i64,
                 first.latitude() as i64,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            // Large object: if line bounds exceed cell dimensions, create dedicated area
-            let line_bbox = Area::from_coords(&line.points);
-            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
-                let mut dedicated = MapArea::new(line_bbox, self.resolution);
-                dedicated.add_line(line.clone());
-                sub_areas.push(dedicated);
-            } else {
-                sub_areas[idx].add_line(line.clone());
+            // Fast path: line fully inside target cell → bitstream unchanged
+            if sub_areas[target].bounds.contains_area(&line_bbox) {
+                sub_areas[target].add_line(line.clone());
+                continue;
+            }
+
+            // Line spans multiple cells: clip against each overlapping bbox
+            for (i, bounds) in sub_bounds.iter().enumerate() {
+                if !bounds.intersects(&line_bbox) {
+                    continue;
+                }
+                match line_clipper::clip_to_bbox(&line.points, bounds) {
+                    None => {
+                        // Entirely inside this cell (rare given the check above,
+                        // but possible with degenerate bboxes) — keep as-is.
+                        sub_areas[i].add_line(line.clone());
+                    }
+                    Some(segments) => {
+                        for seg in segments {
+                            if seg.len() >= 2 {
+                                sub_areas[i].add_line(SplitLine {
+                                    mp_index: line.mp_index,
+                                    points: seg,
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -607,11 +640,11 @@ mod tests {
     }
 
     #[test]
-    fn test_split_lines_by_first_point() {
+    fn test_split_lines_clipped_to_each_cell() {
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
-        // Line starts in bottom-left, extends to top-right
+        // Diagonal line crossing all 4 cells of a 2×2 grid
         area.add_line(SplitLine {
             mp_index: 0,
             points: vec![pt(100, 100), pt(900, 900)],
@@ -619,7 +652,66 @@ mod tests {
 
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        assert_eq!(total_lines, 1); // line assigned to exactly one area
+        // With boundary clipping, a line crossing N cells produces N segments,
+        // one per cell, each preserving bit-exact boundary crossings.
+        assert!(total_lines >= 2, "expected clipping across cells, got {total_lines}");
+        // All clipped segments must lie within their host cell
+        for sub in &subs {
+            for line in &sub.lines {
+                for p in &line.points {
+                    assert!(sub.bounds.contains_coord(p));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_split_line_boundary_points_match_between_adjacent_cells() {
+        // Two adjacent cells share the edge at lon = 500. A diagonal line
+        // crossing that edge must emit the same coordinate on both sides,
+        // which is the pre-requisite for continuous contours on device.
+        let bounds = Area::new(0, 0, 1000, 1000);
+        let mut area = MapArea::new(bounds, 24);
+        area.add_line(SplitLine {
+            mp_index: 0,
+            points: vec![pt(100, 100), pt(900, 900)],
+        });
+
+        let subs = area.split(2, 2);
+        let mut boundary_coords: Vec<Coord> = Vec::new();
+        for sub in &subs {
+            for line in &sub.lines {
+                for p in &line.points {
+                    if p.longitude() == 500 || p.latitude() == 500 {
+                        boundary_coords.push(*p);
+                    }
+                }
+            }
+        }
+        assert!(!boundary_coords.is_empty());
+        for bc in &boundary_coords {
+            let n = boundary_coords.iter().filter(|p| **p == *bc).count();
+            assert!(n >= 2, "boundary coord {bc:?} not mirrored in adjacent cell");
+        }
+    }
+
+    #[test]
+    fn test_split_line_inside_cell_unchanged() {
+        let bounds = Area::new(0, 0, 1000, 1000);
+        let mut area = MapArea::new(bounds, 24);
+
+        // Line fully contained in bottom-left quadrant
+        area.add_line(SplitLine {
+            mp_index: 7,
+            points: vec![pt(100, 100), pt(200, 150), pt(300, 250)],
+        });
+
+        let subs = area.split(2, 2);
+        let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
+        assert_eq!(total_lines, 1);
+        // Points identical to the source (no clipping applied)
+        let hosted = subs.iter().find(|s| !s.lines.is_empty()).unwrap();
+        assert_eq!(hosted.lines[0].points, vec![pt(100, 100), pt(200, 150), pt(300, 250)]);
     }
 
     // ── Sutherland-Hodgman tests ──
@@ -765,6 +857,8 @@ mod tests {
         let total_points: usize = result.iter().map(|a| a.points.len()).sum();
         let total_lines: usize = result.iter().map(|a| a.lines.len()).sum();
         assert_eq!(total_points, 50);
-        assert_eq!(total_lines, 20);
+        // Lines may be clipped into segments when they cross cell boundaries,
+        // so the total is at least the input count (never fewer).
+        assert!(total_lines >= 20, "got {total_lines}");
     }
 }

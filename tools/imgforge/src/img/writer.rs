@@ -563,7 +563,13 @@ fn filter_features_for_level(
     };
 
     // Determine DP epsilon for lines
-    let line_epsilon = mp.header.reduce_point_density.or(auto_epsilon);
+    // Guard: never simplify at the most detailed level (TRE 0) — matches mkgmap behaviour
+    // and prevents contour discontinuities caused by per-subdivision rounding after DP.
+    let line_epsilon = if level == 0 {
+        None
+    } else {
+        mp.header.reduce_point_density.or(auto_epsilon)
+    };
 
     // Determine DP epsilon for polygons (simplify_polygons per-resolution or fallback to reduce_point_density)
     let poly_epsilon = resolve_polygon_epsilon(&mp.header, level)

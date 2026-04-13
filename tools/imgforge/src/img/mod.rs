@@ -21,6 +21,7 @@ pub mod labelenc;
 pub mod net;
 pub mod nod;
 pub mod writer;
+pub mod line_clipper;
 pub mod splitter;
 pub mod assembler;
 pub mod tdb;
