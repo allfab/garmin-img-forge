@@ -485,7 +485,7 @@ Le binaire statique inclut **PROJ 9.3.1, GEOS 3.13.0, GDAL 3.10.1 et le driver o
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.3.0/mpforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.4.2/mpforge-linux-amd64.tar.gz
 tar xzf mpforge-linux-amd64.tar.gz
 
 chmod +x mpforge
