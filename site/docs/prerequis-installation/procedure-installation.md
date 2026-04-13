@@ -10,7 +10,7 @@ Deux approches : **binaires pré-compilés** (rapide, recommandé) ou **compilat
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.3.0/mpforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.4.2/mpforge-linux-amd64.tar.gz
 tar xzf mpforge-linux-amd64.tar.gz
 
 # Rendre exécutable
@@ -21,7 +21,7 @@ sudo mv mpforge /usr/local/bin/
 
 # Vérifier
 mpforge --version
-# → mpforge 0.3.0
+# → mpforge 0.4.2
 ```
 
 !!! success "Zéro configuration"
@@ -31,7 +31,7 @@ mpforge --version
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.3.0/imgforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.4.3/imgforge-linux-amd64.tar.gz
 tar xzf imgforge-linux-amd64.tar.gz
 
 # Rendre exécutable
@@ -42,7 +42,7 @@ sudo mv imgforge /usr/local/bin/
 
 # Vérifier
 imgforge --version
-# → imgforge v0.3.0
+# → imgforge v0.4.3
 ```
 
 ---
