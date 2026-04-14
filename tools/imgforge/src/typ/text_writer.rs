@@ -201,13 +201,13 @@ fn palette_keys(n: usize, cpp: usize) -> Vec<String> {
         return (0..n).map(|i| (i + 1).to_string()).collect();
     }
     let mut out = Vec::with_capacity(n);
-    // Caractères de base : '!' à '~' sauf '"' et '\\'.
-    let mut chars: Vec<char> = (0x21u8..=0x7E)
+    // Caractères printables `!`..`~` sauf `"` et `\\`. **N'INCLUT PAS ' '** :
+    // l'espace est utilisé comme séparateur dans la syntaxe palette
+    // (`"<key> c <color>"`), ce qui casserait le round-trip.
+    let chars: Vec<char> = (0x21u8..=0x7E)
         .filter(|&b| b != b'"' && b != b'\\')
         .map(|b| b as char)
         .collect();
-    // Insérer ' ' comme option (utile pour `none`).
-    chars.insert(0, ' ');
     for i in 0..n {
         let mut k = String::new();
         let mut v = i;

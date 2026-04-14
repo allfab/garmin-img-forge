@@ -6,7 +6,6 @@
 //! `0x9C` (+ labels/string-index/type-index).
 
 use super::data::*;
-use super::encoding::HEADER_LEN;
 use crate::error::TypError;
 
 /// Parse un TYP binaire et produit une [`TypData`].
@@ -211,6 +210,9 @@ fn parse_shape_stacking(
     let mut out = Vec::new();
     // Chaque entrée = 5 octets : type_lo u8 + subtypes u32.
     // Séparateurs empty (`00 00 00 00 00`) incrémentent le niveau courant.
+    // Par convention Garmin/mkgmap : une entrée `00 00 00 00 00` est
+    // toujours un séparateur de niveau. Une entrée avec `subs != 0` indique
+    // un type étendu ; le type full vaut `0x10000 | (t << 8) | subtype`.
     let mut level = 1u8;
     let mut i = 0;
     while i + 5 <= data.len() {
@@ -222,13 +224,13 @@ fn parse_shape_stacking(
             continue;
         }
         if subs == 0 {
-            // Type standard sans sous-types
+            // Type simple sans sous-types.
             out.push(DrawOrderEntry { type_code: t as u32, level });
         } else {
-            // Type étendu : chaque bit de `subs` allume un subtype.
-            for bit in 0..32 {
+            // Type étendu : chaque bit de `subs` indique un subtype présent.
+            for bit in 0..32u32 {
                 if subs & (1 << bit) != 0 {
-                    let full = ((bit as u32) << 8) | (t as u32);
+                    let full = 0x10000u32 | ((t as u32) << 8) | bit;
                     out.push(DrawOrderEntry { type_code: full, level });
                 }
             }
@@ -421,8 +423,15 @@ fn parse_line(
 
     let (line_width, border_width) = if height == 0 {
         let lw = r.u8()?;
-        let combined = if (scheme & !1) != 6 { r.u8().ok() } else { None };
-        let bw = combined.map(|c| (c.saturating_sub(lw)) / 2).unwrap_or(0);
+        // mkgmap n'écrit `line_width + 2*border_width` que si
+        // `(scheme & !1) != 6`. On propage explicitement toute erreur de
+        // lecture (pas de `.ok()` masquant).
+        let bw = if (scheme & !1) != 6 {
+            let combined = r.u8()?;
+            combined.saturating_sub(lw) / 2
+        } else {
+            0
+        };
         (lw, bw)
     } else {
         (0, 0)
@@ -831,5 +840,53 @@ Xpm="0 0 2 0"
         let bin2 = compile_text_to_binary(&txt2, TypEncoding::Utf8).unwrap();
         // AC 3 strict : byte-à-byte identique après round-trip.
         assert_eq!(bin1, bin2, "round-trip byte-à-byte échoué");
+    }
+
+    /// Round-trip byte-à-byte **avec labels multi-langues + CP1252** pour
+    /// exercer le préfixe de longueur variable et l'encodage accenté.
+    #[test]
+    fn self_roundtrip_with_labels_cp1252() {
+        use super::super::{compile_text_to_binary, decompile_binary_to_text, TypEncoding};
+        let content: Vec<u8> = [
+            b"[_id]\nProductCode=1\nFID=42\nCodePage=1252\n[end]\n\n".as_ref(),
+            b"[_polygon]\nType=0x01\n".as_ref(),
+            b"Xpm=\"0 0 2 0\"\n\"1 c #E0E0E0\"\n\"2 c #101010\"\n".as_ref(),
+            b"String1=0x04,caf\xE9\n".as_ref(),
+            b"String2=0x02,Wald\n".as_ref(),
+            b"[end]\n".as_ref(),
+        ]
+        .concat();
+        let bin1 = compile_text_to_binary(&content, TypEncoding::Cp1252).unwrap();
+        let txt2 = decompile_binary_to_text(&bin1, TypEncoding::Cp1252).unwrap();
+        let bin2 = compile_text_to_binary(&txt2, TypEncoding::Cp1252).unwrap();
+        assert_eq!(bin1, bin2, "round-trip label CP1252 byte-à-byte échoué");
+    }
+
+    /// Round-trip shape-stacking avec types étendus (régression H1).
+    #[test]
+    fn self_roundtrip_draw_order_extended() {
+        use super::super::{compile_text_to_binary, decompile_binary_to_text, TypEncoding};
+        let content = r#"[_id]
+ProductCode=1
+FID=1
+CodePage=1252
+[end]
+
+[_drawOrder]
+Type=0x054,1
+Type=0x10400,1
+Type=0x10409,1
+Type=0x001,2
+[end]
+"#;
+        let bin1 = compile_text_to_binary(content.as_bytes(), TypEncoding::Utf8).unwrap();
+        let d1 = read_typ_binary(&bin1).unwrap();
+        // 0x054 simple, 0x10400+0x10409 groupés sur type 0x104 (2 entrées),
+        // 0x001 niveau 2.
+        let type_codes: Vec<u32> = d1.draw_order.iter().map(|e| e.type_code).collect();
+        assert!(type_codes.contains(&0x054));
+        assert!(type_codes.contains(&0x10400));
+        assert!(type_codes.contains(&0x10409));
+        assert!(type_codes.contains(&0x001));
     }
 }

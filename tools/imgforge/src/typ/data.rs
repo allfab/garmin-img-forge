@@ -19,14 +19,30 @@ pub struct TypParams {
     pub codepage: u16,
 }
 
-/// Couleur RGBA (A = 0 ↔ opaque dans notre modèle, conversion alpha-inverse
-/// TYP faite dans `encoding::{encode,decode}_alpha_inverse`).
+/// Couleur RGBA.
+///
+/// ⚠ **Convention inverse de mkgmap** :
+/// - `a == 0`    → couleur **opaque** (affichée).
+/// - `a == 0xff` → couleur **transparente** (mappée à `none` en XPM).
+///
+/// Ceci reflète l'« alpha-inverse » utilisé nativement par le format TYP
+/// (cf. `encode_alpha_inverse` dans [`super::encoding`]). Toute nouvelle
+/// logique couleur doit respecter cette convention sous peine de régressions
+/// silencieuses — une assertion est plus sûre qu'un commentaire lointain.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Rgba {
     pub r: u8,
     pub g: u8,
     pub b: u8,
     pub a: u8,
+}
+
+impl Rgba {
+    /// `true` si la couleur représente un pixel transparent TYP.
+    #[inline]
+    pub fn is_transparent(&self) -> bool {
+        self.a == 0xff
+    }
 }
 
 /// Mode couleur d'une bitmap TYP.

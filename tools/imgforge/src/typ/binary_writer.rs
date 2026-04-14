@@ -11,7 +11,7 @@
 //! sections présentes).
 
 use super::data::*;
-use super::encoding::{encode, encode_alpha_inverse, HEADER_LEN};
+use super::encoding::{encode, HEADER_LEN};
 use crate::error::TypError;
 use crate::img::bit_writer::BitWriter;
 
@@ -32,8 +32,10 @@ const PT_F_EXTENDED_FONT: u8 = 0x08;
 
 // TypLine flags.
 const LN_F_LABEL: u8 = 0x01;
-const LN_F_USE_ROTATION: u8 = 0x02;
 const LN_F_EXTENDED: u8 = 0x04;
+// `LN_F_USE_ROTATION = 0x02` : non utilisé par le writer courant car
+// `useOrientation` n'est pas encore modélisé dans `TypLine`. Voir la
+// limitation reportée au Lot E.
 
 // TypPolygon flags (sur le même octet que le scheme).
 const PG_F_LABEL: u8 = 0x10;
@@ -327,7 +329,6 @@ fn put_u_le(out: &mut Vec<u8>, v: u64, n: usize) {
 struct ColourInfo {
     width: u16,
     height: u16,
-    chars_per_pixel: u16,
     /// Couleurs ordonnées : day_bg, day_fg, [night_bg, night_fg]. Les
     /// transparentes sont placées en dernier de leur paire (cf.
     /// `ColourInfo.analyseColours`).
@@ -397,7 +398,6 @@ fn analyse_colours(xpm: &Xpm, simple: bool, has_border: bool) -> ColourInfo {
     ColourInfo {
         width: xpm.width,
         height: xpm.height,
-        chars_per_pixel: if xpm.pixels.is_empty() { 1 } else { infer_cpp(xpm) },
         colours,
         pixels,
         colour_mode,
@@ -406,13 +406,6 @@ fn analyse_colours(xpm: &Xpm, simple: bool, has_border: bool) -> ColourInfo {
         has_border,
         nr_solid_colours,
     }
-}
-
-fn infer_cpp(xpm: &Xpm) -> u16 {
-    // Notre parser stocke déjà des indices (1 octet par pixel), peu importe
-    // cpp d'origine : pour l'écriture binaire on encode via BitWriter avec
-    // `bits_per_pixel` calculé.
-    1
 }
 
 impl ColourInfo {
@@ -520,7 +513,10 @@ fn alpha_round4(alpha: i32) -> i32 {
 
 fn write_polygon(p: &TypPolygon, cp: u16) -> Result<Vec<u8>, TypError> {
     let mut out = Vec::new();
-    let xpm = p.day_xpm.clone().unwrap_or_else(empty_xpm);
+    let xpm = p.day_xpm.as_ref().cloned().ok_or_else(|| TypError::InvalidValue {
+        line: 0,
+        context: format!("polygon type=0x{:x} sans day_xpm", p.type_code),
+    })?;
     let ci = analyse_colours(&xpm, true, false);
     let mut scheme = ci.colour_scheme();
     if !p.labels.is_empty() { scheme |= PG_F_LABEL; }
@@ -542,7 +538,10 @@ fn write_polygon(p: &TypPolygon, cp: u16) -> Result<Vec<u8>, TypError> {
 
 fn write_line(l: &TypLine, cp: u16) -> Result<Vec<u8>, TypError> {
     let mut out = Vec::new();
-    let xpm = l.day_xpm.clone().unwrap_or_else(empty_xpm);
+    let xpm = l.day_xpm.as_ref().cloned().ok_or_else(|| TypError::InvalidValue {
+        line: 0,
+        context: format!("line type=0x{:x} sans day_xpm", l.type_code),
+    })?;
     let has_border = l.border_width != 0;
     let ci = analyse_colours(&xpm, true, has_border);
 
@@ -589,7 +588,10 @@ fn write_point(p: &TypPoint, cp: u16) -> Result<Vec<u8>, TypError> {
     }
     out.push(flags);
 
-    let day = p.day_xpm.clone().unwrap_or_else(empty_xpm);
+    let day = p.day_xpm.as_ref().cloned().ok_or_else(|| TypError::InvalidValue {
+        line: 0,
+        context: format!("point type=0x{:x} sans day_xpm", p.type_code),
+    })?;
     let day_ci = analyse_colours(&day, false, false);
     out.push(day_ci.width as u8);
     out.push(day_ci.height as u8);
@@ -642,10 +644,6 @@ fn write_image(out: &mut Vec<u8>, ci: &ColourInfo) {
     out.push(ci.colour_mode);
     ci.write_colours(out);
     if ci.has_bitmap { ci.write_bitmap(out); }
-}
-
-fn empty_xpm() -> Xpm {
-    Xpm { width: 0, height: 0, colors: vec![], pixels: vec![], mode: ColorMode::Indexed }
 }
 
 // ============================================================ labels
@@ -706,37 +704,54 @@ fn write_extended_font(
 
 // ============================================================ shape stacking
 
+/// Écrit la section shape-stacking selon la convention Garmin :
+///
+/// - Chaque entrée = 5 octets : `type_byte u8 + subtypes u32 LE`.
+/// - Un séparateur `00 00 00 00 00` marque la transition de niveau.
+/// - Pour un **type étendu** `0x1HHSS` (convention Garmin : valeur texte
+///   `Type=0x10400` = type 0x104, subtype 0x00) : on groupe par
+///   `(level, actual_type)` puis `subtype_bits |= 1 << subtype`.
+/// - Pour un **type simple** (< 0x100) : entrée seule avec `subs=0`.
+///
+/// **Note format** : mkgmap n'écrit que le low byte de `actual_type`. Le bit
+/// `type >= 0x100` est implicite côté lecteur (voir [`super::binary_reader`]
+/// pour le décodage). Cette asymétrie est une limitation du format, pas un
+/// bug du writer.
 fn write_shape_stacking(entries: &[DrawOrderEntry]) -> Vec<u8> {
-    // mkgmap ShapeStacking : clé = (level << 16) + type. Un DrawOrder par
-    // (level, type). Un « empty » (5 octets zéro) sépare les niveaux.
-    // Pour nos `DrawOrderEntry`, chaque entrée = une ligne — on sépare par
-    // niveau et émet les octets directement.
-    let mut out = Vec::new();
     let mut by_level_type: std::collections::BTreeMap<(u8, u32), u32> =
         std::collections::BTreeMap::new();
     for e in entries {
-        let key = (e.level, e.type_code & 0xff);
-        let subtype_bits = if e.type_code >= 0x100 {
-            // type étendu : (type >> 8) indique le subtype bit à allumer.
-            let sub = (e.type_code >> 8) as u32;
-            1u32 << (sub & 0x1f)
-        } else {
-            0
-        };
-        *by_level_type.entry(key).or_insert(0) |= subtype_bits;
+        let (actual_type, subtype_bit) = split_full_type(e.type_code);
+        *by_level_type.entry((e.level, actual_type)).or_insert(0) |= subtype_bit;
     }
+
+    let mut out = Vec::new();
     let mut last_level = 1u8;
-    for ((level, type_lo), subs) in &by_level_type {
+    for ((level, actual_type), subs) in &by_level_type {
         if *level != last_level {
-            // Séparateur vide.
             out.push(0);
             out.extend_from_slice(&0u32.to_le_bytes());
             last_level = *level;
         }
-        out.push(*type_lo as u8);
+        out.push((*actual_type & 0xff) as u8);
         out.extend_from_slice(&subs.to_le_bytes());
     }
     out
+}
+
+/// Décompose un type drawOrder « full » en `(actual_type, subtype_bit)`.
+///
+/// - `0x054` → `(0x54, 0)` (simple).
+/// - `0x10400` → `(0x104, 1<<0)` (étendu : actual=0x104, subtype=0).
+/// - `0x10409` → `(0x104, 1<<9)` (étendu : même actual, subtype=9).
+fn split_full_type(full: u32) -> (u32, u32) {
+    if full >= 0x100 {
+        let actual_type = full >> 8;
+        let subtype = full & 0xff;
+        (actual_type, 1u32 << (subtype & 0x1f))
+    } else {
+        (full, 0)
+    }
 }
 
 // ============================================================ labels for icons
