@@ -5,3 +5,4 @@ pub mod img;
 pub mod parser;
 pub mod report;
 pub mod routing;
+pub mod typ;

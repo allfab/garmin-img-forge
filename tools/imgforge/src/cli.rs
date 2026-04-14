@@ -1,7 +1,59 @@
 // CLI definitions (clap)
 
 use std::path::PathBuf;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+/// Encodage cible pour les opérations TYP texte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TypEncodingArg {
+    /// UTF-8 (BOM en écriture ; BOM détecté en lecture).
+    Utf8,
+    /// Windows-1252 (CP1252) — legacy TYPViewer.
+    Cp1252,
+    /// Auto-détection (BOM UTF-8 sinon CP1252).
+    Auto,
+}
+
+impl From<TypEncodingArg> for crate::typ::TypEncoding {
+    fn from(v: TypEncodingArg) -> Self {
+        match v {
+            TypEncodingArg::Utf8 => Self::Utf8,
+            TypEncodingArg::Cp1252 => Self::Cp1252,
+            TypEncodingArg::Auto => Self::Auto,
+        }
+    }
+}
+
+/// Sous-commandes de la sous-commande `typ`.
+#[derive(Subcommand)]
+pub enum TypAction {
+    /// Compile un fichier TYP texte en binaire.
+    Compile {
+        /// Fichier texte d'entrée (.txt).
+        input: String,
+
+        /// Fichier binaire de sortie (.typ). Défaut : input avec extension swappée.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Encodage du fichier d'entrée (défaut : auto — BOM UTF-8 sinon CP1252).
+        #[arg(long, value_enum, default_value = "auto")]
+        encoding: TypEncodingArg,
+    },
+    /// Décompile un fichier TYP binaire en texte.
+    Decompile {
+        /// Fichier binaire d'entrée (.typ).
+        input: String,
+
+        /// Fichier texte de sortie (.txt). Défaut : input avec extension swappée.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Encodage du fichier de sortie (défaut : utf8).
+        #[arg(long, value_enum, default_value = "utf8")]
+        encoding: TypEncodingArg,
+    },
+}
 
 #[derive(Parser)]
 #[command(name = "imgforge")]
@@ -260,5 +312,11 @@ pub enum Commands {
         /// Source SRS for ASC files (e.g. EPSG:2154 for Lambert 93)
         #[arg(long, value_name = "SRS")]
         dem_source_srs: Option<String>,
+    },
+
+    /// Compile/décompile un fichier TYP Garmin (texte ↔ binaire).
+    Typ {
+        #[command(subcommand)]
+        action: TypAction,
     },
 }

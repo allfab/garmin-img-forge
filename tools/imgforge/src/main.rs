@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use imgforge::cli::{Cli, Commands};
+use imgforge::cli::{Cli, Commands, TypAction};
 use imgforge::dem;
 use imgforge::img::writer;
 use imgforge::parser;
@@ -356,9 +356,54 @@ fn main() -> Result<()> {
 
             println!("{}", report.to_json());
         }
+
+        Commands::Typ { action } => match action {
+            TypAction::Compile { input, output, encoding } => {
+                let bytes = std::fs::read(&input)
+                    .with_context(|| format!("Failed to read {}", input))?;
+                let out_bytes = imgforge::typ::compile_text_to_binary(&bytes, encoding.into())
+                    .with_context(|| format!("Failed to compile {}", input))?;
+                let out_path = output.unwrap_or_else(|| swap_ext(&input, "typ"));
+                std::fs::write(&out_path, &out_bytes)
+                    .with_context(|| format!("Failed to write {}", out_path))?;
+                tracing::info!(
+                    "Compiled {} -> {} ({} bytes)",
+                    input,
+                    out_path,
+                    out_bytes.len()
+                );
+            }
+            TypAction::Decompile { input, output, encoding } => {
+                let bytes = std::fs::read(&input)
+                    .with_context(|| format!("Failed to read {}", input))?;
+                let out_bytes = imgforge::typ::decompile_binary_to_text(&bytes, encoding.into())
+                    .with_context(|| format!("Failed to decompile {}", input))?;
+                let out_path = output.unwrap_or_else(|| swap_ext(&input, "txt"));
+                std::fs::write(&out_path, &out_bytes)
+                    .with_context(|| format!("Failed to write {}", out_path))?;
+                tracing::info!(
+                    "Decompiled {} -> {} ({} bytes)",
+                    input,
+                    out_path,
+                    out_bytes.len()
+                );
+            }
+        },
     }
 
     Ok(())
+}
+
+/// Swap l'extension d'un chemin (`foo.txt` -> `foo.typ`).
+fn swap_ext(path: &str, new_ext: &str) -> String {
+    let p = Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+    match p.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => {
+            format!("{}/{}.{}", dir.display(), stem, new_ext)
+        }
+        _ => format!("{}.{}", stem, new_ext),
+    }
 }
 
 /// Apply tile-level CLI overrides to a parsed MpFile

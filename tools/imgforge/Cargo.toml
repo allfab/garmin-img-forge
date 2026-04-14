@@ -15,6 +15,7 @@ serde_json = "1"
 byteorder = "1.5"
 indicatif = "0.17"
 proj4rs = "0.1"
+encoding_rs = "0.8"
 
 [dev-dependencies]
 assert_cmd = "2.0"
