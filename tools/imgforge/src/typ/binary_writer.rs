@@ -32,10 +32,8 @@ const PT_F_EXTENDED_FONT: u8 = 0x08;
 
 // TypLine flags.
 const LN_F_LABEL: u8 = 0x01;
+const LN_F_USE_ROTATION: u8 = 0x02; // set ⇔ TypLine.use_orientation == false
 const LN_F_EXTENDED: u8 = 0x04;
-// `LN_F_USE_ROTATION = 0x02` : non utilisé par le writer courant car
-// `useOrientation` n'est pas encore modélisé dans `TypLine`. Voir la
-// limitation reportée au Lot E.
 
 // TypPolygon flags (sur le même octet que le scheme).
 const PG_F_LABEL: u8 = 0x10;
@@ -82,20 +80,16 @@ pub fn write_typ_binary(data: &TypData) -> Result<Vec<u8>, TypError> {
     let (line_data, line_offsets) = concat_with_offsets(&lines);
     let (point_data, point_offsets) = concat_with_offsets(&points);
     let shape_stacking = write_shape_stacking(&data.draw_order);
-    let (icon_data, icon_offsets) = concat_with_offsets(&icons);
+    if !icons.is_empty() {
+        tracing::warn!(
+            "icons présents dans TypData ({}) mais ignorés (HEADER_LEN=0x5B)",
+            icons.len()
+        );
+    }
 
-    // Labels : un label par icon (premier `StringN` du set), + offset 0 réservé.
-    let (labels_block, str_index, type_index) = write_labels_block(&data.icons, &icons, cp)?;
-
-    // 3. Calculer les offsets absolus.
-    let mut pos = HEADER_LEN;
-    let poly_data_pos = pos;
-    pos += poly_data.len();
-    let line_data_pos = pos;
-    pos += line_data.len();
-    let point_data_pos = pos;
-    pos += point_data.len();
-
+    // 3. Calculer les offsets absolus. Layout mkgmap (conforme TYPViewer) :
+    //    header, poly_data, poly_idx, line_data, line_idx, point_data,
+    //    point_idx, shape_stacking.
     let poly_idx_psize = pointer_size(poly_data.len());
     let line_idx_psize = pointer_size(line_data.len());
     let point_idx_psize = pointer_size(point_data.len());
@@ -105,41 +99,28 @@ pub fn write_typ_binary(data: &TypData) -> Result<Vec<u8>, TypError> {
     let line_index = build_index(&lines, &line_offsets, type_size, line_idx_psize);
     let point_index = build_index(&points, &point_offsets, type_size, point_idx_psize);
 
+    let mut pos = HEADER_LEN;
+    let poly_data_pos = pos;
+    pos += poly_data.len();
     let poly_idx_pos = pos;
     pos += poly_index.len();
+
+    let line_data_pos = pos;
+    pos += line_data.len();
     let line_idx_pos = pos;
     pos += line_index.len();
+
+    let point_data_pos = pos;
+    pos += point_data.len();
     let point_idx_pos = pos;
     pos += point_index.len();
 
     let stack_pos = pos;
     pos += shape_stacking.len();
 
-    let icon_data_pos = pos;
-    pos += icon_data.len();
-
-    let icon_idx_psize = pointer_size(icon_data.len());
-    let icon_index = build_index(&icons, &icon_offsets, type_size, icon_idx_psize);
-    let icon_idx_pos = pos;
-    pos += icon_index.len();
-
-    let labels_pos = pos;
-    pos += labels_block.len();
-
-    let labels_psize = pointer_size(labels_block.len());
-    let str_index_item_size = 3 + labels_psize as u16;
-    let type_index_item_size = 3 + labels_psize as u16;
-    let str_index_bytes = build_str_index(&str_index, labels_psize);
-    let type_index_bytes = build_type_index(&type_index, labels_psize);
-
-    let str_idx_pos = pos;
-    pos += str_index_bytes.len();
-    let type_idx_pos = pos;
-    pos += type_index_bytes.len();
-
     let total_size = pos;
 
-    // 4. Construire le header (156 octets).
+    // 4. Construire le header (0x5B octets).
     let header = build_header(Header {
         codepage: cp,
         family_id: data.params.family_id,
@@ -154,31 +135,19 @@ pub fn write_typ_binary(data: &TypData) -> Result<Vec<u8>, TypError> {
         poly_idx_pos, poly_idx_size: poly_index.len(), poly_idx_item_size: type_size + poly_idx_psize as u16,
 
         stack_pos, stack_size: shape_stacking.len(), stack_item_size: 5,
-
-        icon_data_pos, icon_data_size: icon_data.len(),
-        icon_idx_pos, icon_idx_size: icon_index.len(), icon_idx_item_size: type_size + icon_idx_psize as u16,
-
-        labels_pos, labels_size: labels_block.len(),
-        str_idx_pos, str_idx_size: str_index_bytes.len(), str_idx_item_size: str_index_item_size,
-        type_idx_pos, type_idx_size: type_index_bytes.len(), type_idx_item_size: type_index_item_size,
     });
     debug_assert_eq!(header.len(), HEADER_LEN);
 
-    // 5. Concaténer.
+    // 5. Concaténer dans l'ordre mkgmap : data + idx par type.
     let mut out = Vec::with_capacity(total_size);
     out.extend_from_slice(&header);
     out.extend_from_slice(&poly_data);
-    out.extend_from_slice(&line_data);
-    out.extend_from_slice(&point_data);
     out.extend_from_slice(&poly_index);
+    out.extend_from_slice(&line_data);
     out.extend_from_slice(&line_index);
+    out.extend_from_slice(&point_data);
     out.extend_from_slice(&point_index);
     out.extend_from_slice(&shape_stacking);
-    out.extend_from_slice(&icon_data);
-    out.extend_from_slice(&icon_index);
-    out.extend_from_slice(&labels_block);
-    out.extend_from_slice(&str_index_bytes);
-    out.extend_from_slice(&type_index_bytes);
     debug_assert_eq!(out.len(), total_size);
     Ok(out)
 }
@@ -199,28 +168,20 @@ struct Header {
     poly_idx_pos: usize, poly_idx_size: usize, poly_idx_item_size: u16,
 
     stack_pos: usize, stack_size: usize, stack_item_size: u16,
-
-    icon_data_pos: usize, icon_data_size: usize,
-    icon_idx_pos: usize, icon_idx_size: usize, icon_idx_item_size: u16,
-
-    labels_pos: usize, labels_size: usize,
-    str_idx_pos: usize, str_idx_size: usize, str_idx_item_size: u16,
-    type_idx_pos: usize, type_idx_size: usize, type_idx_item_size: u16,
 }
 
 fn build_header(h: Header) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER_LEN);
-    // 0x00 : header length u16 LE (0x9C).
+    // 0x00 : header length u16 LE (0x5B).
     out.extend_from_slice(&(HEADER_LEN as u16).to_le_bytes());
     // 0x02 : signature ASCII "GARMIN TYP" sur 10 octets.
-    let sig = b"GARMIN TYP";
-    out.extend_from_slice(sig);
+    out.extend_from_slice(b"GARMIN TYP");
     // 0x0C : unknown (0x01) + lock flag (0x00).
     out.push(0x01);
     out.push(0x00);
     // 0x0E : 7 octets de date (year u16 LE + month, day, hour, min, sec).
     // Valeur fixe pour déterminisme des tests ; TYPViewer ne la vérifie pas.
-    out.extend_from_slice(&[0xEA, 0x07, 0x04, 0x0E, 0x10, 0x00, 0x00]); // 2026-04-14 16:00:00
+    out.extend_from_slice(&[0xEA, 0x07, 0x04, 0x0E, 0x10, 0x00, 0x00]);
     debug_assert_eq!(out.len(), COMMON_HEADER_LEN);
 
     // 0x15 : codepage u16 LE.
@@ -242,24 +203,7 @@ fn build_header(h: Header) -> Vec<u8> {
     zap_pos_isize_size(&mut out, h.poly_idx_pos, h.poly_idx_item_size, h.poly_idx_size);
     zap_pos_isize_size(&mut out, h.stack_pos, h.stack_item_size, h.stack_size);
 
-    // 0x5B : icon_index + byte 0x13 + icon_data + 4 octets zéro.
-    zap_pos_isize_size(&mut out, h.icon_idx_pos, h.icon_idx_item_size, h.icon_idx_size);
-    out.push(0x13);
-    zap_pos_size(&mut out, h.icon_data_pos, h.icon_data_size);
-    out.extend_from_slice(&[0, 0, 0, 0]);
-
-    // 0x6E : labels + string_index + type_index.
-    zap_pos_size(&mut out, h.labels_pos, h.labels_size);
-    // str_index : item_size u32, 0x1B u32, pos u32, size u32.
-    out.extend_from_slice(&(h.str_idx_item_size as u32).to_le_bytes());
-    out.extend_from_slice(&0x1Bu32.to_le_bytes());
-    zap_pos_size(&mut out, h.str_idx_pos, h.str_idx_size);
-    // type_index : idem.
-    out.extend_from_slice(&(h.type_idx_item_size as u32).to_le_bytes());
-    out.extend_from_slice(&0x1Bu32.to_le_bytes());
-    zap_pos_size(&mut out, h.type_idx_pos, h.type_idx_size);
-    // 2 octets finaux (alignement).
-    out.extend_from_slice(&[0, 0]);
+    // Total : 21 (common) + 2 + 24 (3 sections) + 4 (ids) + 40 (4 indexed sections) = 91 = 0x5B.
 
     out
 }
@@ -550,9 +494,7 @@ fn write_line(l: &TypLine, cp: u16) -> Result<Vec<u8>, TypError> {
     if l.font_style != FontStyle::Default || l.day_font_color.is_some() {
         flags |= LN_F_EXTENDED;
     }
-    // `useOrientation=Y` est le défaut TYPViewer → on met F_USE_ROTATION=0.
-    // Notre modèle n'a pas le booléen, convention : orientation active par
-    // défaut. TODO Lot E : stocker `use_orientation` explicitement.
+    if !l.use_orientation { flags |= LN_F_USE_ROTATION; }
 
     let height = if ci.has_bitmap { ci.height as u8 } else { 0 };
     let scheme = ci.colour_scheme() & 0x7;
@@ -752,68 +694,6 @@ fn split_full_type(full: u32) -> (u32, u32) {
     } else {
         (full, 0)
     }
-}
-
-// ============================================================ labels for icons
-
-fn write_labels_block(
-    icon_sets: &[TypIconSet],
-    sorted_icons: &[(u32, Vec<u8>)],
-    cp: u16,
-) -> Result<(Vec<u8>, Vec<(u32, u32)>, Vec<(u32, u32)>), TypError> {
-    // Renvoie (labels_bytes, str_index (offset -> type), type_index (type -> offset)).
-    if icon_sets.is_empty() {
-        return Ok((Vec::new(), Vec::new(), Vec::new()));
-    }
-    let mut labels_bytes = Vec::new();
-    labels_bytes.push(0u8); // offset 0 réservé
-
-    // Map type_for_file -> label_text.
-    let mut t2label: std::collections::BTreeMap<u32, String> = std::collections::BTreeMap::new();
-    for ic in icon_sets {
-        if let Some(first) = ic.icons.first() { let _ = first; }
-        // Label du premier StringN si présent.
-        // Notre modèle: `TypIconSet` n'a pas de labels — on les stocke dans
-        // TypPoint.labels ; pour les icons on n'a rien pour l'instant. On
-        // laisse vide (TYPViewer tolère).
-        let _ = t2label.entry(type_for_file(ic.type_code, ic.subtype));
-    }
-    // Rien à écrire si tous vides : un seul octet 0.
-    let mut str_index = Vec::new();
-    let mut type_index = Vec::new();
-    for (t, _) in sorted_icons {
-        if let Some(text) = t2label.get(t).and_then(|s| if s.is_empty() { None } else { Some(s) }) {
-            let off = labels_bytes.len() as u32;
-            let bytes = encode(text, cp)?;
-            let b = if cp == 65001 && bytes.starts_with(&[0xEF, 0xBB, 0xBF]) { &bytes[3..] } else { &bytes[..] };
-            labels_bytes.extend_from_slice(b);
-            labels_bytes.push(0);
-            str_index.push((off, *t));
-            type_index.push((*t, off));
-        }
-    }
-    type_index.sort_by_key(|(t, _)| *t);
-    Ok((labels_bytes, str_index, type_index))
-}
-
-fn build_str_index(entries: &[(u32, u32)], psize: u8) -> Vec<u8> {
-    // item = (offset psize, type u24)
-    let mut out = Vec::with_capacity(entries.len() * (psize as usize + 3));
-    for (off, t) in entries {
-        put_u_le(&mut out, *off as u64, psize as usize);
-        put_u_le(&mut out, *t as u64, 3);
-    }
-    out
-}
-
-fn build_type_index(entries: &[(u32, u32)], psize: u8) -> Vec<u8> {
-    // item = (type u24, offset psize)
-    let mut out = Vec::with_capacity(entries.len() * (psize as usize + 3));
-    for (t, off) in entries {
-        put_u_le(&mut out, *t as u64, 3);
-        put_u_le(&mut out, *off as u64, psize as usize);
-    }
-    out
 }
 
 #[cfg(test)]

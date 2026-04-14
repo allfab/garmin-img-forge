@@ -117,6 +117,9 @@ pub struct TypLine {
     pub font_style: FontStyle,
     pub day_font_color: Option<Rgba>,
     pub night_font_color: Option<Rgba>,
+    /// Si `true` (défaut TYPViewer), la ligne s'aligne sur son tracé ;
+    /// sinon le bit `F_USE_ROTATION` est positionné dans le binaire.
+    pub use_orientation: bool,
 }
 
 /// Polygone TYP (surface stylée).

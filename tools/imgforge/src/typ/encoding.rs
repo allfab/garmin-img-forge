@@ -7,8 +7,14 @@ use crate::error::TypError;
 /// BOM UTF-8.
 const BOM_UTF8: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
-/// Longueur de l'en-tête TYP (`TYPHeader.HEADER_LEN = 0x9C`).
-pub const HEADER_LEN: usize = 0x9C;
+/// Longueur de l'en-tête TYP.
+///
+/// Trois valeurs historiques : `0x5B` (TYPViewer natif, sans icons/labels),
+/// `0x6E` (+ icons), `0x9C` (+ labels/stringIndex/typeIndex, mkgmap natif).
+///
+/// Nous émettons `0x5B` pour **compatibilité maximale** avec QMapShack,
+/// TYPViewer et les firmwares Garmin anciens. Le reader accepte les trois.
+pub const HEADER_LEN: usize = 0x5B;
 
 /// Décode des bytes texte en `String`.
 ///

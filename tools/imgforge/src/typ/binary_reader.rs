@@ -401,6 +401,7 @@ fn parse_line(
             labels: vec![], day_xpm: None, night_xpm: None,
             line_width: 0, border_width: 0,
             font_style: FontStyle::Default, day_font_color: None, night_font_color: None,
+            use_orientation: true,
         });
     }
     let mut r = Reader::new(bytes, 0);
@@ -409,6 +410,7 @@ fn parse_line(
     let height = (byte0 >> 3) as u16;
     let flags = r.u8()?;
     let has_label = flags & 0x01 != 0;
+    let use_orientation = flags & 0x02 == 0; // bit set ⇔ rotation (= no orientation)
     let has_ext = flags & 0x04 != 0;
 
     let colors = read_simple_colours(&mut r, scheme)?;
@@ -450,6 +452,7 @@ fn parse_line(
         night_xpm: None,
         line_width, border_width,
         font_style, day_font_color: day_c, night_font_color: night_c,
+        use_orientation,
     })
 }
 

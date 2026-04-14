@@ -32,8 +32,8 @@ fn compile_real_fixture_produces_valid_header() {
         .success();
 
     let bytes = std::fs::read(&output).expect("output exists");
-    assert!(bytes.len() > 156, "binary trop court");
-    assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), 0x9C);
+    assert!(bytes.len() > 91, "binary trop court");
+    assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), 0x5B);
     assert_eq!(&bytes[2..12], b"GARMIN TYP");
     // Codepage à l'offset 0x15 = 1252.
     assert_eq!(u16::from_le_bytes([bytes[0x15], bytes[0x16]]), 1252);

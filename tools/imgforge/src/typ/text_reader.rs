@@ -121,6 +121,8 @@ struct ElementAcc {
     night_font_color: Option<Rgba>,
     line_width: u8,
     border_width: u8,
+    /// `None` = non spécifié (défaut `true` à l'émission), `Some(b)` = explicite.
+    use_orientation: Option<bool>,
     /// XPM en cours d'accumulation : après le header `Xpm="..."`, on lit
     /// `colors_expected` palette puis `pixel_rows_expected` pixels.
     pending: Option<PendingXpm>,
@@ -243,20 +245,32 @@ fn parse_element_field(
     let key_l = key.to_ascii_lowercase();
     match key_l.as_str() {
         "type" => {
-            // "0xHHH" ou "0xHHH,sub" — certains fichiers utilisent `SubType=` séparé.
+            // Formats acceptés :
+            //   - `0xTT`          → simple, pas de subtype
+            //   - `0xTT,S`        → simple + subtype explicite
+            //   - `0x1TTSS`       → étendu (convention Garmin) : on split en
+            //                       actual_type=(val>>8), subtype=(val&0xff).
+            //                       Requis pour TYPViewer car l'index binaire
+            //                       empaquette `(type<<5) | subtype`.
             let (t, s) = match value.split_once(',') {
                 Some((t, s)) => (t, Some(s)),
                 None => (value, None),
             };
-            acc.type_code = parse_int::<u32>(t).ok_or_else(|| TypError::InvalidValue {
+            let full = parse_int::<u32>(t).ok_or_else(|| TypError::InvalidValue {
                 line,
                 context: format!("Type: {}", t),
             })?;
-            if let Some(s) = s {
-                acc.subtype = parse_int::<u8>(s).ok_or_else(|| TypError::InvalidValue {
-                    line,
-                    context: format!("Subtype: {}", s),
-                })?;
+            if full >= 0x10000 && s.is_none() {
+                acc.type_code = full >> 8;
+                acc.subtype = (full & 0xff) as u8;
+            } else {
+                acc.type_code = full;
+                if let Some(s) = s {
+                    acc.subtype = parse_int::<u8>(s).ok_or_else(|| TypError::InvalidValue {
+                        line,
+                        context: format!("Subtype: {}", s),
+                    })?;
+                }
             }
         }
         "subtype" => {
@@ -273,9 +287,13 @@ fn parse_element_field(
             })?;
             acc.pending = Some(parse_xpm_header(inner, line)?);
         }
+        "useorientation" => {
+            let v = value.trim();
+            acc.use_orientation = Some(v.eq_ignore_ascii_case("y") || v == "1" || v.eq_ignore_ascii_case("true"));
+        }
         "colormode" | "daycolormode" | "nightcolormode" | "extendedlabels"
-        | "customcolor" | "contourcolor" | "useorientation" => {
-            // attributs décoratifs : ignorés pour Lot B, semés en Lot C.
+        | "customcolor" | "contourcolor" => {
+            // attributs décoratifs ou non encore modélisés.
         }
         "linewidth" => {
             acc.line_width = parse_int::<u8>(value).unwrap_or(0);
@@ -431,15 +449,17 @@ fn parse_color(value: &str) -> Option<Rgba> {
 
 fn parse_font_style(value: &str) -> FontStyle {
     let v = value.trim();
-    // Exemples rencontrés : "Default", "NoLabel (invisible)", "Small",
-    // "Normal", "Large".
+    // TYPViewer émet aussi « SmallFont », « NormalFont », « LargeFont ».
+    // Exemples : "Default", "NoLabel (invisible)", "Small", "NormalFont",
+    // "Large", "LargeFont".
     let head = v.split(|c: char| c == '(' || c.is_whitespace()).next().unwrap_or("");
-    match head.to_ascii_lowercase().as_str() {
+    let k = head.to_ascii_lowercase();
+    match k.as_str() {
         "" | "default" => FontStyle::Default,
         "nolabel" => FontStyle::NoLabel,
-        "small" => FontStyle::Small,
-        "normal" => FontStyle::Normal,
-        "large" => FontStyle::Large,
+        "small" | "smallfont" => FontStyle::Small,
+        "normal" | "normalfont" => FontStyle::Normal,
+        "large" | "largefont" => FontStyle::Large,
         _ => parse_int::<u8>(head).map(FontStyle::Custom).unwrap_or(FontStyle::Default),
     }
 }
@@ -550,6 +570,7 @@ fn flush(data: &mut TypData, state: State, acc: &mut ElementAcc) {
                     font_style: acc.font_style,
                     day_font_color: acc.day_font_color,
                     night_font_color: acc.night_font_color,
+                    use_orientation: acc.use_orientation.unwrap_or(true),
                 });
             }
         }

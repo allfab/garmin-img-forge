@@ -76,6 +76,9 @@ fn emit_polygon(s: &mut String, p: &TypPolygon) {
 fn emit_line(s: &mut String, l: &TypLine) {
     s.push_str("[_line]\n");
     emit_type_subtype(s, l.type_code, l.subtype);
+    if !l.use_orientation {
+        s.push_str("UseOrientation=N\n");
+    }
     if l.line_width > 0 {
         let _ = writeln!(s, "LineWidth={}", l.line_width);
     }
@@ -262,6 +265,7 @@ mod tests {
             line_width: 4, border_width: 1,
             font_style: FontStyle::Default,
             day_font_color: None, night_font_color: None,
+            use_orientation: true,
         });
         d
     }
