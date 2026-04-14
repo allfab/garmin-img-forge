@@ -12,8 +12,8 @@
   --hero-accent-color: #e65100;
   --hero-btn-bg: rgba(0, 0, 0, 0.06);
   --hero-btn-bg-hover: rgba(0, 0, 0, 0.12);
-  --hero-btn-primary-from: rgba(76, 175, 80, 0.9);
-  --hero-btn-primary-to: rgba(255, 138, 101, 0.85);
+  --hero-btn-primary-from: rgba(251, 146, 60, 0.95);
+  --hero-btn-primary-to: rgba(234, 88, 12, 0.95);
   --hero-overlay-from: rgba(255, 255, 255, 0.2);
   --hero-overlay-to: rgba(255, 255, 255, 0.5);
 }
@@ -278,9 +278,9 @@
 }
 
 .zn-hero__actions .md-button--primary:hover {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 1), rgba(255, 138, 101, 1));
+  background: linear-gradient(135deg, rgba(251, 146, 60, 1), rgba(234, 88, 12, 1));
   color: #fff;
-  box-shadow: 0 8px 32px rgba(76, 175, 80, 0.3);
+  box-shadow: 0 8px 32px rgba(234, 88, 12, 0.35);
 }
 
 /* ============================================================

@@ -4,20 +4,20 @@
 
 /* --- Custom properties (light mode) --- */
 .zn-donate-fab {
-  --donate-bg-from: rgba(76, 175, 80, 0.9);
-  --donate-bg-to: rgba(255, 138, 101, 0.85);
+  --donate-bg-from: rgba(251, 146, 60, 0.95);
+  --donate-bg-to: rgba(234, 88, 12, 0.95);
   --donate-text: #fff;
-  --donate-shadow: rgba(76, 175, 80, 0.3);
-  --donate-shadow-hover: rgba(76, 175, 80, 0.45);
+  --donate-shadow: rgba(234, 88, 12, 0.35);
+  --donate-shadow-hover: rgba(234, 88, 12, 0.5);
 }
 
 /* --- Dark mode --- */
 [data-md-color-scheme="slate"] .zn-donate-fab {
-  --donate-bg-from: rgba(76, 175, 80, 0.85);
-  --donate-bg-to: rgba(255, 138, 101, 0.75);
+  --donate-bg-from: rgba(251, 146, 60, 0.9);
+  --donate-bg-to: rgba(234, 88, 12, 0.9);
   --donate-text: #f1f5f9;
-  --donate-shadow: rgba(76, 175, 80, 0.2);
-  --donate-shadow-hover: rgba(76, 175, 80, 0.35);
+  --donate-shadow: rgba(234, 88, 12, 0.25);
+  --donate-shadow-hover: rgba(234, 88, 12, 0.4);
 }
 
 /* --- Bouton flottant (FAB) --- */
@@ -101,7 +101,7 @@
     box-shadow: 0 4px 16px var(--donate-shadow);
   }
   50% {
-    box-shadow: 0 4px 24px var(--donate-shadow-hover), 0 0 0 8px rgba(76, 175, 80, 0.08);
+    box-shadow: 0 4px 24px var(--donate-shadow-hover), 0 0 0 8px rgba(234, 88, 12, 0.08);
   }
 }
 
