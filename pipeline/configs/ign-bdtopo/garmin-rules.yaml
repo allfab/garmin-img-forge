@@ -46,12 +46,13 @@ rulesets:
           EndLevel: "2"
           Label: "~[0x06]${NUMERO}"
 
-      # 5. Departementale Rond-point (Type override 0x04, pas de label)
+      # 5. Departementale Rond-point — garde Type=0x05 (couleur RD),
+      #    pas de label (cohérence avec rond-point Nationale).
       - match:
           CL_ADMIN: "Départementale"
           NATURE: "Rond-point"
         set:
-          Type: "0x04"
+          Type: "0x05"
           EndLevel: "2"
 
       # 6. Route intercommunale (toute NATURE)
