@@ -4918,7 +4918,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #F80000"
+"1 c #FF6A00"
 "2 c #000000"
 ExtendedLabels=Y
 FontStyle=Default
@@ -4936,7 +4936,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #F80000"
+"1 c #F8C800"
 "2 c #000000"
 ExtendedLabels=Y
 FontStyle=Default
@@ -4954,7 +4954,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #F80000"
+"1 c #FFA030"
 "2 c #303030"
 ExtendedLabels=Y
 FontStyle=Default
@@ -5063,10 +5063,10 @@ UseOrientation=Y
 LineWidth=1
 BorderWidth=1
 Xpm="0 0 4 0"
-"1 c #D08800"
-"2 c #C87400"
-"3 c #D08800"
-"4 c #B87C00"
+"1 c #F8C800"
+"2 c #D8A800"
+"3 c #F8C800"
+"4 c #E0B800"
 String1=0x04,ROUNDABOUT
 String2=0x01,ROND-POINT
 String3=0x02,KREISVERKEHR
