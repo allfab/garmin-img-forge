@@ -3429,13 +3429,13 @@ rulesets:
       - match:
           NAME: "*"
         set:
-          Type: "${MP_TYPE}"
-          EndLevel: "${EndLevel}"
+          Type: "0x10f04"
+          EndLevel: "2"
           Label: "${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
       - match:
           NAME: ""
         set:
-          Type: "${MP_TYPE}"
-          EndLevel: "${EndLevel}"
+          Type: "0x10f04"
+          EndLevel: "2"
