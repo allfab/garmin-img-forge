@@ -14,4 +14,4 @@ http:
     garmin-ign-topo-map:
       loadBalancer:
         servers:
-          - url: "http://10.10.20.51:8081"
+          - url: "http://10.0.100.30:8880"
