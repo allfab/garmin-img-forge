@@ -13,7 +13,16 @@
           "size_bytes": 166658048,
           "sha256": "673948214d6d1f88e47fe115a7226965905937fd389e561533fd610dcbe7a9a5",
           "file": "IGN-BDTOPO-D038-v2025.12.img",
-          "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2025.12/IGN-BDTOPO-D038-v2025.12.img"
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2025.12/IGN-BDTOPO-D038-v2025.12.img",
+          "build_params": {
+            "zones": "D038",
+            "base_id": "38",
+            "year": "2025",
+            "version": "v2025.12",
+            "family_id": "38",
+            "family_name": "IGN-BDTOPO-D038-v2025.12",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+          }
         }
       ],
       "latest_file": "IGN-BDTOPO-D038.img",
@@ -31,7 +40,16 @@
           "size_bytes": 44280832,
           "sha256": "a27fb97b8d09b874576c94e0d135dfcc274a7a69f00732a1eed84dcbdc82ca74",
           "file": "IGN-BDTOPO-LA-REUNION-v2025.12.img",
-          "path": "https://download-maps.garmin.allfabox.fr/departement/d974/v2025.12/IGN-BDTOPO-LA-REUNION-v2025.12.img"
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d974/v2025.12/IGN-BDTOPO-LA-REUNION-v2025.12.img",
+          "build_params": {
+            "zones": "D974",
+            "base_id": "974",
+            "year": "2025",
+            "version": "v2025.12",
+            "family_id": "974",
+            "family_name": "IGN-BDTOPO-LA-REUNION-v2025.12",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+          }
         }
       ],
       "latest_file": "IGN-BDTOPO-LA-REUNION.img",

@@ -52,6 +52,117 @@
         }
     }
 
+    // Construit la commande download-bdtopo.sh depuis les build_params.
+    function buildDownloadCmd(bp) {
+        return [
+            './scripts/download-bdtopo.sh \\',
+            '    --zones ' + bp.zones + ' \\',
+            '    --bdtopo-version ' + bp.version + ' \\',
+            '    --format SHP \\',
+            '    --with-contours \\',
+            '    --with-osm \\',
+            '    --with-dem \\',
+            '    --dry-run'
+        ].join('\n');
+    }
+
+    // Construit la commande build-garmin-map.sh depuis les build_params.
+    function buildCompileCmd(bp) {
+        return [
+            './scripts/build-garmin-map.sh \\',
+            '    --zones ' + bp.zones + ' \\',
+            '    --base-id ' + bp.base_id + ' \\',
+            '    --year ' + bp.year + ' \\',
+            '    --version ' + bp.version + ' \\',
+            '    --data-dir ./pipeline/data \\',
+            '    --contours-dir ./pipeline/data/contours \\',
+            '    --dem-dir ./pipeline/data/dem \\',
+            '    --osm-dir ./pipeline/data/osm \\',
+            '    --hiking-trails-dir ./pipeline/data/hiking-trails \\',
+            '    --output-base ./pipeline/output \\',
+            '    --config pipeline/configs/ign-bdtopo/sources.yaml \\',
+            '    --jobs 8 \\',
+            '    --family-id ' + bp.family_id + ' \\',
+            '    --product-id 1 \\',
+            '    --family-name "' + bp.family_name + '" \\',
+            '    --series-name "IGN-BDTOPO-MAP" \\',
+            '    --code-page 1252 \\',
+            '    --levels "24,22,20,18,16" \\',
+            '    --typ pipeline/resources/typfiles/I2023100.typ \\',
+            '    --copyright "' + bp.copyright + '" \\',
+            '    --publish \\',
+            '    --publish-target s3 \\',
+            '    -v'
+        ].join('\n');
+    }
+
+    function buildCommandsBlock(bp) {
+        if (!bp || !bp.zones || !bp.version) return null;
+
+        var details = document.createElement('details');
+        details.className = 'downloads-commands';
+
+        var summary = document.createElement('summary');
+        summary.textContent = 'Commandes de téléchargement et compilation';
+        details.appendChild(summary);
+
+        [
+            ['Téléchargement des données BDTOPO', buildDownloadCmd(bp)],
+            ['Compilation de la carte', buildCompileCmd(bp)]
+        ].forEach(function (pair) {
+            var h = document.createElement('p');
+            h.className = 'downloads-commands-label';
+            h.textContent = pair[0];
+            details.appendChild(h);
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'downloads-commands-pre';
+
+            var pre = document.createElement('pre');
+            var code = document.createElement('code');
+            code.className = 'language-bash';
+            code.textContent = pair[1];
+            pre.appendChild(code);
+            wrapper.appendChild(pre);
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'downloads-commands-copy';
+            btn.textContent = 'Copier';
+            btn.setAttribute('aria-label', 'Copier la commande');
+            btn.addEventListener('click', function () {
+                var text = pair[1];
+                var done = function () {
+                    var prev = btn.textContent;
+                    btn.textContent = 'Copié !';
+                    btn.classList.add('is-copied');
+                    setTimeout(function () {
+                        btn.textContent = prev;
+                        btn.classList.remove('is-copied');
+                    }, 1500);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done, function () {});
+                } else {
+                    // Fallback : textarea temporaire + execCommand('copy').
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); done(); } catch (e) {}
+                    document.body.removeChild(ta);
+                }
+            });
+            wrapper.appendChild(btn);
+
+            details.appendChild(wrapper);
+        });
+
+        return details;
+    }
+
     function buildMetaBlock(version) {
         if (!version || !version.published_at) return null;
         var formatted = formatDate(version.published_at);
@@ -123,6 +234,17 @@
                     link.parentNode.insertBefore(meta, link.nextSibling);
                 } else {
                     link.parentNode.appendChild(meta);
+                }
+            }
+
+            // Bloc repliable avec les commandes download + build pour cette version.
+            var cmds = buildCommandsBlock(latest.build_params);
+            if (cmds && link.parentNode) {
+                var anchor = meta || link;
+                if (anchor.nextSibling) {
+                    link.parentNode.insertBefore(cmds, anchor.nextSibling);
+                } else {
+                    link.parentNode.appendChild(cmds);
                 }
             }
         }

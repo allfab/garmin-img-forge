@@ -38,6 +38,68 @@
   line-height: 1.4;
 }
 
+.downloads-commands {
+  margin-top: 0.4em;
+  font-size: 0.78em;
+}
+
+.downloads-commands > summary {
+  cursor: pointer;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.6));
+}
+
+.downloads-commands-label {
+  margin: 0.6em 0 0.2em;
+  font-weight: 600;
+  font-size: 0.92em;
+}
+
+.downloads-commands-pre {
+  position: relative;
+  margin: 0 0 0.4em;
+}
+
+.downloads-commands-pre pre {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.downloads-commands-pre pre code {
+  font-size: 0.82em;
+  white-space: pre;
+}
+
+.downloads-commands-copy {
+  position: absolute;
+  top: 0.35em;
+  right: 0.35em;
+  padding: 0.15em 0.55em;
+  font-size: 0.78em;
+  line-height: 1.2;
+  background: var(--md-default-bg-color, #fff);
+  color: var(--md-default-fg-color, #000);
+  border: 1px solid rgba(0, 0, 0, 0.26);
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.downloads-commands-copy:hover,
+.downloads-commands-copy:focus {
+  opacity: 1;
+}
+
+.downloads-commands-copy.is-copied {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+  opacity: 1;
+}
+
+[data-md-color-scheme="slate"] .downloads-commands-copy {
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
 
 /* ============================================================
    Dark Mode — Mermaid Diagram Overrides

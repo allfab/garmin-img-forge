@@ -1043,6 +1043,17 @@ update_manifest() {
     fi
     local tmp="${manifest}.tmp"
 
+    # build_params : valeurs dynamiques nécessaires pour régénérer les commandes
+    # download-bdtopo.sh et build-garmin-map.sh de cette publication. Le front
+    # (downloads-manifest.js) les injecte dans un template statique.
+    local bp_zones="${ZONES}"
+    local bp_base_id="${BASE_ID}"
+    local bp_year="${YEAR}"
+    local bp_version="${VERSION}"
+    local bp_family_id="${FAMILY_ID}"
+    local bp_family_name="${FAMILY_NAME}"
+    local bp_copyright="${COPYRIGHT}"
+
     jq \
         --arg key "$key" \
         --arg type "$type" \
@@ -1058,6 +1069,13 @@ update_manifest() {
         --arg storage_type "$storage_type" \
         --arg storage_endpoint "$storage_endpoint" \
         --argjson size "$size" \
+        --arg bp_zones "$bp_zones" \
+        --arg bp_base_id "$bp_base_id" \
+        --arg bp_year "$bp_year" \
+        --arg bp_version "$bp_version" \
+        --arg bp_family_id "$bp_family_id" \
+        --arg bp_family_name "$bp_family_name" \
+        --arg bp_copyright "$bp_copyright" \
         '
         .generated_at = $now
         | .storage = (
@@ -1081,7 +1099,16 @@ update_manifest() {
                     size_bytes: $size,
                     sha256: $sha256,
                     file: $file,
-                    path: $path
+                    path: $path,
+                    build_params: {
+                        zones: $bp_zones,
+                        base_id: $bp_base_id,
+                        year: $bp_year,
+                        version: $bp_version,
+                        family_id: $bp_family_id,
+                        family_name: $bp_family_name,
+                        copyright: $bp_copyright
+                    }
                 }]
               )
             | .versions |= sort_by(.version)
