@@ -6482,7 +6482,7 @@ Type=0x10f01
 ;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_34/Non-routable customizable line/Non NT, NT
 UseOrientation=N
 Xpm="32 3 2  1"
-"! c #F800D0"
+"! c #E00000"
 "  c none"
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -6494,8 +6494,8 @@ String3=0x02,CLUB VOSGIEN WANDERWEG
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
-DaycustomColor:#F800D0
-NightcustomColor:#F800D0
+DaycustomColor:#E00000
+NightcustomColor:#E00000
 ContourColor=No
 [end]
 
