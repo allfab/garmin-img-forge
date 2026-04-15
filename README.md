@@ -1,8 +1,8 @@
-# MPForge
+# garmin-ign-bdtopo-map
 
 > On forge des cartes Garmin à partir de données SIG massives.
 
-MPForge est composé de trois briques :
+Le projet (nom interne : **MPForge**, *Map Forging Project*) est composé de trois briques principales :
 
 | Composant | Description | Documentation |
 |-----------|-------------|---------------|
@@ -10,13 +10,19 @@ MPForge est composé de trois briques :
 | **[mpforge](./tools/mpforge/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./tools/mpforge/README.md), [Exemples](./tools/mpforge/examples/) |
 | **[imgforge](./tools/imgforge/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./tools/imgforge/README.md) |
 
+### En développement
+
+| Composant | Description |
+|-----------|-------------|
+| **[ogr-garminimg](./tools/ogr-garminimg/)** | Driver GDAL/OGR pour lire le format Garmin IMG (.img) — *en cours* |
+
 **Pipeline complet** : Données SIG → `mpforge` (tuiles .mp) → `imgforge` (fichiers .img) → GPS Garmin
 
 ---
 
 ## Site de documentation
 
-Le site **[garmin-ign-bdtopo-map.ovh](https://garmin-ign-bdtopo-map.ovh)** documente le projet
+Le site **[maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr)** documente le projet
 et met à disposition les cartes Garmin téléchargeables.
 
 Le site est généré avec **Zensical** (successeur de MkDocs Material) et déployé via Forgejo Pages.
@@ -258,13 +264,13 @@ garmin-ign-bdtopo-map/
 │       ├── examples/             # Scripts Python d'exemple
 │       └── test/                 # Tests et données de test
 │
-├── pipeline/                     # PRODUCTION DE CARTES
+├── pipeline/                     # PRODUCTION DE CARTES (données, configs, sorties)
 │   ├── configs/                  # Configuration YAML mpforge
 │   ├── data/                     # Données BDTOPO téléchargées
 │   ├── output/                   # Tuiles .mp et gmapsupp.img
 │   └── resources/                # Typfiles et ressources production
 │
-├── scripts/                      # ORCHESTRATION (transversal)
+├── scripts/                      # ORCHESTRATION (transversal) — doc: scripts/README.md
 │
 ├── site/                         # SITE PUBLIC Zensical
 │
@@ -292,3 +298,13 @@ garmin-ign-bdtopo-map/
 | Doc Woodpecker | https://woodpecker-ci.org/docs |
 | Doc GDAL | https://gdal.org/ |
 | SemVer | https://semver.org/ |
+
+---
+
+## Licences
+
+- **ogr-polishmap** : MIT
+- **mpforge**, **imgforge** : GPL v3
+- **Documentation du site** : [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.fr)
+
+Voir [`LICENSE`](./LICENSE) pour les détails.

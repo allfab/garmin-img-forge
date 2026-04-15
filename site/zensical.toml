@@ -68,7 +68,8 @@ Accueil = "index.md"
   { "Niveaux de zoom et EndLevel" = "reference/niveaux-et-zoom.md" },
   { "Limites des formats" = "reference/limites-formats.md" },
   { "Convention --base-id" = "reference/base-id-convention.md" },
-  { "Styles TYP" = "reference/styles-typ.md" }
+  { "Styles TYP" = "reference/styles-typ.md" },
+  { "Styles OpenTopo" = "reference/styles-opentopo.md" }
 ]
 
 [[nav]]
