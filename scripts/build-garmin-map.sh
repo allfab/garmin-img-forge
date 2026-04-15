@@ -838,7 +838,7 @@ prepare_config() {
     log_info "Données       : $_DATA_ROOT"
     log_info "Sortie        : $_OUTPUT_DIR"
     log_info "Base ID       : $BASE_ID"
-    log_info "Jobs          : $JOBS"
+    log_info "Jobs          : mpforge=${MPFORGE_JOBS} / imgforge=${IMGFORGE_JOBS}"
 
     # Exporter les variables pour la substitution interne de mpforge
     export DATA_ROOT="$_DATA_ROOT"
