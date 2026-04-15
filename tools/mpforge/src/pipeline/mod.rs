@@ -215,6 +215,22 @@ fn process_single_tile(
 ) -> Result<TileOutcome, TileExportError> {
     let tile_id = tile_bounds.tile_id();
 
+    // 0. Early skip-existing check (before any GDAL work).
+    //    Only applicable when filename_pattern does NOT depend on {seq}, since
+    //    {seq} is assigned non-deterministically in parallel mode and the final
+    //    filename can only be known after sequence allocation.
+    if ctx.should_skip_existing && !ctx.filename_pattern.contains("{seq") {
+        if let Ok(early_filename) =
+            resolve_tile_pattern(ctx.filename_pattern, tile_bounds.col, tile_bounds.row, 0)
+        {
+            let early_path = PathBuf::from(ctx.output_directory).join(&early_filename);
+            if early_path.exists() {
+                info!(tile_id = %tile_id, path = %early_path.display(), "Existing tile skipped (early)");
+                return Ok(TileOutcome::Skipped { existing: true });
+            }
+        }
+    }
+
     // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
     let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
         Ok(result) => result,
