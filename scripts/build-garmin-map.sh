@@ -55,6 +55,8 @@ HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
 # mpforge
 CONFIG_FILE=""          # si vide : utilise sources.yaml avec envsubst
 JOBS=8
+MPFORGE_JOBS=""         # si vide : fallback sur $JOBS
+IMGFORGE_JOBS=""        # si vide : fallback sur $JOBS (imgforge consomme bien plus de RAM que mpforge)
 
 # imgforge
 FAMILY_ID=1100
@@ -291,8 +293,11 @@ CHEMINS :
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
     --config FILE           Config YAML mpforge custom (défaut: sources.yaml)
 
-MPFORGE :
-    --jobs N                Parallélisation (défaut: 8)
+MPFORGE / IMGFORGE :
+    --jobs N                Parallélisation commune par défaut (défaut: 8)
+    --mpforge-jobs N        Parallélisation mpforge (surcharge --jobs)
+    --imgforge-jobs N       Parallélisation imgforge (surcharge --jobs ;
+                            pensez à réduire : imgforge consomme beaucoup de RAM)
     --skip-existing         Passer les tuiles .mp déjà présentes
 
 IMGFORGE :
@@ -363,6 +368,8 @@ parse_args() {
             --output-base)   OUTPUT_BASE="$2"; shift 2 ;;
             --config)        CONFIG_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
+            --mpforge-jobs)  MPFORGE_JOBS="$2"; shift 2 ;;
+            --imgforge-jobs) IMGFORGE_JOBS="$2"; shift 2 ;;
             --skip-existing) SKIP_EXISTING=true; shift ;;
             --family-id)     FAMILY_ID="$2"; shift 2 ;;
             --product-id)    PRODUCT_ID="$2"; shift 2 ;;
@@ -441,6 +448,23 @@ validate_params() {
     elif [[ "$JOBS" -gt 64 ]]; then
         log_warn "--jobs ${JOBS} : valeur élevée, ${JOBS} workers GDAL en parallèle consommeront beaucoup de RAM"
     fi
+
+    # Fallback des jobs par étape sur $JOBS si non spécifiés
+    MPFORGE_JOBS="${MPFORGE_JOBS:-$JOBS}"
+    IMGFORGE_JOBS="${IMGFORGE_JOBS:-$JOBS}"
+
+    # --- mpforge-jobs / imgforge-jobs : entiers positifs ---
+    for _pair in "mpforge-jobs:${MPFORGE_JOBS}" "imgforge-jobs:${IMGFORGE_JOBS}"; do
+        _flag="${_pair%%:*}"
+        _val="${_pair#*:}"
+        if ! [[ "$_val" =~ ^[0-9]+$ ]] || [[ "$_val" -lt 1 ]]; then
+            log_error "--${_flag} : doit être un entier positif, reçu '${_val}'"
+            errors=$(( errors + 1 ))
+        elif [[ "$_val" -gt 64 ]]; then
+            log_warn "--${_flag} ${_val} : valeur élevée, consommation RAM importante à prévoir"
+        fi
+    done
+    unset _pair _flag _val
 
     # --- family-id : u16 (0..65535) ---
     # Raison : le champ Family ID dans le format TDB Garmin est encodé sur 16 bits.
@@ -863,7 +887,7 @@ run_mpforge() {
         "$_MPFORGE" build
         --config "$CONFIG_FILE"
         --report "$_REPORT_FILE"
-        --jobs "$JOBS"
+        --jobs "$MPFORGE_JOBS"
     )
 
     [[ "$SKIP_EXISTING" == true ]] && cmd+=(--skip-existing)
@@ -926,7 +950,7 @@ run_imgforge() {
     local -a cmd=(
         "$_IMGFORGE" build "$mp_dir"
         --output "${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
-        --jobs "$JOBS"
+        --jobs "$IMGFORGE_JOBS"
         --family-id "$FAMILY_ID"
         --product-id "$PRODUCT_ID"
         --family-name "$FAMILY_NAME"
