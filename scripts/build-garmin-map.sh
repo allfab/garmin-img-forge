@@ -68,6 +68,12 @@ LEVELS="24,22,20,18,16"
 TYP_FILE="pipeline/resources/typfiles/I2023100.typ"
 COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
 
+# imgforge — optimisation taille IMG (opt-in, off par défaut)
+REDUCE_POINT_DENSITY=""    # imgforge --reduce-point-density (réf. mkgmap : 4.0)
+SIMPLIFY_POLYGONS=""       # imgforge --simplify-polygons (format "24:12,18:10,16:8")
+MIN_SIZE_POLYGON=""        # imgforge --min-size-polygon (réf. mkgmap : 8)
+MERGE_LINES=false          # imgforge --merge-lines
+
 # Contrôle
 DRY_RUN=false
 PUBLISH=false
@@ -313,6 +319,10 @@ IMGFORGE :
     --copyright STR         Message copyright
     --no-route              Désactiver le routage
     --no-dem                Désactiver le DEM (relief ombré)
+    --reduce-point-density F   Douglas-Peucker épsilon lignes (réf. mkgmap : 4.0)
+    --simplify-polygons SPEC   Épsilon DP polygones par résolution (ex. "24:12,18:10,16:8")
+    --min-size-polygon N       Filtre polygones < N unités carte (réf. mkgmap : 8)
+    --merge-lines              Fusionne polylignes adjacentes même type/label
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
@@ -345,6 +355,13 @@ EXEMPLES :
 
     # Build + publication dans le site
     ./scripts/build-garmin-map.sh --region ARA --publish
+
+    # Quadrant FRANCE-SE optimisé taille (Vague 1 : config dédiée + simplification géométrique)
+    ./scripts/build-garmin-map.sh --region FRANCE-SE \
+        --config pipeline/configs/ign-bdtopo/sources-france-se.yaml \
+        --reduce-point-density 4.0 \
+        --simplify-polygons "24:12,18:10,16:8" \
+        --min-size-polygon 8
 EOF
     exit 0
 }
@@ -381,6 +398,10 @@ parse_args() {
             --copyright)     COPYRIGHT="$2"; shift 2 ;;
             --no-route)      WITH_ROUTE=false; shift ;;
             --no-dem)        WITH_DEM=false; shift ;;
+            --reduce-point-density) REDUCE_POINT_DENSITY="$2"; shift 2 ;;
+            --simplify-polygons)    SIMPLIFY_POLYGONS="$2";    shift 2 ;;
+            --min-size-polygon)     MIN_SIZE_POLYGON="$2";     shift 2 ;;
+            --merge-lines)          MERGE_LINES=true;          shift   ;;
             --dry-run)       DRY_RUN=true; shift ;;
             --publish)       PUBLISH=true; shift ;;
             --publish-target=*) PUBLISH_TARGET="${1#*=}"; shift ;;
@@ -465,6 +486,21 @@ validate_params() {
         fi
     done
     unset _pair _flag _val
+
+    # --- imgforge opt-in : numériques strictement positifs si définis ---
+    if [[ -n "$REDUCE_POINT_DENSITY" ]]; then
+        if ! [[ "$REDUCE_POINT_DENSITY" =~ ^[0-9]+(\.[0-9]+)?$|^[0-9]*\.[0-9]+$ ]] \
+           || ! awk -v v="$REDUCE_POINT_DENSITY" 'BEGIN{exit !(v+0 > 0)}'; then
+            log_error "--reduce-point-density : doit être un nombre strictement positif, reçu '${REDUCE_POINT_DENSITY}'"
+            errors=$(( errors + 1 ))
+        fi
+    fi
+    if [[ -n "$MIN_SIZE_POLYGON" ]]; then
+        if ! [[ "$MIN_SIZE_POLYGON" =~ ^[0-9]+$ ]] || [[ "$MIN_SIZE_POLYGON" -lt 1 ]]; then
+            log_error "--min-size-polygon : doit être un entier strictement positif, reçu '${MIN_SIZE_POLYGON}'"
+            errors=$(( errors + 1 ))
+        fi
+    fi
 
     # --- family-id : u16 (0..65535) ---
     # Raison : le champ Family ID dans le format TDB Garmin est encodé sur 16 bits.
@@ -963,6 +999,14 @@ run_imgforge() {
 
     [[ "$WITH_ROUTE" == true ]] && cmd+=(--route)
     [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
+
+    if [[ -n "$REDUCE_POINT_DENSITY" || -n "$SIMPLIFY_POLYGONS" || -n "$MIN_SIZE_POLYGON" || "$MERGE_LINES" == true ]]; then
+        log_info "Optimisations imgforge actives :"
+        [[ -n "$REDUCE_POINT_DENSITY" ]] && { cmd+=(--reduce-point-density "$REDUCE_POINT_DENSITY"); log_info "  --reduce-point-density ${REDUCE_POINT_DENSITY}"; }
+        [[ -n "$SIMPLIFY_POLYGONS" ]]    && { cmd+=(--simplify-polygons "$SIMPLIFY_POLYGONS");       log_info "  --simplify-polygons ${SIMPLIFY_POLYGONS}"; }
+        [[ -n "$MIN_SIZE_POLYGON" ]]     && { cmd+=(--min-size-polygon "$MIN_SIZE_POLYGON");         log_info "  --min-size-polygon ${MIN_SIZE_POLYGON}"; }
+        [[ "$MERGE_LINES" == true ]]     && { cmd+=(--merge-lines);                                  log_info "  --merge-lines"; }
+    fi
 
     # DEM : ajouter les répertoires DEM pour chaque département
     # Le DEM est livré par département (D-codes), pas par région (R-codes)

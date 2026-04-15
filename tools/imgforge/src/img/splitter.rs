@@ -17,7 +17,7 @@ pub const MAX_DIVISION_SIZE: i32 = 0x7FFF;
 pub const MAX_RGN_SIZE: usize = 0xFFF8; // 65528 bytes
 pub const MAX_NUM_LINES: usize = 0xFF;
 pub const MAX_NUM_POINTS: usize = 0xFF;
-pub const WANTED_MAX_AREA_SIZE: usize = 0x3FFF; // 16383 bytes
+pub const WANTED_MAX_AREA_SIZE: usize = 0x2FFF; // 12287 bytes (abaissé depuis 0x3FFF/16 KB pour réduire la pression RGN sur les quadrants type FRANCE-SE)
 pub const MIN_DIMENSION: i32 = 10;
 pub const LARGE_OBJECT_DIM: i32 = 8192;
 
