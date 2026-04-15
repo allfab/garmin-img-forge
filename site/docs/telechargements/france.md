@@ -97,7 +97,7 @@ les quadrants Nord-Est et Nord-Ouest, conformément au choix Garmin.
     25 départements. Régions couvertes (partielles) : Auvergne-Rhône-Alpes,
     Provence-Alpes-Côte d'Azur, Occitanie (est), Corse.
 
-    [:material-download: Télécharger](files/quadrant/france-se/latest/IGN-BDTOPO-FRANCE-SE.img){ .md-button }
+    [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img){ .md-button }
 
 </div>
 

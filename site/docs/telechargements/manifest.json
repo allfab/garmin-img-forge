@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-15T12:03:09Z",
+  "generated_at": "2026-04-15T18:19:23Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -71,6 +71,33 @@
       ],
       "latest_file": "IGN-BDTOPO-LA-REUNION.img",
       "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d974/v2025.12/IGN-BDTOPO-LA-REUNION-v2025.12.img"
+    },
+    "quadrant/france-se": {
+      "type": "quadrant",
+      "slug": "france-se",
+      "label": "France Sud-Est",
+      "latest": "v2026.03",
+      "versions": [
+        {
+          "version": "v2026.03",
+          "published_at": "2026-04-15T18:19:23Z",
+          "size_bytes": 4139515904,
+          "sha256": "641b9d8dcd1e39028d603929c4024f7cef6b4091d88d7f1eef7dc604305cddbd",
+          "file": "IGN-BDTOPO-FRANCE-SE-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img",
+          "build_params": {
+            "zones": "D001,D003,D004,D005,D006,D007,D011,D013,D015,D02A,D02B,D026,D030,D034,D038,D042,D043,D048,D063,D066,D069,D073,D074,D083,D084",
+            "base_id": "940",
+            "year": "2026",
+            "version": "v2026.03",
+            "family_id": "940",
+            "family_name": "IGN-BDTOPO-FRANCE-SE-v2026.03",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+          }
+        }
+      ],
+      "latest_file": "IGN-BDTOPO-FRANCE-SE.img",
+      "latest_url": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img"
     }
   },
   "storage": {
