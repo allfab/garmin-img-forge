@@ -49,7 +49,6 @@ Ce qui est miroirisé et donc modifiable via PR :
 - `pipeline/` **sauf** `data/` et `output/` (les configs, resources, scripts internes sont accessibles)
 - `site/` (contenu et config Zensical)
 - `scripts/`
-- `.woodpecker/` (pipelines CI)
 - `.github/` (templates + workflow Pages)
 - Fichiers racine (`README.md`, `LICENSE`, ce fichier, etc.)
 
@@ -58,7 +57,8 @@ Ce qui est **absent du miroir** (et donc inaccessible depuis GitHub) :
 - `_bmad/` (workflows BMAD internes)
 - `docs/` (planning-artifacts, implementation-artifacts, brainstorming)
 - `pipeline/data/`, `pipeline/output/` (artefacts volumineux, générés)
-- `.claude/`, `.vscode/` (configuration dev locale)
+- `.woodpecker/` (pipelines Woodpecker internes, non pertinents hors homelab)
+- `.claude/`, `.vscode/`, `CLAUDE.md`, `.mcp.json` (configuration dev locale)
 - Tous les fichiers `.env*` à tous les niveaux de l'arbre
 
 Si votre PR nécessite des modifications dans un de ces chemins, ouvrez plutôt une

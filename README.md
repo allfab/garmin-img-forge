@@ -58,12 +58,17 @@ Le projet utilise **Woodpecker CI** (plutôt que Forgejo Actions) pour sa légè
 
 Chaque outil a son propre pipeline CI avec des tags préfixés pour des cycles de release indépendants :
 
+> **Note miroir GitHub** : les fichiers `.woodpecker/*.yml` ne sont pas
+> miroirés côté GitHub (dossier exclu). Les descriptions ci-dessous
+> documentent le système ; les fichiers eux-mêmes sont consultables sur
+> [Forgejo](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/.woodpecker).
+
 | Pipeline | Déclencheur | Description |
 |----------|-------------|-------------|
-| [`.woodpecker/mpforge.yml`](./.woodpecker/mpforge.yml) | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
-| [`.woodpecker/imgforge.yml`](./.woodpecker/imgforge.yml) | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
-| [`.woodpecker/site.yml`](./.woodpecker/site.yml) | Push sur `main` (dans `site/`) | Build et déploiement LXC du site Zensical |
-| [`.woodpecker/mirror-github.yml`](./.woodpecker/mirror-github.yml) | Push sur `main` | Miroir filtré Forgejo → GitHub (via `git filter-repo`) |
+| `.woodpecker/mpforge.yml` | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
+| `.woodpecker/imgforge.yml` | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
+| `.woodpecker/site.yml` | Push sur `main` (dans `site/`) | Build et déploiement LXC du site Zensical |
+| `.woodpecker/mirror-github.yml` | Push sur `main` | Miroir filtré Forgejo → GitHub (via `git filter-repo`) |
 
 Les pipelines `mpforge` et `imgforge` produisent automatiquement une release Forgejo avec binaire, checksums SHA-256 et metadata JSON.
 
@@ -295,7 +300,7 @@ garmin-ign-bdtopo-map/
 │
 ├── site/                         # SITE PUBLIC Zensical
 │
-├── .woodpecker/                  # Pipelines CI/CD (interne)
+├── .woodpecker/                  # Pipelines CI/CD (interne, non miroiré sur GitHub)
 │   ├── mpforge.yml               # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
 │   ├── imgforge.yml              # Build standard (Pure Rust), tag imgforge-v*
 │   ├── site.yml                  # Build et déploiement LXC du site
