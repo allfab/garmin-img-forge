@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T16:32:08Z",
+  "generated_at": "2026-04-16T16:48:50Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -80,11 +80,11 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-16T16:32:08Z",
+          "published_at": "2026-04-16T16:48:50Z",
           "size_bytes": 3592880128,
           "sha256": "2f95c9caa544e13a3363ffedc3fd22e999d14ca30e4cc142d5d90a31139b2fed",
           "file": "IGN-BDTOPO-FRANCE-SE-v2026.03.img",
-          "path": "files/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img",
           "build_params": {
             "zones": "D001,D003,D004,D005,D006,D007,D011,D013,D015,D02A,D02B,D026,D030,D034,D038,D042,D043,D048,D063,D066,D069,D073,D074,D083,D084",
             "base_id": "940",
@@ -97,11 +97,11 @@
         }
       ],
       "latest_file": "IGN-BDTOPO-FRANCE-SE.img",
-      "latest_url": "files/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img",
-      "latest_path": "files/quadrant/france-se/latest/IGN-BDTOPO-FRANCE-SE.img"
+      "latest_url": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img"
     }
   },
   "storage": {
-    "type": "local"
+    "type": "s3",
+    "endpoint_public": "https://download-maps.garmin.allfabox.fr"
   }
 }

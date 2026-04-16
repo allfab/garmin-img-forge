@@ -59,7 +59,7 @@ Cette investigation a mobilisé l'analyse du code source de mkgmap (~100 000 lig
 
 ### Les quadrants FRANCE-SE — bataille d'avril 2026
 
-Après la victoire sur le rendu départemental, passer à l'échelle **quadrant** (25 départements sur `FRANCE-SE` — Auvergne-Rhône-Alpes, PACA, Occitanie est, Corse) a révélé deux nouveaux blocages sur l'Alpha 100.
+Après la victoire sur le rendu départemental, passer à l'échelle **quadrant** (25 départements sur `FRANCE-SE` — Auvergne-Rhône-Alpes, PACA, sud d'Occitanie, Corse) a révélé deux nouveaux blocages sur l'Alpha 100.
 
 #### Bug 1 — L'Alpha 100 plante au boot sur les gros quadrants
 
@@ -67,32 +67,32 @@ Le premier build FRANCE-SE (3,5 Go) faisait littéralement **redémarrer l'appar
 
 **La cause n'était pas la taille du fichier** — la référence mkgmap FRANCE-SUD (moitié sud complète, 3,19 Gio) se chargeait sans problème. C'est le **nombre d'entrées FAT dans le gmapsupp.img** qui était le facteur limitant :
 
-| | mkgmap FRANCE-SUD (OK) | imgforge FRANCE-SE (plantait) |
+| Métrique | mkgmap FRANCE-SUD (OK) | imgforge FRANCE-SE (plantait) |
 |---|---|---|
-| Tuiles | **98** | **973** |
-| Subfiles par tuile | 4 (TRE/RGN/LBL/DEM) | 6 (+ NET+NOD) |
-| **Entrées FAT** | **~392** | **4 095** |
+| Tuiles | **98** | **702** |
+| Subfiles par tuile | 4 (TRE/RGN/LBL/DEM) | jusqu'à 6 (+ NET+NOD selon routing) |
+| **Entrées FAT mesurées** *(parse du gmapsupp.img réel)* | **~392** | **4 095** |
 
 Le firmware Alpha 100 charge la table d'allocation des fichiers en RAM au boot. À 4 095 entrées, la mémoire disponible est dépassée et l'appareil redémarre.
 
 **Fix** : augmenter la taille des tuiles mpforge de `cell_size: 0.15°` (~16 km, 193 km²) à `0.45°` (~50 km, 1 750 km²). FRANCE-SE est alors tombé à **136 tuiles** soit ~550 entrées FAT — proche de la référence mkgmap. La carte se charge maintenant sans problème.
 
-La nouveauté conceptuelle : `cell_size` n'impacte pas la qualité de rendu (le splitter RGN d'imgforge subdivise automatiquement les grosses tuiles en interne), seulement le découpage du filesystem du gmapsupp. Pour tout nouveau quadrant, viser ≤ 250 tuiles est la règle — `0.45°` pour un quadrant, `0.30°` pour un régional, `0.15°` pour un département.
+La nouveauté conceptuelle : `cell_size` n'impacte pas la qualité de rendu (le splitter RGN d'imgforge subdivise automatiquement les grosses tuiles en interne), seulement le découpage du filesystem du gmapsupp. Pour tout nouveau quadrant, viser ≤ 250 tuiles est la règle — `0.45°` pour un quadrant, `0.30°` pour un régional ou un département.
 
 #### Bug 2 — Artefacts géométriques sur les communes denses
 
 Après le fix Bug 1, la carte se chargeait... mais **des communes entières manquaient par blocs** (Marseille, Nice, Lyon) sous QmapShack et Alpha 100. Les logs du build affichaient alors des **milliers de warnings** `Subdivision X RGN size Y exceeds MAX_RGN_SIZE 65528`, avec certaines subdivisions à **252 KiB — quatre fois la limite Garmin** de 64 KiB.
 
-La cause : une constante à une seule ligne dans `imgforge/src/img/splitter.rs` :
+La cause : une constante à une seule ligne dans `tools/imgforge/src/img/splitter.rs` :
 
 ```rust
 // Step 2: Recursive splitting until all areas fit limits
 add_areas_to_list(initial, 8)  // max_depth = 8
 ```
 
-Avec `cell_size: 0.45°` (1 750 km²/tuile) et les agglomérations denses, les 8 niveaux de récursion du splitter étaient insuffisants : 2⁸ = 256 sous-cellules max, dépassées dans les centres urbains. Au-delà de 8, le splitter abandonnait et écrivait des subdivisions trop grosses pour que le format Garmin puisse les encoder → données corrompues → communes manquantes.
+Avec `cell_size: 0.45°` (1 750 km²/tuile) et les agglomérations denses, le splitter abandonnait à la profondeur 8 sans avoir suffisamment subdivisé les zones urbaines. Les subdivisions restantes étaient alors écrites telles quelles, trop grosses pour que le format Garmin puisse les encoder → données corrompues → communes manquantes.
 
-**Le piège** : la lecture attentive du code source mkgmap a révélé que **mkgmap n'impose aucune limite de profondeur** (`MapSplitter.java:113,186` — le paramètre `depth` y est utilisé *uniquement* pour le padding des logs). Les vraies conditions d'arrêt sont la taille atteinte, la dimension minimale, et l'incapacité à splitter une feature unique.
+**Le piège** : la lecture attentive du code source mkgmap a révélé que **mkgmap n'impose aucune limite de profondeur**. Dans `MapSplitter.java`, la fonction `addAreasToList(areas, alist, 0)` est initiée avec `depth=0` (L113) et se rappelle avec `depth+1` (L186) sans jamais tester de plafond — le paramètre `depth` n'est utilisé que comme padding visuel des logs (L140-141). Les vraies conditions d'arrêt sont la taille atteinte, la dimension minimale, et l'incapacité à splitter une feature unique.
 
 `max_depth=8` était donc un écart silencieux d'imgforge par rapport à mkgmap, pas une fidélité. Le fix a consisté à passer `usize::MAX` :
 

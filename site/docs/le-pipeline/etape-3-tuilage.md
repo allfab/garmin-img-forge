@@ -56,14 +56,13 @@ Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` 
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `--jobs N` | Workers parallèles (valeur commune aux deux phases) | `8` |
-| `--mpforge-jobs N` | Workers mpforge uniquement (surcharge `--jobs`) | `$JOBS` |
-| `--skip-existing` | Passer les tuiles `.mp` déjà présentes. Skippe aussi la phase imgforge si `.img` cible déjà présent (mode publish-only). | — |
+| `--mpforge-jobs N` | Workers mpforge uniquement (surcharge `--jobs`) | valeur de `--jobs` |
 
 #### imgforge
 
 | Option | Description | Défaut |
 |--------|-------------|--------|
-| `--imgforge-jobs N` | Workers imgforge uniquement (surcharge `--jobs`) | `$JOBS` |
+| `--imgforge-jobs N` | Workers imgforge uniquement (surcharge `--jobs`) | valeur de `--jobs` |
 | `--family-id N` | Family ID Garmin (u16) | `1100` |
 | `--product-id N` | Product ID Garmin (u16) | `1` |
 | `--family-name STR` | Nom de la carte | `IGN-BDTOPO-{ZONES}-{VERSION}` |
@@ -79,21 +78,22 @@ Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` 
 
 Ces options propagent les flags imgforge correspondants ; elles ne changent rien si omises. Toutes valeurs alignées sur les défauts mkgmap.
 
-| Option | Description | Valeur type |
-|--------|-------------|--------------|
-| `--reduce-point-density F` | Épsilon Douglas-Peucker pour les polylignes | `4.0` |
-| `--simplify-polygons SPEC` | Épsilon DP par résolution pour les polygones | `"24:12,18:10,16:8"` |
-| `--min-size-polygon N` | Filtre les polygones < N unités carte | `8` |
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--reduce-point-density F` | Épsilon Douglas-Peucker pour les polylignes (référence mkgmap : `4.0`) | — |
+| `--simplify-polygons SPEC` | Épsilon DP par résolution pour les polygones (exemple : `"24:12,18:10,16:8"`) | — |
+| `--min-size-polygon N` | Filtre les polygones < N unités carte (référence mkgmap : `8`) | — |
 | `--merge-lines` | Fusionne les polylignes adjacentes (même type + label). Activé par défaut dans mkgmap — **à activer dès qu'on génère un quadrant ou une moitié**, divise par 2-3 le nombre de polylignes et réduit le pic mémoire imgforge. | — |
 
 !!! tip "Quand activer ces options"
     Pour un département, les valeurs par défaut d'imgforge suffisent.
     Pour un quadrant (≥ 20 départements), activez les 4 options : la taille IMG baisse de 15-25 % et imgforge tient en RAM avec moins de workers.
 
-#### Contrôle
+#### Contrôle du build
 
 | Option | Description |
 |--------|-------------|
+| `--skip-existing` | Passe les tuiles `.mp` déjà présentes en phase 1 mpforge. **Skippe aussi la phase 2 imgforge** si le `.img` cible est déjà présent (mode publish-only, cf. [étape 6](etape-6-publication.md#publier-sans-rebuilder)). |
 | `--dry-run` | Simuler sans exécuter |
 | `-v`, `--verbose` | Mode verbeux (`-vv` pour très verbeux) |
 | `--version-info` | Version du script |
@@ -159,10 +159,13 @@ Le paramètre `grid.cell_size` de la config YAML contrôle la taille des tuiles 
 
 | Scope | `cell_size` recommandé | Taille tuile (~45°N) | Tuiles typiques | Config |
 |-------|------------------------|----------------------|-----------------|--------|
-| **Département** (1 zone) | `0.15°` | ~16 × 12 km (200 km²) | 10-30 | `sources.yaml` |
+| **Département** (1 zone) | `0.30°` (valeur actuelle de `sources.yaml`) | ~33 × 23 km (770 km²) | 3-10 | `sources.yaml` |
 | **Région** (3-10 départements) | `0.30°` | ~33 × 23 km (770 km²) | 30-80 | `sources.yaml` |
 | **Quadrant** (20-30 départements) | `0.45°` | ~50 × 35 km (1 750 km²) | 100-150 | `sources-france-XX.yaml` dédié |
 | **Moitié / France entière** | `0.60°` à `0.90°` | ~70 × 45 km (3 000+ km²) | 150-250 | `sources-france-XX.yaml` dédié |
+
+!!! note "Avant le 2026-04-16"
+    Jusqu'au commit [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/e6fce3f), `sources.yaml` utilisait `cell_size: 0.15°` (~16 km) hérité des tests initiaux sur un seul département. Cette valeur générait trop de tuiles pour les scopes régionaux et quadrants (voir [la bataille FRANCE-SE](../le-projet/reussites-ecueils.md#les-quadrants-france-se-bataille-davril-2026)). Si vous reprenez un ancien clone, passez `cell_size` à `0.30°` avant tout build >= régional.
 
 !!! warning "Garmin Alpha 100 : limite FAT"
     L'Alpha 100 plante au boot si le gmapsupp.img contient trop d'entrées FAT.

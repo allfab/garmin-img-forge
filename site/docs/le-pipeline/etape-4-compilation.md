@@ -42,7 +42,7 @@ imgforge va :
 
 ## Commande de production complète
 
-### Cas 1 — Département (scope petit)
+### Cas 1 — Département (scope petit, imgforge direct)
 
 ```bash
 imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
@@ -60,6 +60,8 @@ imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
     --dem-source-srs EPSG:2154 \
     --keep-going
 ```
+
+Décortiquons les options utilisées dans ce cas 1 — chaque groupe est détaillé plus bas dans la page ([Identité](#identite-de-la-carte), [Encodage](#encodage), [Optimisation géométrique](#optimisation-geometrique), [Symbologie](#symbologie), [DEM / Hill Shading](#dem-hill-shading)).
 
 ### Cas 2 — Quadrant FRANCE-SE (scope quadrant, 25 départements, via `build-garmin-map.sh`)
 
@@ -112,7 +114,8 @@ Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (downlo
     - **`--merge-lines`** : fusion des polylignes adjacentes (par défaut dans mkgmap). Réduit significativement la taille IMG et le pic mémoire imgforge.
     - **`--skip-existing`** : les tuiles `.mp` déjà générées sont réutilisées. Bonus : si le `.img` cible existe déjà, la phase 2 imgforge est elle aussi skippée — utile pour republier sans rebuilder.
 
-Décortiquons chaque groupe d'options :
+!!! warning "Données `--hiking-trails-dir`"
+    Le script `download-bdtopo.sh` ne télécharge pas automatiquement les sentiers GR ; le flag `--hiking-trails-dir` de `build-garmin-map.sh` pointe vers un répertoire optionnel qui peut être vide. Si vous ne disposez pas de données trails, omettez ce flag ou laissez-le pointer vers un répertoire vide — la config `sources-france-se.yaml` gère l'absence sans erreur.
 
 ### Identité de la carte
 
@@ -140,7 +143,7 @@ Ces métadonnées sont écrites dans le fichier TDB et sont visibles dans les lo
 ### Optimisation géométrique
 
 ```bash
---reduce-point-density 3.0    # Simplification Douglas-Peucker
+--reduce-point-density 4.0    # Simplification Douglas-Peucker (défaut mkgmap)
 --min-size-polygon 8          # Filtrer les micro-polygones
 ```
 
