@@ -13,7 +13,7 @@ version: 1
 # randonnée ne déclarent pas ce champ et restent préservées intactes (sans warning).
 
 grid:
-  cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  cell_size: 0.45       # ~50 km par tuile (Vague 3 : cible ~100 tuiles FRANCE-SE pour ref mkgmap FRANCE-SUD 98 tuiles)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
 
 inputs:

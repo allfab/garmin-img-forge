@@ -8,7 +8,7 @@ version: 1
 # randonnée ne déclarent pas ce champ et restent préservées intactes (sans warning).
 
 grid:
-  cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  cell_size: 0.30       # 0.30 = ~33 km par tuile (recommandé pour mkgmap/Garmin)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
 
 inputs:
