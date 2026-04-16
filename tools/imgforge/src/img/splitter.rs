@@ -432,7 +432,13 @@ pub fn split_max_size(area: &MapArea, shift: i32) -> Vec<MapArea> {
 
 // ── addAreasToList — recursive post-split ──────────────────────────────────
 
-/// mkgmap MapSplitter.addAreasToList — recursive split until all areas fit
+/// mkgmap MapSplitter.addAreasToList — recursive split until all areas fit.
+///
+/// `max_depth` est conservé comme garde-fou ultime contre une boucle infinie
+/// pathologique, mais en production on passe `usize::MAX` car mkgmap n'impose
+/// aucune limite de profondeur (cf. MapSplitter.java:131-200, le paramètre
+/// `depth` y sert uniquement au padding des logs). Les vraies conditions
+/// d'arrêt sont la taille (`!need_split`), `MIN_DIMENSION`, et `!can_split`.
 pub fn add_areas_to_list(areas: Vec<MapArea>, max_depth: usize) -> Vec<MapArea> {
     let mut result = Vec::new();
 
@@ -511,8 +517,14 @@ pub fn split_features(
     // Step 1: Split to max subdivision size
     let initial = split_max_size(&area, shift);
 
-    // Step 2: Recursive splitting until all areas fit limits
-    add_areas_to_list(initial, 8)
+    // Step 2: Recursive splitting until all areas fit limits.
+    // mkgmap n'a pas de plafond de profondeur (cf. MapSplitter.java) ; on
+    // passe usize::MAX pour que la subdivision continue tant que la taille
+    // n'est pas conforme. Sans ça, sur les zones très denses (ex. quadrant
+    // FRANCE-SE, agglos Marseille/Nice/Lyon), le splitter abandonnait à
+    // depth=8 et écrivait des subdivisions >64 KB → données corrompues
+    // côté Garmin (artefacts géométriques sur les communes).
+    add_areas_to_list(initial, usize::MAX)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
