@@ -4,7 +4,15 @@
   <script defer src="/js/script.js" data-website-id="16e916d9-669d-48f3-affe-b8acd8a327fd"></script>
 {% endblock %}
 
+{% block content %}
+  {{ super() }}
+  {% if page and page.meta.comments is not sameas false %}
+    {% include "partials/comentario.html" %}
+  {% endif %}
+{% endblock %}
+
 {% block scripts %}
   {{ super() }}
+  <script defer src="{{ config.extra.comentario_url }}" referrerpolicy="no-referrer"></script>
   {% include "partials/donate-button.html" %}
 {% endblock %}

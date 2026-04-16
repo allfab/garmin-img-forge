@@ -97,6 +97,7 @@ Installation = [
 [extra]
 generator = false
 copyright = "Documentation sous licence <a href=\"https://creativecommons.org/licenses/by-sa/4.0/deed.fr\">CC BY-SA 4.0</a> — Outils sous licences MIT et GPL v3"
+comentario_url = "https://comentario.allfabox.fr/comentario.js"
 
 [[extra.social]]
 icon = "fontawesome/brands/git-alt"
