@@ -975,6 +975,16 @@ run_imgforge() {
     local mp_dir="${_OUTPUT_DIR}/mp"
     mkdir -p "${_OUTPUT_DIR}/img"
 
+    # Mode publish-only : si --skip-existing actif et .img cible déjà présent,
+    # on skippe le rebuild complet. Permet un cycle publication sans 12-15 min
+    # d'imgforge quand la carte est déjà validée.
+    local target_img="${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
+    if [[ "$SKIP_EXISTING" == true && -f "$target_img" ]]; then
+        log_info "IMG cible déjà présent + --skip-existing : skip phase 2 imgforge"
+        log_info "  → $target_img"
+        return 0
+    fi
+
     # Nettoyage des .img existants
     local existing_img
     existing_img=$(find "${_OUTPUT_DIR}/img" -type f 2>/dev/null | wc -l)
