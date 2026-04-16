@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T20:00:08Z",
+  "generated_at": "2026-04-16T20:27:45Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -107,9 +107,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-16T20:00:08Z",
-          "size_bytes": 30294016,
-          "sha256": "23c2f4e5158d1fe0e49337dfd188fe10d36818296a1fd8f481adeaa4a5eb6d86",
+          "published_at": "2026-04-16T20:27:45Z",
+          "size_bytes": 30292992,
+          "sha256": "77e28a085f00e34090a58b182572e64019ef7b3bcf5ccfcec8b12ecd8b2e076c",
           "file": "IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d971/v2026.03/IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img",
           "build_params": {
