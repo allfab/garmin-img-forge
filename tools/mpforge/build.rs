@@ -8,9 +8,18 @@ fn main() {
     // Injecter comme variable d'environnement de compilation
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
 
-    // Rerun si .git/HEAD ou refs/tags changent
+    // Rerun si .git/HEAD, refs/tags ou packed-refs changent (les tags
+    // peuvent être stockés loose dans refs/tags/ ou packés après git gc).
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/tags");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+
+    // Rerun si les sources du crate changent — sinon Cargo désactive le scan
+    // par défaut dès qu'on émet au moins un rerun-if-changed, et GIT_VERSION
+    // reste figée quand on modifie un fichier sans committer.
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=Cargo.lock");
 
     // Rerun si les variables CI changent
     println!("cargo:rerun-if-env-changed=CI_COMMIT_TAG");

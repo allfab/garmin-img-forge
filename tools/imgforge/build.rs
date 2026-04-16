@@ -6,6 +6,10 @@ fn main() {
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/tags");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-env-changed=CI_COMMIT_TAG");
     println!("cargo:rerun-if-env-changed=CI_COMMIT_SHA");
 }
