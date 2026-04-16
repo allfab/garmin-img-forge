@@ -55,13 +55,15 @@ Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` 
 
 | Option | Description | Défaut |
 |--------|-------------|--------|
-| `--jobs N` | Workers parallèles | `8` |
-| `--skip-existing` | Passer les tuiles .mp déjà présentes | — |
+| `--jobs N` | Workers parallèles (valeur commune aux deux phases) | `8` |
+| `--mpforge-jobs N` | Workers mpforge uniquement (surcharge `--jobs`) | `$JOBS` |
+| `--skip-existing` | Passer les tuiles `.mp` déjà présentes. Skippe aussi la phase imgforge si `.img` cible déjà présent (mode publish-only). | — |
 
 #### imgforge
 
 | Option | Description | Défaut |
 |--------|-------------|--------|
+| `--imgforge-jobs N` | Workers imgforge uniquement (surcharge `--jobs`) | `$JOBS` |
 | `--family-id N` | Family ID Garmin (u16) | `1100` |
 | `--product-id N` | Product ID Garmin (u16) | `1` |
 | `--family-name STR` | Nom de la carte | `IGN-BDTOPO-{ZONES}-{VERSION}` |
@@ -72,6 +74,21 @@ Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` 
 | `--copyright STR` | Message copyright | auto |
 | `--no-route` | Désactiver le routage | — |
 | `--no-dem` | Désactiver le DEM (relief ombré) | — |
+
+#### imgforge — options géométrie (opt-in, recommandées pour les gros scopes)
+
+Ces options propagent les flags imgforge correspondants ; elles ne changent rien si omises. Toutes valeurs alignées sur les défauts mkgmap.
+
+| Option | Description | Valeur type |
+|--------|-------------|--------------|
+| `--reduce-point-density F` | Épsilon Douglas-Peucker pour les polylignes | `4.0` |
+| `--simplify-polygons SPEC` | Épsilon DP par résolution pour les polygones | `"24:12,18:10,16:8"` |
+| `--min-size-polygon N` | Filtre les polygones < N unités carte | `8` |
+| `--merge-lines` | Fusionne les polylignes adjacentes (même type + label). Activé par défaut dans mkgmap — **à activer dès qu'on génère un quadrant ou une moitié**, divise par 2-3 le nombre de polylignes et réduit le pic mémoire imgforge. | — |
+
+!!! tip "Quand activer ces options"
+    Pour un département, les valeurs par défaut d'imgforge suffisent.
+    Pour un quadrant (≥ 20 départements), activez les 4 options : la taille IMG baisse de 15-25 % et imgforge tient en RAM avec moins de workers.
 
 #### Contrôle
 
@@ -135,6 +152,25 @@ inputs:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 ```
+
+## Stratégie `cell_size` par scope
+
+Le paramètre `grid.cell_size` de la config YAML contrôle la taille des tuiles mpforge en degrés. **C'est le levier le plus important à adapter quand on change d'échelle**. À la différence d'une intuition naturelle, la bonne valeur n'est pas « la plus petite possible pour de la précision » : le splitter RGN d'imgforge subdivise automatiquement les grosses tuiles en interne. Le vrai coût des petites tuiles, c'est **le nombre d'entrées FAT du gmapsupp.img** — que certains GPS comme le Garmin Alpha 100 chargent en RAM au boot, avec un plafond strict.
+
+| Scope | `cell_size` recommandé | Taille tuile (~45°N) | Tuiles typiques | Config |
+|-------|------------------------|----------------------|-----------------|--------|
+| **Département** (1 zone) | `0.15°` | ~16 × 12 km (200 km²) | 10-30 | `sources.yaml` |
+| **Région** (3-10 départements) | `0.30°` | ~33 × 23 km (770 km²) | 30-80 | `sources.yaml` |
+| **Quadrant** (20-30 départements) | `0.45°` | ~50 × 35 km (1 750 km²) | 100-150 | `sources-france-XX.yaml` dédié |
+| **Moitié / France entière** | `0.60°` à `0.90°` | ~70 × 45 km (3 000+ km²) | 150-250 | `sources-france-XX.yaml` dédié |
+
+!!! warning "Garmin Alpha 100 : limite FAT"
+    L'Alpha 100 plante au boot si le gmapsupp.img contient trop d'entrées FAT.
+    Règle empirique : **viser ≤ 250 tuiles × 4-6 subfiles ≈ 1 000-1 500 entrées FAT**.
+    La référence mkgmap FRANCE-SUD (98 tuiles, 3,19 Gio) fonctionne ; un build
+    à 973 tuiles (mêmes données, `cell_size: 0.15°`) plante systématiquement.
+
+En pratique, chaque quadrant a son propre fichier de config dérivé (`sources-france-se.yaml`, `sources-france-so.yaml`...) qui override `grid.cell_size` et éventuellement les `EndLevel` des features volumineuses (BATIMENT, ZONE_DE_VEGETATION) pour alléger les zooms dézoomés.
 
 ## Sortie
 

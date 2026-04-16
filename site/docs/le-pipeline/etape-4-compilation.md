@@ -42,7 +42,7 @@ imgforge va :
 
 ## Commande de production complète
 
-Pour une carte de qualité production avec toutes les options :
+### Cas 1 — Département (scope petit)
 
 ```bash
 imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
@@ -60,6 +60,57 @@ imgforge build ./pipeline/output/2025/v2025.12/D038/mp/ \
     --dem-source-srs EPSG:2154 \
     --keep-going
 ```
+
+### Cas 2 — Quadrant FRANCE-SE (scope quadrant, 25 départements, via `build-garmin-map.sh`)
+
+Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (download + mpforge + imgforge + publication). Exemple validé sur Alpha 100 le 16 avril 2026 :
+
+```bash
+# 1. Télécharger les données (SHP + contours + OSM + DEM)
+./scripts/download-bdtopo.sh \
+    --region FRANCE-SE \
+    --bdtopo-version v2026.03 \
+    --format SHP \
+    --with-contours --with-osm --with-dem
+
+# 2. Build + publication
+./scripts/build-garmin-map.sh \
+    --region FRANCE-SE \
+    --base-id 940 \
+    --year 2026 \
+    --version v2026.03 \
+    --data-dir ./pipeline/data \
+    --contours-dir ./pipeline/data/contours \
+    --dem-dir ./pipeline/data/dem \
+    --osm-dir ./pipeline/data/osm \
+    --hiking-trails-dir ./pipeline/data/hiking-trails \
+    --output-base ./pipeline/output \
+    --config pipeline/configs/ign-bdtopo/sources.yaml \
+    --config pipeline/configs/ign-bdtopo/sources-france-se.yaml \
+    --mpforge-jobs 4 \
+    --imgforge-jobs 2 \
+    --family-id 940 --product-id 1 \
+    --family-name "IGN-BDTOPO-FRANCE-SE-v2026.03" \
+    --series-name "IGN-BDTOPO-MAP" \
+    --code-page 1252 \
+    --levels "24,22,20,18,16" \
+    --reduce-point-density 4.0 \
+    --simplify-polygons "24:12,18:10,16:8" \
+    --min-size-polygon 8 \
+    --merge-lines \
+    --typ pipeline/resources/typfiles/I2023100.typ \
+    --copyright "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0" \
+    --skip-existing \
+    --publish \
+    --publish-target local
+```
+
+!!! tip "Ce qui change par rapport au cas département"
+    - **Double `--config`** : le second override le premier (`sources.yaml` → `sources-france-se.yaml`) avec un `cell_size: 0.45°` adapté au scope quadrant ([voir stratégie cell_size](etape-3-tuilage.md#strategie-cell_size-par-scope)).
+    - **`--mpforge-jobs 4 --imgforge-jobs 2`** : phase 1 tuilage avec 4 workers, phase 2 compilation avec 2 workers pour éviter l'OOM killer sur les zones très denses (Marseille/Nice/Lyon).
+    - **`--reduce-point-density 4.0 --simplify-polygons "24:12,18:10,16:8" --min-size-polygon 8`** : simplification géométrique alignée sur les défauts mkgmap ; indispensable dès qu'on dépasse quelques départements.
+    - **`--merge-lines`** : fusion des polylignes adjacentes (par défaut dans mkgmap). Réduit significativement la taille IMG et le pic mémoire imgforge.
+    - **`--skip-existing`** : les tuiles `.mp` déjà générées sont réutilisées. Bonus : si le `.img` cible existe déjà, la phase 2 imgforge est elle aussi skippée — utile pour republier sans rebuilder.
 
 Décortiquons chaque groupe d'options :
 

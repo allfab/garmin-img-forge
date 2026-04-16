@@ -21,6 +21,39 @@ Comportement par défaut si `PUBLISH_TARGET` n'est pas défini. Copie l'`.img` d
 
 ---
 
+## Publier sans rebuilder
+
+Quand une carte a déjà été validée (tests sur GPS, inspection QmapShack...) et qu'on veut seulement la republier ou la pousser vers une autre cible, il suffit de relancer le script avec `--skip-existing` et la cible voulue :
+
+```bash
+./scripts/build-garmin-map.sh \
+    --region FRANCE-SE \
+    --version v2026.03 \
+    ... \
+    --skip-existing \
+    --publish \
+    --publish-target s3
+```
+
+Grâce à `--skip-existing` :
+
+- **Phase 1 mpforge** : les `.mp` existants sont conservés (un tour rapide sur le scan d'extents, ~1-4 min).
+- **Phase 2 imgforge** : si le `.img` cible existe déjà dans `pipeline/output/<...>/img/`, **le rebuild est entièrement skippé** (pas de suppression du fichier, pas de recompilation).
+- **Publication** : s'exécute normalement avec l'`.img` déjà présent.
+
+C'est particulièrement utile pour :
+
+- Basculer d'une publication `local` à `s3` (ou inverse) après validation.
+- Re-déclencher `update_manifest` et le patch de pages MkDocs après une modification éditoriale.
+- Pousser le même build vers plusieurs buckets S3 (en variant `PUBLISH_TARGET` / `S3_BUCKET`).
+
+!!! warning "Cohérence des paramètres"
+    `--skip-existing` ne vérifie que la présence du fichier cible, pas ses paramètres de build.
+    Si vous avez changé `--family-name`, `--base-id`, les options géométrie ou la config YAML
+    depuis le dernier build, **supprimez le `.img` et les `.mp` concernés** pour forcer le rebuild.
+
+---
+
 ## Cible `s3` (Garage)
 
 ### Configuration `.env`

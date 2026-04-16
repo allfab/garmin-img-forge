@@ -57,6 +57,63 @@ Les deux dernières corrections — le **polygone background 0x4B** et la **clas
 
 Cette investigation a mobilisé l'analyse du code source de mkgmap (~100 000 lignes Java), de cGPSmapper, et la comparaison structurelle de dizaines de fichiers IMG. Le détail complet est documenté dans [`docs/investigation-imgforge-alpha100.md`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/docs/investigation-imgforge-alpha100.md).
 
+### Les quadrants FRANCE-SE — bataille d'avril 2026
+
+Après la victoire sur le rendu départemental, passer à l'échelle **quadrant** (25 départements sur `FRANCE-SE` — Auvergne-Rhône-Alpes, PACA, Occitanie est, Corse) a révélé deux nouveaux blocages sur l'Alpha 100.
+
+#### Bug 1 — L'Alpha 100 plante au boot sur les gros quadrants
+
+Le premier build FRANCE-SE (3,5 Go) faisait littéralement **redémarrer l'appareil** au moment du chargement de la carte. Aucune erreur, aucun message : reboot sec. Les builds départementaux (~170 Mo) restaient parfaitement fonctionnels.
+
+**La cause n'était pas la taille du fichier** — la référence mkgmap FRANCE-SUD (moitié sud complète, 3,19 Gio) se chargeait sans problème. C'est le **nombre d'entrées FAT dans le gmapsupp.img** qui était le facteur limitant :
+
+| | mkgmap FRANCE-SUD (OK) | imgforge FRANCE-SE (plantait) |
+|---|---|---|
+| Tuiles | **98** | **973** |
+| Subfiles par tuile | 4 (TRE/RGN/LBL/DEM) | 6 (+ NET+NOD) |
+| **Entrées FAT** | **~392** | **4 095** |
+
+Le firmware Alpha 100 charge la table d'allocation des fichiers en RAM au boot. À 4 095 entrées, la mémoire disponible est dépassée et l'appareil redémarre.
+
+**Fix** : augmenter la taille des tuiles mpforge de `cell_size: 0.15°` (~16 km, 193 km²) à `0.45°` (~50 km, 1 750 km²). FRANCE-SE est alors tombé à **136 tuiles** soit ~550 entrées FAT — proche de la référence mkgmap. La carte se charge maintenant sans problème.
+
+La nouveauté conceptuelle : `cell_size` n'impacte pas la qualité de rendu (le splitter RGN d'imgforge subdivise automatiquement les grosses tuiles en interne), seulement le découpage du filesystem du gmapsupp. Pour tout nouveau quadrant, viser ≤ 250 tuiles est la règle — `0.45°` pour un quadrant, `0.30°` pour un régional, `0.15°` pour un département.
+
+#### Bug 2 — Artefacts géométriques sur les communes denses
+
+Après le fix Bug 1, la carte se chargeait... mais **des communes entières manquaient par blocs** (Marseille, Nice, Lyon) sous QmapShack et Alpha 100. Les logs du build affichaient alors des **milliers de warnings** `Subdivision X RGN size Y exceeds MAX_RGN_SIZE 65528`, avec certaines subdivisions à **252 KiB — quatre fois la limite Garmin** de 64 KiB.
+
+La cause : une constante à une seule ligne dans `imgforge/src/img/splitter.rs` :
+
+```rust
+// Step 2: Recursive splitting until all areas fit limits
+add_areas_to_list(initial, 8)  // max_depth = 8
+```
+
+Avec `cell_size: 0.45°` (1 750 km²/tuile) et les agglomérations denses, les 8 niveaux de récursion du splitter étaient insuffisants : 2⁸ = 256 sous-cellules max, dépassées dans les centres urbains. Au-delà de 8, le splitter abandonnait et écrivait des subdivisions trop grosses pour que le format Garmin puisse les encoder → données corrompues → communes manquantes.
+
+**Le piège** : la lecture attentive du code source mkgmap a révélé que **mkgmap n'impose aucune limite de profondeur** (`MapSplitter.java:113,186` — le paramètre `depth` y est utilisé *uniquement* pour le padding des logs). Les vraies conditions d'arrêt sont la taille atteinte, la dimension minimale, et l'incapacité à splitter une feature unique.
+
+`max_depth=8` était donc un écart silencieux d'imgforge par rapport à mkgmap, pas une fidélité. Le fix a consisté à passer `usize::MAX` :
+
+```rust
+add_areas_to_list(initial, usize::MAX)
+```
+
+Après recompilation, zéro warning `MAX_RGN_SIZE` dans les logs — les subdivisions tiennent toutes sous 64 KiB. Les communes sont toutes rendues correctement sur Alpha 100 et QmapShack.
+
+**Leçon** : tout plafond hard-codé dans imgforge qui n'a pas son équivalent explicite dans mkgmap est suspect par défaut. L'analyse comparative ligne-à-ligne reste la bonne méthode.
+
+#### Conséquence — OOM mémoire au build
+
+Le fix Bug 2 a débloqué la qualité géométrique, mais avec `usize::MAX` de profondeur, le splitter fait exploser la RAM sur les zones très denses : chaque subdivision clone ses features (points/lignes/polygones), et avec 4 workers imgforge en parallèle sur des tuiles Marseille/Lyon, le pic mémoire dépasse les 32 Go disponibles → OOM killer (`exit 137`).
+
+**Workaround immédiat** : `--imgforge-jobs 2 --merge-lines`. `--merge-lines` fusionne les polylignes adjacentes (option par défaut de mkgmap, jamais activée côté imgforge jusqu'ici) — réduction significative du nombre de polylignes en mémoire. Avec 2 jobs au lieu de 4, le build FRANCE-SE tient en RAM.
+
+**Solution propre documentée** : une [tech-spec de refactor du splitter](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/docs/implementation-artifacts/tech-spec-splitter-memory-reduction.md) (move-not-clone + drop parent) permettra à terme de revenir à 4 jobs. À implémenter dans une itération dédiée.
+
+Commits de référence : [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/e6fce3f) (cell_size), [`7cef948`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/7cef948) (splitter max_depth), [`7e4a8f2`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/7e4a8f2) (`--skip-existing` publish-only).
+
 ---
 
 ## Écueils et difficultés
