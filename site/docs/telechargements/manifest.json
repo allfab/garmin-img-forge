@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T16:48:50Z",
+  "generated_at": "2026-04-16T20:00:08Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -98,6 +98,33 @@
       ],
       "latest_file": "IGN-BDTOPO-FRANCE-SE.img",
       "latest_url": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img"
+    },
+    "departement/d971": {
+      "type": "departement",
+      "slug": "d971",
+      "label": "Départements: D971",
+      "latest": "v2026.03",
+      "versions": [
+        {
+          "version": "v2026.03",
+          "published_at": "2026-04-16T20:00:08Z",
+          "size_bytes": 30294016,
+          "sha256": "23c2f4e5158d1fe0e49337dfd188fe10d36818296a1fd8f481adeaa4a5eb6d86",
+          "file": "IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d971/v2026.03/IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img",
+          "build_params": {
+            "zones": "D971",
+            "base_id": "971",
+            "year": "2026",
+            "version": "v2026.03",
+            "family_id": "971",
+            "family_name": "IGN-BDTOPO-LA-GUADELOUPE-v2026.03",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+          }
+        }
+      ],
+      "latest_file": "IGN-BDTOPO-LA-GUADELOUPE.img",
+      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d971/v2026.03/IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img"
     }
   },
   "storage": {
