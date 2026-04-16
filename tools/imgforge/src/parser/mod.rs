@@ -186,7 +186,7 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
 fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
     match key.to_lowercase().as_str() {
         "type" => point.type_code = parse_type(value),
-        "label" => point.label = value.to_string(),
+        "label" => point.label = unescape_label(value),
         "endlevel" => point.end_level = value.parse().ok(),
         "cityname" | "regionname" | "countryname" | "zip" => {} // parsed but not used
         k if k.starts_with("data") => {
@@ -203,7 +203,7 @@ fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usiz
 fn parse_polyline_field(pl: &mut MpPolyline, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
     match key.to_lowercase().as_str() {
         "type" => pl.type_code = parse_type(value),
-        "label" => pl.label = value.to_string(),
+        "label" => pl.label = unescape_label(value),
         "endlevel" => pl.end_level = value.parse().ok(),
         "dirindicator" => pl.direction = value == "1",
         "roadid" => pl.road_id = value.parse().ok(),
@@ -220,7 +220,7 @@ fn parse_polyline_field(pl: &mut MpPolyline, key: &str, value: &str, line_num: u
 fn parse_polygon_field(pg: &mut MpPolygon, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
     match key.to_lowercase().as_str() {
         "type" => pg.type_code = parse_type(value),
-        "label" => pg.label = value.to_string(),
+        "label" => pg.label = unescape_label(value),
         "endlevel" => pg.end_level = value.parse().ok(),
         k if k.starts_with("data") => {
             let coords = parse_coords(value, line_num)?;
@@ -237,6 +237,81 @@ fn parse_type(value: &str) -> u32 {
     } else {
         value.parse().unwrap_or(0)
     }
+}
+
+/// Resolve Polish Map label escape codes of the form `~[0x##]`.
+///
+/// Port of mkgmap `PolishMapDataSource.unescape()`. Escape codes stand for
+/// single binary characters (highway shields, separators). For example
+/// `~[0x05]N9` becomes `"\u{0005}N9"`, and the LBL encoder emits the byte
+/// `0x05` which Garmin/QMapShack renders as a national-road shield.
+///
+/// Two cGPSmapper 6-bit quirks are preserved: `0x1b2c` is remapped to `0x1c`,
+/// and values `>= 0x2a` are shifted by `-0x29`. Shield codes `0x01..0x06`
+/// are below `0x2a` and pass through unchanged.
+fn unescape_label(s: &str) -> String {
+    if !s.contains("~[") {
+        return s.to_string();
+    }
+    let buf: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < buf.len() {
+        if i + 2 < buf.len() && buf[i] == '~' && buf[i + 1] == '[' {
+            let mut num = String::new();
+            i += 2;
+            while i < buf.len() {
+                let c = buf[i];
+                i += 1;
+                if c == ']' {
+                    break;
+                }
+                num.push(c);
+            }
+            if let Some(mut inum) = parse_java_int(&num) {
+                if inum == 0x1b2c {
+                    inum = 0x1c;
+                }
+                if inum >= 0x2a {
+                    inum -= 0x29;
+                }
+                if let Some(c) = char::from_u32(inum) {
+                    out.push(c);
+                }
+            }
+        } else {
+            out.push(buf[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Parse an integer the way Java `Integer.decode` does: `0x`/`0X`/`#` prefix
+/// is hex, leading `0` is octal, bare digits are decimal. Leading `+`/`-`
+/// signs are accepted; only values representable as `u32` are returned.
+fn parse_java_int(s: &str) -> Option<u32> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (sign, rest) = if let Some(r) = s.strip_prefix('-') {
+        (-1i64, r)
+    } else if let Some(r) = s.strip_prefix('+') {
+        (1i64, r)
+    } else {
+        (1i64, s)
+    };
+    let val: i64 = if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
+        i64::from_str_radix(hex, 16).ok()?
+    } else if let Some(hex) = rest.strip_prefix('#') {
+        i64::from_str_radix(hex, 16).ok()?
+    } else if rest.len() > 1 && rest.starts_with('0') {
+        i64::from_str_radix(&rest[1..], 8).ok()?
+    } else {
+        rest.parse::<i64>().ok()?
+    };
+    u32::try_from(sign * val).ok()
 }
 
 /// Parse coordinate string: "(lat,lon),(lat,lon),..."
@@ -345,5 +420,81 @@ Data0=(48.57,7.75),(48.58,7.76)
         assert!(mp.points.is_empty());
         assert!(mp.polylines.is_empty());
         assert!(mp.polygons.is_empty());
+    }
+
+    // --- unescape_label: identity / no-op cases (regression guards) ---
+
+    #[test]
+    fn test_unescape_plain_text_unchanged() {
+        assert_eq!(unescape_label("Main Street"), "Main Street");
+        assert_eq!(unescape_label(""), "");
+        assert_eq!(unescape_label("Café"), "Café");
+        assert_eq!(unescape_label("N9"), "N9");
+    }
+
+    #[test]
+    fn test_unescape_lone_tilde_unchanged() {
+        assert_eq!(unescape_label("~ simple tilde"), "~ simple tilde");
+        assert_eq!(unescape_label("a~b"), "a~b");
+    }
+
+    #[test]
+    fn test_unescape_truncated_escape_does_not_panic() {
+        // `~[` alone (no content): treated as literal because we need i+2 < len
+        assert_eq!(unescape_label("~["), "~[");
+        assert_eq!(unescape_label("foo~["), "foo~[");
+        // Empty brackets: parse fails silently, nothing appended (mkgmap parity)
+        assert_eq!(unescape_label("~[]"), "");
+        // Unterminated escape: mkgmap consumes to end-of-string and still
+        // decodes whatever was accumulated. Faithful port keeps this behavior.
+        assert_eq!(unescape_label("~[0x05"), "\u{0005}");
+    }
+
+    // --- unescape_label: shield codes used by garmin-rules.yaml ---
+
+    #[test]
+    fn test_unescape_autoroute_shield() {
+        assert_eq!(unescape_label("~[0x04]A1"), "\u{0004}A1");
+    }
+
+    #[test]
+    fn test_unescape_nationale_shield_n9() {
+        assert_eq!(unescape_label("~[0x05]N9"), "\u{0005}N9");
+    }
+
+    #[test]
+    fn test_unescape_departementale_shield() {
+        assert_eq!(unescape_label("~[0x06]D123"), "\u{0006}D123");
+    }
+
+    // --- unescape_label: mkgmap special cases ---
+
+    #[test]
+    fn test_unescape_0x1b2c_remapped_to_0x1c() {
+        assert_eq!(unescape_label("~[0x1b2c]"), "\u{001c}");
+    }
+
+    #[test]
+    fn test_unescape_shift_at_0x2a_boundary() {
+        // 0x29 passes through, 0x2a shifts by -0x29 → 0x01
+        assert_eq!(unescape_label("~[0x29]"), "\u{0029}");
+        assert_eq!(unescape_label("~[0x2a]"), "\u{0001}");
+    }
+
+    // --- unescape_label: integration with parser ---
+
+    #[test]
+    fn test_parse_polyline_label_is_unescaped() {
+        let content = "[POLYLINE]\nType=0x04\nLabel=~[0x05]N9\nData0=(15.9,-61.25),(15.91,-61.26)\n[END]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines.len(), 1);
+        assert_eq!(mp.polylines[0].label, "\u{0005}N9");
+    }
+
+    #[test]
+    fn test_parse_polyline_plain_label_unchanged() {
+        let content = "[POLYLINE]\nType=0x06\nLabel=Main Street\nData0=(48.57,7.75),(48.58,7.76)\n[END]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].label, "Main Street");
     }
 }
