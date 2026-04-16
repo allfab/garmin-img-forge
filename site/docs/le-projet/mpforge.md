@@ -493,6 +493,9 @@ sudo mv mpforge /usr/local/bin/
 mpforge --version
 ```
 
+!!! info "Comprendre la sortie `--version`"
+    Les suffixes `-N-g<hash>` et `-dirty` ont un sens précis — voir la page [Versioning des binaires](../reference/versioning-binaires.md) pour la lecture complète de la version et le workflow de release.
+
 ### Compilation depuis les sources
 
 ```bash

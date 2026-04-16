@@ -54,4 +54,12 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](base-id-convention.md)
 
+-   **Versioning des binaires**
+
+    ---
+
+    Comment `imgforge` et `mpforge` calculent leur version à la compilation : lecture de `--version`, convention de tags, workflow de release.
+
+    [:octicons-arrow-right-24: Consulter](versioning-binaires.md)
+
 </div>

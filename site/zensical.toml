@@ -69,7 +69,8 @@ Accueil = "index.md"
   { "Limites des formats" = "reference/limites-formats.md" },
   { "Convention --base-id" = "reference/base-id-convention.md" },
   { "Styles TYP" = "reference/styles-typ.md" },
-  { "Styles OpenTopo" = "reference/styles-opentopo.md" }
+  { "Styles OpenTopo" = "reference/styles-opentopo.md" },
+  { "Versioning des binaires" = "reference/versioning-binaires.md" }
 ]
 
 [[nav]]
