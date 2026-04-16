@@ -80,7 +80,6 @@
             '    --osm-dir ./pipeline/data/osm \\',
             '    --hiking-trails-dir ./pipeline/data/hiking-trails \\',
             '    --output-base ./pipeline/output \\',
-            '    --config pipeline/configs/ign-bdtopo/sources.yaml \\',
             '    --jobs 8 \\',
             '    --family-id ' + bp.family_id + ' \\',
             '    --product-id 1 \\',

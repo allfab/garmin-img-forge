@@ -297,7 +297,10 @@ CHEMINS :
     --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
     --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
-    --config FILE           Config YAML mpforge custom (défaut: sources.yaml)
+    --config FILE           Config YAML mpforge custom (défaut auto-résolu :
+                              - Quadrant Garmin (FRANCE-SE/SO/NE/NO) → france-quadrant/sources.yaml
+                              - DOM (D971/D972/D973/D974/D976)       → outre-mer/<slug>/sources.yaml
+                              - Sinon (département, région, FXX)     → departement/sources.yaml)
 
 MPFORGE / IMGFORGE :
     --jobs N                Parallélisation commune par défaut (défaut: 8)
@@ -356,12 +359,15 @@ EXEMPLES :
     # Build + publication dans le site
     ./scripts/build-garmin-map.sh --region ARA --publish
 
-    # Quadrant FRANCE-SE optimisé taille (Vague 1 : config dédiée + simplification géométrique)
+    # Quadrant FRANCE-SE optimisé taille (config auto-résolue vers france-quadrant/sources.yaml)
     ./scripts/build-garmin-map.sh --region FRANCE-SE \
-        --config pipeline/configs/ign-bdtopo/sources-france-se.yaml \
         --reduce-point-density 4.0 \
         --simplify-polygons "24:12,18:10,16:8" \
         --min-size-polygon 8
+
+    # Carte DOM (config auto-résolue vers outre-mer/<slug>/sources.yaml)
+    ./scripts/build-garmin-map.sh --zones D971   # Guadeloupe
+    ./scripts/build-garmin-map.sh --zones D974   # La Réunion
 EOF
     exit 0
 }
@@ -865,8 +871,26 @@ show_report_errors() {
 prepare_config() {
     log_step "Préparation de la configuration"
 
+    # Auto-résolution CONFIG_FILE selon le scope :
+    #   - Quadrants Garmin (FRANCE-SE, …) → france-quadrant/sources.yaml
+    #   - DOM (D971/D972/D973/D974/D976)  → outre-mer/<slug>/sources.yaml
+    #   - Sinon (département métro, région R-code, FXX…) → departement/sources.yaml
     if [[ -z "$CONFIG_FILE" ]]; then
-        CONFIG_FILE="pipeline/configs/ign-bdtopo/sources.yaml"
+        case "$REGION" in
+            FRANCE-SE|FRANCE-SO|FRANCE-NE|FRANCE-NO)
+                CONFIG_FILE="pipeline/configs/ign-bdtopo/france-quadrant/sources.yaml"
+                ;;
+            *)
+                case "$ZONES" in
+                    D971) CONFIG_FILE="pipeline/configs/ign-bdtopo/outre-mer/la-guadeloupe/sources.yaml" ;;
+                    D972) CONFIG_FILE="pipeline/configs/ign-bdtopo/outre-mer/la-martinique/sources.yaml" ;;
+                    D973) CONFIG_FILE="pipeline/configs/ign-bdtopo/outre-mer/la-guyane/sources.yaml" ;;
+                    D974) CONFIG_FILE="pipeline/configs/ign-bdtopo/outre-mer/la-reunion/sources.yaml" ;;
+                    D976) CONFIG_FILE="pipeline/configs/ign-bdtopo/outre-mer/mayotte/sources.yaml" ;;
+                    *)    CONFIG_FILE="pipeline/configs/ign-bdtopo/departement/sources.yaml" ;;
+                esac
+                ;;
+        esac
     fi
 
     log_info "Config source : $CONFIG_FILE"

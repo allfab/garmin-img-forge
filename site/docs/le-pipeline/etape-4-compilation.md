@@ -87,8 +87,6 @@ Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (downlo
     --osm-dir ./pipeline/data/osm \
     --hiking-trails-dir ./pipeline/data/hiking-trails \
     --output-base ./pipeline/output \
-    --config pipeline/configs/ign-bdtopo/sources.yaml \
-    --config pipeline/configs/ign-bdtopo/sources-france-se.yaml \
     --mpforge-jobs 4 \
     --imgforge-jobs 2 \
     --family-id 940 --product-id 1 \
@@ -108,14 +106,14 @@ Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (downlo
 ```
 
 !!! tip "Ce qui change par rapport au cas département"
-    - **Double `--config`** : le second override le premier (`sources.yaml` → `sources-france-se.yaml`) avec un `cell_size: 0.45°` adapté au scope quadrant ([voir stratégie cell_size](etape-3-tuilage.md#strategie-cell_size-par-scope)).
+    - **Config auto-résolue** : `build-garmin-map.sh` détecte le quadrant (`--region FRANCE-SE/SO/NE/NO`) et charge `pipeline/configs/ign-bdtopo/france-quadrant/sources.yaml` avec un `cell_size: 0.45°` adapté ([voir stratégie cell_size](etape-3-tuilage.md#strategie-cell_size-par-scope)). Ajoutez `--config <chemin>` pour forcer un fichier custom.
     - **`--mpforge-jobs 4 --imgforge-jobs 2`** : phase 1 tuilage avec 4 workers, phase 2 compilation avec 2 workers pour éviter l'OOM killer sur les zones très denses (Marseille/Nice/Lyon).
     - **`--reduce-point-density 4.0 --simplify-polygons "24:12,18:10,16:8" --min-size-polygon 8`** : simplification géométrique alignée sur les défauts mkgmap ; indispensable dès qu'on dépasse quelques départements.
     - **`--merge-lines`** : fusion des polylignes adjacentes (par défaut dans mkgmap). Réduit significativement la taille IMG et le pic mémoire imgforge.
     - **`--skip-existing`** : les tuiles `.mp` déjà générées sont réutilisées. Bonus : si le `.img` cible existe déjà, la phase 2 imgforge est elle aussi skippée — utile pour republier sans rebuilder.
 
 !!! warning "Données `--hiking-trails-dir`"
-    Le script `download-bdtopo.sh` ne télécharge pas automatiquement les sentiers GR ; le flag `--hiking-trails-dir` de `build-garmin-map.sh` pointe vers un répertoire optionnel qui peut être vide. Si vous ne disposez pas de données trails, omettez ce flag ou laissez-le pointer vers un répertoire vide — la config `sources-france-se.yaml` gère l'absence sans erreur.
+    Le script `download-bdtopo.sh` ne télécharge pas automatiquement les sentiers GR ; le flag `--hiking-trails-dir` de `build-garmin-map.sh` pointe vers un répertoire optionnel qui peut être vide. Si vous ne disposez pas de données trails, omettez ce flag ou laissez-le pointer vers un répertoire vide — la config `france-quadrant/sources.yaml` gère l'absence sans erreur.
 
 ### Identité de la carte
 

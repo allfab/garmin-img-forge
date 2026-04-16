@@ -252,7 +252,7 @@ header:
   routing: "Y"
 
 # Référence vers le fichier de règles Garmin
-rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
+rules: pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml
 
 error_handling: "continue"
 

@@ -73,10 +73,13 @@ source pipeline/.env
 | Fichier | Rôle |
 |---|---|
 | `pipeline/.env.example` | Template des variables d'environnement (`DATA_ROOT`, `CONTOURS_DATA_ROOT`, etc.) |
-| `pipeline/configs/ign-bdtopo/sources.yaml` | Toutes les sources (SHP BDTOPO, SHP courbes, GPKG OSM, SHP sentiers GR), grille de tuilage, header MP |
-| `pipeline/configs/ign-bdtopo/garmin-rules.yaml` | Règles de mapping BDTOPO + courbes → types Garmin |
+| `pipeline/configs/ign-bdtopo/departement/sources.yaml` | Sources (SHP BDTOPO, SHP courbes, GPKG OSM, SHP sentiers GR) pour un département métro (EPSG:2154) |
+| `pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml` | Règles de mapping BDTOPO + courbes → types Garmin (métropole) |
+| `pipeline/configs/ign-bdtopo/france-quadrant/{sources,garmin-rules}.yaml` | Variante quadrants Garmin (FRANCE-SE/SO/NE/NO) — EndLevel rabaissés pour taille IMG |
+| `pipeline/configs/ign-bdtopo/outre-mer/garmin-rules.yaml` | Règles de mapping partagées par tous les DOM |
+| `pipeline/configs/ign-bdtopo/outre-mer/<slug>/sources.yaml` | Sources DOM (la-guadeloupe, la-martinique, la-guyane, la-reunion, mayotte) — EPSG spécifique par territoire |
 
-Convention de nommage : `<theme>.yaml` dans le dossier `ign-bdtopo/` (sources par format, règles de mapping).
+Convention de nommage : un dossier par scope (`departement/`, `france-quadrant/`, `outre-mer/<slug>/`) avec `sources.yaml` (inputs + grille + header) et éventuellement `garmin-rules.yaml` (mapping) côte à côte.
 
 ---
 
@@ -204,7 +207,7 @@ Script : `scripts/shapefile/01-export-mp.sh`
 export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
 export OUTPUT_DIR=./pipeline/output
 envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
-  < pipeline/configs/ign-bdtopo/sources.yaml \
+  < pipeline/configs/ign-bdtopo/departement/sources.yaml \
   > /tmp/mpforge-config-expanded.yaml
 
 # Lancer mpforge
@@ -223,7 +226,7 @@ mpforge build \
 export DATA_ROOT=./pipeline/data/bdtopo/2025/v2025.12/D038
 export OUTPUT_DIR=./pipeline/output
 envsubst '${DATA_ROOT} ${OUTPUT_DIR}' \
-  < pipeline/configs/ign-bdtopo/sources.yaml \
+  < pipeline/configs/ign-bdtopo/departement/sources.yaml \
   > /tmp/mpforge-config-expanded.yaml
 
 # Lancer mpforge (binaire compilé localement)
@@ -355,7 +358,7 @@ Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des
 
 # Avec config YAML explicite
 ./scripts/build-garmin-map.sh \
-  --config pipeline/configs/ign-bdtopo/sources.yaml \
+  --config pipeline/configs/ign-bdtopo/departement/sources.yaml \
   --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
   --jobs 8
 
@@ -367,7 +370,7 @@ Ce script enchaîne automatiquement les étapes 1 et 2 avec auto-découverte des
 
 # Avec courbes de niveau (après download --with-contours)
 ./scripts/build-garmin-map.sh \
-  --config pipeline/configs/ign-bdtopo/sources.yaml \
+  --config pipeline/configs/ign-bdtopo/departement/sources.yaml \
   --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
   --contours-root pipeline/data/courbes/D038
 ```

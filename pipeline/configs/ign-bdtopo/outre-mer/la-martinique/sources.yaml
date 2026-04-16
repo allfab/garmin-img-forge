@@ -18,25 +18,25 @@ inputs:
 
   # Routes (couche principale — la plus volumineuse)
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Voies ferrées
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Pistes d'aérodrome
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/PISTE_D_AERODROME.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Transport par câble (téléphériques, télésièges)
   - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -46,13 +46,13 @@ inputs:
 
   # Communes (POI chef-lieu + polygone limites)
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Zones d'habitation
   - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
     generalize:
@@ -66,19 +66,19 @@ inputs:
 
   # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Détails hydrographiques (POI : sources, cascades, etc.)
   - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -88,43 +88,43 @@ inputs:
 
   # Bâtiments (polygon — couche volumineuse)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/BATIMENT.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Cimetières
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CIMETIERE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Constructions linéaires (murs, digues)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_LINEAIRE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Constructions ponctuelles (châteaux d'eau, monuments)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_PONCTUELLE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Pylônes (POI)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/PYLONE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Terrains de sport
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/TERRAIN_DE_SPORT.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Lignes orographiques (FME 07-OROGRAPHIE)
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/LIGNE_OROGRAPHIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -134,7 +134,7 @@ inputs:
 
   # Zones de végétation (forêts, haies — couche volumineuse)
   - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -144,13 +144,13 @@ inputs:
 
   # Zones d'activité ou d'intérêt (zones industrielles, touristiques)
   - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Lignes électriques
   - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -160,7 +160,7 @@ inputs:
 
   # Forêts publiques (ONF)
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -170,7 +170,7 @@ inputs:
 
   # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
   - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/TOPONYMIE.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
@@ -181,13 +181,14 @@ inputs:
   # en métropole) — le pattern COURBE*.shp couvre les deux conventions.
   # ==========================================================================
   - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE*.shp"
-    source_srs: "EPSG:2975"
+    source_srs: "EPSG:5490"
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
     layer_alias: "COURBE"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500  # mètres, dans le SRS source (EPSG:2975 — RGR92 UTM 40S, unité mètre)
+      buffer: 500  # mètres, dans le SRS source (EPSG:5490 — RGAF09 / UTM 20N, unité mètre)
+      # Note : Guadeloupe et Martinique partagent EPSG:5490 (RGAF09 — datum officiel Antilles françaises depuis 2009).
 
   # ==========================================================================
   # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
@@ -275,7 +276,7 @@ header:
   routing: "Y"
 
 # Règles de transformation BDTOPO → types Garmin
-rules: pipeline/configs/ign-bdtopo/garmin-rules.yaml
+rules: pipeline/configs/ign-bdtopo/outre-mer/garmin-rules.yaml
 
 
 error_handling: "continue"
@@ -284,6 +285,6 @@ error_handling: "continue"
 # OPTIONS AVANCÉES (décommenter si nécessaire)
 # =============================================================================
 
-# Filtre bbox (WGS84) — emprise approximative La Réunion :
+# Filtre bbox (WGS84) — emprise approximative Martinique :
 # filters:
-#   bbox: [55.2, -21.4, 55.9, -20.8]
+#   bbox: [-61.3, 14.3, -60.7, 14.95]

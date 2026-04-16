@@ -1,0 +1,289 @@
+version: 1
+
+# Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
+# BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque
+# les noms de colonnes à 10 chars, donc "cleabs" → "ID" à la livraison).
+# Pourquoi : certaines livraisons IGN (p.ex. D038 v2025.09) contiennent chaque
+# feature 2× (mêmes CLEABS, mêmes géométries). Les sources OSM, contours et
+# randonnée ne déclarent pas ce champ et restent préservées intactes (sans warning).
+
+grid:
+  cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
+  overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
+
+inputs:
+  # ==========================================================================
+  # TRANSPORT (4 couches — FME 01-TRANSPORT)
+  # ==========================================================================
+
+  # Routes (couche principale — la plus volumineuse)
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Voies ferrées
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Pistes d'aérodrome
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/PISTE_D_AERODROME.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Transport par câble (téléphériques, télésièges)
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches — FME 01-TRANSPORT chef-lieu)
+  # ==========================================================================
+
+  # Communes (POI chef-lieu + polygone limites)
+  - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Zones d'habitation
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+    generalize:
+      smooth: "chaikin"
+      iterations: 1
+      simplify: 0.00005
+
+  # ==========================================================================
+  # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
+  # ==========================================================================
+
+  # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Détails hydrographiques (POI : sources, cascades, etc.)
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
+  # ==========================================================================
+
+  # Bâtiments (polygon — couche volumineuse)
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/BATIMENT.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Cimetières
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CIMETIERE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Constructions linéaires (murs, digues)
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_LINEAIRE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Constructions ponctuelles (châteaux d'eau, monuments)
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/CONSTRUCTION_PONCTUELLE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Pylônes (POI)
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/PYLONE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Terrains de sport
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/TERRAIN_DE_SPORT.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Lignes orographiques (FME 07-OROGRAPHIE)
+  - path: "${DATA_ROOT}/{${ZONES}}/BATI/LIGNE_OROGRAPHIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # VEGETATION (1 couche — FME 05-VEGETATION)
+  # ==========================================================================
+
+  # Zones de végétation (forêts, haies — couche volumineuse)
+  - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # SERVICES & ACTIVITÉS (2 couches — FME 03-SERVICES)
+  # ==========================================================================
+
+  # Zones d'activité ou d'intérêt (zones industrielles, touristiques)
+  - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/ZONE_D_ACTIVITE_OU_D_INTERET.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Lignes électriques
+  - path: "${DATA_ROOT}/{${ZONES}}/SERVICES_ET_ACTIVITES/LIGNE_ELECTRIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # ZONES RÉGLEMENTÉES (1 couche — FME 02-ZONES_REG)
+  # ==========================================================================
+
+  # Forêts publiques (ONF)
+  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
+  # ==========================================================================
+
+  # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/TOPONYMIE.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # ==========================================================================
+  # COURBES DE NIVEAU (produit IGN séparé)
+  # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
+  # DOM : livraison en UN fichier COURBE.shp (vs. dalles COURBE_XXXX_YYYY.shp
+  # en métropole) — le pattern COURBE*.shp couvre les deux conventions.
+  # ==========================================================================
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE*.shp"
+    source_srs: "EPSG:2975"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
+    layer_alias: "COURBE"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500  # mètres, dans le SRS source (EPSG:2975 — RGR92 UTM 40S, unité mètre)
+
+  # ==========================================================================
+  # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
+  #
+  # Les PBF sont pré-convertis en GPKG par le script download-bdtopo.sh
+  # (option --with-osm). Les GPKG ont un accès aléatoire, éliminant les
+  # erreurs "Too many features accumulated" du driver OSM sur les gros PBF.
+  #
+  # Le chemin glob intègre automatiquement tous les GPKG du sous-dossier gpkg/.
+  # Le spatial_filter restreint les features à l'emprise communale + buffer.
+  # ==========================================================================
+
+  # --- Amenity POIs (restaurants, pharmacies, parking, etc.) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-amenity-points.gpkg"
+    layer_alias: "osm_amenity"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Shop POIs (boulangeries, supermarchés, etc.) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-shop-points.gpkg"
+    layer_alias: "osm_shop"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Natural features linéaires (arêtes, crêtes, falaises) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-natural-lines.gpkg"
+    layer_alias: "osm_natural_lines"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Natural features ponctuelles (grottes, rochers, dolines) ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-natural-points.gpkg"
+    layer_alias: "osm_natural_points"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # --- Tourism viewpoints ---
+  - path: "${OSM_DATA_ROOT}/gpkg/*-tourism-points.gpkg"
+    layer_alias: "osm_tourism"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+  # ==========================================================================
+  # RANDONNÉE — Sentiers de Grande Randonnée (GR)
+  # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
+  # Déjà en EPSG:4326 — pas de reprojection nécessaire
+  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # ==========================================================================
+  - path: "${HIKING_TRAILS_DATA_ROOT}/FRANCE-GR.shp"
+    layer_alias: "FRANCE_GR"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
+
+output:
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
+  overwrite: true
+  base_id: ${BASE_ID}      # Auto-génère des IDs uniques par tuile : ex. 00380001, 00380002, etc.
+
+# Header MP — métadonnées écrites dans chaque tuile .mp
+# Le champ 'name' supporte les variables {col}, {row} (0-based), {seq} (1-based)
+# avec padding optionnel {col:03}
+header:
+  name: "BDTOPO-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
+  levels: "5"
+  level0: "24"
+  level1: "22"
+  level2: "20"
+  level3: "18"
+  level4: "16"
+  simplify_level: "0"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  transparent: "N"
+  marine: "N"
+  preprocess: "F"
+  lbl_coding: "9"
+  routing: "Y"
+
+# Règles de transformation BDTOPO → types Garmin
+rules: pipeline/configs/ign-bdtopo/outre-mer/garmin-rules.yaml
+
+
+error_handling: "continue"
+
+# =============================================================================
+# OPTIONS AVANCÉES (décommenter si nécessaire)
+# =============================================================================
+
+# Filtre bbox (WGS84) — emprise approximative La Réunion :
+# filters:
+#   bbox: [55.2, -21.4, 55.9, -20.8]

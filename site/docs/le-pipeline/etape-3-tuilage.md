@@ -128,7 +128,7 @@ export ZONES=D038
 export OUTPUT_DIR=./pipeline/output/2025/v2025.12/D038
 export BASE_ID=38
 
-mpforge build --config pipeline/configs/ign-bdtopo/sources.yaml --jobs 8
+mpforge build --config pipeline/configs/ign-bdtopo/departement/sources.yaml --jobs 8
 ```
 
 mpforge va :
@@ -173,7 +173,7 @@ Le paramètre `grid.cell_size` de la config YAML contrôle la taille des tuiles 
     La référence mkgmap FRANCE-SUD (98 tuiles, 3,19 Gio) fonctionne ; un build
     à 973 tuiles (mêmes données, `cell_size: 0.15°`) plante systématiquement.
 
-En pratique, chaque quadrant a son propre fichier de config dérivé (`sources-france-se.yaml`, `sources-france-so.yaml`...) qui override `grid.cell_size` et éventuellement les `EndLevel` des features volumineuses (BATIMENT, ZONE_DE_VEGETATION) pour alléger les zooms dézoomés.
+En pratique, les quadrants partagent un fichier de config commun (`pipeline/configs/ign-bdtopo/france-quadrant/sources.yaml`) qui override `grid.cell_size` et rabaisse les `EndLevel` des features volumineuses (BATIMENT, ZONE_DE_VEGETATION) pour alléger les zooms dézoomés. Les DOM ont chacun leur propre `outre-mer/<slug>/sources.yaml` (projection native par territoire).
 
 ## Sortie
 

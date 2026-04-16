@@ -1,12 +1,4 @@
 # Regles de transformation BDTOPO -> Polish Map (production)
-# ============================================================================
-# Variante FRANCE-SE — dérivée de garmin-rules.yaml
-# EndLevel rabaissés pour réduire la taille IMG du quadrant FRANCE-SE :
-#   - BATIMENT (13 règles)            : "0" -> "1"
-#   - CONSTRUCTION_LINEAIRE (12 règles): "0" -> "1"
-#   - ZONE_DE_VEGETATION forêts fermées (4 règles) : "2" -> "1"
-# Toute évolution de garmin-rules.yaml doit être répercutée manuellement ici.
-# ============================================================================
 version: 1
 
 rulesets:
@@ -498,91 +490,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "1"
+          EndLevel: "0"
 
   # ==========================================================================
   # BATI — Cimetieres (POLYGON)
@@ -629,7 +621,7 @@ rulesets:
           NATURE: "Autre ligne descriptive"
         set:
           Type: "0x10c04"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 2. Barrage
@@ -637,7 +629,7 @@ rulesets:
           NATURE: "Barrage"
         set:
           Type: "0x10f08"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 3. Cloture
@@ -645,7 +637,7 @@ rulesets:
           NATURE: "Clôture"
         set:
           Type: "0x13309"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 4. Mur
@@ -653,7 +645,7 @@ rulesets:
           NATURE: "Mur"
         set:
           Type: "0x13308"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 5. Mur anti-bruit
@@ -661,7 +653,7 @@ rulesets:
           NATURE: "Mur anti-bruit"
         set:
           Type: "0x10e13"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 6. Mur de soutenement
@@ -669,7 +661,7 @@ rulesets:
           NATURE: "Mur de soutènement"
         set:
           Type: "0x10e18"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 7. Pont
@@ -677,7 +669,7 @@ rulesets:
           NATURE: "Pont"
         set:
           Type: "0x10e14"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 8. Quai
@@ -685,7 +677,7 @@ rulesets:
           NATURE: "Quai"
         set:
           Type: "0x10e16"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 9. Ruines
@@ -693,7 +685,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x10e15"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 10. Sport de montagne
@@ -701,7 +693,7 @@ rulesets:
           NATURE: "Sport de montagne"
         set:
           Type: "0x10f0c"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 11. Tunnel
@@ -709,7 +701,7 @@ rulesets:
           NATURE: "Tunnel"
         set:
           Type: "0x10e08"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 12. Catch-all (NATURE non reconnue)
@@ -717,7 +709,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10c04"
-          EndLevel: "1"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -952,35 +944,35 @@ rulesets:
           EndLevel: "5"
           Label: "Bois"
 
-      # 2. Foret fermee de coniferes (EndLevel=1 [FRANCE-SE], Label raccourci)
+      # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
       - match:
           NATURE: "Forêt fermée de conifères"
         set:
           Type: "0x10f1f"
-          EndLevel: "1"
+          EndLevel: "2"
           Label: "Forêt de conifères"
 
-      # 3. Foret fermee de feuillus (EndLevel=1 [FRANCE-SE], Label raccourci)
+      # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
       - match:
           NATURE: "Forêt fermée de feuillus"
         set:
           Type: "0x10f1e"
-          EndLevel: "1"
+          EndLevel: "2"
           Label: "Forêt de feuillus"
 
-      # 4. Foret fermee mixte (EndLevel=1 [FRANCE-SE], pas de Label)
+      # 4. Foret fermee mixte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt fermée mixte"
         set:
           Type: "0x4e"
-          EndLevel: "1"
+          EndLevel: "2"
 
-      # 5. Foret ouverte (EndLevel=1 [FRANCE-SE], pas de Label)
+      # 5. Foret ouverte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt ouverte"
         set:
           Type: "0x11000"
-          EndLevel: "1"
+          EndLevel: "2"
 
       # 6. Haie (EndLevel=4, pas de Label)
       - match:
