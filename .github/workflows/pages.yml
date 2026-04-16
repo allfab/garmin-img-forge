@@ -1,0 +1,64 @@
+# Build & Deploy Pages — miroir public GitHub.
+#
+# Build Zensical identique au pipeline Woodpecker site.yml (interne, LXC) :
+# Python 3.12, site/requirements.txt, zensical build depuis site/. Le CNAME
+# est écrit *après* build (certains builders écrasent le contenu de _site/).
+#
+# Coexiste délibérément avec .woodpecker/site.yml — voir le tech-spec
+# `github-mirror-pages-cloudflare-cdn`, décision 7.
+
+name: Build & Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Zensical
+        run: pip install -r site/requirements.txt
+
+      - name: Build site
+        run: |
+          cd site
+          zensical build
+
+      - name: Write CNAME
+        run: echo "maps.garmin.allfabox.fr" > site/_site/CNAME
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

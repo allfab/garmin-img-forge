@@ -1,5 +1,14 @@
 # garmin-ign-bdtopo-map
 
+> 🪞 **Miroir public en lecture.** La source canonique est hébergée sur
+> [`forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map).
+> Les issues et PR GitHub sont bienvenues mais mergées côté Forgejo
+> (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
+>
+> La CI métier (`mpforge`, `imgforge`, génération des cartes) tourne sur
+> Woodpecker interne. GitHub Actions est strictement limité au build et
+> au déploiement de GitHub Pages.
+
 > On forge des cartes Garmin à partir de données SIG massives.
 
 Le projet (nom interne : **MPForge**, *Map Forging Project*) est composé de trois briques principales :
@@ -25,7 +34,13 @@ Le projet (nom interne : **MPForge**, *Map Forging Project*) est composé de tro
 Le site **[maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr)** documente le projet
 et met à disposition les cartes Garmin téléchargeables.
 
-Le site est généré avec **Zensical** (successeur de MkDocs Material) et déployé via Forgejo Pages.
+Le site est généré avec **Zensical** (successeur de MkDocs Material) et déployé via GitHub Pages
+(miroir public) ; la source canonique reste Forgejo. Le pipeline Woodpecker `.woodpecker/site.yml`
+continue de builder et déposer le site sur l'infrastructure LXC interne en parallèle (les deux
+coexistent — voir le tech-spec `github-mirror-pages-cloudflare-cdn`).
+
+Les fichiers IMG sont distribués via `https://download-maps.garmin.allfabox.fr/` (S3 Garage sur
+Scaleway) placé derrière le CDN Cloudflare pour absorber la bande passante publique.
 
 Sources du site : [`site/`](./site/) — configuration `site/zensical.toml`, contenu `site/docs/`
 
@@ -47,9 +62,15 @@ Chaque outil a son propre pipeline CI avec des tags préfixés pour des cycles d
 |----------|-------------|-------------|
 | [`.woodpecker/mpforge.yml`](./.woodpecker/mpforge.yml) | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
 | [`.woodpecker/imgforge.yml`](./.woodpecker/imgforge.yml) | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
-| [`.woodpecker/site.yml`](./.woodpecker/site.yml) | Push sur `main` (dans `site/`) | Build et déploiement du site Zensical |
+| [`.woodpecker/site.yml`](./.woodpecker/site.yml) | Push sur `main` (dans `site/`) | Build et déploiement LXC du site Zensical |
+| [`.woodpecker/mirror-github.yml`](./.woodpecker/mirror-github.yml) | Push sur `main` | Miroir filtré Forgejo → GitHub (via `git filter-repo`) |
 
-Les deux pipelines produisent automatiquement une release Forgejo avec binaire, checksums SHA-256 et metadata JSON.
+Les pipelines `mpforge` et `imgforge` produisent automatiquement une release Forgejo avec binaire, checksums SHA-256 et metadata JSON.
+
+En complément côté GitHub, un workflow GitHub Actions ([`.github/workflows/pages.yml`](./.github/workflows/pages.yml))
+build Zensical et déploie le site sur GitHub Pages (domaine `maps.garmin.allfabox.fr`).
+Il coexiste délibérément avec `site.yml` : les deux buildent le même contenu, seul le DNS
+détermine quelle cible sert le public.
 
 ### Configuration initiale Woodpecker
 
@@ -274,10 +295,16 @@ garmin-ign-bdtopo-map/
 │
 ├── site/                         # SITE PUBLIC Zensical
 │
-├── .woodpecker/                  # Pipelines CI/CD
+├── .woodpecker/                  # Pipelines CI/CD (interne)
 │   ├── mpforge.yml               # Build statique (PROJ+GEOS+GDAL), tag mpforge-v*
 │   ├── imgforge.yml              # Build standard (Pure Rust), tag imgforge-v*
-│   └── site.yml                  # Build et déploiement du site
+│   ├── site.yml                  # Build et déploiement LXC du site
+│   └── mirror-github.yml         # Miroir filtré Forgejo → GitHub (push main)
+│
+├── .github/                      # Workflows et templates GitHub (miroir public)
+│   ├── workflows/pages.yml       # Build Zensical + deploy GitHub Pages
+│   ├── ISSUE_TEMPLATE/           # Templates issue (bug, enhancement)
+│   └── PULL_REQUEST_TEMPLATE.md  # Template PR (checklist CONTRIBUTING.md)
 │
 └── docs/                         # Documentation projet (BMAD, specs format)
     ├── planning-artifacts/       # PRD, architecture, epics
