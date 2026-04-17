@@ -42,43 +42,35 @@
 
 Le dépôt contient **trois briques principales** plus une **brique expérimentale** :
 
-<details>
-<summary><strong><code>ogr-polishmap</code> — Driver GDAL/OGR pour le format Polish Map (.mp)</strong></summary>
+### `ogr-polishmap` — Driver GDAL/OGR pour le format Polish Map (.mp)
 
 Driver C++ qui permet à GDAL et à toute la chaîne QGIS/Python/Rust d'écrire nativement le format Polish Map. C'est la fondation : sans lui, pas de tuilage SIG standardisé.
 
 - Code : [`tools/ogr-polishmap/`](./tools/ogr-polishmap/)
 - Documentation : [README](./tools/ogr-polishmap/README.md), [Spec RST](./tools/ogr-polishmap/doc/polishmap.rst)
 - Licence : MIT
-</details>
 
-<details>
-<summary><strong><code>mpforge</code> — Générateur de tuiles Polish Map depuis sources SIG</strong></summary>
+### `mpforge` — Générateur de tuiles Polish Map depuis sources SIG
 
 CLI Rust qui lit des sources SIG (BDTOPO, OSM…), applique des règles de transformation déclarées en YAML, et produit des tuiles `.mp` prêtes à être compilées. Embarque GDAL + PROJ + GEOS en statique : **un seul binaire, zéro dépendance système** à l'exécution.
 
 - Code : [`tools/mpforge/`](./tools/mpforge/)
 - Documentation : [README](./tools/mpforge/README.md), [Exemples YAML](./tools/mpforge/examples/)
 - Licence : GPL v3
-</details>
 
-<details>
-<summary><strong><code>imgforge</code> — Compilateur Polish Map (.mp) vers Garmin IMG (.img)</strong></summary>
+### `imgforge` — Compilateur Polish Map (.mp) vers Garmin IMG (.img)
 
 CLI Rust **Pure Rust** (zéro dépendance native) qui remplace `cGPSmapper` dans la pipeline. Lit les `.mp` produits par `mpforge`, écrit un `.img` exploitable directement sur les GPS Garmin.
 
 - Code : [`tools/imgforge/`](./tools/imgforge/)
 - Documentation : [README](./tools/imgforge/README.md)
 - Licence : GPL v3
-</details>
 
-<details>
-<summary><strong><code>ogr-garminimg</code> — Driver GDAL/OGR de lecture pour Garmin IMG <em>(en développement)</em></strong></summary>
+### `ogr-garminimg` — Driver GDAL/OGR de lecture pour Garmin IMG *(en développement)*
 
 Driver GDAL/OGR pour **lire** le format Garmin IMG (inverse d'`imgforge`). Objectif : diagnostic, comparaison de cartes, extraction vectorielle depuis des IMG existants. *Développement en cours, pas encore stable.*
 
 - Code : [`tools/ogr-garminimg/`](./tools/ogr-garminimg/)
-</details>
 
 **Pipeline complet** :
 
