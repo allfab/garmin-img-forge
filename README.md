@@ -25,13 +25,13 @@
   <a href="#licences">Licences</a>
 </p>
 
-> 🪞 **Miroir public en lecture.** La source canonique est hébergée sur
-> [`forgejo.allfabox.fr/allfab/garmin-img-forge`](https://forgejo.allfabox.fr/allfab/garmin-img-forge).
-> Les issues et PR GitHub sont bienvenues mais mergées côté Forgejo
-> (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
+> 🪞 **Miroir public en lecture.** Ce dépôt GitHub est un clone miroir
+> filtré d'un dépôt hébergé sur une instance Forgejo de développement
+> locale. Les issues et PR GitHub sont bienvenues mais mergées côté
+> source (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
 >
 > La CI métier (`mpforge`, `imgforge`, génération des cartes) tourne sur
-> Woodpecker interne. GitHub Actions est strictement limité au build
+> un Woodpecker interne. GitHub Actions est strictement limité au build
 > du site Pages et à la republication des binaires de release.
 
 ---
@@ -187,10 +187,7 @@ cargo build --release
 
 ### Ou télécharger les binaires
 
-Pas envie de compiler ? Les binaires statiques Linux x64 sont publiés à chaque release :
-
-- **Forgejo (canonique)** : [`forgejo.allfabox.fr/allfab/garmin-img-forge/releases`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases)
-- **GitHub (miroir)** : [`github.com/allfab/garmin-img-forge/releases`](https://github.com/allfab/garmin-img-forge/releases)
+Pas envie de compiler ? Les binaires statiques Linux x64 sont publiés à chaque release sur [`github.com/allfab/garmin-img-forge/releases`](https://github.com/allfab/garmin-img-forge/releases) (republication automatique depuis le dépôt source).
 
 Chaque release inclut : binaire Linux x64 statique + `SHA256SUMS` + métadonnées JSON.
 
@@ -198,9 +195,9 @@ Chaque release inclut : binaire Linux x64 statique + `SHA256SUMS` + métadonnée
 
 # CI/CD — Woodpecker + GitHub Actions
 
-Le projet utilise **Woodpecker CI** comme plateforme principale (légère, intégration Docker native, YAML simple, hébergée sur [`forgejo.ci.allfabox.fr`](https://forgejo.ci.allfabox.fr)). GitHub Actions joue un rôle d'appoint sur le miroir public.
+Le projet utilise **Woodpecker CI** comme plateforme principale (légère, intégration Docker native, YAML simple) sur l'infra interne. GitHub Actions joue un rôle d'appoint sur le miroir public.
 
-> **Note miroir GitHub** : les fichiers `.woodpecker/*.yml` ne sont pas miroirés côté GitHub (dossier exclu du filtrage `git filter-repo`). Les descriptions ci-dessous documentent le système ; les fichiers eux-mêmes sont consultables sur [Forgejo](https://forgejo.allfabox.fr/allfab/garmin-img-forge/src/branch/main/.woodpecker).
+> **Note miroir GitHub** : les fichiers `.woodpecker/*.yml` ne sont pas miroirés côté GitHub (dossier exclu du filtrage `git filter-repo`). Les descriptions ci-dessous documentent le système à titre informatif.
 
 ### Pipelines Woodpecker (canoniques)
 
@@ -248,7 +245,7 @@ Le binaire produit est **100% autonome** : aucune dépendance externe, `proj.db`
 
 Pour activer le CI sur un nouveau dépôt :
 
-1. Se connecter à [Woodpecker CI](https://forgejo.ci.allfabox.fr)
+1. Se connecter à l'instance Woodpecker interne
 2. Activer le dépôt dans **Settings > Repositories**
 3. Créer un secret `forgejo_token` dans **Settings > Secrets** (token API Forgejo avec droits `write:package`)
 4. Le webhook Forgejo → Woodpecker est créé automatiquement
@@ -283,8 +280,7 @@ git push origin mpforge-v1.0.0
 git tag -a imgforge-v0.1.0 -m "Release imgforge v0.1.0"
 git push origin imgforge-v0.1.0
 
-# 4. Surveiller le build
-# https://forgejo.ci.allfabox.fr
+# 4. Surveiller le build sur l'instance Woodpecker interne
 ```
 
 ### Remplacer un tag (re-déclencher un build)
@@ -393,8 +389,6 @@ garmin-img-forge/
 
 | Ressource         | URL                                      |
 |-------------------|------------------------------------------|
-| Forgejo (source)  | https://forgejo.allfabox.fr              |
-| Woodpecker CI     | https://forgejo.ci.allfabox.fr           |
 | Doc Woodpecker    | https://woodpecker-ci.org/docs           |
 | Doc GDAL          | https://gdal.org/                        |
 | Doc Zensical      | https://zensical.org/                    |
