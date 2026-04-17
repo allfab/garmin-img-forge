@@ -1,4 +1,4 @@
-# À propos de moi
+# À propos
 
 ## L'auteur
 
