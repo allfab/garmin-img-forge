@@ -20,7 +20,6 @@ Il apporte également conseils en gestion de projets, assistance technique et ve
 
 ### Liens
 
-- [Forgejo](https://forgejo.allfabox.fr/allfab) — Dépôt source du projet
 - [GitHub](https://github.com/allfab) — Profil GitHub
 - [Blog](https://f84.allfab.fr) — Blog personnel
 
@@ -56,8 +55,8 @@ Le projet adopte un modèle de licences hybride, adapté à la nature de chaque 
 
 Les contributions sont les bienvenues :
 
-- **Issues** : [forgejo.allfabox.fr/allfab/garmin-img-forge/issues](https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues)
-- **Code source** : [forgejo.allfabox.fr/allfab/garmin-img-forge](https://forgejo.allfabox.fr/allfab/garmin-img-forge)
+- **Issues** : [github.com/allfab/garmin-img-forge/issues](https://github.com/allfab/garmin-img-forge/issues)
+- **Code source** : [github.com/allfab/garmin-img-forge](https://github.com/allfab/garmin-img-forge)
 
 !!! tip "Ancien site"
     L'ancien site du projet reste disponible à l'adresse [allfab.github.io/garmin-ign-bdtopo-map](https://allfab.github.io/garmin-ign-bdtopo-map/).

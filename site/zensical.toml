@@ -2,7 +2,7 @@ site_name = "GARMIN IMG FORGE"
 site_url = "https://maps.garmin.allfabox.fr"
 site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
 site_author = "allfab"
-repo_url = "https://forgejo.allfabox.fr/allfab/garmin-img-forge"
+repo_url = "https://github.com/allfab/garmin-img-forge"
 repo_name = "allfab/garmin-img-forge"
 docs_dir = "docs"
 site_dir = "_site"
@@ -101,6 +101,6 @@ copyright = "Documentation sous licence <a href=\"https://creativecommons.org/li
 comentario_url = "https://comentario.allfabox.fr/comentario.js"
 
 [[extra.social]]
-icon = "fontawesome/brands/git-alt"
-link = "https://forgejo.allfabox.fr/allfab/garmin-img-forge"
-name = "Dépôt source"
+icon = "fontawesome/brands/github"
+link = "https://github.com/allfab/garmin-img-forge"
+name = "Dépôt GitHub"

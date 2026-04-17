@@ -32,8 +32,8 @@ Vous pouvez faire un don libre (montant au choix, à partir de 2 €) via la pla
 
 Le soutien financier n'est pas le seul moyen d'aider le projet :
 
-- **Signaler un bug** — Ouvrez une [issue](https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues) si vous rencontrez un problème avec une carte ou le site
-- **Contribuer au code** — Le [dépôt source](https://forgejo.allfabox.fr/allfab/garmin-img-forge) est ouvert aux contributions
+- **Signaler un bug** — Ouvrez une [issue](https://github.com/allfab/garmin-img-forge/issues) si vous rencontrez un problème avec une carte ou le site
+- **Contribuer au code** — Le [dépôt GitHub](https://github.com/allfab/garmin-img-forge) est ouvert aux contributions
 - **Partager le projet** — Parlez-en autour de vous, sur les forums de randonnée, de VTT ou de cartographie
 
 Merci pour votre soutien, quelle que soit sa forme.

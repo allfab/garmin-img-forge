@@ -49,7 +49,7 @@
   /* ── Téléchargements de binaires (mpforge/imgforge) ──────── */
   function instrumentBinaryDownloads() {
     var links = document.querySelectorAll(
-      "a[href*='forgejo.allfabox.fr'][href*='/releases/download/']"
+      "a[href*='github.com/allfab/garmin-img-forge'][href*='/releases/download/']"
     );
 
     links.forEach(function (link) {
