@@ -24,8 +24,8 @@
 
 **Linux x64** :
 ```bash
-# Télécharger la release
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/download/v0.2.0/mpforge-linux-x64-static.tar.gz
+# Télécharger la dernière release
+wget https://forgejo.allfabox.fr/allfab/mpforge/releases/latest/download/mpforge-linux-x64-static.tar.gz
 
 # Extraire
 tar xzf mpforge-linux-x64-static.tar.gz
@@ -50,7 +50,7 @@ mpforge --version
 - ✅ Arch Linux / Manjaro
 - ✅ WSL2
 
-> 💡 **Anciennes releases (< v0.2.0)** : Nécessitaient GDAL installé. À partir de v0.2.0, GDAL est intégré dans le binaire.
+> 💡 **Anciennes releases (< v0.2.0)** : Nécessitaient GDAL installé sur le système. À partir de v0.2.0, GDAL est intégré statiquement dans le binaire.
 
 ### Option 2 : Compilation depuis les sources
 
@@ -92,7 +92,7 @@ cargo install --path .
 
 ```bash
 mpforge --version
-# Output: mpforge v0.2.0
+# Output: mpforge v0.4.3    (ou le tag Git courant)
 
 # Alternative : flag court
 mpforge -V
@@ -160,8 +160,6 @@ tiles/
 Chaque fichier `.mp` contient les données géospatiales de sa tuile et peut être converti en carte Garmin avec `cgpsmapper` ou `mkgmap`.
 
 ## Configuration détaillée
-
-Voir la section [Configuration détaillée](#configuration-détaillée) ci-dessous pour tous les détails.
 
 ### Structure du fichier YAML
 
@@ -253,11 +251,16 @@ Les géométries de tous les fichiers matchés sont automatiquement unies en un 
 
 ### Exemples de configuration
 
-Voir le répertoire [`examples/`](examples/) :
+Voir le répertoire [`examples/`](examples/) (et son [`README.md`](examples/README.md)) :
 
 - **[simple.yaml](examples/simple.yaml)** : Configuration minimale pour débuter
+- **[simple-mapping.yaml](examples/simple-mapping.yaml)** : Fichier de mapping standalone (exemple générique)
 - **[simple-with-mapping.yaml](examples/simple-with-mapping.yaml)** : Configuration avec field mapping (sources avec champs personnalisés)
 - **[bdtopo.yaml](examples/bdtopo.yaml)** : Configuration production pour BDTOPO (35 GB, 50+ couches)
+- **[bdtopo-mapping.yaml](examples/bdtopo-mapping.yaml)** : Mapping champs BDTOPO → Polish Map
+- **[bdtopo-d038-config.yaml](examples/bdtopo-d038-config.yaml)** + **[bdtopo-d038-run.sh](examples/bdtopo-d038-run.sh)** : Scénario département 38 complet
+- **[france-nord-bdtopo.yaml](examples/france-nord-bdtopo.yaml)** + **[france-nord-simple.yaml](examples/france-nord-simple.yaml)** + **[run-france-nord.sh](examples/run-france-nord.sh)** : Scénario multi-départements
+- **[header_template.mp](examples/header_template.mp)** : Template `[IMG ID]` réutilisable
 
 ### Généralisation de géométrie
 
@@ -669,6 +672,8 @@ mpforge build --config config.yaml --dry-run --skip-existing
 
 ## Options CLI
 
+mpforge expose deux sous-commandes : `build` (exécute le pipeline) et `validate` (vérifie la configuration sans rien exécuter).
+
 ### Commande `build`
 
 ```bash
@@ -687,6 +692,31 @@ mpforge build [OPTIONS] --config <CONFIG>
 | `-i, --input <PATH>` | Remplacer le chemin d'entrée | - |
 | `-o, --output <PATH>` | Remplacer le répertoire de sortie | - |
 | `-h, --help` | Afficher l'aide | - |
+
+### Commande `validate`
+
+Valide un fichier de configuration YAML sans exécuter le pipeline. Utile en CI pour échouer tôt sur une config invalide.
+
+```bash
+mpforge validate [OPTIONS] --config <CONFIG>
+```
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `-c, --config <FILE>` | Fichier de configuration YAML | **REQUIS** |
+| `-r, --report <FILE>` | Générer un rapport JSON de validation | - |
+| `-v, --verbose...` | Verbosité (`-v`, `-vv`, `-vvv`) | WARN |
+| `-h, --help` | Afficher l'aide | - |
+
+**Codes de sortie** : `0` si la configuration est valide, `1` sinon. Les 9 checks effectués sont détaillés dans la section [Validation de configuration](#validation-de-configuration).
+
+```bash
+# Validation simple
+mpforge validate --config config.yaml
+
+# Avec rapport JSON pour CI/CD
+mpforge validate --config config.yaml --report validation.json
+```
 
 ### Niveaux de verbosité
 
@@ -1136,34 +1166,31 @@ ogrinfo -sql "SELECT COUNT(*) FROM my_layer WHERE OGR_GEOMETRY NOT LIKE 'POINT%'
 
 ```
 mpforge/
+├── build.rs                 # Injection de GIT_VERSION à la compilation
 ├── src/
 │   ├── main.rs              # Point d'entrée CLI
+│   ├── lib.rs               # Racine du crate (exposition des modules)
 │   ├── cli.rs               # Définition des arguments CLI (clap)
-│   ├── config.rs            # Parsing YAML et validation
+│   ├── config.rs            # Parsing YAML et validation sémantique
+│   ├── rules.rs             # Moteur de règles (match/set, label_case, etc.)
 │   ├── error.rs             # Types d'erreurs
 │   ├── proj_init.rs         # Initialisation PROJ embarqué
 │   ├── report.rs            # Rapport JSON d'exécution
 │   └── pipeline/
-│       ├── mod.rs            # Orchestration du pipeline tile-centric
-│       ├── reader.rs         # Lecture sources GDAL/OGR
-│       ├── tiler.rs          # Grille spatiale et découpage
-│       ├── tile_naming.rs    # Patterns de nommage des tuiles
+│       ├── mod.rs                 # Orchestration du pipeline tile-centric
+│       ├── reader.rs              # Lecture sources GDAL/OGR
+│       ├── tiler.rs               # Grille spatiale et découpage
+│       ├── tile_naming.rs         # Patterns de nommage des tuiles
 │       ├── geometry_validator.rs  # Validation/réparation géométries
-│       └── writer.rs         # Export Polish Map (.mp)
-├── tests/
-│   ├── cli_tests.rs          # Tests CLI (help, version, flags)
-│   ├── config_parsing.rs     # Tests de parsing config YAML
-│   ├── tile_naming.rs        # Tests d'intégration patterns de nommage
-│   └── integration/
-│       └── fixtures/          # Fichiers de test (configs, shapefiles)
-├── examples/
-│   ├── simple.yaml
-│   ├── simple-with-mapping.yaml
-│   ├── bdtopo.yaml
-│   ├── france-nord-bdtopo.yaml
-│   └── france-nord-simple.yaml
-├── doc/
-│   └── config-schema.md
+│       ├── geometry_smoother.rs   # Lissage Chaikin + simplification Douglas-Peucker
+│       ├── route_params.rs        # Paramètres routiers Garmin (RouteParam*)
+│       └── writer.rs              # Export Polish Map (.mp)
+├── tests/                   # Suite d'intégration (CLI, config, pipeline, export,
+│                            # parallélisme, règles, SRS, rapports JSON, etc.)
+├── examples/                # Configs & scripts — voir examples/README.md
+├── resources/               # Ressources embarquées (PROJ, etc.)
+├── rules/                   # Rulesets YAML de référence
+├── scripts/                 # Scripts utilitaires
 └── Cargo.toml
 ```
 
@@ -1250,8 +1277,8 @@ Les contributions sont les bienvenues ! Voir le workflow BMAD dans `/_bmad/` pou
 
 ## Support
 
-- **Documentation** : Voir la section [Configuration détaillée](#configuration-détaillée) ci-dessus
-- **Exemples** : Voir [`examples/`](examples/)
+- **Documentation** : Voir les sections [Configuration détaillée](#configuration-détaillée) et [Options CLI](#options-cli) ci-dessus
+- **Exemples** : Voir [`examples/`](examples/) et son [README](examples/README.md)
 - **Issues** : https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues
 
 ## Auteurs
