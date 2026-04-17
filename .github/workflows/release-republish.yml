@@ -143,6 +143,7 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.parse.outputs.tag }}
           RELEASE_NAME: ${{ steps.parse.outputs.release_name }}
           NOTES: ${{ steps.wait.outputs.body }}
