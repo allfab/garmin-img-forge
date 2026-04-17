@@ -23,9 +23,13 @@
 ✨ **Zéro configuration** : Les binaires incluent GDAL 3.10.1 et le driver PolishMap. Aucune dépendance système n'est requise !
 
 **Linux x64** :
+
+Les binaires sont publiés sur la page [GitHub Releases](https://github.com/allfab/garmin-img-forge/releases) (tags `mpforge-v*`). Récupère la version voulue :
+
 ```bash
-# Télécharger la dernière release
-wget https://forgejo.allfabox.fr/allfab/mpforge/releases/latest/download/mpforge-linux-x64-static.tar.gz
+# Adapter la version — voir la page releases pour la dernière
+VERSION=mpforge-v0.4.3
+wget https://github.com/allfab/garmin-img-forge/releases/download/$VERSION/mpforge-linux-x64-static.tar.gz
 
 # Extraire
 tar xzf mpforge-linux-x64-static.tar.gz
@@ -1279,7 +1283,7 @@ Les contributions sont les bienvenues ! Voir le workflow BMAD dans `/_bmad/` pou
 
 - **Documentation** : Voir les sections [Configuration détaillée](#configuration-détaillée) et [Options CLI](#options-cli) ci-dessus
 - **Exemples** : Voir [`examples/`](examples/) et son [README](examples/README.md)
-- **Issues** : https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues
+- **Issues** : https://github.com/allfab/garmin-img-forge/issues
 
 ## Auteurs
 

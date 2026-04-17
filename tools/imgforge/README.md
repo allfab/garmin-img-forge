@@ -31,9 +31,13 @@
 ### Option 1 : Binaire pré-compilé (recommandé)
 
 **Linux x64** :
+
+Les binaires sont publiés sur la page [GitHub Releases](https://github.com/allfab/garmin-img-forge/releases) (tags `imgforge-v*`). Récupère la version voulue :
+
 ```bash
-# Télécharger la dernière release
-wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/latest/download/imgforge
+# Adapter la version — voir la page releases pour la dernière
+VERSION=imgforge-v0.4.3
+wget https://github.com/allfab/garmin-img-forge/releases/download/$VERSION/imgforge
 
 # Rendre exécutable
 chmod +x imgforge
@@ -598,4 +602,4 @@ Ce projet fait partie de **garmin-img-forge** et est distribué sous licence MIT
 
 ## Support
 
-- **Issues** : https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues
+- **Issues** : https://github.com/allfab/garmin-img-forge/issues
