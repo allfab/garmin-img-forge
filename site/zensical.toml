@@ -1,9 +1,9 @@
-site_name = "GARMIN IGN BDTOPO MAP"
+site_name = "GARMIN IMG FORGE"
 site_url = "https://maps.garmin.allfabox.fr"
 site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
 site_author = "allfab"
-repo_url = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
-repo_name = "allfab/garmin-ign-bdtopo-map"
+repo_url = "https://forgejo.allfabox.fr/allfab/garmin-img-forge"
+repo_name = "allfab/garmin-img-forge"
 docs_dir = "docs"
 site_dir = "_site"
 use_directory_urls = true
@@ -102,5 +102,5 @@ comentario_url = "https://comentario.allfabox.fr/comentario.js"
 
 [[extra.social]]
 icon = "fontawesome/brands/git-alt"
-link = "https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map"
+link = "https://forgejo.allfabox.fr/allfab/garmin-img-forge"
 name = "Dépôt source"

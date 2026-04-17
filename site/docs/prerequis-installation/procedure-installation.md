@@ -10,7 +10,7 @@ Deux approches : **binaires pré-compilés** (rapide, recommandé) ou **compilat
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/mpforge-v0.4.2/mpforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/download/mpforge-v0.4.2/mpforge-linux-amd64.tar.gz
 tar xzf mpforge-linux-amd64.tar.gz
 
 # Rendre exécutable
@@ -31,7 +31,7 @@ mpforge --version
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.4.3/imgforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/download/imgforge-v0.4.3/imgforge-linux-amd64.tar.gz
 tar xzf imgforge-linux-amd64.tar.gz
 
 # Rendre exécutable
@@ -52,8 +52,8 @@ imgforge --version
 ### 1. Cloner le dépôt
 
 ```bash
-git clone https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map.git
-cd garmin-ign-bdtopo-map
+git clone https://forgejo.allfabox.fr/allfab/garmin-img-forge.git
+cd garmin-img-forge
 ```
 
 ### 2. Installer les dépendances système

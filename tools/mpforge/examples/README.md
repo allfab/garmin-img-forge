@@ -33,7 +33,7 @@ cd /mnt/e/GARMIN/GARMIN-IGN-BDTOPO-MAP/04-DATA-OUTPUT/FRANCE-NORD/v2025.12/01-SH
 
 # 2. Exécuter le tuilage (4 threads, mode production)
 mpforge build \
-  --config /home/allfab/code/forgejo/garmin-ign-bdtopo-map/tools/mpforge/examples/france-nord-bdtopo.yaml \
+  --config /home/allfab/code/forgejo/garmin-img-forge/tools/mpforge/examples/france-nord-bdtopo.yaml \
   --jobs 4 \
   --report rapport-$(date +%Y%m%d).json \
   -v
@@ -54,7 +54,7 @@ cd /mnt/e/GARMIN/GARMIN-IGN-BDTOPO-MAP/04-DATA-OUTPUT/FRANCE-NORD/v2025.12/01-SH
 
 # Exécution avec la version simplifiée
 mpforge build \
-  --config /home/allfab/code/forgejo/garmin-ign-bdtopo-map/tools/mpforge/examples/france-nord-simple.yaml \
+  --config /home/allfab/code/forgejo/garmin-img-forge/tools/mpforge/examples/france-nord-simple.yaml \
   --jobs 8
 ```
 
@@ -69,7 +69,7 @@ mpforge build \
 
 ```bash
 # Depuis le répertoire examples/
-cd /home/allfab/code/forgejo/garmin-ign-bdtopo-map/tools/mpforge/examples/
+cd /home/allfab/code/forgejo/garmin-img-forge/tools/mpforge/examples/
 
 # Exécuter le script (avec confirmation interactive)
 ./run-france-nord.sh

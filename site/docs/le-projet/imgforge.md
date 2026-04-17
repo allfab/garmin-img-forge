@@ -269,7 +269,7 @@ Les tuiles en erreur sont journalisées (warning) mais n'empêchent pas la gén�
 
 ```bash
 # Télécharger et extraire l'archive
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.4.3/imgforge-linux-amd64.tar.gz
+wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/download/imgforge-v0.4.3/imgforge-linux-amd64.tar.gz
 tar xzf imgforge-linux-amd64.tar.gz
 
 chmod +x imgforge

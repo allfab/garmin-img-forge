@@ -1,9 +1,9 @@
-# Contribuer à `garmin-ign-bdtopo-map`
+# Contribuer à `garmin-img-forge`
 
 Merci de l'intérêt que vous portez au projet !
 
 Ce dépôt GitHub est un **miroir public en lecture**. La source canonique est hébergée
-sur Forgejo : [`forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map).
+sur Forgejo : [`forgejo.allfabox.fr/allfab/garmin-img-forge`](https://forgejo.allfabox.fr/allfab/garmin-img-forge).
 Les développements actifs (commits, releases) se font côté Forgejo ; chaque push `main`
 est répercuté ici par un job Woodpecker (`.woodpecker/mirror-github.yml`).
 

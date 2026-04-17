@@ -33,7 +33,7 @@
 **Linux x64** :
 ```bash
 # Télécharger la release
-wget https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/releases/download/imgforge-v0.1.0/imgforge
+wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/download/imgforge-v0.1.0/imgforge
 
 # Rendre exécutable
 chmod +x imgforge
@@ -551,8 +551,8 @@ cargo build --release
 
 ## Licence
 
-Ce projet fait partie de **garmin-ign-bdtopo-map** et est distribué sous licence MIT. Voir le fichier [LICENSE](../../LICENSE) à la racine du dépôt.
+Ce projet fait partie de **garmin-img-forge** et est distribué sous licence MIT. Voir le fichier [LICENSE](../../LICENSE) à la racine du dépôt.
 
 ## Support
 
-- **Issues** : https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/issues
+- **Issues** : https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues

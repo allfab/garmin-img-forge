@@ -1228,7 +1228,7 @@ Ce projet utilise la méthodologie **Build-Measure-Adapt-Deliver (BMAD)** :
 
 ## Licence
 
-Ce projet fait partie de **MPForge** et est distribué sous licence MIT. Voir le fichier [LICENSE](../LICENSE) à la racine du dépôt.
+Ce projet fait partie de **Garmin IMG Forge** et est distribué sous licence MIT. Voir le fichier [LICENSE](../LICENSE) à la racine du dépôt.
 
 ## Contribution
 
@@ -1252,8 +1252,8 @@ Les contributions sont les bienvenues ! Voir le workflow BMAD dans `/_bmad/` pou
 
 - **Documentation** : Voir la section [Configuration détaillée](#configuration-détaillée) ci-dessus
 - **Exemples** : Voir [`examples/`](examples/)
-- **Issues** : https://forgejo.allfabox.fr/allfab/mpforge/issues
+- **Issues** : https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues
 
 ## Auteurs
 
-Développé dans le cadre du projet **MPForge** pour générer des cartes Garmin à partir de données SIG massives.
+Développé dans le cadre du projet **Garmin IMG Forge** pour générer des cartes Garmin à partir de données SIG massives.

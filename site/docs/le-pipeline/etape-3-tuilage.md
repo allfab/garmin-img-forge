@@ -165,7 +165,7 @@ Le paramètre `grid.cell_size` de la config YAML contrôle la taille des tuiles 
 | **Moitié / France entière** | `0.60°` à `0.90°` | ~70 × 45 km (3 000+ km²) | 150-250 | `sources-france-XX.yaml` dédié |
 
 !!! note "Avant le 2026-04-16"
-    Jusqu'au commit [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/e6fce3f), `sources.yaml` utilisait `cell_size: 0.15°` (~16 km) hérité des tests initiaux sur un seul département. Cette valeur générait trop de tuiles pour les scopes régionaux et quadrants (voir [la bataille FRANCE-SE](../le-projet/reussites-ecueils.md#les-quadrants-france-se-bataille-davril-2026)). Si vous reprenez un ancien clone, passez `cell_size` à `0.30°` avant tout build >= régional.
+    Jusqu'au commit [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/commit/e6fce3f), `sources.yaml` utilisait `cell_size: 0.15°` (~16 km) hérité des tests initiaux sur un seul département. Cette valeur générait trop de tuiles pour les scopes régionaux et quadrants (voir [la bataille FRANCE-SE](../le-projet/reussites-ecueils.md#les-quadrants-france-se-bataille-davril-2026)). Si vous reprenez un ancien clone, passez `cell_size` à `0.30°` avant tout build >= régional.
 
 !!! warning "Garmin Alpha 100 : limite FAT"
     L'Alpha 100 plante au boot si le gmapsupp.img contient trop d'entrées FAT.

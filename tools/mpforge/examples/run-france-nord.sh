@@ -35,7 +35,7 @@ NCPU=$(nproc 2>/dev/null || echo 4)
 JOBS=${JOBS:-$((NCPU / 2))}  # Par défaut : moitié des CPUs
 
 echo "========================================="
-echo "🗺️  MPForge - Tuilage France Nord"
+echo "🗺️  Garmin IMG Forge - Tuilage France Nord"
 echo "========================================="
 echo "Config      : $CONFIG"
 echo "Données     : $DATA_DIR"

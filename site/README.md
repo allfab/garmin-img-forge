@@ -1,4 +1,4 @@
-# Site de documentation — GARMIN IGN BDTOPO MAP
+# Site de documentation — GARMIN IMG FORGE
 
 Site de documentation du projet, accessible sur [maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr).
 

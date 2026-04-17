@@ -28,7 +28,7 @@ Il apporte également conseils en gestion de projets, assistance technique et ve
 
 ## Le projet
 
-**GARMIN IGN BDTOPO MAP** est un projet personnel né de la volonté de créer des cartes topographiques Garmin en utilisant exclusivement des logiciels et données libres.
+**GARMIN IMG FORGE** est un projet personnel né de la volonté de créer des cartes topographiques Garmin en utilisant exclusivement des logiciels et données libres.
 
 Le projet s'inscrit dans une démarche **FOSS** (Free and Open Source Software) de bout en bout : des données ouvertes (BD TOPO IGN, licence Etalab 2.0) transformées par des outils open-source (ogr-polishmap, mpforge, imgforge) en cartes prêtes à l'emploi pour les GPS Garmin.
 
@@ -56,8 +56,8 @@ Le projet adopte un modèle de licences hybride, adapté à la nature de chaque 
 
 Les contributions sont les bienvenues :
 
-- **Issues** : [forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/issues](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/issues)
-- **Code source** : [forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map)
+- **Issues** : [forgejo.allfabox.fr/allfab/garmin-img-forge/issues](https://forgejo.allfabox.fr/allfab/garmin-img-forge/issues)
+- **Code source** : [forgejo.allfabox.fr/allfab/garmin-img-forge](https://forgejo.allfabox.fr/allfab/garmin-img-forge)
 
 !!! tip "Ancien site"
     L'ancien site du projet reste disponible à l'adresse [allfab.github.io/garmin-ign-bdtopo-map](https://allfab.github.io/garmin-ign-bdtopo-map/).

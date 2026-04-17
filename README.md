@@ -1,48 +1,104 @@
-# garmin-ign-bdtopo-map
+<h1 align="center">
+  <br>
+  Garmin IMG Forge
+  <br>
+</h1>
+
+<h4 align="center">Chaîne d'outils open source pour transformer des données SIG vectorielles en cartes Garmin (<code>.img</code>) téléchargeables sur GPS.<br />Configuration déclarative YAML — aucune étape manuelle, du SIG au terrain.</h4>
+
+<p align="center">
+  <a href="https://maps.garmin.allfabox.fr/" target="_blank"><img src="https://img.shields.io/badge/Site-maps.garmin.allfabox.fr-526CFE?style=for-the-badge&logoColor=white" /></a>
+  <a href="https://www.rust-lang.org/" target="_blank"><img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" /></a>
+  <a href="https://gdal.org/" target="_blank"><img src="https://img.shields.io/badge/GDAL-5CAE58?style=for-the-badge&logo=osgeo&logoColor=white" /></a>
+  <a href="https://woodpecker-ci.org/" target="_blank"><img src="https://img.shields.io/badge/Woodpecker_CI-4CAF50?style=for-the-badge&logo=woodpeckerci&logoColor=white" /></a>
+  <a href="./LICENSE" target="_blank"><img src="https://img.shields.io/badge/Licence-GPL_v3_%2F_MIT-blue?style=for-the-badge" /></a>
+</p>
+
+<p align="center">
+  <a href="#pourquoi-ce-dépôt-">Pourquoi ce dépôt ?</a> •
+  <a href="#site-de-documentation">Site</a> •
+  <a href="#pré-requis">Pré-requis</a> •
+  <a href="#démarrage-rapide">Démarrage rapide</a> •
+  <a href="#cicd--woodpecker--github-actions">CI/CD</a> •
+  <a href="#structure-du-projet">Structure</a> •
+  <a href="#crédits">Crédits</a> •
+  <a href="#licences">Licences</a>
+</p>
 
 > 🪞 **Miroir public en lecture.** La source canonique est hébergée sur
-> [`forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map).
+> [`forgejo.allfabox.fr/allfab/garmin-img-forge`](https://forgejo.allfabox.fr/allfab/garmin-img-forge).
 > Les issues et PR GitHub sont bienvenues mais mergées côté Forgejo
 > (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
 >
 > La CI métier (`mpforge`, `imgforge`, génération des cartes) tourne sur
-> Woodpecker interne. GitHub Actions est strictement limité au build et
-> au déploiement de GitHub Pages.
-
-> On forge des cartes Garmin à partir de données SIG massives.
-
-Le projet (nom interne : **MPForge**, *Map Forging Project*) est composé de trois briques principales :
-
-| Composant | Description | Documentation |
-|-----------|-------------|---------------|
-| **[ogr-polishmap](./tools/ogr-polishmap/)** | Driver GDAL/OGR pour le format Polish Map (.mp) | [README](./tools/ogr-polishmap/README.md), [Spec RST](./tools/ogr-polishmap/doc/polishmap.rst) |
-| **[mpforge](./tools/mpforge/)** | CLI Rust pour générer des tuiles Polish Map depuis des sources SIG | [README](./tools/mpforge/README.md), [Exemples](./tools/mpforge/examples/) |
-| **[imgforge](./tools/imgforge/)** | CLI Rust pour compiler des fichiers Polish Map (.mp) en Garmin IMG (.img) | [README](./tools/imgforge/README.md) |
-
-### En développement
-
-| Composant | Description |
-|-----------|-------------|
-| **[ogr-garminimg](./tools/ogr-garminimg/)** | Driver GDAL/OGR pour lire le format Garmin IMG (.img) — *en cours* |
-
-**Pipeline complet** : Données SIG → `mpforge` (tuiles .mp) → `imgforge` (fichiers .img) → GPS Garmin
+> Woodpecker interne. GitHub Actions est strictement limité au build
+> du site Pages et à la republication des binaires de release.
 
 ---
 
-## Site de documentation
+# Pourquoi ce dépôt ?
 
-Le site **[maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr)** documente le projet
-et met à disposition les cartes Garmin téléchargeables.
+**Garmin IMG Forge** est une chaîne d'outils pour transformer des jeux de données SIG vectoriels (IGN BDTOPO, OpenStreetMap, cadastre, couches métier…) en cartes téléchargeables sur GPS Garmin, via des **fichiers de configuration YAML déclaratifs**. Aucun clic, aucune usine à gaz : vous décrivez vos règles de symbologie et de découpage, l'outil forge les `.img`.
 
-Le site est généré avec **Zensical** (successeur de MkDocs Material) et déployé via GitHub Pages
-(miroir public) ; la source canonique reste Forgejo. Le pipeline Woodpecker `.woodpecker/site.yml`
-continue de builder et déposer le site sur l'infrastructure LXC interne en parallèle (les deux
-coexistent — voir le tech-spec `github-mirror-pages-cloudflare-cdn`).
+Le dépôt contient **trois briques principales** plus une **brique expérimentale** :
 
-Les fichiers IMG sont distribués via `https://download-maps.garmin.allfabox.fr/` (S3 Garage sur
-Scaleway) placé derrière le CDN Cloudflare pour absorber la bande passante publique.
+<details>
+<summary><strong><code>ogr-polishmap</code> — Driver GDAL/OGR pour le format Polish Map (.mp)</strong></summary>
 
-Sources du site : [`site/`](./site/) — configuration `site/zensical.toml`, contenu `site/docs/`
+Driver C++ qui permet à GDAL et à toute la chaîne QGIS/Python/Rust d'écrire nativement le format Polish Map. C'est la fondation : sans lui, pas de tuilage SIG standardisé.
+
+- Code : [`tools/ogr-polishmap/`](./tools/ogr-polishmap/)
+- Documentation : [README](./tools/ogr-polishmap/README.md), [Spec RST](./tools/ogr-polishmap/doc/polishmap.rst)
+- Licence : MIT
+</details>
+
+<details>
+<summary><strong><code>mpforge</code> — Générateur de tuiles Polish Map depuis sources SIG</strong></summary>
+
+CLI Rust qui lit des sources SIG (BDTOPO, OSM…), applique des règles de transformation déclarées en YAML, et produit des tuiles `.mp` prêtes à être compilées. Embarque GDAL + PROJ + GEOS en statique : **un seul binaire, zéro dépendance système** à l'exécution.
+
+- Code : [`tools/mpforge/`](./tools/mpforge/)
+- Documentation : [README](./tools/mpforge/README.md), [Exemples YAML](./tools/mpforge/examples/)
+- Licence : GPL v3
+</details>
+
+<details>
+<summary><strong><code>imgforge</code> — Compilateur Polish Map (.mp) vers Garmin IMG (.img)</strong></summary>
+
+CLI Rust **Pure Rust** (zéro dépendance native) qui remplace `cGPSmapper` dans la pipeline. Lit les `.mp` produits par `mpforge`, écrit un `.img` exploitable directement sur les GPS Garmin.
+
+- Code : [`tools/imgforge/`](./tools/imgforge/)
+- Documentation : [README](./tools/imgforge/README.md)
+- Licence : GPL v3
+</details>
+
+<details>
+<summary><strong><code>ogr-garminimg</code> — Driver GDAL/OGR de lecture pour Garmin IMG <em>(en développement)</em></strong></summary>
+
+Driver GDAL/OGR pour **lire** le format Garmin IMG (inverse d'`imgforge`). Objectif : diagnostic, comparaison de cartes, extraction vectorielle depuis des IMG existants. *Développement en cours, pas encore stable.*
+
+- Code : [`tools/ogr-garminimg/`](./tools/ogr-garminimg/)
+</details>
+
+**Pipeline complet** :
+
+```
+Données SIG  ──►  mpforge  ──►  tuiles .mp  ──►  imgforge  ──►  fichier .img  ──►  GPS Garmin
+ (BDTOPO,          (Rust +      (Polish Map     (Pure Rust)    (prêt à copier     (Edge / eTrex /
+  OSM, …)           GDAL)        standard)                      sur la clé)        Oregon / GPSMAP…)
+```
+
+---
+
+# Site de documentation
+
+Le site **[maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr)** documente le projet et met à disposition les cartes Garmin téléchargeables.
+
+- Généré avec **[Zensical](https://zensical.org/)** (successeur de MkDocs Material)
+- Déployé via **GitHub Pages** (miroir public) + **Woodpecker** sur l'infra LXC interne en parallèle
+- Les fichiers IMG sont servis depuis [`download-maps.garmin.allfabox.fr`](https://download-maps.garmin.allfabox.fr/) (S3 Garage sur Scaleway) derrière le CDN **Cloudflare** pour absorber la bande passante publique
+
+Sources : [`site/`](./site/) — configuration `site/zensical.toml`, contenu `site/docs/`
 
 ```bash
 # Build local (nécessite zensical installé)
@@ -52,41 +108,121 @@ cd site && zensical build
 
 ---
 
-## CI/CD : Woodpecker CI
+# Pré-requis
 
-Le projet utilise **Woodpecker CI** (plutôt que Forgejo Actions) pour sa légèreté, son intégration native Docker, et sa configuration YAML simple sans dépendance à un écosystème GitHub Actions.
+Vous êtes **débutant** ? Lisez juste « Démarrage rapide » plus bas, c'est suffisant pour compiler et utiliser les outils.
 
-Chaque outil a son propre pipeline CI avec des tags préfixés pour des cycles de release indépendants :
+Vous êtes **confirmé** ? Voici la liste complète :
 
-> **Note miroir GitHub** : les fichiers `.woodpecker/*.yml` ne sont pas
-> miroirés côté GitHub (dossier exclu). Les descriptions ci-dessous
-> documentent le système ; les fichiers eux-mêmes sont consultables sur
-> [Forgejo](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/.woodpecker).
+| Composant                           | Requis pour                         |
+|-------------------------------------|-------------------------------------|
+| **Rust** (via [rustup](https://rustup.rs/)) | `mpforge`, `imgforge`       |
+| **GCC/Clang + CMake ≥ 3.20**        | `ogr-polishmap` (driver C++)        |
+| **GDAL ≥ 3.6** (3.10+ recommandé)   | `ogr-polishmap`, dev local `mpforge` |
+| **Python 3.10+ + PyQGIS** *(option)* | Plugin QGIS                         |
+| **Java 11+ + mkgmap** *(option)*    | Génération cartes Garmin avancées   |
 
-| Pipeline | Déclencheur | Description |
-|----------|-------------|-------------|
-| `.woodpecker/mpforge.yml` | Tag `mpforge-v*` | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
-| `.woodpecker/imgforge.yml` | Tag `imgforge-v*` | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
-| `.woodpecker/site.yml` | Push sur `main` (dans `site/`) | Build et déploiement LXC du site Zensical |
-| `.woodpecker/mirror-github.yml` | Push sur `main` | Miroir filtré Forgejo → GitHub (via `git filter-repo`) |
+> **Note** : Le CI compile GDAL 3.10.1 en statique pour les binaires de release. En dev local, GDAL 3.6+ suffit.
 
-Les pipelines `mpforge` et `imgforge` produisent automatiquement une release Forgejo avec binaire, checksums SHA-256 et metadata JSON.
+---
 
-En complément côté GitHub, un workflow GitHub Actions ([`.github/workflows/pages.yml`](./.github/workflows/pages.yml))
-build Zensical et déploie le site sur GitHub Pages (domaine `maps.garmin.allfabox.fr`).
-Il coexiste délibérément avec `site.yml` : les deux buildent le même contenu, seul le DNS
-détermine quelle cible sert le public.
+# Démarrage rapide
 
-### Configuration initiale Woodpecker
+### Installation des dépendances (Debian/Ubuntu)
 
-Pour activer le CI sur un nouveau dépôt :
+```bash
+# Rust (pour mpforge et imgforge)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
 
-1. Se connecter à [Woodpecker CI](https://forgejo.ci.allfabox.fr)
-2. Activer le dépôt dans **Settings > Repositories**
-3. Créer un secret `forgejo_token` dans **Settings > Secrets** (token API Forgejo avec droits `write:package`)
-4. Le webhook Forgejo → Woodpecker est créé automatiquement
+# C++ / GDAL (pour ogr-polishmap)
+sudo apt install build-essential cmake pkg-config libgdal-dev
 
-### Architecture du build statique
+# QGIS + PyQGIS (optionnel)
+sudo apt install qgis python3-qgis
+
+# Java + mkgmap (optionnel)
+sudo apt install openjdk-11-jre
+```
+
+### Variables d'environnement
+
+À ajouter dans `~/.bashrc` ou `~/.zshrc` :
+
+```bash
+# GDAL
+export GDAL_DATA=/usr/share/gdal
+export GDAL_DRIVER_PATH=$HOME/.gdal/plugins
+export GDAL_HOME=/usr
+
+# Rust
+export RUST_BACKTRACE=1
+export RUST_LOG=info
+
+# PyQGIS (si utilisé)
+export PYTHONPATH=/usr/share/qgis/python:$PYTHONPATH
+export QGIS_PREFIX_PATH=/usr
+```
+
+```bash
+# Créer le répertoire plugins GDAL
+mkdir -p ~/.gdal/plugins
+```
+
+### Build des composants
+
+```bash
+# ogr-polishmap (driver GDAL)
+cd tools/ogr-polishmap
+cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
+
+# mpforge (nécessite GDAL installé)
+cd tools/mpforge
+cargo build --release
+
+# imgforge (Pure Rust, aucune dépendance système)
+cd tools/imgforge
+cargo build --release
+```
+
+### Ou télécharger les binaires
+
+Pas envie de compiler ? Les binaires statiques Linux x64 sont publiés à chaque release :
+
+- **Forgejo (canonique)** : [`forgejo.allfabox.fr/allfab/garmin-img-forge/releases`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases)
+- **GitHub (miroir)** : [`github.com/allfab/garmin-img-forge/releases`](https://github.com/allfab/garmin-img-forge/releases)
+
+Chaque release inclut : binaire Linux x64 statique + `SHA256SUMS` + métadonnées JSON.
+
+---
+
+# CI/CD — Woodpecker + GitHub Actions
+
+Le projet utilise **Woodpecker CI** comme plateforme principale (légère, intégration Docker native, YAML simple, hébergée sur [`forgejo.ci.allfabox.fr`](https://forgejo.ci.allfabox.fr)). GitHub Actions joue un rôle d'appoint sur le miroir public.
+
+> **Note miroir GitHub** : les fichiers `.woodpecker/*.yml` ne sont pas miroirés côté GitHub (dossier exclu du filtrage `git filter-repo`). Les descriptions ci-dessous documentent le système ; les fichiers eux-mêmes sont consultables sur [Forgejo](https://forgejo.allfabox.fr/allfab/garmin-img-forge/src/branch/main/.woodpecker).
+
+### Pipelines Woodpecker (canoniques)
+
+| Pipeline                        | Déclencheur                        | Description |
+|---------------------------------|------------------------------------|-------------|
+| `.woodpecker/mpforge.yml`       | Tag `mpforge-v*`                   | Build statique Linux x64 (GDAL + GEOS + PROJ + driver PolishMap intégrés) |
+| `.woodpecker/imgforge.yml`      | Tag `imgforge-v*`                  | Build standard Linux x64 (Pure Rust, zéro dépendance native) |
+| `.woodpecker/site.yml`          | Push sur `main` (dans `site/`)     | Build et déploiement LXC du site Zensical |
+| `.woodpecker/mirror-github.yml` | Push sur `main`                    | Miroir filtré Forgejo → GitHub (`git filter-repo`) |
+
+Les pipelines `mpforge` et `imgforge` produisent automatiquement une **release Forgejo** avec binaire, checksums SHA-256 et métadonnées JSON.
+
+### Workflows GitHub Actions (appoint, côté miroir)
+
+| Workflow                                   | Déclencheur             | Description |
+|--------------------------------------------|-------------------------|-------------|
+| `.github/workflows/pages.yml`              | Push sur `main`         | Build Zensical + déploiement GitHub Pages |
+| `.github/workflows/release-republish.yml`  | Tag `mpforge-v*` / `imgforge-v*` | Téléchargement des binaires depuis la release Forgejo et republication en release GitHub |
+
+Le workflow `release-republish` attend que Forgejo ait fini son build (poll API toutes les 2 min, timeout 25 min), télécharge les assets, vérifie les SHA-256, puis crée la release GitHub équivalente. **Aucune recompilation** côté GitHub — le build serveur (~20 min pour `mpforge` avec GDAL statique) n'est exécuté qu'une seule fois, sur l'infra interne.
+
+### Architecture du build statique `mpforge`
 
 ```
 Tag mpforge-v* poussé --> Woodpecker CI déclenche mpforge.yml
@@ -102,17 +238,20 @@ Tag mpforge-v* poussé --> Woodpecker CI déclenche mpforge.yml
   Phase 10 : Compilation mpforge (proj.db embarqué via include_bytes!)
   Phase 11 : Vérification (ldd, taille, test --version)
   Phase 12 : Package + checksums + upload release Forgejo
-
-Tag imgforge-v* poussé --> Woodpecker CI déclenche imgforge.yml
-  Phase 1  : Installation dépendances (build-essential)
-  Phase 2  : Compilation imgforge (cargo build --release)
-  Phase 3  : Vérification (ldd, taille, test --version)
-  Phase 4  : Package + checksums + upload release Forgejo
 ```
 
-Le binaire produit est **100% autonome** : aucune dépendance externe, `proj.db` embarqué dans le binaire.
+Le binaire produit est **100% autonome** : aucune dépendance externe, `proj.db` embarqué.
 
-> **Troubleshooting proj.db** : Si `proj_create_from_database: Cannot find proj.db` apparaît, c'est que PROJ ne trouve pas sa base de données. En production, ce problème est résolu par l'embarquement de `proj.db` directement dans le binaire (extraction automatique dans un tempdir au démarrage). En développement local, positionner `PROJ_DATA` vers le répertoire contenant `proj.db` (typiquement `/usr/share/proj`).
+> **Troubleshooting `proj.db`** : Si `proj_create_from_database: Cannot find proj.db` apparaît, c'est que PROJ ne trouve pas sa base de données. En production, ce problème est résolu par l'embarquement de `proj.db` directement dans le binaire (extraction automatique dans un tempdir au démarrage). En développement local, positionner `PROJ_DATA` vers le répertoire contenant `proj.db` (typiquement `/usr/share/proj`).
+
+### Configuration initiale Woodpecker
+
+Pour activer le CI sur un nouveau dépôt :
+
+1. Se connecter à [Woodpecker CI](https://forgejo.ci.allfabox.fr)
+2. Activer le dépôt dans **Settings > Repositories**
+3. Créer un secret `forgejo_token` dans **Settings > Secrets** (token API Forgejo avec droits `write:package`)
+4. Le webhook Forgejo → Woodpecker est créé automatiquement
 
 ### Versioning automatique
 
@@ -170,20 +309,20 @@ git tag -d mpforge-v1.0.0
 git push --delete origin mpforge-v1.0.0
 ```
 
-Note : supprimer un tag ne supprime **pas** la release Forgejo. Il faut la supprimer manuellement via l'UI ou l'API.
+> ⚠ Supprimer un tag ne supprime **pas** la release Forgejo ni la release GitHub. Il faut les supprimer manuellement via l'UI ou l'API.
 
 ### Référence rapide des commandes
 
-| Action | Commande |
-|--------|----------|
-| Release mpforge | `git tag -a mpforge-v1.0.0 -m "Release mpforge v1.0.0"` |
-| Release imgforge | `git tag -a imgforge-v0.1.0 -m "Release imgforge v0.1.0"` |
-| Pousser tag | `git push origin mpforge-v1.0.0` |
-| Lister tags par outil | `git tag -l 'mpforge-v*'` / `git tag -l 'imgforge-v*'` |
-| Voir détails tag | `git show mpforge-v1.0.0` |
-| Supprimer tag local | `git tag -d mpforge-v1.0.0` |
-| Supprimer tag remote | `git push --delete origin mpforge-v1.0.0` |
-| Fetch tags forcés | `git fetch --tags --force` |
+| Action                | Commande                                                       |
+|-----------------------|----------------------------------------------------------------|
+| Release mpforge       | `git tag -a mpforge-v1.0.0 -m "Release mpforge v1.0.0"`        |
+| Release imgforge      | `git tag -a imgforge-v0.1.0 -m "Release imgforge v0.1.0"`      |
+| Pousser tag           | `git push origin mpforge-v1.0.0`                               |
+| Lister tags par outil | `git tag -l 'mpforge-v*'` / `git tag -l 'imgforge-v*'`         |
+| Voir détails tag      | `git show mpforge-v1.0.0`                                      |
+| Supprimer tag local   | `git tag -d mpforge-v1.0.0`                                    |
+| Supprimer tag remote  | `git push --delete origin mpforge-v1.0.0`                      |
+| Fetch tags forcés     | `git fetch --tags --force`                                     |
 
 ### Semantic Versioning
 
@@ -197,83 +336,10 @@ v0.2.0 -> v1.0.0  : Breaking change
 
 ---
 
-## Environnement de développement
-
-### Prérequis
-
-| Composant | Requis pour |
-|-----------|-------------|
-| **Rust** (via rustup) | mpforge |
-| **GCC/Clang + CMake 3.20+** | ogr-polishmap (driver C++) |
-| **GDAL 3.6+ dev** (3.10+ recommandé) | ogr-polishmap |
-| **Python 3.10+ + PyQGIS** | Plugin QGIS (optionnel) |
-| **Java 11+ + mkgmap** | Génération cartes Garmin (optionnel) |
-
-> **Note** : Le CI compile GDAL 3.10.1 en statique. En développement local, GDAL 3.6+ suffit pour compiler le driver, mais les binaires de release utilisent 3.10.1.
-
-### Installation rapide (Debian/Ubuntu)
-
-```bash
-# Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-
-# C++ / GDAL
-sudo apt install build-essential cmake pkg-config libgdal-dev
-
-# QGIS + PyQGIS (optionnel)
-sudo apt install qgis python3-qgis
-
-# Java + mkgmap (optionnel)
-sudo apt install openjdk-11-jre
-```
-
-### Variables d'environnement
-
-Ajouter dans `~/.bashrc` ou `~/.zshrc` :
-
-```bash
-# GDAL
-export GDAL_DATA=/usr/share/gdal
-export GDAL_DRIVER_PATH=$HOME/.gdal/plugins
-export GDAL_HOME=/usr
-
-# Rust
-export RUST_BACKTRACE=1
-export RUST_LOG=info
-
-# PyQGIS (si utilisé)
-export PYTHONPATH=/usr/share/qgis/python:$PYTHONPATH
-export QGIS_PREFIX_PATH=/usr
-```
-
-```bash
-# Créer le répertoire plugins GDAL
-mkdir -p ~/.gdal/plugins
-```
-
-### Build des composants
-
-```bash
-# ogr-polishmap (driver GDAL)
-cd tools/ogr-polishmap
-cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
-
-# mpforge (nécessite GDAL installé)
-cd tools/mpforge
-cargo build --release
-
-# imgforge (Pure Rust, aucune dépendance système)
-cd tools/imgforge
-cargo build --release
-```
-
----
-
-## Structure du projet
+# Structure du projet
 
 ```
-garmin-ign-bdtopo-map/
+garmin-img-forge/
 ├── tools/                        # CODE SOURCE DES OUTILS
 │   ├── mpforge/                  # CLI Rust — génération de tuiles Polish Map
 │   │   ├── src/                  # Code source
@@ -307,7 +373,9 @@ garmin-ign-bdtopo-map/
 │   └── mirror-github.yml         # Miroir filtré Forgejo → GitHub (push main)
 │
 ├── .github/                      # Workflows et templates GitHub (miroir public)
-│   ├── workflows/pages.yml       # Build Zensical + deploy GitHub Pages
+│   ├── workflows/
+│   │   ├── pages.yml             # Build Zensical + deploy GitHub Pages
+│   │   └── release-republish.yml # Republish des binaires Forgejo sur releases GitHub
 │   ├── ISSUE_TEMPLATE/           # Templates issue (bug, enhancement)
 │   └── PULL_REQUEST_TEMPLATE.md  # Template PR (checklist CONTRIBUTING.md)
 │
@@ -321,22 +389,36 @@ garmin-ign-bdtopo-map/
 
 ---
 
-## Liens utiles
+# Liens utiles
 
-| Ressource | URL |
-|-----------|-----|
-| Forgejo | https://forgejo.allfabox.fr |
-| Woodpecker CI | https://forgejo.ci.allfabox.fr |
-| Doc Woodpecker | https://woodpecker-ci.org/docs |
-| Doc GDAL | https://gdal.org/ |
-| SemVer | https://semver.org/ |
+| Ressource         | URL                                      |
+|-------------------|------------------------------------------|
+| Forgejo (source)  | https://forgejo.allfabox.fr              |
+| Woodpecker CI     | https://forgejo.ci.allfabox.fr           |
+| Doc Woodpecker    | https://woodpecker-ci.org/docs           |
+| Doc GDAL          | https://gdal.org/                        |
+| Doc Zensical      | https://zensical.org/                    |
+| SemVer            | https://semver.org/                      |
 
 ---
 
-## Licences
+# Crédits
 
-- **ogr-polishmap** : MIT
-- **mpforge**, **imgforge** : GPL v3
+Ce projet s'appuie sur des géants :
+
+- **[GDAL](https://gdal.org/)** — la bibliothèque qui rend tout ça possible
+- **[cGPSmapper](https://www.cgpsmapper.com/)** — pour la spec historique du format Polish Map
+- **[mkgmap](https://www.mkgmap.org.uk/)** — inspiration et référence pour la génération de cartes Garmin
+- **[IGN](https://www.ign.fr/)** — pour la BDTOPO en licence ouverte
+- **[OpenStreetMap](https://www.openstreetmap.org/)** — pour les données cartographiques mondiales libres
+- **[Rust](https://www.rust-lang.org/) + [Zensical](https://zensical.org/) + [Woodpecker](https://woodpecker-ci.org/)** — pour une stack moderne, sobre et auto-hébergeable
+
+---
+
+# Licences
+
+- **`ogr-polishmap`** : MIT
+- **`mpforge`**, **`imgforge`** : GPL v3
 - **Documentation du site** : [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.fr)
 
 Voir [`LICENSE`](./LICENSE) pour les détails.

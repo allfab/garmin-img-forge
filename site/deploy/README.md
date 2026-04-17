@@ -10,7 +10,7 @@ Woodpecker CI runner            Bastion SSH             LXC Apps (10.0.100.30)  
 │ push site/**     │         │  allfab@     │          │  nginx:alpine :8880            │   │  websecure   │
 │       │          │  rsync  │  163.172.    │  proxy   │       │                        │   │      │       │
 │  build zensical  │────────>│  82.220      │─────────>│  /opt/docker/apps-stack/       │<──│  03-garmin   │
-│       │          │  -J     │              │  jump    │     garmin-ign-bdtopo-map/www/ │   │   .yml       │
+│       │          │  -J     │              │  jump    │     garmin-img-forge/www/ │   │   .yml       │
 └──────────────────┘         └──────────────┘          └────────────────────────────────┘   └──────────────┘
                                  (ProxyJump)          user SSH: deploy (clé CI dédiée)
 ```
@@ -36,14 +36,14 @@ docker network create apps
 ### 2. Arborescence de déploiement
 
 ```bash
-sudo mkdir -p /opt/docker/apps-stack/garmin-ign-bdtopo-map/www
+sudo mkdir -p /opt/docker/apps-stack/garmin-img-forge/www
 ```
 
 ### 3. User SSH `deploy` dédié au CI
 
 ```bash
 sudo useradd -m -s /bin/bash deploy
-sudo chown -R deploy:deploy /opt/docker/apps-stack/garmin-ign-bdtopo-map/www
+sudo chown -R deploy:deploy /opt/docker/apps-stack/garmin-img-forge/www
 ```
 
 Si `sshd_config` contient `AllowUsers`, ajouter `deploy` :
@@ -71,10 +71,10 @@ La **même pubkey** doit aussi être dans `~allfab/.ssh/authorized_keys` sur le 
 
 ### 5. Stack nginx
 
-Copier `docker-compose.yml` et `nginx.conf` dans `/opt/docker/apps-stack/garmin-ign-bdtopo-map/` puis :
+Copier `docker-compose.yml` et `nginx.conf` dans `/opt/docker/apps-stack/garmin-img-forge/` puis :
 
 ```bash
-cd /opt/docker/apps-stack/garmin-ign-bdtopo-map/
+cd /opt/docker/apps-stack/garmin-img-forge/
 docker compose up -d
 docker ps --filter name=garmin-ign-topo-map
 # Attendu : status "Up ... (healthy)" sous 2 min
@@ -106,7 +106,7 @@ Même syntaxe que le runner, à exécuter depuis ton poste :
 mkdir -p /tmp/empty-test
 rsync -az --delete --chmod=D755,F644 \
   -e "ssh -i ~/.ssh/woodpecker-ci-agent -o IdentitiesOnly=yes -J allfab@163.172.82.220" \
-  /tmp/empty-test/ deploy@10.0.100.30:/opt/docker/apps-stack/garmin-ign-bdtopo-map/www/
+  /tmp/empty-test/ deploy@10.0.100.30:/opt/docker/apps-stack/garmin-img-forge/www/
 ```
 
 `IdentitiesOnly=yes` est utile uniquement en local (agent SSH saturé de clés). Inutile côté runner.

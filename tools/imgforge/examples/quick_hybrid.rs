@@ -5,7 +5,7 @@ fn main() {
     let tre = fs::read("/tmp/mkgmap-extracted/63240001.TRE").expect("read TRE");
     let rgn = fs::read("/tmp/mkgmap-extracted/63240001.RGN").expect("read RGN");
     let lbl = fs::read("/tmp/mkgmap-extracted/63240001.LBL").expect("read LBL");
-    let typ = fs::read("/home/allfab/code/forgejo/garmin-ign-bdtopo-map/pipeline/resources/typfiles/IGNBBTOP.typ").expect("read TYP");
+    let typ = fs::read("/home/allfab/code/forgejo/garmin-img-forge/pipeline/resources/typfiles/IGNBBTOP.typ").expect("read TYP");
     
     println!("TRE: {} RGN: {} LBL: {} TYP: {}", tre.len(), rgn.len(), lbl.len(), typ.len());
     

@@ -55,7 +55,7 @@ Les tests hybrides ont été la clé : en combinant le TRE+RGN de mkgmap avec le
 
 Les deux dernières corrections — le **polygone background 0x4B** et la **classification des points** — ont résolu le problème. mkgmap ajoute automatiquement un polygone de type 0x4B couvrant la zone de chaque subdivision (c'est le « fond de carte »), et classe les points normaux dans la section regular du RGN. imgforge ne faisait ni l'un ni l'autre.
 
-Cette investigation a mobilisé l'analyse du code source de mkgmap (~100 000 lignes Java), de cGPSmapper, et la comparaison structurelle de dizaines de fichiers IMG. Le détail complet est documenté dans [`docs/investigation-imgforge-alpha100.md`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/docs/investigation-imgforge-alpha100.md).
+Cette investigation a mobilisé l'analyse du code source de mkgmap (~100 000 lignes Java), de cGPSmapper, et la comparaison structurelle de dizaines de fichiers IMG. Le détail complet est documenté dans [`docs/investigation-imgforge-alpha100.md`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/src/branch/main/docs/investigation-imgforge-alpha100.md).
 
 ### Les quadrants FRANCE-SE — bataille d'avril 2026
 
@@ -110,9 +110,9 @@ Le fix Bug 2 a débloqué la qualité géométrique, mais avec `usize::MAX` de p
 
 **Workaround immédiat** : `--imgforge-jobs 2 --merge-lines`. `--merge-lines` fusionne les polylignes adjacentes (option par défaut de mkgmap, jamais activée côté imgforge jusqu'ici) — réduction significative du nombre de polylignes en mémoire. Avec 2 jobs au lieu de 4, le build FRANCE-SE tient en RAM.
 
-**Solution propre documentée** : une [tech-spec de refactor du splitter](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/src/branch/main/docs/implementation-artifacts/tech-spec-splitter-memory-reduction.md) (move-not-clone + drop parent) permettra à terme de revenir à 4 jobs. À implémenter dans une itération dédiée.
+**Solution propre documentée** : une [tech-spec de refactor du splitter](https://forgejo.allfabox.fr/allfab/garmin-img-forge/src/branch/main/docs/implementation-artifacts/tech-spec-splitter-memory-reduction.md) (move-not-clone + drop parent) permettra à terme de revenir à 4 jobs. À implémenter dans une itération dédiée.
 
-Commits de référence : [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/e6fce3f) (cell_size), [`7cef948`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/7cef948) (splitter max_depth), [`7e4a8f2`](https://forgejo.allfabox.fr/allfab/garmin-ign-bdtopo-map/commit/7e4a8f2) (`--skip-existing` publish-only).
+Commits de référence : [`e6fce3f`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/commit/e6fce3f) (cell_size), [`7cef948`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/commit/7cef948) (splitter max_depth), [`7e4a8f2`](https://forgejo.allfabox.fr/allfab/garmin-img-forge/commit/7e4a8f2) (`--skip-existing` publish-only).
 
 ---
 
