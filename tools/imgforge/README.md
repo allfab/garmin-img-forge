@@ -15,7 +15,7 @@
 - **Cartes overlay** : Support transparent avec priorité d'affichage configurable
 - **Métadonnées complètes** : Copyright, pays, région, version produit dans le TDB
 - **Résilience** : Mode `--keep-going` pour continuer malgré les tuiles en erreur
-- **Symbologie TYP** : Intégration d'un fichier `.typ` personnalisé pour le rendu des cartes
+- **Symbologie TYP** : Intégration d'un fichier `.typ` personnalisé pour le rendu des cartes, plus une sous-commande `imgforge typ` pour compiler/décompiler les fichiers TYP (texte ↔ binaire)
 - **DEM / Hill Shading** : Génération du sous-fichier DEM Garmin pour l'ombrage du relief et les profils d'altitude
   - Lecture native HGT (SRTM 1/3 arc-sec) et ASC (ESRI ASCII Grid, BDAltiv2)
   - Reprojection intégrée via proj4rs (Lambert 93, UTM, LAEA — zéro dépendance système)
@@ -32,8 +32,8 @@
 
 **Linux x64** :
 ```bash
-# Télécharger la release
-wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/download/imgforge-v0.1.0/imgforge
+# Télécharger la dernière release
+wget https://forgejo.allfabox.fr/allfab/garmin-img-forge/releases/latest/download/imgforge
 
 # Rendre exécutable
 chmod +x imgforge
@@ -74,7 +74,7 @@ cargo install --path .
 
 ```bash
 imgforge --version
-# Output: imgforge v0.1.0
+# Output: imgforge v0.4.3    (ou le tag Git courant)
 
 # Alternative : flag court
 imgforge -V
@@ -89,6 +89,7 @@ imgforge --help
 # Aide spécifique à une commande
 imgforge compile --help
 imgforge build --help
+imgforge typ --help
 ```
 
 ## Utilisation
@@ -173,6 +174,33 @@ imgforge build tiles/ --jobs 8 --dem ./srtm_hgt/
 # Build avec DEM BDAltiv2 Lambert 93
 imgforge build tiles/ --jobs 8 --dem ./bdaltiv2/ --dem-source-srs EPSG:2154
 ```
+
+### Commande `typ` : Compilation/décompilation TYP
+
+imgforge embarque un compilateur/décompilateur du format Garmin TYP, utile pour éditer la symbologie avant de l'injecter via `--typ-file`.
+
+```bash
+# Compiler un fichier texte TYP en binaire
+imgforge typ compile style.txt --output style.typ
+
+# Encodage explicite de l'entrée (auto-détecté par défaut)
+imgforge typ compile style.txt --encoding cp1252
+imgforge typ compile style.txt --encoding utf8
+
+# Décompiler un binaire TYP en texte (UTF-8 par défaut)
+imgforge typ decompile style.typ --output style.txt
+
+# Décompiler en CP1252 (compatibilité TYPViewer)
+imgforge typ decompile style.typ --encoding cp1252
+```
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `<INPUT>` | Fichier d'entrée (`.txt` pour compile, `.typ` pour decompile) | **REQUIS** |
+| `-o, --output <FILE>` | Fichier de sortie | extension swappée |
+| `--encoding <ENC>` | `auto` / `utf8` / `cp1252` | `auto` en compile, `utf8` en decompile |
+
+> **`auto`** détecte le BOM UTF-8, sinon retombe sur CP1252 (format historique TYPViewer).
 
 ## Options CLI
 
@@ -449,7 +477,7 @@ imgforge génère les sous-fichiers standards du format Garmin IMG :
 | **RGN** | Données régions (géométries : points, lignes, polygones) |
 | **LBL** | Labels (noms, encodage Format 6/9/10 — ASCII, codepage, UTF-8) |
 | **NET** | Réseau routier (topologie) |
-| **NOD** | Noeuds de routage |
+| **NOD** | Nœuds de routage |
 | **DEM** | Données d'élévation (hill shading, profils altitude sur GPS Garmin) |
 | **TYP** | Symbologie personnalisée (couleurs, motifs, icônes de points/lignes/polygones) |
 | **TDB** | Table de description (métadonnées de la carte) |
@@ -460,8 +488,9 @@ imgforge génère les sous-fichiers standards du format Garmin IMG :
 
 ```
 imgforge/
+├── build.rs                 # Injection de GIT_VERSION à la compilation
 ├── src/
-│   ├── main.rs              # Point d'entrée CLI
+│   ├── main.rs              # Orchestration compile/build/typ
 │   ├── cli.rs               # Définition des arguments CLI (clap)
 │   ├── lib.rs               # Exports publics
 │   ├── error.rs             # Types d'erreurs
@@ -472,8 +501,10 @@ imgforge/
 │   │   ├── asc.rs           # Lecteur ASC (ESRI ASCII Grid, reprojection proj4rs)
 │   │   └── converter.rs     # Interpolation bilinéaire/bicubique, resampling
 │   ├── img/
-│   │   ├── writer.rs        # Génération IMG (orchestration)
+│   │   ├── mod.rs           # Exports du module img
+│   │   ├── writer.rs        # Génération IMG (pipeline complet single-tile)
 │   │   ├── assembler.rs     # Assemblage gmapsupp multi-tile
+│   │   ├── mps.rs           # Table MPS (multi-produit, lien avec TDB)
 │   │   ├── tre.rs           # Sous-fichier TRE
 │   │   ├── rgn.rs           # Sous-fichier RGN
 │   │   ├── lbl.rs           # Sous-fichier LBL
@@ -481,32 +512,44 @@ imgforge/
 │   │   ├── nod.rs           # Sous-fichier NOD
 │   │   ├── dem.rs           # Sous-fichier DEM (encodeur Garmin, compression bitstream)
 │   │   ├── tdb.rs           # Fichier compagnon TDB
+│   │   ├── overview.rs      # Header carte d'ensemble
+│   │   ├── overview_map.rs  # Génération de la carte d'ensemble
 │   │   ├── splitter.rs      # Découpage en subdivisions
-│   │   ├── coord.rs         # Encodage coordonnées Garmin
 │   │   ├── subdivision.rs   # Gestion des subdivisions
 │   │   ├── zoom.rs          # Niveaux de zoom
+│   │   ├── coord.rs         # Encodage coordonnées Garmin
 │   │   ├── header.rs        # Header IMG
 │   │   ├── common_header.rs # Header commun sous-fichiers
 │   │   ├── directory.rs     # Répertoire FAT
 │   │   ├── filesystem.rs    # Système de fichiers IMG
-│   │   ├── bit_reader.rs    # Lecture bitstream
 │   │   ├── bit_writer.rs    # Écriture bitstream
 │   │   ├── point.rs         # Encodage POI
 │   │   ├── polyline.rs      # Encodage polylignes
 │   │   ├── polygon.rs       # Encodage polygones
-│   │   ├── line_preparer.rs # Préparation lignes
+│   │   ├── line_preparer.rs # Préparation des lignes avant écriture
+│   │   ├── line_clipper.rs  # Clipping des lignes sur les subdivisions
 │   │   ├── area.rs          # Gestion des zones
-│   │   ├── overview.rs      # Carte d'ensemble
-│   │   ├── places.rs        # Gestion des lieux
-│   │   ├── map_object.rs    # Objet carte générique
-│   │   ├── srt.rs           # Table de tri
-│   │   └── labelenc/        # Encodage labels (Format 9, CP1252)
-│   ├── parser/              # Parseur Polish Map (.mp)
-│   └── routing/             # Routage Garmin
+│   │   ├── srt.rs           # Table de tri (collation)
+│   │   └── labelenc/        # Encodage labels (Format 6/9/10, CP1252, UTF-8)
+│   ├── typ/
+│   │   ├── mod.rs           # Exports du module TYP
+│   │   ├── data.rs          # Modèle de données TYP (types point/ligne/polygone)
+│   │   ├── encoding.rs      # Détection & conversion d'encodage (auto/utf8/cp1252)
+│   │   ├── text_reader.rs   # Parseur TYP texte (.txt)
+│   │   ├── text_writer.rs   # Générateur TYP texte
+│   │   ├── binary_reader.rs # Parseur TYP binaire (.typ)
+│   │   └── binary_writer.rs # Générateur TYP binaire
+│   ├── parser/
+│   │   ├── mod.rs           # Parseur Polish Map (.mp)
+│   │   └── mp_types.rs      # Types du format .mp
+│   └── routing/
+│       ├── mod.rs           # Exports routing
+│       └── graph_builder.rs # Construction du graphe routier (NET+NOD)
 ├── tests/
-│   ├── integration_test.rs  # Tests d'intégration
-│   └── fixtures/            # Fichiers de test
-├── build.rs                 # Versioning Git automatique
+│   ├── integration_test.rs       # Tests d'intégration IMG (compile/build)
+│   ├── typ_integration_test.rs   # Tests d'intégration TYP (compile/decompile)
+│   └── fixtures/                 # Fichiers de test
+├── examples/                # Exemples (hybrid_test.rs, quick_hybrid.rs — DEM)
 └── Cargo.toml
 ```
 
