@@ -44,14 +44,27 @@ impl CommonHeader {
     }
 }
 
+/// Returns "now" in seconds-since-epoch, or the value of `SOURCE_DATE_EPOCH`
+/// if set (reproducible-builds.org standard).
+///
+/// Toute écriture de timestamp dans un sous-fichier IMG passe par ce helper :
+/// fixer `SOURCE_DATE_EPOCH=<n>` produit un IMG bit-à-bit reproductible.
+pub(crate) fn now_secs() -> u64 {
+    if let Ok(val) = std::env::var("SOURCE_DATE_EPOCH") {
+        if let Ok(n) = val.trim().parse::<u64>() {
+            return n;
+        }
+    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Write 7-byte Garmin creation time (current UTC) — mkgmap Utils.fillBufFromTime
 fn write_creation_time(buf: &mut Vec<u8>) {
-    // Use a fixed date for reproducibility; caller can override later
     // Format: year(u16 LE) + month(u8) + day(u8) + hour(u8) + min(u8) + sec(u8)
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
+    let secs = now_secs();
 
     // Simple UTC calendar calculation
     let (year, month, day, hour, min, sec) = unix_to_calendar(secs);

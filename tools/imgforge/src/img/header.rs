@@ -192,10 +192,7 @@ fn write_description(buf: &mut [u8], desc: &str) {
 }
 
 fn write_creation_date(buf: &mut [u8]) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
+    let secs = super::common_header::now_secs();
     let (year, month, day, hour, min, sec) = super::common_header::unix_to_calendar(secs);
     let yb = (year as u16).to_le_bytes();
     buf[0] = yb[0];
@@ -208,10 +205,7 @@ fn write_creation_date(buf: &mut [u8]) {
 }
 
 fn current_year_month() -> (i32, i32) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
+    let secs = super::common_header::now_secs();
     let (year, month, _, _, _, _) = super::common_header::unix_to_calendar(secs);
     (year, month)
 }
