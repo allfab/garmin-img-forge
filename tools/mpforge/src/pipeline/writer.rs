@@ -550,7 +550,12 @@ impl MpWriter {
         attributes: &HashMap<String, String>,
         field_mapping: Option<&HashMap<String, String>>,
     ) -> Result<()> {
-        for (source_key, value) in attributes {
+        // Tri des clés pour itération déterministe — pré-requis Tech-spec #2 AC0
+        // (cf. tech-spec-mpforge-multi-data-bdtopo-profiles.md R2).
+        let mut sorted_keys: Vec<&String> = attributes.keys().collect();
+        sorted_keys.sort();
+        for source_key in sorted_keys {
+            let value = &attributes[source_key];
             // Story 7.4: Transform field name using mapping if provided
             let target_key = if let Some(mapping) = field_mapping {
                 // Use mapped name if it exists, otherwise use source name as-is

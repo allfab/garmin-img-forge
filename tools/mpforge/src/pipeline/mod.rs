@@ -831,14 +831,18 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let fail_fast = error_mode == ErrorMode::FailFast || args.fail_fast;
 
     // Story 11.2 — Task 1: Refactored from 14 params to 5 params.
+    // Tech-spec #2 AC0 fix : `seq` est dérivé de la position déterministe de la
+    // tuile dans le Vec (tile_index + 1), plus de l'ordre non-déterministe
+    // d'arrivée des threads rayon. Indispensable pour AC0 (3 runs identiques).
     fn process_and_aggregate(
         tile_bounds: &TileBounds,
+        tile_index: usize,
         ctx: &TileContext<'_>,
-        seq_counter: &AtomicUsize,
+        _seq_counter: &AtomicUsize,
         progress: &Option<Arc<ProgressBar>>,
         accumulators: &SharedAccumulators,
     ) -> Result<(), TileExportError> {
-        let seq = seq_counter.fetch_add(1, Ordering::Relaxed) + 1; // 1-based
+        let seq = tile_index + 1; // 1-based, stable par position Vec
 
         let outcome = match process_single_tile(tile_bounds, ctx, seq) {
             Ok(outcome) => outcome,
@@ -862,15 +866,15 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     if args.jobs == 1 {
         // Sequential mode: no rayon overhead (AC2)
         if fail_fast {
-            for tile_bounds in &tiles {
+            for (idx, tile_bounds) in tiles.iter().enumerate() {
                 process_and_aggregate(
-                    tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
+                    tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
                 ).map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
             }
         } else {
-            for tile_bounds in &tiles {
+            for (idx, tile_bounds) in tiles.iter().enumerate() {
                 let _ = process_and_aggregate(
-                    tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
+                    tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
                 );
             }
         }
@@ -884,16 +888,16 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         let parallel_result = pool.install(|| {
             if fail_fast {
                 // Story 11.1 — Task 4: try_for_each stops on first error (AC6)
-                tiles.par_iter().try_for_each(|tile_bounds| {
+                tiles.par_iter().enumerate().try_for_each(|(idx, tile_bounds)| {
                     process_and_aggregate(
-                        tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
+                        tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
                     )
                 })
             } else {
                 // Continue mode: process all tiles, collect errors (AC5)
-                tiles.par_iter().for_each(|tile_bounds| {
+                tiles.par_iter().enumerate().for_each(|(idx, tile_bounds)| {
                     let _ = process_and_aggregate(
-                        tile_bounds, &ctx, &seq_counter, &progress, &accumulators,
+                        tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
                     );
                 });
                 Ok(())
