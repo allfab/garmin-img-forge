@@ -34,3 +34,10 @@ lto = true           # Link-Time Optimization pour réduire la taille
 codegen-units = 1    # Meilleure optimisation (mais compile plus lent)
 strip = true         # Supprime les symboles de debug
 opt-level = "z"      # Optimise pour la taille
+
+# Profil dédié au flamegraph : release optimisé + symbols debug conservés.
+# Usage : cargo build --profile profiling
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false

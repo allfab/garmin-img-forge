@@ -37,3 +37,8 @@ site/docs/telechargements/.publish.lock
 
 *.sha256
 !tests/golden/*.sha256
+
+# Aire de travail temporaire (baseline + flamegraph tech-spec #2)
+baseline-runs/
+perf.data*
+flamegraph.svg
