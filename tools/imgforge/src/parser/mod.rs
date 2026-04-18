@@ -3,6 +3,7 @@ pub mod mp_types;
 use crate::error::ParseError;
 use crate::img::coord::Coord;
 use mp_types::*;
+use std::collections::{BTreeMap, HashSet};
 
 /// Parser state machine for Polish Map (.mp) files
 pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
@@ -19,6 +20,13 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
     let mut current_point: Option<MpPoint> = None;
     let mut current_polyline: Option<MpPolyline> = None;
     let mut current_polygon: Option<MpPolygon> = None;
+    // Section-tracking for the "header not yet parsed" warning (Q6/F8) :
+    // émis une seule fois par section ouverte hors-ordre.
+    let mut header_warned_sections: HashSet<usize> = HashSet::new();
+    let mut section_open_counter: usize = 0;
+    let mut current_section_id: usize = 0;
+    // Track Data*= occurrences in current MpPoint to warn on duplicates (F14).
+    let mut current_point_data_count: u32 = 0;
 
     for (line_num, raw_line) in content.lines().enumerate() {
         let line = raw_line.trim();
@@ -55,6 +63,9 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
         }
         if line.eq_ignore_ascii_case("[POI]") || line.eq_ignore_ascii_case("[RGN10]") || line.eq_ignore_ascii_case("[POINT]") {
             section = Section::Point;
+            section_open_counter += 1;
+            current_section_id = section_open_counter;
+            current_point_data_count = 0;
             current_point = Some(MpPoint {
                 type_code: 0,
                 label: String::new(),
@@ -65,10 +76,12 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
         }
         if line.eq_ignore_ascii_case("[POLYLINE]") || line.eq_ignore_ascii_case("[RGN40]") {
             section = Section::Polyline;
+            section_open_counter += 1;
+            current_section_id = section_open_counter;
             current_polyline = Some(MpPolyline {
                 type_code: 0,
                 label: String::new(),
-                points: Vec::new(),
+                geometries: BTreeMap::new(),
                 end_level: None,
                 direction: false,
                 road_id: None,
@@ -78,10 +91,12 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
         }
         if line.eq_ignore_ascii_case("[POLYGON]") || line.eq_ignore_ascii_case("[RGN80]") {
             section = Section::Polygon;
+            section_open_counter += 1;
+            current_section_id = section_open_counter;
             current_polygon = Some(MpPolygon {
                 type_code: 0,
                 label: String::new(),
-                points: Vec::new(),
+                geometries: BTreeMap::new(),
                 end_level: None,
             });
             continue;
@@ -96,17 +111,33 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
                 Section::Header => parse_header_field(&mut header, key, value),
                 Section::Point => {
                     if let Some(ref mut p) = current_point {
-                        parse_point_field(p, key, value, line_num)?;
+                        parse_point_field(p, key, value, line_num, &mut current_point_data_count)?;
                     }
                 }
                 Section::Polyline => {
                     if let Some(ref mut pl) = current_polyline {
-                        parse_polyline_field(pl, key, value, line_num)?;
+                        parse_polyline_field(
+                            pl,
+                            key,
+                            value,
+                            line_num,
+                            &header,
+                            current_section_id,
+                            &mut header_warned_sections,
+                        )?;
                     }
                 }
                 Section::Polygon => {
                     if let Some(ref mut pg) = current_polygon {
-                        parse_polygon_field(pg, key, value, line_num)?;
+                        parse_polygon_field(
+                            pg,
+                            key,
+                            value,
+                            line_num,
+                            &header,
+                            current_section_id,
+                            &mut header_warned_sections,
+                        )?;
                     }
                 }
                 Section::None => {}
@@ -183,8 +214,64 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
     }
 }
 
-fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
-    match key.to_lowercase().as_str() {
+/// Extrait le suffixe N de "dataN". Retourne `None` si le suffixe est invalide
+/// (ex. `data`, `dataX`). Émet un warn et l'appelant doit ignorer la ligne.
+fn parse_data_suffix(key_lc: &str, line_num: usize) -> Option<u8> {
+    let suffix = &key_lc[4..];
+    if suffix.is_empty() {
+        // "data" sans index — toléré historiquement, on traite comme N=0.
+        return Some(0);
+    }
+    match suffix.parse::<u8>() {
+        Ok(n) => Some(n),
+        Err(_) => {
+            tracing::warn!(line_num = line_num + 1, key = key_lc, "Invalid DataN suffix, line ignored");
+            None
+        }
+    }
+}
+
+/// Validation Q4/Q6 : retourne `true` si la ligne `DataN` est acceptée.
+/// Émet le warn "header not yet parsed" une seule fois par section.
+fn validate_data_level(
+    n: u8,
+    header: &MpHeader,
+    section_id: usize,
+    line_num: usize,
+    warned_sections: &mut HashSet<usize>,
+) -> bool {
+    if header.levels.is_empty() {
+        // Q6/F8 : section avant `[IMG ID]` → mode tolérant, warn unique.
+        if warned_sections.insert(section_id) {
+            tracing::warn!(
+                section_id,
+                line_num = line_num + 1,
+                "section before [IMG ID] header, DataN validation skipped"
+            );
+        }
+        return true;
+    }
+    if (n as usize) >= header.levels.len() {
+        tracing::warn!(
+            line_num = line_num + 1,
+            n,
+            levels = header.levels.len(),
+            "DataN beyond declared levels, ignored"
+        );
+        return false;
+    }
+    true
+}
+
+fn parse_point_field(
+    point: &mut MpPoint,
+    key: &str,
+    value: &str,
+    line_num: usize,
+    data_count: &mut u32,
+) -> Result<(), ParseError> {
+    let key_lc = key.to_lowercase();
+    match key_lc.as_str() {
         "type" => point.type_code = parse_type(value),
         "label" => point.label = unescape_label(value),
         "endlevel" => point.end_level = value.parse().ok(),
@@ -194,14 +281,31 @@ fn parse_point_field(point: &mut MpPoint, key: &str, value: &str, line_num: usiz
             if let Some(c) = coords.first() {
                 point.coord = *c;
             }
+            *data_count += 1;
+            if *data_count > 1 {
+                tracing::warn!(
+                    line_num = line_num + 1,
+                    key = k,
+                    "MpPoint received multiple Data*= lines, only the last coord is kept"
+                );
+            }
         }
         _ => {}
     }
     Ok(())
 }
 
-fn parse_polyline_field(pl: &mut MpPolyline, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
-    match key.to_lowercase().as_str() {
+fn parse_polyline_field(
+    pl: &mut MpPolyline,
+    key: &str,
+    value: &str,
+    line_num: usize,
+    header: &MpHeader,
+    section_id: usize,
+    warned_sections: &mut HashSet<usize>,
+) -> Result<(), ParseError> {
+    let key_lc = key.to_lowercase();
+    match key_lc.as_str() {
         "type" => pl.type_code = parse_type(value),
         "label" => pl.label = unescape_label(value),
         "endlevel" => pl.end_level = value.parse().ok(),
@@ -209,22 +313,57 @@ fn parse_polyline_field(pl: &mut MpPolyline, key: &str, value: &str, line_num: u
         "roadid" => pl.road_id = value.parse().ok(),
         "routeparam" => pl.route_param = Some(value.to_string()),
         k if k.starts_with("data") => {
+            let Some(n) = parse_data_suffix(k, line_num) else {
+                return Ok(());
+            };
+            if !validate_data_level(n, header, section_id, line_num, warned_sections) {
+                return Ok(());
+            }
             let coords = parse_coords(value, line_num)?;
-            pl.points.extend(coords);
+            if pl.geometries.contains_key(&n) {
+                tracing::warn!(
+                    n,
+                    line_num = line_num + 1,
+                    "DataN redefined, previous bucket discarded"
+                );
+            }
+            pl.geometries.insert(n, coords);
         }
         _ => {}
     }
     Ok(())
 }
 
-fn parse_polygon_field(pg: &mut MpPolygon, key: &str, value: &str, line_num: usize) -> Result<(), ParseError> {
-    match key.to_lowercase().as_str() {
+fn parse_polygon_field(
+    pg: &mut MpPolygon,
+    key: &str,
+    value: &str,
+    line_num: usize,
+    header: &MpHeader,
+    section_id: usize,
+    warned_sections: &mut HashSet<usize>,
+) -> Result<(), ParseError> {
+    let key_lc = key.to_lowercase();
+    match key_lc.as_str() {
         "type" => pg.type_code = parse_type(value),
         "label" => pg.label = unescape_label(value),
         "endlevel" => pg.end_level = value.parse().ok(),
         k if k.starts_with("data") => {
+            let Some(n) = parse_data_suffix(k, line_num) else {
+                return Ok(());
+            };
+            if !validate_data_level(n, header, section_id, line_num, warned_sections) {
+                return Ok(());
+            }
             let coords = parse_coords(value, line_num)?;
-            pg.points.extend(coords);
+            if pg.geometries.contains_key(&n) {
+                tracing::warn!(
+                    n,
+                    line_num = line_num + 1,
+                    "DataN redefined, previous bucket discarded"
+                );
+            }
+            pg.geometries.insert(n, coords);
         }
         _ => {}
     }
@@ -373,9 +512,9 @@ Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
         assert_eq!(mp.points.len(), 1);
         assert_eq!(mp.points[0].label, "Test POI");
         assert_eq!(mp.polylines.len(), 1);
-        assert_eq!(mp.polylines[0].points.len(), 2);
+        assert_eq!(mp.polylines[0].geometries[&0].len(), 2);
         assert_eq!(mp.polygons.len(), 1);
-        assert_eq!(mp.polygons[0].points.len(), 4);
+        assert_eq!(mp.polygons[0].geometries[&0].len(), 4);
     }
 
     #[test]
@@ -496,5 +635,152 @@ Data0=(48.57,7.75),(48.58,7.76)
         let content = "[POLYLINE]\nType=0x06\nLabel=Main Street\nData0=(48.57,7.75),(48.58,7.76)\n[END]\n";
         let mp = parse_mp(content).unwrap();
         assert_eq!(mp.polylines[0].label, "Main Street");
+    }
+
+    // --- multi-Data: AC1, AC2, AC3, AC10, AC12, F14 ---
+
+    #[test]
+    fn test_parse_multi_data_polyline_distinct_buckets() {
+        // AC2: Data0 et Data1 stockés dans buckets distincts (pas concat).
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,18
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Data0=(48.0,7.0),(48.1,7.1)
+Data1=(48.0,7.0),(48.2,7.2),(48.3,7.3)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].geometries.len(), 2);
+        assert_eq!(mp.polylines[0].geometries[&0].len(), 2);
+        assert_eq!(mp.polylines[0].geometries[&1].len(), 3);
+    }
+
+    #[test]
+    fn test_parse_data_n_out_of_range_ignored() {
+        // AC3: DataN avec N >= levels.len() est ignoré.
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22,20
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Data0=(48.0,7.0),(48.1,7.1)
+Data5=(48.0,7.0),(48.2,7.2)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert!(!mp.polylines[0].geometries.contains_key(&5));
+        assert_eq!(mp.polylines[0].geometries.len(), 1);
+        assert_eq!(mp.polylines[0].geometries[&0].len(), 2);
+    }
+
+    #[test]
+    fn test_parse_data_n_redefined_replaces_not_concat() {
+        // AC12 / Q5 / F9: deux Data0 dans même section → remplacement (pas concat).
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Data0=(48.0,7.0),(48.1,7.1)
+Data0=(49.0,8.0),(49.1,8.1)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        let bucket = &mp.polylines[0].geometries[&0];
+        assert_eq!(bucket.len(), 2, "should be 2 (replace), not 4 (concat)");
+        // Vérifier que c'est bien la 2e ligne qui a gagné.
+        assert!((bucket[0].lat_degrees() - 49.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_polyline_before_header_tolerant() {
+        // AC10 / Q6 / F8: section avant [IMG ID] → bucket peuplé, mode tolérant.
+        let content = r#"
+[POLYLINE]
+Type=0x06
+Data0=(48.0,7.0),(48.1,7.1)
+Data1=(48.0,7.0),(48.2,7.2)
+[END]
+[IMG ID]
+ID=1
+Levels=24,22
+[END-IMG ID]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines.len(), 1);
+        assert!(mp.polylines[0].geometries.contains_key(&0));
+        assert!(mp.polylines[0].geometries.contains_key(&1));
+    }
+
+    #[test]
+    fn test_parse_data_n_mixed_order() {
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22,20
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Data2=(48.0,7.0),(48.1,7.1)
+Data0=(48.0,7.0),(48.1,7.1),(48.2,7.2)
+Data1=(48.0,7.0),(48.2,7.2)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].geometries.len(), 3);
+        assert_eq!(mp.polylines[0].geometries[&0].len(), 3);
+        assert_eq!(mp.polylines[0].geometries[&1].len(), 2);
+        assert_eq!(mp.polylines[0].geometries[&2].len(), 2);
+    }
+
+    #[test]
+    fn test_parse_polygon_multi_data_buckets() {
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,18
+[END-IMG ID]
+[POLYGON]
+Type=0x03
+Data0=(48.0,7.0),(48.1,7.0),(48.1,7.1),(48.0,7.1)
+Data1=(48.0,7.0),(48.1,7.1),(48.0,7.1)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polygons[0].geometries.len(), 2);
+        assert_eq!(mp.polygons[0].geometries[&0].len(), 4);
+        assert_eq!(mp.polygons[0].geometries[&1].len(), 3);
+    }
+
+    #[test]
+    fn test_parse_data0_only_backcompat() {
+        // AC1: rétrocompat — seul Data0 → bucket 0 unique.
+        let content = "[POLYLINE]\nType=0x06\nData0=(48.0,7.0),(48.1,7.1)\n[END]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].geometries.len(), 1);
+        assert!(mp.polylines[0].geometries.contains_key(&0));
+    }
+
+    #[test]
+    fn test_parse_point_multiple_data_keeps_last() {
+        // F14: MpPoint avec deux Data*= → coord écrasée par la dernière.
+        let content = r#"
+[POI]
+Type=0x2C00
+Data0=(48.0,7.0)
+Data0=(49.0,8.0)
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.points.len(), 1);
+        assert!((mp.points[0].coord.lat_degrees() - 49.0).abs() < 0.01);
     }
 }

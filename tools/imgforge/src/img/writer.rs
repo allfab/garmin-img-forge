@@ -578,9 +578,12 @@ fn filter_features_for_level(
 
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
-        .filter(|(_, l)| !l.points.is_empty() && expanded.contains_coord(&l.points[0]))
-        .map(|(i, l)| {
-            let mut pts = l.points.clone();
+        .filter_map(|(i, l)| {
+            let geom = l.geometry_for_level(level);
+            if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
+                return None;
+            }
+            let mut pts = geom.to_vec();
             if let Some(eps) = line_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
                 let simplified = douglas_peucker(&coords, eps);
@@ -588,7 +591,7 @@ fn filter_features_for_level(
                     pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
                 }
             }
-            SplitLine { mp_index: i, points: pts }
+            Some(SplitLine { mp_index: i, points: pts })
         })
         .collect();
 
@@ -596,16 +599,19 @@ fn filter_features_for_level(
 
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
-        .filter(|(_, s)| !s.points.is_empty() && expanded.contains_coord(&s.points[0]))
         .filter_map(|(i, s)| {
+            let geom = s.geometry_for_level(level);
+            if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
+                return None;
+            }
             // Min-size filtering
             if let Some(min) = min_size {
-                let coords: Vec<(i32, i32)> = s.points.iter().map(|c| (c.latitude(), c.longitude())).collect();
+                let coords: Vec<(i32, i32)> = geom.iter().map(|c| (c.latitude(), c.longitude())).collect();
                 if compute_area(&coords) < min as f64 {
                     return None;
                 }
             }
-            let mut pts = s.points.clone();
+            let mut pts = geom.to_vec();
             // Polygon simplification
             if let Some(eps) = poly_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
@@ -985,12 +991,12 @@ fn compute_bounds(mp: &MpFile) -> Result<Area, ImgError> {
         update_bounds(&mut min_lat, &mut max_lat, &mut min_lon, &mut max_lon, &p.coord);
     }
     for pl in &mp.polylines {
-        for c in &pl.points {
+        for c in pl.all_coords() {
             update_bounds(&mut min_lat, &mut max_lat, &mut min_lon, &mut max_lon, c);
         }
     }
     for pg in &mp.polygons {
-        for c in &pg.points {
+        for c in pg.all_coords() {
             update_bounds(&mut min_lat, &mut max_lat, &mut min_lon, &mut max_lon, c);
         }
     }
@@ -1138,6 +1144,15 @@ fn pre_compute_routing(
 
     for (i, mp_line) in mp.polylines.iter().enumerate() {
         if mp_line.road_id.is_some() {
+            // Routing strict Data0 (F4) : pas de fallback Politique B.
+            let Some(routing_geom) = mp_line.routing_geometry() else {
+                tracing::warn!(
+                    road_id = ?mp_line.road_id,
+                    "routable polyline has no Data0 bucket, skipping routing entry"
+                );
+                continue;
+            };
+
             let params = if let Some(ref rp) = mp_line.route_param {
                 graph_builder::parse_route_param(rp)
             } else {
@@ -1146,12 +1161,12 @@ fn pre_compute_routing(
 
             road_infos.push(RoadInfo {
                 label_offset: line_labels[i],
-                road_length: estimate_road_length(&mp_line.points),
+                road_length: estimate_road_length(routing_geom),
                 params: params.clone(),
             });
 
             let road_idx = road_infos.len() - 1;
-            road_polylines.push((mp_line.points.clone(), road_idx, params.clone()));
+            road_polylines.push((routing_geom.to_vec(), road_idx, params.clone()));
             road_params.push(params);
             mp_indices.push(i);
         }
@@ -1309,6 +1324,87 @@ fn find_first_route_node_offset(
 mod tests {
     use super::*;
     use crate::parser;
+
+    // --- multi-level Data: AC8 — sélection par niveau dans filter_features_for_level ---
+    fn mp_with_multi_data(content: &str) -> MpFile {
+        parser::parse_mp(content).unwrap()
+    }
+
+    #[test]
+    fn filter_features_selects_correct_bucket_per_level() {
+        // Polyline avec Data0 (3pts) et Data2 (2pts) ; demande niveaux 0, 1, 2.
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22,20
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+EndLevel=2
+Data0=(48.0,7.0),(48.1,7.1),(48.2,7.2)
+Data2=(48.0,7.0),(48.2,7.2)
+[END]
+"#;
+        let mp = mp_with_multi_data(content);
+        let bounds = compute_bounds(&mp).unwrap();
+
+        let (_, lines0, _) = filter_features_for_level(&mp, 0, &bounds);
+        assert_eq!(lines0.len(), 1);
+        assert_eq!(lines0[0].points.len(), 3, "level 0 → bucket exact Data0");
+
+        let (_, lines1, _) = filter_features_for_level(&mp, 1, &bounds);
+        assert_eq!(lines1.len(), 1);
+        assert_eq!(lines1[0].points.len(), 2, "level 1 → fallback Politique B vers Data2");
+
+        let (_, lines2, _) = filter_features_for_level(&mp, 2, &bounds);
+        assert_eq!(lines2.len(), 1);
+        assert_eq!(lines2[0].points.len(), 2, "level 2 → bucket exact Data2");
+    }
+
+    #[test]
+    fn filter_features_data0_only_applies_to_all_levels() {
+        // Polyline avec seulement Data0 → fallback "plus détaillé" pour tous les niveaux.
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22,20
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+EndLevel=2
+Data0=(48.0,7.0),(48.1,7.1),(48.2,7.2),(48.3,7.3)
+[END]
+"#;
+        let mp = mp_with_multi_data(content);
+        let bounds = compute_bounds(&mp).unwrap();
+        for lvl in 0..=2 {
+            let (_, lines, _) = filter_features_for_level(&mp, lvl, &bounds);
+            assert_eq!(lines.len(), 1, "level {} should include the polyline", lvl);
+            // niveau 0 : pas de DP. Niveaux > 0 : DP auto peut réduire.
+            assert!(!lines[0].points.is_empty());
+        }
+    }
+
+    #[test]
+    fn compute_bounds_includes_all_buckets() {
+        // Bounds doit englober Data0 ET Data1 même si géométries différentes.
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Data0=(48.0,7.0),(48.1,7.1)
+Data1=(50.0,9.0),(50.1,9.1)
+[END]
+"#;
+        let mp = mp_with_multi_data(content);
+        let bounds = compute_bounds(&mp).unwrap();
+        // max_lat doit refléter le bucket Data1 (50.x).
+        assert!(bounds.max_lat() > Coord::from_degrees(49.0, 8.0).latitude(),
+            "bounds must include Data1 bucket coords");
+    }
 
     #[test]
     fn test_build_minimal_img() {

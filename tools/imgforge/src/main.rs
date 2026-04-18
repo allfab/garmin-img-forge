@@ -513,12 +513,12 @@ fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds 
         update(&pt.coord);
     }
     for pl in &mp.polylines {
-        for coord in &pl.points {
+        for coord in pl.geometry_for_level(0) {
             update(coord);
         }
     }
     for pg in &mp.polygons {
-        for coord in &pg.points {
+        for coord in pg.geometry_for_level(0) {
             update(coord);
         }
     }

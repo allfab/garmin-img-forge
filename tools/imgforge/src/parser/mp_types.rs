@@ -1,6 +1,7 @@
 // Types for Polish Map (.mp) file format
 
 use crate::img::coord::Coord;
+use std::collections::BTreeMap;
 
 /// Complete parsed .mp file
 #[derive(Debug, Clone)]
@@ -76,11 +77,42 @@ pub struct MpPoint {
 pub struct MpPolyline {
     pub type_code: u32,
     pub label: String,
-    pub points: Vec<Coord>,
+    /// Géométries indexées par niveau Garmin (`N` de `DataN=`).
+    /// 0 = niveau le plus détaillé. Spec MP §4.4.3.1.
+    pub geometries: BTreeMap<u8, Vec<Coord>>,
     pub end_level: Option<u8>,
     pub direction: bool,
     pub road_id: Option<u32>,
     pub route_param: Option<String>,
+}
+
+impl MpPolyline {
+    /// Politique B (rendu) : bucket exact, sinon plus grossier (N > level),
+    /// sinon plus détaillé (N < level), sinon vide.
+    pub fn geometry_for_level(&self, level: u8) -> &[Coord] {
+        if let Some(g) = self.geometries.get(&level) {
+            return g.as_slice();
+        }
+        if let Some(next_level) = level.checked_add(1) {
+            if let Some((_, g)) = self.geometries.range(next_level..).next() {
+                return g.as_slice();
+            }
+        }
+        if let Some((_, g)) = self.geometries.range(..level).next_back() {
+            return g.as_slice();
+        }
+        &[]
+    }
+
+    /// Union de tous les buckets (pour `compute_bounds`).
+    pub fn all_coords(&self) -> impl Iterator<Item = &Coord> {
+        self.geometries.values().flat_map(|v| v.iter())
+    }
+
+    /// Routing : strict `Data0`, sans fallback. `None` ⇒ feature exclue du graphe.
+    pub fn routing_geometry(&self) -> Option<&[Coord]> {
+        self.geometries.get(&0).map(Vec::as_slice)
+    }
 }
 
 /// [POLYGON] section
@@ -88,6 +120,122 @@ pub struct MpPolyline {
 pub struct MpPolygon {
     pub type_code: u32,
     pub label: String,
-    pub points: Vec<Coord>,
+    pub geometries: BTreeMap<u8, Vec<Coord>>,
     pub end_level: Option<u8>,
+}
+
+impl MpPolygon {
+    pub fn geometry_for_level(&self, level: u8) -> &[Coord] {
+        if let Some(g) = self.geometries.get(&level) {
+            return g.as_slice();
+        }
+        if let Some(next_level) = level.checked_add(1) {
+            if let Some((_, g)) = self.geometries.range(next_level..).next() {
+                return g.as_slice();
+            }
+        }
+        if let Some((_, g)) = self.geometries.range(..level).next_back() {
+            return g.as_slice();
+        }
+        &[]
+    }
+
+    pub fn all_coords(&self) -> impl Iterator<Item = &Coord> {
+        self.geometries.values().flat_map(|v| v.iter())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(lat: i32, lon: i32) -> Coord {
+        Coord::new(lat, lon)
+    }
+
+    fn pl_with(buckets: &[(u8, Vec<Coord>)]) -> MpPolyline {
+        let mut g = BTreeMap::new();
+        for (n, v) in buckets {
+            g.insert(*n, v.clone());
+        }
+        MpPolyline {
+            type_code: 0,
+            label: String::new(),
+            geometries: g,
+            end_level: None,
+            direction: false,
+            road_id: None,
+            route_param: None,
+        }
+    }
+
+    fn pg_with(buckets: &[(u8, Vec<Coord>)]) -> MpPolygon {
+        let mut g = BTreeMap::new();
+        for (n, v) in buckets {
+            g.insert(*n, v.clone());
+        }
+        MpPolygon {
+            type_code: 0,
+            label: String::new(),
+            geometries: g,
+            end_level: None,
+        }
+    }
+
+    #[test]
+    fn geometry_for_level_exact_bucket() {
+        let pl = pl_with(&[(0, vec![c(1, 1), c(2, 2)]), (2, vec![c(1, 1)])]);
+        assert_eq!(pl.geometry_for_level(0).len(), 2);
+        assert_eq!(pl.geometry_for_level(2).len(), 1);
+    }
+
+    #[test]
+    fn geometry_for_level_fallback_coarser_first() {
+        // Politique B: niveau 1 absent, on prend D'ABORD le plus grossier disponible (2).
+        let pl = pl_with(&[(0, vec![c(1, 1), c(2, 2), c(3, 3)]), (2, vec![c(1, 1), c(3, 3)])]);
+        assert_eq!(pl.geometry_for_level(1).len(), 2, "fallback to coarser N=2");
+    }
+
+    #[test]
+    fn geometry_for_level_fallback_to_finer_when_no_coarser() {
+        // niveau 3 demandé, max disponible est 2 → retombe sur 2.
+        let pl = pl_with(&[(0, vec![c(1, 1), c(2, 2)]), (2, vec![c(1, 1)])]);
+        assert_eq!(pl.geometry_for_level(3).len(), 1);
+    }
+
+    #[test]
+    fn geometry_for_level_empty() {
+        let pl = pl_with(&[]);
+        assert!(pl.geometry_for_level(0).is_empty());
+    }
+
+    #[test]
+    fn geometry_for_level_only_n2_request_n0() {
+        // Demande niveau 0, seul bucket 2 présent → fallback vers plus grossier (2).
+        let pl = pl_with(&[(2, vec![c(1, 1), c(2, 2)])]);
+        assert_eq!(pl.geometry_for_level(0).len(), 2);
+    }
+
+    #[test]
+    fn routing_geometry_strict_data0() {
+        let pl_with_d0 = pl_with(&[(0, vec![c(1, 1), c(2, 2)])]);
+        assert!(pl_with_d0.routing_geometry().is_some());
+        let pl_no_d0 = pl_with(&[(2, vec![c(1, 1)])]);
+        assert!(pl_no_d0.routing_geometry().is_none());
+    }
+
+    #[test]
+    fn all_coords_unions_all_buckets() {
+        let pl = pl_with(&[(0, vec![c(1, 1), c(2, 2)]), (2, vec![c(3, 3)])]);
+        assert_eq!(pl.all_coords().count(), 3);
+    }
+
+    #[test]
+    fn geometry_for_level_polygon_symmetric() {
+        let pg = pg_with(&[(0, vec![c(1, 1), c(2, 2), c(3, 3)]), (2, vec![c(1, 1), c(3, 3)])]);
+        assert_eq!(pg.geometry_for_level(0).len(), 3);
+        assert_eq!(pg.geometry_for_level(1).len(), 2);
+        assert_eq!(pg.geometry_for_level(2).len(), 2);
+        assert_eq!(pg.all_coords().count(), 5);
+    }
 }
