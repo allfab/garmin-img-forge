@@ -1031,7 +1031,11 @@ run_imgforge() {
         --copyright-message "$COPYRIGHT"
     )
 
-    [[ "$WITH_ROUTE" == true ]] && cmd+=(--route)
+    if [[ "$WITH_ROUTE" == true ]]; then
+        cmd+=(--route)
+    else
+        cmd+=(--no-route)
+    fi
     [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
 
     if [[ -n "$REDUCE_POINT_DENSITY" || -n "$SIMPLIFY_POLYGONS" || -n "$MIN_SIZE_POLYGON" || "$MERGE_LINES" == true ]]; then
