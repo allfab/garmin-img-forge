@@ -34,3 +34,6 @@ pipeline/resources/typfiles/xIGNBBTOP.typ
 
 # Publication site (verrou runtime)
 site/docs/telechargements/.publish.lock
+
+*.sha256
+!tests/golden/*.sha256
