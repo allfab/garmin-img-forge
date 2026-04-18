@@ -1,5 +1,5 @@
 site_name = "GARMIN IMG FORGE"
-site_url = "https://maps.garmin.allfabox.fr"
+site_url = "https://imgforge.garmin.allfabox.fr"
 site_description = "Cartes topographiques Garmin générées à partir des données IGN BD TOPO ouvertes"
 site_author = "allfab"
 repo_url = "https://github.com/allfab/garmin-img-forge"

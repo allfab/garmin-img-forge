@@ -45,7 +45,7 @@ jobs:
           zensical build
 
       - name: Write CNAME
-        run: echo "maps.garmin.allfabox.fr" > site/_site/CNAME
+        run: echo "imgforge.garmin.allfabox.fr" > site/_site/CNAME
 
       - uses: actions/configure-pages@v5
 

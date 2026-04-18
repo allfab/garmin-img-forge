@@ -1,6 +1,6 @@
 # Site de documentation — GARMIN IMG FORGE
 
-Site de documentation du projet, accessible sur [maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr).
+Site de documentation du projet, accessible sur [imgforge.garmin.allfabox.fr](https://imgforge.garmin.allfabox.fr).
 
 ## Stack technique
 

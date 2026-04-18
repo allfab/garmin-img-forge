@@ -7,7 +7,7 @@
 <h4 align="center">Chaîne d'outils open source pour transformer des données SIG vectorielles en cartes Garmin (<code>.img</code>) téléchargeables sur GPS.<br />Configuration déclarative YAML — aucune étape manuelle, du SIG au terrain.</h4>
 
 <p align="center">
-  <a href="https://maps.garmin.allfabox.fr/" target="_blank"><img src="https://img.shields.io/badge/Site-maps.garmin.allfabox.fr-526CFE?style=for-the-badge&logoColor=white" /></a>
+  <a href="https://imgforge.garmin.allfabox.fr/" target="_blank"><img src="https://img.shields.io/badge/Site-imgforge.garmin.allfabox.fr-526CFE?style=for-the-badge&logoColor=white" /></a>
   <a href="https://www.rust-lang.org/" target="_blank"><img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" /></a>
   <a href="https://gdal.org/" target="_blank"><img src="https://img.shields.io/badge/GDAL-5CAE58?style=for-the-badge&logo=osgeo&logoColor=white" /></a>
   <a href="https://woodpecker-ci.org/" target="_blank"><img src="https://img.shields.io/badge/Woodpecker_CI-4CAF50?style=for-the-badge&logo=woodpeckerci&logoColor=white" /></a>
@@ -84,7 +84,7 @@ Données SIG  ──►  mpforge  ──►  tuiles .mp  ──►  imgforge  �
 
 # Site de documentation
 
-Le site **[maps.garmin.allfabox.fr](https://maps.garmin.allfabox.fr)** documente le projet et met à disposition les cartes Garmin téléchargeables.
+Le site **[imgforge.garmin.allfabox.fr](https://imgforge.garmin.allfabox.fr)** documente le projet et met à disposition les cartes Garmin téléchargeables.
 
 - Généré avec **[Zensical](https://zensical.org/)** (successeur de MkDocs Material)
 - Déployé via **GitHub Pages** (miroir public) + **Woodpecker** sur l'infra LXC interne en parallèle
