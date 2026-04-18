@@ -70,7 +70,7 @@ fn try_ci_tag() -> Option<String> {
 
 fn try_git_describe() -> Option<String> {
     let output = Command::new("git")
-        .args(["describe", "--tags", "--always", "--dirty"])
+        .args(["describe", "--tags", "--always", "--dirty", "--match", "mpforge-v*"])
         .output()
         .ok()?;
 

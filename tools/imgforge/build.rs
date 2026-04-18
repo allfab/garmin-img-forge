@@ -46,7 +46,7 @@ fn try_ci_tag() -> Option<String> {
 
 fn try_git_describe() -> Option<String> {
     let output = Command::new("git")
-        .args(["describe", "--tags", "--always", "--dirty"])
+        .args(["describe", "--tags", "--always", "--dirty", "--match", "imgforge-v*"])
         .output()
         .ok()?;
     if !output.status.success() {
