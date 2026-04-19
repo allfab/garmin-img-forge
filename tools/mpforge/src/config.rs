@@ -4,7 +4,7 @@ use crate::pipeline::tile_naming;
 use anyhow::Context;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -40,6 +40,18 @@ pub struct Config {
     /// the pipeline robust against such malformed sources.
     #[serde(default)]
     pub default_dedup_by_field: Option<String>,
+    /// Tech-spec #2 Task 7: optional path to an external YAML catalog of
+    /// multi-level generalization profiles, resolved relative to this
+    /// `sources.yaml`. The file's root key is `profiles:` mapping
+    /// `source_layer → GeneralizeProfile`.
+    #[serde(default)]
+    pub generalize_profiles_path: Option<PathBuf>,
+    /// Tech-spec #2 Task 7: resolved profile map, built by `load_config` from
+    /// the inline `generalize:` fields and the external file (when present).
+    /// Keyed by `source_layer` (BDTOPO layer name resolved via
+    /// `effective_layer_name`). Iteration order is deterministic (BTreeMap).
+    #[serde(skip, default)]
+    pub resolved_profile_map: BTreeMap<String, GeneralizeProfile>,
 }
 
 fn default_version() -> u32 {
@@ -113,6 +125,147 @@ pub struct GeneralizeConfig {
 
 fn default_iterations() -> usize {
     1
+}
+
+/// Tech-spec #2 Task 6: single level inside a [`GeneralizeProfile`].
+///
+/// `n` is the index of the detail level in `MpHeader.levels` (cf. Tech-spec #1
+/// Q3): `n=0` is the most detailed geometry emitted as `Data0=`, `n=2` would
+/// be emitted as `Data2=`, etc. The Polish Map writer emits one `Data<n>=`
+/// line per level present in the profile.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LevelSpec {
+    pub n: u8,
+    #[serde(default)]
+    pub smooth: Option<String>,
+    #[serde(default = "default_iterations")]
+    pub iterations: usize,
+    #[serde(default)]
+    pub simplify: Option<f64>,
+}
+
+/// Tech-spec #2 Task 6: conditional dispatch by feature attribute.
+///
+/// When `feature.attributes[field]` ∈ `values`, the profile's default `levels`
+/// are overridden by the clause's `levels`. Clauses are evaluated in YAML
+/// order; first match wins.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct WhenClause {
+    pub field: String,
+    pub values: Vec<String>,
+    pub levels: Vec<LevelSpec>,
+}
+
+/// Tech-spec #2 Task 6: per-`source_layer` generalization profile.
+///
+/// A profile declares a list of detail levels (`levels`) that become the
+/// default, and optional `when` clauses to override the default based on a
+/// feature attribute value. Each level generates one additional OGR geom
+/// field in the `.mp` output (except `n=0`, which replaces the primary
+/// geometry — cf. `geometry_smoother::apply_profile`).
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+pub struct GeneralizeProfile {
+    #[serde(default)]
+    pub levels: Vec<LevelSpec>,
+    #[serde(default)]
+    pub when: Vec<WhenClause>,
+}
+
+/// Upper bound on `LevelSpec.iterations` (Chaikin 5× ≈ 32× vertices).
+const MAX_PROFILE_ITERATIONS: usize = 5;
+/// Upper bound on `LevelSpec.simplify` (≈110 m in WGS84 degrees).
+const MAX_PROFILE_SIMPLIFY: f64 = 0.001;
+
+impl LevelSpec {
+    /// Tech-spec #2 Task 6: per-level range validation (F15 adversarial
+    /// review). `iterations ∈ [0, 5]` (ergonomic bound), `simplify ∈ [0, 0.001]`
+    /// (anti-destruction guard). Fail-fast at `load_config`.
+    pub fn validate(&self, context: &str) -> anyhow::Result<()> {
+        if let Some(ref algo) = self.smooth {
+            if !algo.is_empty() && algo != "chaikin" {
+                anyhow::bail!(
+                    "{context}: unknown smooth algorithm '{algo}' (supported: 'chaikin')"
+                );
+            }
+        }
+        if self.iterations > MAX_PROFILE_ITERATIONS {
+            anyhow::bail!(
+                "{context}: iterations={} out of range [0, {}]",
+                self.iterations,
+                MAX_PROFILE_ITERATIONS
+            );
+        }
+        if let Some(s) = self.simplify {
+            if !(s.is_finite() && (0.0..=MAX_PROFILE_SIMPLIFY).contains(&s)) {
+                anyhow::bail!(
+                    "{context}: simplify={} out of range [0.0, {}]",
+                    s,
+                    MAX_PROFILE_SIMPLIFY
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+impl GeneralizeProfile {
+    /// Validate every level in the profile (default + each `when` clause).
+    pub fn validate(&self, context: &str) -> anyhow::Result<()> {
+        for (i, lvl) in self.levels.iter().enumerate() {
+            lvl.validate(&format!("{context}.levels[{i}]"))?;
+        }
+        for (wi, w) in self.when.iter().enumerate() {
+            if w.values.is_empty() {
+                anyhow::bail!(
+                    "{context}.when[{wi}]: 'values' must list at least one attribute value"
+                );
+            }
+            for (i, lvl) in w.levels.iter().enumerate() {
+                lvl.validate(&format!("{context}.when[{wi}].levels[{i}]"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Return true when any level set visible to the profile (default or any
+    /// `when` branch) contains `LevelSpec { n: 0, .. }`. Used by Task 7
+    /// validation F4 (routable layers must always produce `Data0`).
+    pub fn every_branch_has_n0(&self) -> bool {
+        let default_ok = self.levels.is_empty() || self.levels.iter().any(|l| l.n == 0);
+        let when_ok = self.when.iter().all(|w| w.levels.iter().any(|l| l.n == 0));
+        default_ok && when_ok
+    }
+
+    /// Maximum `n` referenced anywhere in the profile. Used by Task 7 to
+    /// validate `header.levels.len() >= max_n + 1` (AC18) and by the writer
+    /// to size `MAX_DATA_LEVEL`.
+    pub fn max_level_index(&self) -> Option<u8> {
+        let default_max = self.levels.iter().map(|l| l.n).max();
+        let when_max = self.when.iter().flat_map(|w| w.levels.iter().map(|l| l.n)).max();
+        match (default_max, when_max) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+}
+
+impl From<GeneralizeConfig> for GeneralizeProfile {
+    /// Tech-spec #2 Task 6: convert a legacy inline `generalize:` into a
+    /// single-level profile (`n=0`). This keeps the downstream pipeline on a
+    /// single code path (cf. `geometry_smoother::apply_profile`).
+    fn from(c: GeneralizeConfig) -> Self {
+        GeneralizeProfile {
+            levels: vec![LevelSpec {
+                n: 0,
+                smooth: c.smooth,
+                iterations: c.iterations,
+                simplify: c.simplify,
+            }],
+            when: vec![],
+        }
+    }
 }
 
 /// Configuration for spatial filtering using a reference geometry layer.
@@ -316,7 +469,95 @@ impl InputSource {
     }
 }
 
+/// Tech-spec #2 Task 7: external YAML root for the generalization profile
+/// catalog. The file lives beside (or above) `sources.yaml` and is referenced
+/// via `Config.generalize_profiles_path`.
+#[derive(Debug, Deserialize, Default)]
+pub struct GeneralizeProfilesFile {
+    #[serde(default)]
+    pub profiles: BTreeMap<String, GeneralizeProfile>,
+}
+
 impl Config {
+    /// Tech-spec #2 Task 7: build the unified profile map from inline
+    /// `generalize:` entries and the external profiles file. Resolves the
+    /// relative path against `base_dir` (usually the directory containing
+    /// `sources.yaml`). Fails fast on:
+    ///   - conflict between an inline profile and an external profile on the
+    ///     same layer name (motivates F4 semantics clarity);
+    ///   - per-level out-of-range values (Task 6 bounds);
+    ///   - routable layers (`is_routable_layer`) that do not emit `n: 0` in
+    ///     at least every reachable branch (F4 Tech-spec #1).
+    pub fn build_profile_map(
+        &self,
+        base_dir: &Path,
+    ) -> anyhow::Result<BTreeMap<String, GeneralizeProfile>> {
+        let mut map: BTreeMap<String, GeneralizeProfile> = BTreeMap::new();
+        let mut inline_origins: BTreeMap<String, String> = BTreeMap::new();
+
+        // 1) Inline profiles — converted to GeneralizeProfile with a single
+        //    level at n=0 (cf. `impl From<GeneralizeConfig>`).
+        for input in &self.inputs {
+            if let Some(ref inline) = input.generalize {
+                let Some(layer_name) = input.effective_layer_name() else { continue; };
+                let origin = input
+                    .path
+                    .clone()
+                    .or_else(|| input.connection.clone())
+                    .unwrap_or_else(|| "<unknown>".to_string());
+                let profile: GeneralizeProfile = inline.clone().into();
+                inline_origins.insert(layer_name.clone(), origin);
+                map.insert(layer_name, profile);
+            }
+        }
+
+        // 2) External catalog — merge with inline. Reject conflicts.
+        if let Some(ref rel) = self.generalize_profiles_path {
+            let full = if rel.is_absolute() {
+                rel.clone()
+            } else {
+                base_dir.join(rel)
+            };
+            let content = std::fs::read_to_string(&full).with_context(|| {
+                format!(
+                    "failed to read generalize_profiles_path: {}",
+                    full.display()
+                )
+            })?;
+            let file: GeneralizeProfilesFile = serde_yml::from_str(&content).with_context(|| {
+                format!(
+                    "failed to parse generalize-profiles YAML: {}",
+                    full.display()
+                )
+            })?;
+            for (layer, profile) in file.profiles {
+                if let Some(inline_path) = inline_origins.get(&layer) {
+                    anyhow::bail!(
+                        "generalize profile conflict for layer '{layer}': \
+                         inline in sources.yaml (input '{inline_path}') AND defined in {}",
+                        full.display()
+                    );
+                }
+                map.insert(layer, profile);
+            }
+        }
+
+        // 3) Per-profile validation + F4 routing guard.
+        for (layer, profile) in &map {
+            profile.validate(&format!("generalize profile '{}'", layer))?;
+            if crate::pipeline::route_params::is_routable_layer(layer)
+                && !profile.every_branch_has_n0()
+            {
+                anyhow::bail!(
+                    "routable layer '{layer}' profile missing n:0 \
+                     (required for routing, cf. Tech-spec #1 F4)"
+                );
+            }
+        }
+
+        Ok(map)
+    }
+
     /// Build a map of layer_name → GeneralizeConfig for all inputs that have generalization configured.
     ///
     /// The layer name is resolved as: `layer_alias` if set, otherwise the filename stem from `path`.
@@ -705,6 +946,14 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     config
         .validate()
         .with_context(|| format!("Config validation failed for: {}", path.display()))?;
+
+    // Tech-spec #2 Task 7: resolve external generalize profiles (if any) and
+    // merge with inline entries. Fails fast on conflicts, invalid bounds, or
+    // routable-layer violations (F4). Stored on the Config for downstream use.
+    let base_dir = path.parent().unwrap_or(Path::new("."));
+    config.resolved_profile_map = config.build_profile_map(base_dir).with_context(|| {
+        format!("generalize profile resolution failed for: {}", path.display())
+    })?;
 
     // Log source type for each input
     for input in &config.inputs {
@@ -1422,6 +1671,7 @@ output:
                 layer_alias: None,
                 generalize: None,
                 spatial_filter: None,
+                dedup_by_field: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -1435,6 +1685,8 @@ output:
             header: None,
             rules: None,
             default_dedup_by_field: None,
+            generalize_profiles_path: None,
+            resolved_profile_map: Default::default(),
         };
         let result = config.validate();
         assert!(result.is_err());
@@ -1728,6 +1980,7 @@ output:
             layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -1743,6 +1996,7 @@ output:
             layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -1758,6 +2012,7 @@ output:
             layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -1773,6 +2028,7 @@ output:
             layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -2413,6 +2669,7 @@ header:
             layer_alias: Some("COURBE".to_string()),
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         };
         let cloned = input.clone();
         assert_eq!(cloned.path, input.path);

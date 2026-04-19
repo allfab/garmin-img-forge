@@ -293,6 +293,7 @@ fn test_invalid_geometry_continue_mode() {
     let feature = Feature {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -332,6 +333,7 @@ fn test_invalid_geometry_failfast_mode() {
     let feature = Feature {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -365,6 +367,7 @@ fn test_degenerate_linestring_skipped() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.5, 0.5)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -409,6 +412,7 @@ fn test_clip_preserves_all_attributes() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(-0.5, 0.5), (1.5, 0.5)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: attributes.clone(),
         source_layer: None,
     };
@@ -484,6 +488,7 @@ fn test_point_feature_attributes_preserved() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(0.5, 0.5)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: attributes.clone(),
         source_layer: None,
     };

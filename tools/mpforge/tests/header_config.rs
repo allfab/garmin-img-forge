@@ -108,7 +108,7 @@ fn test_ac1_template_passthrough() {
     };
 
     // Create writer with header config
-    let writer = MpWriter::new(output_path.clone(), None, Some(&header))
+    let writer = MpWriter::new(output_path.clone(), None, Some(&header), None)
         .expect("Failed to create writer with template");
 
     writer.finalize().expect("Failed to finalize");
@@ -186,7 +186,7 @@ fn test_ac2_individual_fields() {
     };
 
     let writer =
-        MpWriter::new(output_path.clone(), None, Some(&header)).expect("Failed to create writer");
+        MpWriter::new(output_path.clone(), None, Some(&header), None).expect("Failed to create writer");
 
     writer.finalize().expect("Failed to finalize");
 
@@ -256,7 +256,7 @@ fn test_ac3_template_precedence() {
     };
 
     let writer =
-        MpWriter::new(output_path.clone(), None, Some(&header)).expect("Failed to create writer");
+        MpWriter::new(output_path.clone(), None, Some(&header), None).expect("Failed to create writer");
 
     writer.finalize().expect("Failed to finalize");
 
@@ -331,7 +331,7 @@ fn test_ac4_invalid_template_error() {
         custom: None,
     };
 
-    let result = MpWriter::new(output_path, None, Some(&header));
+    let result = MpWriter::new(output_path, None, Some(&header), None);
 
     match result {
         Ok(_) => panic!("MpWriter::new() should fail with nonexistent template"),
@@ -362,7 +362,7 @@ fn test_ac5_header_optional() {
     let output_path = output_dir.join("test.mp");
 
     // Create writer without header config (backward compatible)
-    let writer = MpWriter::new(output_path.clone(), None, None).expect("Failed to create writer");
+    let writer = MpWriter::new(output_path.clone(), None, None, None).expect("Failed to create writer");
 
     writer.finalize().expect("Failed to finalize");
 
@@ -452,7 +452,7 @@ fn test_ac6_custom_fields() {
     };
 
     let writer =
-        MpWriter::new(output_path.clone(), None, Some(&header)).expect("Failed to create writer");
+        MpWriter::new(output_path.clone(), None, Some(&header), None).expect("Failed to create writer");
 
     writer.finalize().expect("Failed to finalize");
 

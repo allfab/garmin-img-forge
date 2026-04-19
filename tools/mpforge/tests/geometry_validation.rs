@@ -20,6 +20,7 @@ fn test_nan_coordinates_detected() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 45.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -32,6 +33,7 @@ fn test_infinity_coordinates_detected() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::INFINITY, 45.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -44,6 +46,7 @@ fn test_valid_coordinates_pass() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, 48.85)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -56,6 +59,7 @@ fn test_neg_infinity_detected() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(1.0, 2.0), (f64::NEG_INFINITY, 3.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -67,6 +71,7 @@ fn test_nan_in_y_coordinate_detected() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, f64::NAN)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -79,6 +84,7 @@ fn test_mixed_valid_invalid_coordinates() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(1.0, 2.0), (3.0, 4.0), (f64::NAN, 5.0), (6.0, 7.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -91,6 +97,7 @@ fn test_empty_coordinates_pass() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -106,6 +113,7 @@ fn test_many_valid_coordinates() {
     let feature = Feature {
         geometry_type: GeometryType::Polygon,
         geometry: coords,
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -121,6 +129,7 @@ fn create_valid_polygon_feature() -> Feature {
     Feature {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     }
@@ -142,6 +151,7 @@ fn test_valid_point_passes() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, 48.85)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -156,6 +166,7 @@ fn test_valid_linestring_passes() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -172,6 +183,7 @@ fn test_self_intersecting_polygon_repaired() {
     let feature = Feature {
         geometry_type: GeometryType::Polygon,
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -206,6 +218,7 @@ fn test_nan_feature_rejected() {
     let feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 45.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -220,6 +233,7 @@ fn test_infinity_feature_rejected() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -242,6 +256,7 @@ fn test_stats_accumulate_correctly() {
     let invalid = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(f64::NAN, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -338,6 +353,7 @@ fn test_degenerate_linestring_rejected() {
     let feature = Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(0.5, 0.5)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };
@@ -372,6 +388,7 @@ fn test_pipeline_with_invalid_features_mixed() {
         Feature {
             geometry_type: GeometryType::Point,
             geometry: vec![(0.5, 0.5)],
+            additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: None,
         },
@@ -379,6 +396,7 @@ fn test_pipeline_with_invalid_features_mixed() {
         Feature {
             geometry_type: GeometryType::Point,
             geometry: vec![(f64::NAN, 0.5)],
+            additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: None,
         },
@@ -386,6 +404,7 @@ fn test_pipeline_with_invalid_features_mixed() {
         Feature {
             geometry_type: GeometryType::LineString,
             geometry: vec![(0.1, 0.1), (0.9, 0.9)],
+            additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: None,
         },
@@ -393,6 +412,7 @@ fn test_pipeline_with_invalid_features_mixed() {
         Feature {
             geometry_type: GeometryType::LineString,
             geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
+            additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: None,
         },
@@ -449,6 +469,7 @@ fn test_validation_stats_accumulate_across_tiles() {
     let valid_feature = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(0.5, 0.5)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };

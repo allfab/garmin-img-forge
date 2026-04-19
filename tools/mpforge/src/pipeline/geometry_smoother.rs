@@ -4,10 +4,10 @@
 //! simplification to feature geometries. Configured per-layer via
 //! the `generalize` directive in source YAML configuration.
 
-use crate::config::GeneralizeConfig;
+use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec};
 use crate::pipeline::reader::{Feature, GeometryType};
 use geo::{ChaikinSmoothing, LineString, Polygon, Simplify};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tracing::warn;
 
 /// Apply generalization (smooth + simplify) to a feature in-place.
@@ -20,6 +20,144 @@ pub fn generalize_feature(feature: &mut Feature, config: &GeneralizeConfig) -> b
         GeometryType::LineString => generalize_linestring(feature, config),
         GeometryType::Polygon => generalize_polygon(feature, config),
     }
+}
+
+/// Tech-spec #2 Task 9: resolve the effective list of levels for a feature,
+/// honouring `when` clauses (first match wins). Returns `None` when no
+/// applicable levels are found (profile empty both in default and all
+/// unmatched branches).
+fn resolve_levels<'a>(
+    profile: &'a GeneralizeProfile,
+    attributes: &HashMap<String, String>,
+) -> Option<&'a [LevelSpec]> {
+    for clause in &profile.when {
+        if let Some(val) = attributes.get(&clause.field) {
+            if clause.values.iter().any(|v| v == val) {
+                return Some(&clause.levels);
+            }
+        }
+    }
+    if profile.levels.is_empty() {
+        None
+    } else {
+        Some(&profile.levels)
+    }
+}
+
+/// Tech-spec #2 Task 9: apply a multi-level profile to a feature in-place.
+///
+/// The raw geometry captured from the reader is kept in memory and used as
+/// the source for every bucket (no stacking of simplifications between
+/// levels). After running:
+///   - `feature.geometry` contains the result for `n=0` (simplified if the
+///     profile declares a `LevelSpec { n: 0, .. }`; otherwise left unchanged).
+///   - `feature.additional_geometries[n]` is populated for every `n > 0`
+///     declared in the resolved level list.
+///
+/// Point features are left unchanged. Returns the number of buckets
+/// generated (including n=0 when it was derived).
+pub fn apply_profile(feature: &mut Feature, profile: &GeneralizeProfile) -> usize {
+    if matches!(feature.geometry_type, GeometryType::Point) {
+        return 0;
+    }
+    let Some(levels) = resolve_levels(profile, &feature.attributes) else {
+        return 0;
+    };
+
+    // Capture raw geometry once — every bucket derives from it, not from the
+    // previous level's output (clarification F17 of adversarial review).
+    let raw = feature.geometry.clone();
+    let mut generated = 0;
+
+    for lvl in levels {
+        let derived = match feature.geometry_type {
+            GeometryType::LineString => apply_level_to_line(&raw, lvl),
+            GeometryType::Polygon => apply_level_to_polygon(&raw, lvl),
+            GeometryType::Point => None,
+        };
+        let Some(coords) = derived else { continue; };
+        if lvl.n == 0 {
+            feature.geometry = coords;
+        } else {
+            feature.additional_geometries.insert(lvl.n, coords);
+        }
+        generated += 1;
+    }
+    generated
+}
+
+/// Build an ephemeral `GeneralizeConfig` mirroring the smooth/simplify knobs
+/// of a `LevelSpec`, so the existing single-level helpers can be reused.
+fn level_as_config(lvl: &LevelSpec) -> GeneralizeConfig {
+    GeneralizeConfig {
+        smooth: lvl.smooth.clone(),
+        iterations: lvl.iterations,
+        simplify: lvl.simplify,
+    }
+}
+
+fn apply_level_to_line(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f64, f64)>> {
+    if raw.len() < 2 {
+        return None;
+    }
+    let cfg = level_as_config(lvl);
+    let coords: Vec<geo::Coord<f64>> =
+        raw.iter().map(|(x, y)| geo::Coord { x: *x, y: *y }).collect();
+    let mut line = LineString::new(coords);
+    if let Some(smoothed) = apply_smooth_line(line.clone(), &cfg) {
+        line = smoothed;
+    }
+    if let Some(tolerance) = cfg.simplify {
+        line = line.simplify(&tolerance);
+    }
+    if line.0.len() < 2 {
+        return None;
+    }
+    Some(line.0.iter().map(|c| (c.x, c.y)).collect())
+}
+
+fn apply_level_to_polygon(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f64, f64)>> {
+    if raw.len() < 4 {
+        return None;
+    }
+    let cfg = level_as_config(lvl);
+    let coords: Vec<geo::Coord<f64>> =
+        raw.iter().map(|(x, y)| geo::Coord { x: *x, y: *y }).collect();
+    let ring = LineString::new(coords);
+    let mut polygon = Polygon::new(ring, vec![]);
+    if let Some(smoothed) = apply_smooth_polygon(polygon.clone(), &cfg) {
+        polygon = smoothed;
+    }
+    if let Some(tolerance) = cfg.simplify {
+        polygon = polygon.simplify(&tolerance);
+    }
+    let exterior = polygon.exterior();
+    if exterior.0.len() < 4 {
+        return None;
+    }
+    Some(exterior.0.iter().map(|c| (c.x, c.y)).collect())
+}
+
+/// Tech-spec #2 Task 9: multi-profile entry point for the pipeline. Dispatches
+/// each feature to its profile by `source_layer` (exact match). Returns the
+/// total number of features that produced at least one bucket.
+pub fn generalize_features_with_profiles(
+    features: &mut [Feature],
+    profile_map: &BTreeMap<String, GeneralizeProfile>,
+) -> usize {
+    if profile_map.is_empty() {
+        return 0;
+    }
+    let mut count = 0;
+    for feature in features.iter_mut() {
+        let Some(layer_name) = feature.source_layer.as_deref() else { continue; };
+        if let Some(profile) = profile_map.get(layer_name) {
+            if apply_profile(feature, profile) > 0 {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 /// Apply generalization to all features that have a matching layer config.
@@ -146,6 +284,7 @@ mod tests {
         Feature {
             geometry_type: GeometryType::Polygon,
             geometry: coords,
+            additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: Some(layer.to_string()),
         }
@@ -155,6 +294,7 @@ mod tests {
         Feature {
             geometry_type: GeometryType::LineString,
             geometry: coords,
+            additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: Some(layer.to_string()),
         }
@@ -164,6 +304,7 @@ mod tests {
         Feature {
             geometry_type: GeometryType::Point,
             geometry: vec![coord],
+            additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
             source_layer: Some(layer.to_string()),
         }

@@ -107,6 +107,9 @@ fn make_config(input: InputSource) -> Config {
         error_handling: "continue".to_string(),
         header: None,
         rules: None,
+        default_dedup_by_field: None,
+        generalize_profiles_path: None,
+        resolved_profile_map: Default::default(),
     }
 }
 
@@ -130,6 +133,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     });
 
     // Scan extents should work with explicit SRS
@@ -196,6 +200,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
         layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
@@ -245,6 +250,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
@@ -304,6 +310,7 @@ fn test_srs_override_detected_srs() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     });
 
     // Use scan_extents to get proper bounds for the spatial filter
@@ -393,6 +400,7 @@ fn test_srs_scan_extents_explicit() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();

@@ -35,6 +35,7 @@ fn make_config(filenames: &[&str]) -> Config {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         })
         .collect();
 
@@ -57,6 +58,9 @@ fn make_config(filenames: &[&str]) -> Config {
         error_handling: "continue".to_string(),
         header: None,
         rules: None,
+        default_dedup_by_field: None,
+        generalize_profiles_path: None,
+        resolved_profile_map: Default::default(),
     }
 }
 
@@ -141,6 +145,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+                dedup_by_field: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file1.shp")),
@@ -153,6 +158,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+                dedup_by_field: None,
             },
         ],
         error_handling: "continue".to_string(),
@@ -178,6 +184,7 @@ fn test_scan_extents_invalid_source_fail_fast() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         }],
         error_handling: "fail-fast".to_string(),
         ..make_config(&[])

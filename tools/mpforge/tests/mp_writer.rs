@@ -23,6 +23,7 @@ fn create_poi_feature(label: &str, type_code: &str) -> Feature {
     Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.3522, 48.8566)], // Paris coordinates
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes,
         source_layer: None,
     }
@@ -37,6 +38,7 @@ fn create_polyline_feature(label: &str, type_code: &str) -> Feature {
     Feature {
         geometry_type: GeometryType::LineString,
         geometry: vec![(2.3522, 48.8566), (2.3532, 48.8576)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes,
         source_layer: None,
     }
@@ -57,6 +59,7 @@ fn create_polygon_feature(label: &str, type_code: &str) -> Feature {
             (2.3522, 48.8576),
             (2.3522, 48.8566), // Closed ring
         ],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes,
         source_layer: None,
     }
@@ -71,7 +74,7 @@ fn test_mpwriter_new_creates_dataset() {
     // AC1: Dataset .mp créé via GDAL Driver "PolishMap"
     let (_temp_dir, output_path) = create_temp_output();
 
-    let result = MpWriter::new(output_path, None, None);
+    let result = MpWriter::new(output_path, None, None, None);
 
     assert!(result.is_ok(), "MpWriter::new() should succeed");
 }
@@ -81,7 +84,7 @@ fn test_mpwriter_new_creates_three_layers() {
     // AC1: Les 3 layers (POI, POLYLINE, POLYGON) sont créés
     let (_temp_dir, output_path) = create_temp_output();
 
-    let writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
 
     // Verify internal state (we'll check via write_features behavior)
     // Layer verification will be done indirectly through feature writing
@@ -92,7 +95,7 @@ fn test_mpwriter_new_creates_three_layers() {
 fn test_mpwriter_new_handles_invalid_directory() {
     // AC1: Subtask 1.3 - Gestion erreur permissions
     let output_path = PathBuf::from("/nonexistent/invalid/path/output.mp");
-    let result = MpWriter::new(output_path, None, None);
+    let result = MpWriter::new(output_path, None, None, None);
 
     assert!(
         result.is_err(),
@@ -109,7 +112,7 @@ fn test_write_features_empty_dataset() {
     // AC5: Dataset vide (0 features) avec warning
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
     let features = vec![];
 
     let result = writer.write_features(&features);
@@ -129,7 +132,7 @@ fn test_write_features_poi_only() {
     // AC2: Features POI avec Type et Label
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
     let features = vec![
         create_poi_feature("Paris", "0x0100"),
         create_poi_feature("Lyon", "0x0200"),
@@ -149,7 +152,7 @@ fn test_write_features_mixed_geometries() {
     // AC1, AC2: Features mixtes POI + POLYLINE + POLYGON
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
     let features = vec![
         create_poi_feature("Paris", "0x0100"),
         create_polyline_feature("Route A1", "0x0001"),
@@ -170,7 +173,7 @@ fn test_write_features_preserves_attributes() {
     // AC2: Type/Label préservés dans le fichier .mp
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
 
     let mut attributes = HashMap::new();
     attributes.insert("Type".to_string(), "0x0100".to_string());
@@ -180,6 +183,7 @@ fn test_write_features_preserves_attributes() {
     let features = vec![Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.3522, 48.8566)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes,
         source_layer: None,
     }];
@@ -201,7 +205,7 @@ fn test_finalize_creates_mp_file() {
     // AC4: Fichier .mp généré dans le répertoire output
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path.clone(), None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path.clone(), None, None, None).expect("Failed to create writer");
     let features = vec![create_poi_feature("Test", "0x0100")];
 
     writer
@@ -225,7 +229,7 @@ fn test_finalize_returns_stats() {
     // AC4: finalize() retourne PipelineResult avec stats
     let (_temp_dir, output_path) = create_temp_output();
 
-    let mut writer = MpWriter::new(output_path, None, None).expect("Failed to create writer");
+    let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
     let features = vec![
         create_poi_feature("POI1", "0x0100"),
         create_polyline_feature("Line1", "0x0001"),

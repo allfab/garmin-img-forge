@@ -13,6 +13,7 @@ fn create_point_feature(lon: f64, lat: f64) -> Feature {
     Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(lon, lat)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     }

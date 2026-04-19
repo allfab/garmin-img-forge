@@ -36,6 +36,7 @@ fn test_geopackage_three_layers_configured() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -113,6 +114,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -130,6 +132,9 @@ fn test_geopackage_invalid_layer_continue_mode() {
         error_handling: "continue".to_string(),
         header: None,
         rules: None,
+        default_dedup_by_field: None,
+        generalize_profiles_path: None,
+        resolved_profile_map: Default::default(),
     };
 
     let result = SourceReader::read_all_sources(&config);
@@ -188,6 +193,7 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
         }],
         grid: GridConfig {
             cell_size: 0.1,
@@ -205,6 +211,9 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
         error_handling: "fail-fast".to_string(),
         header: None,
         rules: None,
+        default_dedup_by_field: None,
+        generalize_profiles_path: None,
+        resolved_profile_map: Default::default(),
     };
 
     let result = SourceReader::read_all_sources(&config);
@@ -239,6 +248,7 @@ fn test_geopackage_empty_layers_list() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -285,6 +295,7 @@ fn test_geopackage_layers_none_backward_compat() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -326,6 +337,7 @@ fn test_geopackage_mixed_geometry_types() {
                 layer_alias: None,
             generalize: None,
             spatial_filter: None,
+            dedup_by_field: None,
     };
 
     let result = SourceReader::read_file_source(&input);

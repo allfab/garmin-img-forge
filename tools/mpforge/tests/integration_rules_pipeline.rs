@@ -36,6 +36,7 @@ fn make_feature(
     Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(2.35, 48.85)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: attrs
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -272,6 +273,7 @@ fn test_feature_source_layer_field() {
     let feature_no_layer = Feature {
         geometry_type: GeometryType::Point,
         geometry: vec![(0.0, 0.0)],
+        additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
         source_layer: None,
     };

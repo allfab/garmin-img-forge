@@ -48,6 +48,13 @@ pub struct MpWriter {
     /// Optional field mapping (source_field -> polishmap_field).
     /// Story 7.4: Used to transform attribute names before writing.
     field_mapping: Option<HashMap<String, String>>,
+    /// Tech-spec #2 Task 10: when `Some(K)`, the dataset was created with CSL
+    /// options `MULTI_GEOM_FIELDS=YES` + `MAX_DATA_LEVEL=K` — meaning
+    /// POLYLINE / POLYGON layers expose K additional OGR geometry fields
+    /// (geom_level_1..geom_level_K). The write path walks
+    /// `Feature.additional_geometries` and emits one `Data<n>=` per non-empty
+    /// bucket via FFI `OGR_F_SetGeomField`.
+    multi_geom_max: Option<u8>,
 }
 
 impl MpWriter {
@@ -131,6 +138,7 @@ impl MpWriter {
         output_path: PathBuf,
         field_mapping_path: Option<&Path>,
         header_config: Option<&HeaderConfig>,
+        multi_geom_max: Option<u8>,
     ) -> Result<Self> {
         info!(path = %output_path.display(), "Initializing MpWriter");
 
@@ -202,6 +210,23 @@ impl MpWriter {
         } else {
             None
         };
+
+        // Tech-spec #2 Task 10: Add MULTI_GEOM_FIELDS + MAX_DATA_LEVEL when
+        // caller requested a multi-bucket dataset (profile catalog declares
+        // levels n > 0). The driver adds N-1 extra OGRGeomFieldDefn to the
+        // POLYLINE and POLYGON layers; the Rust side then pushes additional
+        // geometries via FFI `OGR_F_SetGeomField` in the write path below.
+        if let Some(k) = multi_geom_max {
+            if k >= 1 {
+                info!(
+                    max_data_level = k,
+                    "Adding MULTI_GEOM_FIELDS=YES + MAX_DATA_LEVEL={} dataset creation options", k
+                );
+                options.set_name_value("MULTI_GEOM_FIELDS", "YES")?;
+                options.set_name_value("MAX_DATA_LEVEL", &k.to_string())?;
+                has_options = true;
+            }
+        }
 
         // Story 8.1: Add HEADER_TEMPLATE option if provided
         if let Some(header) = header_config {
@@ -320,7 +345,34 @@ impl MpWriter {
             dataset: Some(dataset),
             stats: ExportStats::default(),
             field_mapping,
+            multi_geom_max,
         })
+    }
+
+    /// Tech-spec #2 Task 10: FFI helper wrapping `OGR_F_SetGeomField` for
+    /// additional geometry fields (N≥1). Safety: both `feature` and `geom`
+    /// come from the gdal crate which keeps ownership; `OGR_F_SetGeomField`
+    /// copies the geometry internally, so it's safe to drop `geom` after.
+    fn set_additional_geom_field(
+        ogr_feature: &mut gdal::vector::Feature,
+        index: i32,
+        geom: &GdalGeometry,
+    ) -> Result<()> {
+        unsafe {
+            let rv = gdal_sys::OGR_F_SetGeomField(
+                ogr_feature.c_feature(),
+                index,
+                geom.c_geometry(),
+            );
+            if rv != gdal_sys::OGRErr::OGRERR_NONE {
+                anyhow::bail!(
+                    "OGR_F_SetGeomField(index={}) returned OGRErr={:?}",
+                    index,
+                    rv
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Write features to the appropriate layers based on geometry type.
@@ -349,6 +401,7 @@ impl MpWriter {
 
         // Story 7.4: Extract field_mapping reference before borrowing dataset (borrow checker)
         let field_mapping = self.field_mapping.as_ref();
+        let multi_geom_max = self.multi_geom_max;
 
         let dataset = self
             .dataset
@@ -377,13 +430,23 @@ impl MpWriter {
                     stats.point_count += 1;
                 }
                 GeometryType::LineString => {
-                    Self::write_linestring_feature(&mut polyline_layer, feature, field_mapping)
-                        .context("Failed to write POLYLINE feature")?;
+                    Self::write_linestring_feature(
+                        &mut polyline_layer,
+                        feature,
+                        field_mapping,
+                        multi_geom_max,
+                    )
+                    .context("Failed to write POLYLINE feature")?;
                     stats.linestring_count += 1;
                 }
                 GeometryType::Polygon => {
-                    Self::write_polygon_feature(&mut polygon_layer, feature, field_mapping)
-                        .context("Failed to write POLYGON feature")?;
+                    Self::write_polygon_feature(
+                        &mut polygon_layer,
+                        feature,
+                        field_mapping,
+                        multi_geom_max,
+                    )
+                    .context("Failed to write POLYGON feature")?;
                     stats.polygon_count += 1;
                 }
             }
@@ -447,6 +510,7 @@ impl MpWriter {
         layer: &mut gdal::vector::Layer,
         feature: &Feature,
         field_mapping: Option<&HashMap<String, String>>,
+        multi_geom_max: Option<u8>,
     ) -> Result<()> {
         if feature.geometry.len() < 2 {
             warn!("Skipping POLYLINE feature with less than 2 points");
@@ -475,6 +539,49 @@ impl MpWriter {
             .set_geometry(geometry)
             .context("Failed to set geometry")?;
 
+        // Tech-spec #2 Task 10: emit additional geom fields (Data1=..DataK=)
+        // via FFI. Iteration order is deterministic because the bucket map is
+        // a BTreeMap keyed by u8.
+        if let Some(k) = multi_geom_max {
+            for (n, coords) in &feature.additional_geometries {
+                if *n == 0 || *n > k {
+                    continue;
+                }
+                if coords.len() < 2 {
+                    continue;
+                }
+                let wkt = format!(
+                    "LINESTRING ({})",
+                    coords
+                        .iter()
+                        .map(|(lon, lat)| format!("{} {}", lon, lat))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                match GdalGeometry::from_wkt(&wkt) {
+                    Ok(geom_n) => {
+                        if let Err(e) = Self::set_additional_geom_field(
+                            &mut ogr_feature,
+                            *n as i32,
+                            &geom_n,
+                        ) {
+                            warn!(
+                                feature_layer = feature.source_layer.as_deref().unwrap_or(""),
+                                n = *n,
+                                error = %e,
+                                "failed to set additional geometry, bucket skipped"
+                            );
+                        }
+                    }
+                    Err(e) => warn!(
+                        n = *n,
+                        error = %e,
+                        "failed to build WKT for additional LineString bucket, skipped"
+                    ),
+                }
+            }
+        }
+
         // Set attributes
         Self::set_feature_attributes(
             layer_defn,
@@ -496,6 +603,7 @@ impl MpWriter {
         layer: &mut gdal::vector::Layer,
         feature: &Feature,
         field_mapping: Option<&HashMap<String, String>>,
+        multi_geom_max: Option<u8>,
     ) -> Result<()> {
         // Note: Minimum 4 points for closed polygon ring (start point == end point)
         // This assumes the polygon is not auto-closed by GDAL.
@@ -525,6 +633,45 @@ impl MpWriter {
         ogr_feature
             .set_geometry(geometry)
             .context("Failed to set geometry")?;
+
+        // Tech-spec #2 Task 10: emit additional Data<n>= polygons via FFI.
+        if let Some(k) = multi_geom_max {
+            for (n, coords) in &feature.additional_geometries {
+                if *n == 0 || *n > k {
+                    continue;
+                }
+                if coords.len() < 4 {
+                    continue;
+                }
+                let ring = coords
+                    .iter()
+                    .map(|(lon, lat)| format!("{} {}", lon, lat))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let wkt_n = format!("POLYGON (({}))", ring);
+                match GdalGeometry::from_wkt(&wkt_n) {
+                    Ok(geom_n) => {
+                        if let Err(e) = Self::set_additional_geom_field(
+                            &mut ogr_feature,
+                            *n as i32,
+                            &geom_n,
+                        ) {
+                            warn!(
+                                feature_layer = feature.source_layer.as_deref().unwrap_or(""),
+                                n = *n,
+                                error = %e,
+                                "failed to set additional polygon geometry, bucket skipped"
+                            );
+                        }
+                    }
+                    Err(e) => warn!(
+                        n = *n,
+                        error = %e,
+                        "failed to build WKT for additional Polygon bucket, skipped"
+                    ),
+                }
+            }
+        }
 
         // Set attributes
         Self::set_feature_attributes(

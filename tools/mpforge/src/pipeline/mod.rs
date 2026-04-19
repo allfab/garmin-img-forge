@@ -13,7 +13,9 @@ pub mod writer;
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode, GeneralizeConfig, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
-use crate::pipeline::geometry_smoother::generalize_features;
+use crate::pipeline::geometry_smoother::{
+    generalize_features, generalize_features_with_profiles,
+};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -198,6 +200,13 @@ struct TileContext<'a> {
     field_mapping_path: Option<&'a Path>,
     header_config: Option<&'a HeaderConfig>,
     generalize_map: Arc<std::collections::HashMap<String, GeneralizeConfig>>,
+    /// Tech-spec #2 Task 10: unified profile map (inline + external YAML).
+    /// When non-empty, the smoother uses it instead of `generalize_map`, and
+    /// the writer activates `MULTI_GEOM_FIELDS=YES` + `MAX_DATA_LEVEL=max_n`.
+    profile_map: Arc<std::collections::BTreeMap<String, crate::config::GeneralizeProfile>>,
+    /// Tech-spec #2 Task 10: cached max `n` across all profiles. `None` when
+    /// no profile declares any level n > 0 (no extra OGR geom fields needed).
+    max_data_level: Option<u8>,
     /// Pre-built spatial filter geometries, keyed by source index.
     spatial_filter_geometries: Arc<std::collections::HashMap<usize, reader::SpatialFilterGeometry>>,
 }
@@ -369,7 +378,18 @@ fn process_single_tile(
     drop(features);
 
     // 3b. Apply geometry generalization (smoothing + simplification) per-layer
-    if !ctx.generalize_map.is_empty() {
+    // Tech-spec #2 Task 10: prefer the unified profile map (supports
+    // multi-level + dispatch by attribute). Legacy inline-only path remains
+    // available as a safety net for configurations that fail to resolve the
+    // profile map (shouldn't happen in normal flow — load_config fails fast).
+    if !ctx.profile_map.is_empty() {
+        let gen_count =
+            generalize_features_with_profiles(&mut clipped_features, &ctx.profile_map);
+        tracing::debug!(
+            features_generalized = gen_count,
+            "applied multi-level generalization profiles"
+        );
+    } else if !ctx.generalize_map.is_empty() {
         let gen_count = generalize_features(&mut clipped_features, &ctx.generalize_map);
         if gen_count > 0 {
             tracing::debug!(
@@ -487,7 +507,12 @@ fn process_single_tile(
 
     // 8. Export tile (each call creates its own MpWriter → own GDAL dataset)
     match (|| -> Result<ExportStats> {
-        let mut writer = MpWriter::new(tile_path, ctx.field_mapping_path, effective_header)?;
+        let mut writer = MpWriter::new(
+            tile_path,
+            ctx.field_mapping_path,
+            effective_header,
+            ctx.max_data_level,
+        )?;
         let tile_stats = writer.write_features(&clipped_features)?;
         writer.finalize()?;
         Ok(tile_stats)
@@ -770,6 +795,24 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         );
     }
 
+    // Tech-spec #2 Task 10: unified profile map (inline + external YAML)
+    // resolved at `load_config`. When non-empty, it supersedes the legacy
+    // inline-only `generalize_map` and activates the multi-geom writer path.
+    let profile_map = Arc::new(config.resolved_profile_map.clone());
+    let max_data_level: Option<u8> = profile_map
+        .values()
+        .filter_map(|p| p.max_level_index())
+        .max()
+        .filter(|k| *k > 0);
+    if !profile_map.is_empty() {
+        let layer_list: Vec<&str> = profile_map.keys().map(|s| s.as_str()).collect();
+        info!(
+            layers = %layer_list.join(", "),
+            max_data_level = ?max_data_level,
+            "Multi-level generalization profiles resolved"
+        );
+    }
+
     let ctx = TileContext {
         config,
         rules: rules.map(Arc::new),
@@ -781,6 +824,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
         generalize_map,
+        profile_map,
+        max_data_level,
         spatial_filter_geometries: spatial_filter_geometries.clone(),
     };
 

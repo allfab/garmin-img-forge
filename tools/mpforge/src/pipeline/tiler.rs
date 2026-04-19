@@ -491,6 +491,7 @@ pub fn clip_feature_to_tile(
         result.push(Feature {
             geometry_type: feature.geometry_type,
             geometry: coords,
+            additional_geometries: std::collections::BTreeMap::new(),
             attributes: feature.attributes.clone(),
             source_layer: feature.source_layer.clone(),
         });
