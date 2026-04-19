@@ -114,11 +114,13 @@ pub struct BuildArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Tech-spec #2 Task 15: bypass ALL generalization — ignore both
-    /// `generalize_profiles_path` (external catalog) AND the inline
-    /// `generalize:` fields in sources.yaml. Used to regenerate the baseline
-    /// golden `mpforge-multi-data-profiles-disabled.sha256` without having to
-    /// mutate YAML files. Also accepts the env var `MPFORGE_PROFILES=off`.
+    /// Tech-spec #2 Task 15: ignore the external catalog referenced by
+    /// `generalize_profiles_path`. Inline `generalize:` fields in
+    /// `sources.yaml` remain active — this matches the state captured by the
+    /// golden baseline `mpforge-multi-data-profiles-disabled.sha256`
+    /// (pre-multi-Data but post-`ZONE_D_HABITATION`). Used to regenerate the
+    /// baseline without mutating any YAML. Also accepts the env var
+    /// `MPFORGE_PROFILES=off`.
     #[arg(long)]
     pub disable_profiles: bool,
 
@@ -183,6 +185,7 @@ mod tests {
             report: None,
             skip_existing: false,
             dry_run: false,
+            disable_profiles: false,
             verbose: 0,
         };
     }
