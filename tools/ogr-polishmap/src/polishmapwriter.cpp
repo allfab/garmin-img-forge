@@ -929,25 +929,59 @@ bool PolishMapWriter::WriteSinglePOLYLINE(OGRLineString* poLine, OGRFeature* poF
         }
     }
 
-    // Write Data0 coordinates (ALL points on ONE line)
+    // Write Data0 coordinates (ALL points on ONE line).
     // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
-    std::string osData0 = "Data0=";
-    osData0.reserve(static_cast<size_t>(nNumPoints) * 30);
-
-    for (int i = 0; i < nNumPoints; i++) {
-        double dfLat = poLine->getY(i);
-        double dfLon = poLine->getX(i);
-
-        if (i > 0) {
-            osData0 += ",";
+    //
+    // Tech-spec #2 Task 3: when the feature carries additional geometry fields
+    // (Data1=, Data2=, ...) — only possible when MULTI_GEOM_FIELDS=YES at
+    // dataset creation and the primary geometry is a single LineString (not a
+    // MultiLineString being decomposed by the caller) — we iterate over all
+    // non-empty geom fields of the feature and emit Data<i>= for each.
+    auto formatPolylineDataLine = [](int nIndex, const OGRLineString* poLS) -> std::string {
+        std::string osLine = FormatString("Data%d=", nIndex);
+        int nPts = poLS->getNumPoints();
+        osLine.reserve(static_cast<size_t>(nPts) * 30 + 8);
+        for (int i = 0; i < nPts; i++) {
+            if (i > 0) osLine += ",";
+            osLine += FormatString("(%.6f,%.6f)", poLS->getY(i), poLS->getX(i));
         }
-        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
-    }
-    osData0 += "\n";
+        osLine += "\n";
+        return osLine;
+    };
 
-    if (!BufferedWrite(osData0.c_str())) {
+    // Emit Data0 from the passed primary LineString (always).
+    if (!BufferedWrite(formatPolylineDataLine(0, poLine).c_str())) {
         CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYLINE: failed to write Data0");
         return false;
+    }
+
+    // Emit Data1..DataK from additional OGR geometry fields, only when the
+    // feature's primary geometry is a single LineString (avoids emitting extra
+    // geoms once per sub-part in a MultiLineString decomposition path).
+    const OGRGeometry* poPrimary = poFeature->GetGeometryRef();
+    const bool bIsSinglePrimary =
+        poPrimary != nullptr &&
+        wkbFlatten(poPrimary->getGeometryType()) == wkbLineString;
+    if (bIsSinglePrimary) {
+        int nGeomCount = poFeature->GetGeomFieldCount();
+        for (int g = 1; g < nGeomCount; g++) {
+            const OGRGeometry* poGeom = poFeature->GetGeomFieldRef(g);
+            if (poGeom == nullptr || poGeom->IsEmpty()) continue;
+            if (wkbFlatten(poGeom->getGeometryType()) != wkbLineString) {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                         "WriteSinglePOLYLINE: additional geom field %d is not "
+                         "a LineString, skipped", g);
+                continue;
+            }
+            const OGRLineString* poAddLS =
+                static_cast<const OGRLineString*>(poGeom);
+            if (poAddLS->getNumPoints() < 2) continue;
+            if (!BufferedWrite(formatPolylineDataLine(g, poAddLS).c_str())) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WriteSinglePOLYLINE: failed to write Data%d", g);
+                return false;
+            }
+        }
     }
 
     // Extract and write EndLevel field (optional)
@@ -1236,30 +1270,79 @@ bool PolishMapWriter::WriteSinglePOLYGON(OGRPolygon* poPolygon, OGRFeature* poFe
         }
     }
 
-    // Write Data0 coordinates (ALL points on ONE line, closed ring)
+    // Write Data0 coordinates (ALL points on ONE line, closed ring).
     // CRITICAL: Polish Map format uses (lat, lon) order, NOT (lon, lat)!
-    std::string osData0 = "Data0=";
-    osData0.reserve(static_cast<size_t>(nNumPoints + 1) * 30);
-
-    for (int i = 0; i < nNumPoints; i++) {
-        double dfLat = poRing->getY(i);
-        double dfLon = poRing->getX(i);
-
-        if (i > 0) {
-            osData0 += ",";
+    //
+    // Tech-spec #2 Task 3: when MULTI_GEOM_FIELDS=YES and the feature carries
+    // additional geometry fields (Data1=, Data2=, ...), we iterate over all
+    // non-empty geom fields of the feature and emit Data<i>= for each.
+    // Only applied when the primary geom is a single Polygon (not a
+    // MultiPolygon being decomposed by the caller).
+    auto formatPolygonDataLine = [](int nIndex,
+                                    const OGRLinearRing* poR,
+                                    bool bClose,
+                                    double dfFirstLat_,
+                                    double dfFirstLon_) -> std::string {
+        std::string osLine = FormatString("Data%d=", nIndex);
+        int nPts = poR->getNumPoints();
+        osLine.reserve(static_cast<size_t>(nPts + 1) * 30 + 8);
+        for (int i = 0; i < nPts; i++) {
+            if (i > 0) osLine += ",";
+            osLine += FormatString("(%.6f,%.6f)", poR->getY(i), poR->getX(i));
         }
-        osData0 += FormatString("(%.6f,%.6f)", dfLat, dfLon);
-    }
+        if (bClose) {
+            osLine += FormatString(",(%.6f,%.6f)", dfFirstLat_, dfFirstLon_);
+        }
+        osLine += "\n";
+        return osLine;
+    };
 
-    // Auto-close ring if needed (duplicate first point)
-    if (bNeedsClosing) {
-        osData0 += FormatString(",(%.6f,%.6f)", dfFirstLat, dfFirstLon);
-    }
-    osData0 += "\n";
-
-    if (!BufferedWrite(osData0.c_str())) {
+    // Emit Data0 from the passed primary polygon's exterior ring.
+    if (!BufferedWrite(formatPolygonDataLine(0, poRing, bNeedsClosing,
+                                             dfFirstLat, dfFirstLon).c_str())) {
         CPLError(CE_Failure, CPLE_FileIO, "WriteSinglePOLYGON: failed to write Data0");
         return false;
+    }
+
+    // Emit Data1..DataK from additional OGR geometry fields, only when the
+    // feature's primary geometry is a single Polygon.
+    const OGRGeometry* poPrimary = poFeature->GetGeometryRef();
+    const bool bIsSinglePrimary =
+        poPrimary != nullptr &&
+        wkbFlatten(poPrimary->getGeometryType()) == wkbPolygon;
+    if (bIsSinglePrimary) {
+        int nGeomCount = poFeature->GetGeomFieldCount();
+        for (int g = 1; g < nGeomCount; g++) {
+            const OGRGeometry* poGeom = poFeature->GetGeomFieldRef(g);
+            if (poGeom == nullptr || poGeom->IsEmpty()) continue;
+            if (wkbFlatten(poGeom->getGeometryType()) != wkbPolygon) {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                         "WriteSinglePOLYGON: additional geom field %d is not "
+                         "a Polygon, skipped", g);
+                continue;
+            }
+            const OGRPolygon* poAddPoly =
+                static_cast<const OGRPolygon*>(poGeom);
+            const OGRLinearRing* poAddRing = poAddPoly->getExteriorRing();
+            if (poAddRing == nullptr) continue;
+            int nAddPts = poAddRing->getNumPoints();
+            if (nAddPts < 3) continue;
+            double dfAddFirstLat = poAddRing->getY(0);
+            double dfAddFirstLon = poAddRing->getX(0);
+            double dfAddLastLat  = poAddRing->getY(nAddPts - 1);
+            double dfAddLastLon  = poAddRing->getX(nAddPts - 1);
+            bool bAddNeedsClosing =
+                (fabs(dfAddFirstLat - dfAddLastLat) > RING_CLOSURE_TOLERANCE ||
+                 fabs(dfAddFirstLon - dfAddLastLon) > RING_CLOSURE_TOLERANCE);
+            if (!BufferedWrite(formatPolygonDataLine(g, poAddRing,
+                                                    bAddNeedsClosing,
+                                                    dfAddFirstLat,
+                                                    dfAddFirstLon).c_str())) {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "WriteSinglePOLYGON: failed to write Data%d", g);
+                return false;
+            }
+        }
     }
 
     // Extract and write EndLevel field (optional)

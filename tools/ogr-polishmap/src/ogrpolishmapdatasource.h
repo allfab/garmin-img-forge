@@ -90,6 +90,12 @@ private:
     // Story 4.4: Field mapping support
     std::unique_ptr<PolishMapFieldMapper> m_poFieldMapper;  // Field mapper (write mode only)
 
+    // Tech-spec #2 Task 2: Multi-geometry fields (Data1=, Data2=, ...)
+    // Activated via CSL option MULTI_GEOM_FIELDS=YES + MAX_DATA_LEVEL=K (K in [1, 9]).
+    // POI layer is always mono-geom (MP spec §4.4.3.1).
+    bool m_bMultiGeomFields = false;
+    int  m_nMaxDataLevel = 0;  // 0 = disabled; otherwise K such that N-1 extra geom fields are added for N=K+1
+
     // Story 1.3: Initialize the 3 layers (POI, POLYLINE, POLYGON)
     void CreateLayers();
 
@@ -271,6 +277,17 @@ public:
      * @note Used internally by PolishMapWriter.
      */
     const std::map<std::string, std::string>& GetPolishMapMetadata() const { return m_aoMetadata; }
+
+    /**
+     * @brief Tech-spec #2: Is multi-geometry fields mode active?
+     */
+    bool IsMultiGeomFieldsEnabled() const { return m_bMultiGeomFields; }
+
+    /**
+     * @brief Tech-spec #2: Maximum Data index supported when multi-geom is active.
+     *        Layer defn adds Data1..DataK as additional OGRGeomFieldDefn.
+     */
+    int GetMaxDataLevel() const { return m_nMaxDataLevel; }
 };
 
 #endif /* OGRPOLISHMAPDATASOURCE_H_INCLUDED */

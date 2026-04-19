@@ -96,6 +96,11 @@ private:
     PolishMapFieldMapper* m_poFieldMapper;  // Non-owning pointer to field mapper (write mode only)
     bool m_bFieldMappingSet;           // Story 4.4 Task 5: Track if mapping sent to writer
 
+    // Tech-spec #2 Task 2: Multi-geometry fields (Data1=, Data2=, ..., DataK=).
+    // POI stays mono-geom even when enabled (MP spec §4.4.3.1).
+    bool m_bMultiGeomFields = false;
+    int  m_nMaxDataLevel = 0;
+
     /**
      * @brief Mapping from canonical Polish Map field names to source field names.
      *
@@ -119,7 +124,8 @@ public:
      * @param pszLayerName Layer name ("POI", "POLYLINE", or "POLYGON").
      * @param eGeomType Geometry type (wkbPoint, wkbLineString, or wkbPolygon).
      */
-    OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType);
+    OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType,
+                      bool bMultiGeomFields = false, int nMaxDataLevel = 0);
 
     /**
      * @brief Construct a layer for read mode with parser.
@@ -133,7 +139,8 @@ public:
      * @note The parser must remain valid for the lifetime of the layer.
      */
     OGRPolishMapLayer(const char* pszLayerName, OGRwkbGeometryType eGeomType,
-                      PolishMapParser* poParser);
+                      PolishMapParser* poParser,
+                      bool bMultiGeomFields = false, int nMaxDataLevel = 0);
 
     /**
      * @brief Destructor.

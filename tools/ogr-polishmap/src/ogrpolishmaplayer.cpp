@@ -44,11 +44,14 @@
 /************************************************************************/
 
 OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
-                                     OGRwkbGeometryType eGeomType)
+                                     OGRwkbGeometryType eGeomType,
+                                     bool bMultiGeomFields,
+                                     int nMaxDataLevel)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(nullptr), m_osLayerType(pszLayerName), m_bEOF(false),
       m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr),
-      m_poFieldMapper(nullptr), m_bFieldMappingSet(false) {
+      m_poFieldMapper(nullptr), m_bFieldMappingSet(false),
+      m_bMultiGeomFields(bMultiGeomFields), m_nMaxDataLevel(nMaxDataLevel) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -60,11 +63,14 @@ OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
 
 OGRPolishMapLayer::OGRPolishMapLayer(const char* pszLayerName,
                                      OGRwkbGeometryType eGeomType,
-                                     PolishMapParser* poParser)
+                                     PolishMapParser* poParser,
+                                     bool bMultiGeomFields,
+                                     int nMaxDataLevel)
     : m_poFeatureDefn(nullptr), m_poSRS(nullptr), m_nNextFID(1),
       m_poParser(poParser), m_osLayerType(pszLayerName), m_bEOF(false),
       m_bReaderInitialized(false), m_bWriteMode(false), m_poWriter(nullptr),
-      m_poFieldMapper(nullptr), m_bFieldMappingSet(false) {
+      m_poFieldMapper(nullptr), m_bFieldMappingSet(false),
+      m_bMultiGeomFields(bMultiGeomFields), m_nMaxDataLevel(nMaxDataLevel) {
     InitializeLayerDefn(pszLayerName, eGeomType);
 }
 
@@ -100,6 +106,21 @@ void OGRPolishMapLayer::InitializeLayerDefn(const char* pszLayerName,
     // GDAL 3.x: Traditional GIS order (lon, lat)
     m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     m_poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(m_poSRS);
+
+    // Tech-spec #2 Task 2: Additional geometry fields for Data1=..DataK= output.
+    // POI is always mono-geom (MP spec §4.4.3.1); only POLYLINE/POLYGON expose
+    // extra OGRGeomFieldDefn. OGR uses SetGeomField(i, geom) + GetGeomFieldRef(i)
+    // to access them; the writer serialises each non-empty geometry as Data<i>=.
+    if (m_bMultiGeomFields && m_nMaxDataLevel > 0 &&
+        (eGeomType == wkbLineString || eGeomType == wkbPolygon)) {
+        for (int i = 1; i <= m_nMaxDataLevel; i++) {
+            CPLString osFieldName;
+            osFieldName.Printf("geom_level_%d", i);
+            OGRGeomFieldDefn oGeomField(osFieldName.c_str(), eGeomType);
+            oGeomField.SetSpatialRef(m_poSRS);
+            m_poFeatureDefn->AddGeomFieldDefn(&oGeomField);
+        }
+    }
 
     // Add field definitions based on layer type (extended attributes)
     unsigned int nLayerFlag = GetLayerFlag(pszLayerName);

@@ -264,17 +264,20 @@ void OGRPolishMapDataSource::CreateLayersForWriteMode() {
     // No parser in write mode - pass nullptr
     // Layers will be write-only
 
-    // Task 2.2: Create POI layer with wkbPoint geometry type (index 0)
+    // Task 2.2: Create POI layer with wkbPoint geometry type (index 0).
+    // Tech-spec #2 Task 2: POI is always mono-geom, flags not propagated.
     m_apoLayers.push_back(
         std::make_unique<OGRPolishMapLayer>("POI", wkbPoint, nullptr));
 
     // Task 2.3: Create POLYLINE layer with wkbLineString geometry type (index 1)
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, nullptr));
+        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, nullptr,
+                                            m_bMultiGeomFields, m_nMaxDataLevel));
 
     // Task 2.4: Create POLYGON layer with wkbPolygon geometry type (index 2)
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, nullptr));
+        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, nullptr,
+                                            m_bMultiGeomFields, m_nMaxDataLevel));
 
     // Story 2.3 Task 3.1: Connect writer to layers AFTER writer is created
     // Note: Writer is created in Create() method, so layers need to be connected there
@@ -363,6 +366,26 @@ OGRPolishMapDataSource* OGRPolishMapDataSource::Create(const char* pszFilename,
         } else {
             CPLDebug("OGR_POLISHMAP", "Field mapping config loaded: %s", pszFieldMapping);
         }
+    }
+
+    // Tech-spec #2 Task 2: Parse multi-geometry fields options (opt-in).
+    // When enabled, POLYLINE/POLYGON layers expose additional OGRGeomFieldDefn
+    // for Data1=, Data2=, ..., DataK= in the Polish Map output.
+    // POI layer remains mono-geom per MP spec §4.4.3.1.
+    const char* pszMultiGeom = CSLFetchNameValue(papszOptions, "MULTI_GEOM_FIELDS");
+    if (pszMultiGeom != nullptr && CPLTestBool(pszMultiGeom)) {
+        const char* pszMaxLevel = CSLFetchNameValue(papszOptions, "MAX_DATA_LEVEL");
+        int nMaxLevel = (pszMaxLevel != nullptr) ? atoi(pszMaxLevel) : 4;
+        if (nMaxLevel < 1 || nMaxLevel > 9) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "MAX_DATA_LEVEL must be in [1, 9], got %d", nMaxLevel);
+            delete poDS;
+            return nullptr;
+        }
+        poDS->m_bMultiGeomFields = true;
+        poDS->m_nMaxDataLevel = nMaxLevel;
+        CPLDebug("OGR_POLISHMAP",
+                 "Multi-geometry fields enabled, MAX_DATA_LEVEL=%d", nMaxLevel);
     }
 
     // Story 2.3 Task 3.2: Create writer BEFORE layers (so we can connect them)
