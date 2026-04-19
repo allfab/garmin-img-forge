@@ -57,6 +57,8 @@ Les options `--contours-dir`, `--dem-dir`, `--osm-dir` et `--hiking-trails-dir` 
 |--------|-------------|--------|
 | `--jobs N` | Workers parallèles (valeur commune aux deux phases) | `8` |
 | `--mpforge-jobs N` | Workers mpforge uniquement (surcharge `--jobs`) | valeur de `--jobs` |
+| `--disable-profiles` | Bypasse le catalogue externe `generalize_profiles_path` (inline préservé). Utilisé pour la régression golden AC1 (tech-spec #2). Accepte aussi l'env `MPFORGE_PROFILES=off`. | — |
+| `--gdal-driver-path PATH` | Override `GDAL_DRIVER_PATH` pour charger un `ogr-polishmap` frais. Auto-résolu (`~/.gdal/plugins/` → `tools/ogr-polishmap/build/`) si vide. | auto |
 
 #### imgforge
 
@@ -257,10 +259,14 @@ Le rapport contient les statistiques de l'export :
   "tiles_failed": 0,
   "tiles_skipped": 150,
   "features_processed": 1234567,
+  "skipped_additional_geom": 0,
   "duration_seconds": 1845.3,
   "errors": []
 }
 ```
+
+!!! note "Champ `skipped_additional_geom` (tech-spec #2)"
+    Nombre de features droppées parce qu'au moins un bucket `Data<n>=` additionnel a échoué à l'écriture (erreur FFI ou WKT invalide). N'apparaît pas quand la valeur est `0` (mode mono-Data). Voir [mpforge — profils multi-niveaux](../le-projet/mpforge.md#profils-multi-niveaux-tech-spec-2).
 
 ### Verbosité progressive
 

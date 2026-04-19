@@ -201,8 +201,13 @@ Enchaîne automatiquement l'export des tuiles `.mp` (via mpforge) et la compilat
 | `--description <str>` | Description de la carte | `"BDTOPO Garmin"` |
 | `--typ <file>` | Fichier TYP styles personnalisés | *(aucun)* |
 | `--skip-existing` | Passer les tuiles déjà générées | `false` |
+| `--disable-profiles` | Tech-spec #2 : bypasse le catalogue externe `generalize_profiles_path` (inline préservé). Utilisé pour regénérer le golden baseline mono-Data. Accepte aussi `MPFORGE_PROFILES=off`. | — |
+| `--gdal-driver-path <dir>` | Override `GDAL_DRIVER_PATH` pour charger un driver `ogr-polishmap` frais (tech-spec #2). Auto-résolu sur `~/.gdal/plugins/` puis `tools/ogr-polishmap/build/` si vide. | auto |
 | `--dry-run` | Simuler sans exécuter | `false` |
 | `-v`, `-vv` | Mode verbeux | off |
+
+!!! note "Tech-spec #2 — pré-requis driver"
+    Le writer `.mp` multi-Data nécessite un driver `ogr-polishmap` à jour. Le script le résout automatiquement ; sinon rebuild : `cmake --build tools/ogr-polishmap/build --target ogr_PolishMap` puis copie vers `~/.gdal/plugins/ogr_PolishMap.so` (user) ou `/usr/lib/gdalplugins/` (système, nécessite sudo).
 
 Structure de sortie :
 

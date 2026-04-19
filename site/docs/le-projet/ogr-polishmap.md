@@ -36,6 +36,35 @@ Cela signifie que **tous les outils basés sur GDAL** (QGIS, ogr2ogr, Python/GDA
 | Labels UTF-8 | Oui | Oui (auto-conversion CP1252) |
 | Décomposition multi-géométrie | N/A | Oui (MultiPolygon vers N Polygon) |
 | Field mapping YAML | N/A | Oui (`-dsco FIELD_MAPPING`) |
+| Multi-geometry fields (Data1..DataK) | Oui (`-oo MULTI_GEOM_FIELDS=YES`) | Oui (`-dsco MULTI_GEOM_FIELDS=YES`) |
+
+## Multi-geometry fields (tech-spec #2)
+
+Depuis la tech-spec #2, les couches POLYLINE et POLYGON peuvent transporter **N géométries par feature** (jusqu'à `Data9=`), consommées par `imgforge` au zoom level correspondant. POI reste mono-géométrie (spec MP §4.4.3.1).
+
+**Activation à l'écriture** — le driver ajoute N-1 `OGRGeomFieldDefn` additionnels (`geom_level_1`..`geom_level_K`) quand `MULTI_GEOM_FIELDS=YES` :
+
+```bash
+ogr2ogr -f "PolishMap" out.mp in.shp \
+    -dsco MULTI_GEOM_FIELDS=YES \
+    -dsco MAX_DATA_LEVEL=4
+```
+
+Le writer sérialise chaque bucket non vide sur une ligne `Data<n>=` distincte. Trous autorisés (`Data0=` + `Data2=` sans `Data1=`).
+
+**Activation à la lecture** (opt-in strict) — sans l'option, les lignes `DataN>0` sont parsées en interne mais pas exposées via OGR (comportement prévisible, rétrocompatible) :
+
+```bash
+ogr2ogr -f "GeoJSON" out.geojson in.mp \
+    -oo MULTI_GEOM_FIELDS=YES \
+    -oo MAX_DATA_LEVEL=4
+```
+
+Le layer expose alors `GetGeomFieldCount() == K + 1`.
+
+**Validation** : `MAX_DATA_LEVEL ∈ [1, 9]` (échec `Create()` hors bornes). Sans l'option, output strictement identique au driver v2026.03 (validé bit-à-bit par le golden).
+
+Voir [mpforge — profils multi-niveaux](mpforge.md#profils-multi-niveaux-tech-spec-2) pour l'usage côté producteur `.mp`.
 
 ## Field mapping YAML
 

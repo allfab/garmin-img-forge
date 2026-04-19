@@ -41,7 +41,7 @@ profiles:
       - field: CL_ADMIN
         values: [Autoroute, Nationale]
         levels:
-          - { n: 0, simplify: 0.00002 }   # ~2 m — préservation routing max
+          - { n: 0, simplify: 0.00001 }   # ~1 m — préservation routing max
           - { n: 2, simplify: 0.00008 }
       - field: CL_ADMIN
         values: [Départementale]

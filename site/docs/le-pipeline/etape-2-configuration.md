@@ -183,6 +183,69 @@ inputs:
 !!! note "Pipeline"
     La généralisation s'applique **après** le clipping sur les tuiles et **avant** l'export en Polish Map. Les points (POI) ne sont pas affectés.
 
+### Profils multi-niveaux (tech-spec #2)
+
+Le `generalize:` inline ci-dessus produit **une seule** géométrie simplifiée (`Data0=`). Pour des cartes plus riches, `mpforge` accepte un **catalogue externe** qui déclare des profils **multi-niveaux** : chaque feature porte plusieurs géométries, de la plus détaillée à la plus grossière, consommées par `imgforge` selon le zoom.
+
+Activation : une ligne à la racine de `sources.yaml` pointant vers un fichier YAML adjacent :
+
+```yaml
+generalize_profiles_path: "../generalize-profiles.yaml"
+```
+
+Contenu du catalogue — exemple BDTOPO (`pipeline/configs/ign-bdtopo/generalize-profiles.yaml`) :
+
+```yaml
+profiles:
+  # BATIMENT : volontairement absent → émis en Data0 seul, raw.
+  # Préserve les bâtiments tels que livrés par BD TOPO.
+
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00005 }   # ~5 m : cours d'eau détaillés
+      - { n: 2, simplify: 0.00020 }   # ~22 m : zoom moyen
+
+  TRONCON_DE_ROUTE:
+    # Dispatch conditionnel par attribut : premier match gagne.
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0, simplify: 0.00002 }   # ~2 m : préservation routing max
+          - { n: 2, simplify: 0.00008 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0, simplify: 0.00010 }
+          - { n: 2, simplify: 0.00030 }
+    levels:                               # fallback si aucun when ne matche
+      - { n: 0, simplify: 0.00005 }
+      - { n: 2, simplify: 0.00015 }
+```
+
+**Sémantique** :
+
+| Clé | Rôle |
+|---|---|
+| `n` | index du niveau dans `MpHeader.levels` (`0` = le plus détaillé = `Data0=`, `2` = `Data2=`, etc.) |
+| `smooth` | `"chaikin"` ou absent (optionnel) |
+| `iterations` | itérations Chaikin, borne `[0, 5]` |
+| `simplify` | tolérance Douglas-Peucker en degrés WGS84, borne `[0, 0.001]` (≈ 110 m) |
+| `when` | dispatch par attribut (premier match gagne) ; les `when.levels` remplacent les `levels` default |
+
+**Contraintes fail-fast au `load_config`** :
+
+- Couche routable (`TRONCON_DE_ROUTE` via `is_routable_layer`) **doit** déclarer `n: 0` dans chaque branche visible (default ET chaque `when`). Sans ça, le routing côté imgforge casse (pas de `Data0=` = pas d'arc NET/NOD).
+- Un même `source_layer` ne peut pas apparaître à la fois en `generalize:` inline **et** dans le catalogue externe → conflit rejeté.
+- `max(n)` sur tous les profils doit être `< header.levels.len()` (sinon imgforge drop silencieusement les `DataN` hors de portée).
+- `iterations` hors `[0, 5]` ou `simplify` hors `[0, 0.001]` → erreur explicite au chargement.
+
+!!! tip "Opt-out strict"
+    `mpforge build --disable-profiles` (ou env var `MPFORGE_PROFILES=off`) bypasse **uniquement** le catalogue externe. Les `generalize:` inline restent actifs. Utilisé pour regénérer le golden baseline mono-Data (AC1 tech-spec #2).
+
+!!! note "Pré-requis driver"
+    Le writer multi-Data nécessite le driver `ogr-polishmap` à jour (tech-spec #2). Le script `build-garmin-map.sh` auto-détecte `~/.gdal/plugins/ogr_PolishMap.so` ou `tools/ogr-polishmap/build/ogr_PolishMap.so` et expose `GDAL_DRIVER_PATH` automatiquement. Si `mpforge` est lancé directement, vérifier que le plugin système est à jour (`ogrinfo --formats | grep Polish` pour valider).
+
 ## 2. Field mapping
 
 Le field mapping traduit les noms de colonnes de vos données sources vers les champs standard du format Polish Map :

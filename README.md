@@ -44,7 +44,7 @@ Le dépôt contient **trois briques principales** plus une **brique expérimenta
 
 ### `ogr-polishmap` — Driver GDAL/OGR pour le format Polish Map (.mp)
 
-Driver C++ qui permet à GDAL et à toute la chaîne QGIS/Python/Rust d'écrire nativement le format Polish Map. C'est la fondation : sans lui, pas de tuilage SIG standardisé.
+Driver C++ qui permet à GDAL et à toute la chaîne QGIS/Python/Rust d'écrire nativement le format Polish Map. C'est la fondation : sans lui, pas de tuilage SIG standardisé. **Multi-geometry fields** (`Data1=`..`Data9=` par feature) supportés en lecture et écriture depuis tech-spec #2 — alternative native à la duplication de features pour les cartes multi-zoom.
 
 - Code : [`tools/ogr-polishmap/`](./tools/ogr-polishmap/)
 - Documentation : [README](./tools/ogr-polishmap/README.md), [Spec RST](./tools/ogr-polishmap/doc/polishmap.rst)
@@ -52,7 +52,7 @@ Driver C++ qui permet à GDAL et à toute la chaîne QGIS/Python/Rust d'écrire 
 
 ### `mpforge` — Générateur de tuiles Polish Map depuis sources SIG
 
-CLI Rust qui lit des sources SIG (BDTOPO, OSM…), applique des règles de transformation déclarées en YAML, et produit des tuiles `.mp` prêtes à être compilées. Embarque GDAL + PROJ + GEOS en statique : **un seul binaire, zéro dépendance système** à l'exécution.
+CLI Rust qui lit des sources SIG (BDTOPO, OSM…), applique des règles de transformation déclarées en YAML, et produit des tuiles `.mp` prêtes à être compilées. Embarque GDAL + PROJ + GEOS en statique : **un seul binaire, zéro dépendance système** à l'exécution. **Profils de simplification multi-niveaux** (tech-spec #2) : catalogue externe avec dispatch conditionnel par attribut (ex. `CL_ADMIN` pour `TRONCON_DE_ROUTE`), émet jusqu'à 10 géométries par feature consommées par `imgforge` selon le zoom — feature absente de `mkgmap`.
 
 - Code : [`tools/mpforge/`](./tools/mpforge/)
 - Documentation : [README](./tools/mpforge/README.md), [Exemples YAML](./tools/mpforge/examples/)
