@@ -3006,4 +3006,246 @@ output:
         let result = expand_env_vars("val: ${foo bar}");
         assert_eq!(result, "val: ${foo bar}");
     }
+
+    // =================================================================
+    // Tech-spec #2 Task 11 — GeneralizeProfile parsing + validation
+    // =================================================================
+
+    fn parse_profile(yaml: &str) -> GeneralizeProfile {
+        serde_yml::from_str(yaml).expect("valid YAML")
+    }
+
+    #[test]
+    fn test_profile_parses_single_level() {
+        let p = parse_profile("levels:\n  - { n: 0, simplify: 0.0001 }\n");
+        assert_eq!(p.levels.len(), 1);
+        assert_eq!(p.levels[0].n, 0);
+        assert_eq!(p.levels[0].simplify, Some(0.0001));
+        assert!(p.when.is_empty());
+    }
+
+    #[test]
+    fn test_profile_parses_when_clause() {
+        let yaml = r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute, Nationale]
+    levels:
+      - { n: 0, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+levels:
+  - { n: 0, simplify: 0.0001 }
+"#;
+        let p = parse_profile(yaml);
+        assert_eq!(p.when.len(), 1);
+        assert_eq!(p.when[0].field, "CL_ADMIN");
+        assert_eq!(p.when[0].values, vec!["Autoroute", "Nationale"]);
+        assert_eq!(p.when[0].levels.len(), 2);
+        assert_eq!(p.levels.len(), 1);
+    }
+
+    #[test]
+    fn test_profile_max_level_index() {
+        let p = parse_profile(
+            "levels:\n  - { n: 0 }\n  - { n: 2 }\nwhen:\n  - field: X\n    values: [a]\n    levels:\n      - { n: 0 }\n      - { n: 4 }\n",
+        );
+        assert_eq!(p.max_level_index(), Some(4));
+    }
+
+    #[test]
+    fn test_profile_every_branch_has_n0_false_when_default_misses() {
+        let p = parse_profile("levels:\n  - { n: 2 }\n");
+        assert!(!p.every_branch_has_n0());
+    }
+
+    #[test]
+    fn test_profile_every_branch_has_n0_false_when_when_branch_misses() {
+        let p = parse_profile(
+            "levels:\n  - { n: 0 }\nwhen:\n  - field: X\n    values: [a]\n    levels:\n      - { n: 2 }\n",
+        );
+        assert!(!p.every_branch_has_n0());
+    }
+
+    #[test]
+    fn test_profile_validates_iterations_bound() {
+        let p = parse_profile("levels:\n  - { n: 0, iterations: 6 }\n");
+        let err = p.validate("test").unwrap_err().to_string();
+        assert!(err.contains("iterations=6"), "error: {err}");
+    }
+
+    #[test]
+    fn test_profile_validates_simplify_bound() {
+        let p = parse_profile("levels:\n  - { n: 0, simplify: 0.01 }\n");
+        let err = p.validate("test").unwrap_err().to_string();
+        assert!(err.contains("simplify=0.01"), "error: {err}");
+    }
+
+    #[test]
+    fn test_profile_validates_unknown_smooth_algo() {
+        let p = parse_profile("levels:\n  - { n: 0, smooth: fourier }\n");
+        let err = p.validate("test").unwrap_err().to_string();
+        assert!(err.contains("unknown smooth algorithm"));
+    }
+
+    #[test]
+    fn test_profile_validates_empty_values_list() {
+        let p = parse_profile(
+            "when:\n  - field: CL_ADMIN\n    values: []\n    levels:\n      - { n: 0 }\n",
+        );
+        let err = p.validate("test").unwrap_err().to_string();
+        assert!(err.contains("'values' must list at least one attribute value"));
+    }
+
+    #[test]
+    fn test_from_generalize_config_converts_to_single_level() {
+        let inline = GeneralizeConfig {
+            smooth: Some("chaikin".into()),
+            iterations: 2,
+            simplify: Some(0.00005),
+        };
+        let p: GeneralizeProfile = inline.into();
+        assert_eq!(p.levels.len(), 1);
+        assert_eq!(p.levels[0].n, 0);
+        assert_eq!(p.levels[0].iterations, 2);
+        assert_eq!(p.levels[0].simplify, Some(0.00005));
+        assert!(p.when.is_empty());
+    }
+
+    // =================================================================
+    // Tech-spec #2 Task 11 — build_profile_map + validation F4
+    // =================================================================
+
+    fn write_sources_yaml(dir: &std::path::Path, profile_path: Option<&str>) -> std::path::PathBuf {
+        let mut yaml = String::from(
+            r#"version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ZONE.shp"
+    layer_alias: "ZONE_D_HABITATION"
+    generalize:
+      smooth: "chaikin"
+      iterations: 1
+      simplify: 0.00005
+output:
+  directory: "tiles/"
+"#,
+        );
+        if let Some(p) = profile_path {
+            yaml.push_str(&format!("generalize_profiles_path: \"{p}\"\n"));
+        }
+        let path = dir.join("sources.yaml");
+        std::fs::write(&path, yaml).unwrap();
+        path
+    }
+
+    fn write_profiles_yaml(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("generalize-profiles.yaml");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_build_profile_map_fuses_inline_and_external() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = r#"profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00005 }
+      - { n: 2, simplify: 0.0002 }
+"#;
+        write_profiles_yaml(tmp.path(), body);
+        write_sources_yaml(tmp.path(), Some("generalize-profiles.yaml"));
+
+        let cfg = load_config(tmp.path().join("sources.yaml")).unwrap();
+        assert!(cfg.resolved_profile_map.contains_key("ZONE_D_HABITATION"));
+        assert!(cfg.resolved_profile_map.contains_key("TRONCON_HYDROGRAPHIQUE"));
+        assert_eq!(cfg.resolved_profile_map["TRONCON_HYDROGRAPHIQUE"].levels.len(), 2);
+    }
+
+    #[test]
+    fn test_build_profile_map_conflict_fail_fast() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = "profiles:\n  ZONE_D_HABITATION:\n    levels:\n      - { n: 0, simplify: 0.0001 }\n";
+        write_profiles_yaml(tmp.path(), body);
+        write_sources_yaml(tmp.path(), Some("generalize-profiles.yaml"));
+
+        let err = format!(
+            "{:#}",
+            load_config(tmp.path().join("sources.yaml")).unwrap_err()
+        );
+        assert!(err.contains("generalize profile conflict"), "error: {err}");
+        assert!(err.contains("ZONE_D_HABITATION"), "error: {err}");
+    }
+
+    #[test]
+    fn test_build_profile_map_f4_routable_missing_n0_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = r#"profiles:
+  TRONCON_DE_ROUTE:
+    levels:
+      - { n: 2, simplify: 0.0001 }
+"#;
+        write_profiles_yaml(tmp.path(), body);
+        let sources = r#"version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ROUTE.shp"
+output:
+  directory: "tiles/"
+generalize_profiles_path: "generalize-profiles.yaml"
+"#;
+        std::fs::write(tmp.path().join("sources.yaml"), sources).unwrap();
+        let err = format!(
+            "{:#}",
+            load_config(tmp.path().join("sources.yaml")).unwrap_err()
+        );
+        assert!(
+            err.contains("routable layer 'TRONCON_DE_ROUTE' profile missing n:0"),
+            "error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_build_profile_map_f4_when_branch_drops_n0() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = r#"profiles:
+  TRONCON_DE_ROUTE:
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute]
+        levels:
+          - { n: 2, simplify: 0.0001 }
+    levels:
+      - { n: 0, simplify: 0.0001 }
+"#;
+        write_profiles_yaml(tmp.path(), body);
+        let sources = r#"version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/ROUTE.shp"
+output:
+  directory: "tiles/"
+generalize_profiles_path: "generalize-profiles.yaml"
+"#;
+        std::fs::write(tmp.path().join("sources.yaml"), sources).unwrap();
+        let err = format!(
+            "{:#}",
+            load_config(tmp.path().join("sources.yaml")).unwrap_err()
+        );
+        assert!(err.contains("missing n:0"), "error: {err}");
+    }
+
+    #[test]
+    fn test_build_profile_map_without_external_uses_inline_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_sources_yaml(tmp.path(), None);
+        let cfg = load_config(tmp.path().join("sources.yaml")).unwrap();
+        assert_eq!(cfg.resolved_profile_map.len(), 1);
+        let p = &cfg.resolved_profile_map["ZONE_D_HABITATION"];
+        assert_eq!(p.levels.len(), 1);
+        assert_eq!(p.levels[0].n, 0);
+    }
 }

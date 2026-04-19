@@ -541,4 +541,133 @@ mod tests {
         };
         assert!(!generalize_feature(&mut feature, &config));
     }
+
+    // =================================================================
+    // Tech-spec #2 Task 11 — apply_profile (multi-bucket + dispatch)
+    // =================================================================
+
+    fn profile_from_yaml(yaml: &str) -> GeneralizeProfile {
+        serde_yml::from_str(yaml).expect("valid profile YAML")
+    }
+
+    #[test]
+    fn test_apply_profile_generates_three_buckets() {
+        let zigzag: Vec<(f64, f64)> = (0..20)
+            .map(|i| (i as f64 * 0.1, (i as f64 * 0.1).sin()))
+            .collect();
+        let mut feature = make_linestring_feature(zigzag, "HYDRO");
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 2, simplify: 0.0001 }\n  - { n: 4, simplify: 0.0005 }\n",
+        );
+        let generated = apply_profile(&mut feature, &profile);
+        assert_eq!(generated, 3);
+        // n=0 replaces primary geometry
+        assert!(!feature.geometry.is_empty());
+        // n=2 and n=4 land in additional_geometries
+        assert!(feature.additional_geometries.contains_key(&2));
+        assert!(feature.additional_geometries.contains_key(&4));
+        assert!(!feature.additional_geometries.contains_key(&1));
+    }
+
+    #[test]
+    fn test_apply_profile_dispatch_when_matches_first() {
+        let coords: Vec<(f64, f64)> =
+            (0..10).map(|i| (i as f64 * 0.1, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        feature
+            .attributes
+            .insert("CL_ADMIN".to_string(), "Autoroute".to_string());
+
+        let profile = profile_from_yaml(
+            r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute]
+    levels:
+      - { n: 0, simplify: 0.00002 }
+      - { n: 3, simplify: 0.00009 }
+  - field: CL_ADMIN
+    values: [Chemin]
+    levels:
+      - { n: 0, simplify: 0.0001 }
+      - { n: 5, simplify: 0.0009 }
+levels:
+  - { n: 0, simplify: 0.00005 }
+"#,
+        );
+        apply_profile(&mut feature, &profile);
+        // First `when` branch matched → n=3 bucket created (not n=5, not default)
+        assert!(feature.additional_geometries.contains_key(&3));
+        assert!(!feature.additional_geometries.contains_key(&5));
+    }
+
+    #[test]
+    fn test_apply_profile_falls_back_to_default_when_no_match() {
+        let coords: Vec<(f64, f64)> =
+            (0..10).map(|i| (i as f64 * 0.1, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        feature
+            .attributes
+            .insert("CL_ADMIN".to_string(), "Rue".to_string());
+
+        let profile = profile_from_yaml(
+            r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute]
+    levels:
+      - { n: 0, simplify: 0.00002 }
+      - { n: 3, simplify: 0.00009 }
+levels:
+  - { n: 0, simplify: 0.00005 }
+  - { n: 2, simplify: 0.0001 }
+"#,
+        );
+        apply_profile(&mut feature, &profile);
+        assert!(feature.additional_geometries.contains_key(&2));
+        assert!(!feature.additional_geometries.contains_key(&3));
+    }
+
+    #[test]
+    fn test_apply_profile_single_n0_no_additional_buckets() {
+        let coords = zigzag_coords();
+        let mut feature = make_linestring_feature(coords.clone(), "ZONE");
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, smooth: chaikin, iterations: 1 }\n",
+        );
+        apply_profile(&mut feature, &profile);
+        assert!(feature.additional_geometries.is_empty());
+        assert_ne!(feature.geometry, coords, "primary geom should be smoothed");
+    }
+
+    #[test]
+    fn test_apply_profile_point_is_noop() {
+        let mut feature = make_point_feature((2.0, 48.0), "POI");
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
+        );
+        let generated = apply_profile(&mut feature, &profile);
+        assert_eq!(generated, 0);
+        assert!(feature.additional_geometries.is_empty());
+        assert_eq!(feature.geometry, vec![(2.0, 48.0)]);
+    }
+
+    #[test]
+    fn test_generalize_features_with_profiles_dispatches_by_layer() {
+        let mut features = vec![
+            make_linestring_feature(zigzag_coords(), "HYDRO"),
+            make_linestring_feature(zigzag_coords(), "BATIMENT"),
+        ];
+        let mut map = BTreeMap::new();
+        map.insert(
+            "HYDRO".to_string(),
+            profile_from_yaml(
+                "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
+            ),
+        );
+        let count = generalize_features_with_profiles(&mut features, &map);
+        assert_eq!(count, 1);
+        assert!(features[0].additional_geometries.contains_key(&2));
+        assert!(features[1].additional_geometries.is_empty());
+    }
 }

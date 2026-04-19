@@ -1,5 +1,12 @@
 version: 1
 
+# Tech-spec #2 — catalogue de profils de simplification multi-niveaux BDTOPO.
+# Résolu relativement à ce fichier (deux niveaux au-dessus : outre-mer/ puis
+# ign-bdtopo/). Voir ../../generalize-profiles.yaml pour la sémantique.
+# Conflit rejeté au chargement si une couche apparaît à la fois en inline
+# `generalize:` et dans le catalogue externe.
+generalize_profiles_path: "../../generalize-profiles.yaml"
+
 # Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
 # BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque
 # les noms de colonnes à 10 chars, donc "cleabs" → "ID" à la livraison).
