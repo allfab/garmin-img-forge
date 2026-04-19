@@ -79,14 +79,18 @@ ls *.yaml
 
 ### 3. Générer les tuiles `.mp`
 
+Le répertoire de sortie est défini dans le YAML (`output.directory`) :
+
 ```bash
-mpforge --config simple.yaml --output /tmp/tuiles/
+mpforge build --config simple.yaml
 ```
 
 ### 4. Compiler en `.img` pour le GPS
 
+`imgforge build` prend en argument le répertoire contenant les `.mp` :
+
 ```bash
-imgforge /tmp/tuiles/*.mp --output gmapsupp.img
+imgforge build tiles/ --output gmapsupp.img
 ```
 
 ### 5. Déployer sur le GPS
@@ -107,52 +111,113 @@ Pour passer d'un exemple de démonstration à une production régulière de cart
 
 ```
 pipeline/
-├── configs/           # Vos fichiers YAML (par région, par thématique)
-│   ├── ign-bdtopo/    #   ├── generalize-profiles.yaml  (profils multi-zoom)
-│   │   └── departement/  #   └── <dept>.yaml            (une carte = un YAML)
+├── configs/
+│   ├── ign-bdtopo/
+│   │   ├── generalize-profiles.yaml   # profils de simplification multi-zoom (mutualisé)
+│   │   ├── departement/               # un département BDTOPO
+│   │   │   ├── sources.yaml           #   ├── couches + grille + header MP
+│   │   │   └── garmin-rules.yaml      #   └── règles BDTOPO → types Garmin
+│   │   ├── france-quadrant/           # idem, à l'échelle quadrant national
+│   │   └── outre-mer/                 # idem, par territoire DROM
 │   └── osm/
 ├── data/              # Sources SIG téléchargées (BDTOPO, extraits OSM…)
 ├── output/<année>/    # Tuiles .mp + gmapsupp.img versionnés
 └── resources/         # Fichiers TYP, icônes, ressources partagées
 ```
 
+La production s'articule autour de **trois fichiers YAML** par scope :
+
+- **`sources.yaml`** — couches d'entrée (chemins SHP, SRS source/cible, dédoublonnage), grille de tuilage, en-tête Polish Map, et pointeur vers les règles de transformation
+- **`garmin-rules.yaml`** — règles de mapping BDTOPO → types Garmin (Type, EndLevel, Label) par `source_layer`
+- **`generalize-profiles.yaml`** — profils de simplification multi-niveaux (Douglas-Peucker, Chaikin) mutualisés
+
 ### Mise en place en 4 étapes
 
-**1. Déclarer la carte** — créer `pipeline/configs/ign-bdtopo/departement/mon-departement.yaml` :
+**1. Déclarer les couches et la grille** — `pipeline/configs/ign-bdtopo/mon-scope/sources.yaml` :
 
 ```yaml
-map:
-  name: "Mon Département — Randonnée"
-  id: 61050000                  # identifiant Garmin unique
-  copyright: "© IGN BDTOPO 2026"
+version: 1
+generalize_profiles_path: "../generalize-profiles.yaml"
 
-sources:
-  - path: data/BDTOPO/TRONCON_DE_ROUTE.shp
-  - path: data/BDTOPO/COURS_D_EAU.shp
+grid:
+  cell_size: 0.225        # ~25 km par tuile
+  overlap: 0.005
 
-mapping:
-  - where: "CL_ADMIN = 'Autoroute'"
-    polish_type: 0x01
-    profile: route_major        # référence un profil de generalize-profiles.yaml
-  - where: "NATURE = 'Rivière'"
-    polish_type: 0x1F
-    profile: hydro_main
+inputs:
+  - path: "${DATA_ROOT}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID    # CLEABS IGN (tronqué à 10 chars par le format DBF)
+  - path: "${DATA_ROOT}/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
 output:
-  tile_size: 0.5                # degrés
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
+  base_id: ${BASE_ID}     # IDs uniques par tuile (ex. 00380001…)
+
+header:
+  name: "BDTOPO-{col:03}-{row:03}"
+  copyright: "© IGN BDTOPO 2026"
+  levels: "5"
+  level0: "24"
+  routing: "Y"
+
+rules: pipeline/configs/ign-bdtopo/mon-scope/garmin-rules.yaml
+error_handling: "continue"
 ```
 
-> Exemples complets et documentés : [`tools/mpforge/examples/bdtopo-d038-config.yaml`](./tools/mpforge/examples/bdtopo-d038-config.yaml)
+**2. Déclarer les règles de mapping Garmin** — `garmin-rules.yaml` :
 
-**2. Exécuter le pipeline en local :**
+```yaml
+version: 1
+
+rulesets:
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      - match: { CL_ADMIN: "Autoroute" }
+        set:
+          Type: "0x01"
+          EndLevel: "2"
+          Label: "~[0x04]${NUMERO}"
+      - match: { CL_ADMIN: "Départementale", NATURE: "!Rond-point" }
+        set:
+          Type: "0x05"
+          EndLevel: "2"
+          Label: "~[0x06]${NUMERO}"
+
+  - name: "Hydrographie"
+    source_layer: "TRONCON_HYDROGRAPHIQUE"
+    rules:
+      - match: { NATURE: "Cours d'eau naturel" }
+        set:
+          Type: "0x1F"
+          EndLevel: "1"
+          Label: "${NOM_ENTITE}"
+```
+
+> Références complètes et documentées :
+> - [`pipeline/configs/ign-bdtopo/departement/sources.yaml`](./pipeline/configs/ign-bdtopo/departement/sources.yaml) — 297 lignes, toutes couches BDTOPO
+> - [`pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml`](./pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml) — 3 442 lignes, toutes les règles de mapping
+> - [`pipeline/configs/ign-bdtopo/generalize-profiles.yaml`](./pipeline/configs/ign-bdtopo/generalize-profiles.yaml) — profils de simplification
+
+**3. Exécuter le pipeline en local** (variables d'environnement `DATA_ROOT`, `OUTPUT_DIR`, `BASE_ID`, `ZONES` attendues) :
 
 ```bash
-mpforge --config pipeline/configs/ign-bdtopo/departement/mon-departement.yaml \
-        --output pipeline/output/2026/v2026.04/
+export DATA_ROOT=./pipeline/data/BDTOPO
+export OUTPUT_DIR=./pipeline/output/2026/v2026.04
+export BASE_ID=00380000
+export ZONES=D038
 
-imgforge pipeline/output/2026/v2026.04/*.mp \
-         --output pipeline/output/2026/v2026.04/gmapsupp.img
+mpforge build --config pipeline/configs/ign-bdtopo/mon-scope/sources.yaml
+
+imgforge build "$OUTPUT_DIR/mp/" --output "$OUTPUT_DIR/img/gmapsupp.img"
 ```
+
+Pour une orchestration complète (téléchargement BDTOPO, validation, publication), voir [`scripts/build-garmin-map.sh`](./scripts/build-garmin-map.sh).
 
 **3. Intégrer en CI** — le dépôt fournit des pipelines Woodpecker pour l'infrastructure interne ainsi que des workflows GitHub Actions pour le miroir public. Documentation complète dans **[CI-CD.md](./CI-CD.md)**.
 
