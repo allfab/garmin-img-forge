@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+  <rect width="1000" height="440" fill="#0b1220"/>
+  <text x="500" y="38" text-anchor="middle" font-size="20" font-weight="700" fill="#f1f5f9">Un YAML → une carte Garmin</text>
+  <text x="500" y="62" text-anchor="middle" font-size="13" fill="#94a3b8">Déclare tes règles de symbologie — l'outil forge le `.img` prêt à embarquer</text>
+
+  <!-- YAML panel -->
+  <g transform="translate(40,90)">
+    <rect width="440" height="310" rx="10" fill="#0f172a" stroke="#1e293b"/>
+    <rect width="440" height="32" rx="10" fill="#1e293b"/>
+    <circle cx="16" cy="16" r="5" fill="#ef4444"/>
+    <circle cx="34" cy="16" r="5" fill="#f59e0b"/>
+    <circle cx="52" cy="16" r="5" fill="#10b981"/>
+    <text x="80" y="21" font-size="12" fill="#94a3b8" font-family="monospace">bdtopo-d038-config.yaml</text>
+    <g font-family="ui-monospace, Menlo, Consolas, monospace" font-size="13">
+      <text x="20" y="65" fill="#64748b">map:</text>
+      <text x="20" y="85" fill="#e2e8f0">  name: <tspan fill="#a7f3d0">"Isère — Randonnée"</tspan></text>
+      <text x="20" y="105" fill="#e2e8f0">  id: <tspan fill="#fde68a">61050000</tspan></text>
+      <text x="20" y="125" fill="#64748b">sources:</text>
+      <text x="20" y="145" fill="#e2e8f0">  - <tspan fill="#bae6fd">TRONCON_DE_ROUTE.shp</tspan></text>
+      <text x="20" y="165" fill="#e2e8f0">  - <tspan fill="#bae6fd">COURS_D_EAU.shp</tspan></text>
+      <text x="20" y="185" fill="#64748b">mapping:</text>
+      <text x="20" y="205" fill="#e2e8f0">  - where: <tspan fill="#c4b5fd">CL_ADMIN = 'Autoroute'</tspan></text>
+      <text x="20" y="225" fill="#e2e8f0">    polish_type: <tspan fill="#fca5a5">0x01</tspan></text>
+      <text x="20" y="245" fill="#e2e8f0">    profile: <tspan fill="#a7f3d0">route_major</tspan></text>
+      <text x="20" y="265" fill="#64748b">output:</text>
+      <text x="20" y="285" fill="#e2e8f0">  tile_size: <tspan fill="#fde68a">0.5</tspan>  <tspan fill="#64748b"># degrés</tspan></text>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <g>
+    <path d="M 500 245 L 560 245" stroke="#5cae58" stroke-width="4" fill="none" marker-end="url(#ar2)"/>
+    <defs>
+      <marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#5cae58"/>
+      </marker>
+    </defs>
+    <text x="530" y="225" text-anchor="middle" font-size="11" fill="#94a3b8">mpforge + imgforge</text>
+  </g>
+
+  <!-- Map preview -->
+  <g transform="translate(580,90)">
+    <rect width="380" height="310" rx="10" fill="#1a2332" stroke="#1e293b"/>
+    <rect x="0" y="0" width="380" height="310" rx="10" fill="#253548"/>
+    <!-- fake terrain -->
+    <g stroke="#3b5172" stroke-width="1" fill="none" opacity="0.5">
+      <path d="M 0 100 Q 95 70 190 100 T 380 100"/>
+      <path d="M 0 140 Q 95 110 190 140 T 380 140"/>
+      <path d="M 0 180 Q 95 150 190 180 T 380 180"/>
+      <path d="M 0 220 Q 95 190 190 220 T 380 220"/>
+      <path d="M 0 260 Q 95 230 190 260 T 380 260"/>
+    </g>
+    <!-- roads -->
+    <path d="M 30 280 C 120 240, 180 220, 260 160 S 360 60, 370 30" stroke="#f59e0b" stroke-width="4" fill="none"/>
+    <path d="M 60 50 C 150 90, 200 150, 280 190 S 340 280, 360 290" stroke="#fbbf24" stroke-width="2" fill="none"/>
+    <!-- river -->
+    <path d="M 0 220 C 80 200, 140 260, 220 240 S 340 200, 380 210" stroke="#3b82f6" stroke-width="3" fill="none" opacity="0.8"/>
+    <!-- POIs -->
+    <circle cx="90" cy="130" r="5" fill="#ef4444"/>
+    <circle cx="210" cy="180" r="5" fill="#ef4444"/>
+    <circle cx="300" cy="100" r="5" fill="#ef4444"/>
+    <!-- label -->
+    <rect x="14" y="14" width="140" height="24" rx="4" fill="#0f172a" opacity="0.8"/>
+    <text x="22" y="31" font-size="12" fill="#e2e8f0" font-family="monospace">gmapsupp.img</text>
+  </g>
+</svg>
