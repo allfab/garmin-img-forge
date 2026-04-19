@@ -31,6 +31,11 @@ pub struct ExecutionReport {
     pub tiles_skipped: usize,
     /// Total features processed across all tiles
     pub features_processed: usize,
+    /// Tech-spec #2 AC17 : nombre de features skipées parce qu'au moins un
+    /// bucket additionnel (`Data<n>=`) a échoué à l'écriture (erreur FFI
+    /// `OGR_F_SetGeomField` ≠ NONE ou WKT invalide). `0` en mode mono-Data.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub skipped_additional_geom: usize,
     /// Total execution duration in seconds (float for precision)
     pub duration_seconds: f64,
     /// Detailed error information for failed tiles
@@ -50,6 +55,12 @@ pub struct ExecutionReport {
 /// Story 8.3: Skip serialization when value is false (default).
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// Helper for conditional serialization of numeric fields.
+/// Tech-spec #2 : omet `skipped_additional_geom` de la sortie JSON quand zéro.
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Quality section of the execution report.
@@ -218,6 +229,7 @@ mod tests {
             tiles_failed: 0,
             tiles_skipped: 2,
             features_processed: 1000,
+            skipped_additional_geom: 0,
             duration_seconds: 5.5,
             errors: vec![],
             dry_run: false,
@@ -242,6 +254,7 @@ mod tests {
             tiles_failed: 2,
             tiles_skipped: 0,
             features_processed: 800,
+            skipped_additional_geom: 0,
             duration_seconds: 10.2,
             errors: vec![
                 TileError {
@@ -299,6 +312,7 @@ mod tests {
             tiles_failed: 0,
             tiles_skipped: 1,
             features_processed: 500,
+            skipped_additional_geom: 0,
             duration_seconds: 3.0,
             errors: vec![],
             dry_run: false,

@@ -558,6 +558,7 @@ pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators
                 stats.point_count += result.stats.point_count;
                 stats.linestring_count += result.stats.linestring_count;
                 stats.polygon_count += result.stats.polygon_count;
+                stats.skipped_additional_geom += result.stats.skipped_additional_geom;
             }
             {
                 let mut vs = accumulators.global_validation_stats.lock().unwrap_or_else(|e| e.into_inner());
@@ -1006,6 +1007,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         tiles_failed: summary.tiles_failed,
         tiles_skipped: summary.tiles_skipped,
         features_processed: summary.total_features(),
+        skipped_additional_geom: summary.global_stats.skipped_additional_geom,
         duration_seconds: total_duration,
         dry_run: args.dry_run,
         errors: summary

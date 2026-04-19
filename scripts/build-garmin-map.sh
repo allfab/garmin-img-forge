@@ -83,6 +83,20 @@ VERBOSE_COUNT=0         # 0=warn, 1=-v, 2=-vv
 WITH_ROUTE=true
 WITH_DEM=true
 
+# Tech-spec #2 : profils multi-Data
+DISABLE_PROFILES=false  # si true, passe --disable-profiles à mpforge (revalidation golden AC1)
+
+# Tech-spec #2 : résolution driver GDAL ogr-polishmap.
+# Le binaire mpforge est compilé contre GDAL système (pas de statique embed)
+# et charge le driver ogr-polishmap dynamiquement. Si l'utilisateur a laissé
+# le plugin système (/usr/lib/gdalplugins) non mis à jour, le chemin local
+# est exposé via GDAL_DRIVER_PATH pour garantir les features multi-Data.
+# Vide = pas d'override (utilise plugin système tel quel).
+# Priorité de résolution auto (si GDAL_DRIVER_PATH non défini) :
+#   1. ~/.gdal/plugins/ogr_PolishMap.so (install user)
+#   2. ./tools/ogr-polishmap/build/ogr_PolishMap.so (build local release)
+GDAL_DRIVER_PATH_OVERRIDE="${GDAL_DRIVER_PATH:-}"
+
 # Binaires résolus
 _MPFORGE=""
 _IMGFORGE=""
@@ -94,6 +108,8 @@ TILES_SUCCESS=0
 TILES_FAILED=0
 MPFORGE_DURATION=0
 FEATURES_PROCESSED=0
+# Tech-spec #2 AC17 : features skipées sur échec bucket additionnel (FFI/WKT).
+SKIPPED_ADDITIONAL_GEOM=0
 
 # Métriques imgforge
 IMGFORGE_TILES_COMPILED=0
@@ -308,6 +324,17 @@ MPFORGE / IMGFORGE :
     --imgforge-jobs N       Parallélisation imgforge (surcharge --jobs ;
                             pensez à réduire : imgforge consomme beaucoup de RAM)
     --skip-existing         Passer les tuiles .mp déjà présentes
+    --disable-profiles      Tech-spec #2 : bypasse le catalogue externe
+                            generalize_profiles_path (l'inline reste actif).
+                            Utilisé pour regénérer le golden baseline
+                            mono-Data (AC1). Accepte aussi l'env var
+                            MPFORGE_PROFILES=off.
+    --gdal-driver-path PATH Override GDAL_DRIVER_PATH pour charger le driver
+                            ogr-polishmap frais (tech-spec #2). Résolution
+                            auto si vide :
+                              1. ~/.gdal/plugins/
+                              2. ./tools/ogr-polishmap/build/
+                            Sinon utilise le plugin GDAL système.
 
 IMGFORGE :
     --family-id N           Family ID Garmin (défaut: 1100)
@@ -394,6 +421,8 @@ parse_args() {
             --mpforge-jobs)  MPFORGE_JOBS="$2"; shift 2 ;;
             --imgforge-jobs) IMGFORGE_JOBS="$2"; shift 2 ;;
             --skip-existing) SKIP_EXISTING=true; shift ;;
+            --disable-profiles) DISABLE_PROFILES=true; shift ;;
+            --gdal-driver-path) GDAL_DRIVER_PATH_OVERRIDE="$2"; shift 2 ;;
             --family-id)     FAMILY_ID="$2"; shift 2 ;;
             --product-id)    PRODUCT_ID="$2"; shift 2 ;;
             --family-name)   FAMILY_NAME="$2"; shift 2 ;;
@@ -776,6 +805,35 @@ check_prerequisites() {
     fi
     log_ok "imgforge : $_IMGFORGE"
 
+    # --- Driver ogr-polishmap (tech-spec #2 multi-Data) ---
+    # mpforge charge le driver dynamiquement via libgdal ; si le plugin
+    # système /usr/lib/gdalplugins/ogr_PolishMap.so n'a pas été mis à jour
+    # pour supporter MULTI_GEOM_FIELDS, il faut pointer vers une version
+    # locale à jour. Résolution par ordre de priorité :
+    #   1. --gdal-driver-path ou env GDAL_DRIVER_PATH (utilisateur)
+    #   2. ~/.gdal/plugins/ogr_PolishMap.so (install user local)
+    #   3. tools/ogr-polishmap/build/ogr_PolishMap.so (build cargo/cmake)
+    #   4. Aucun override → plugin système utilisé tel quel (warn si l'user
+    #      a construit multi-Data mais n'a pas installé le plugin frais).
+    if [[ -z "$GDAL_DRIVER_PATH_OVERRIDE" ]]; then
+        local user_plugin="${HOME}/.gdal/plugins/ogr_PolishMap.so"
+        local local_build="$(pwd)/tools/ogr-polishmap/build/ogr_PolishMap.so"
+        if [[ -f "$user_plugin" ]]; then
+            GDAL_DRIVER_PATH_OVERRIDE="${HOME}/.gdal/plugins"
+        elif [[ -f "$local_build" ]]; then
+            GDAL_DRIVER_PATH_OVERRIDE="$(pwd)/tools/ogr-polishmap/build"
+        fi
+    fi
+    if [[ -n "$GDAL_DRIVER_PATH_OVERRIDE" ]]; then
+        export GDAL_DRIVER_PATH="$GDAL_DRIVER_PATH_OVERRIDE"
+        log_ok "GDAL_DRIVER_PATH : $GDAL_DRIVER_PATH"
+    else
+        log_warn "Aucun plugin ogr-polishmap local détecté — mpforge utilisera"
+        log_warn "  le plugin système. Si celui-ci n'a pas été recompilé"
+        log_warn "  depuis tech-spec #2, le writer multi-Data sera silencieusement"
+        log_warn "  ignoré (sortie mono-Data). Rebuild : cmake --build tools/ogr-polishmap/build"
+    fi
+
     # --- TYP file ---
     if [[ -n "$TYP_FILE" && ! -f "$TYP_FILE" ]]; then
         log_error "Fichier TYP introuvable : $TYP_FILE"
@@ -951,6 +1009,7 @@ run_mpforge() {
     )
 
     [[ "$SKIP_EXISTING" == true ]] && cmd+=(--skip-existing)
+    [[ "$DISABLE_PROFILES" == true ]] && cmd+=(--disable-profiles)
     [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
     [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
 
@@ -981,11 +1040,19 @@ run_mpforge() {
         TILES_SUCCESS=$(( TILES_TOTAL - TILES_FAILED ))
         MPFORGE_DURATION=$(json_extract_int "$_REPORT_FILE" "duration_seconds" 0)
         FEATURES_PROCESSED=$(json_extract_int "$_REPORT_FILE" "features_processed" 0)
+        SKIPPED_ADDITIONAL_GEOM=$(json_extract_int "$_REPORT_FILE" "skipped_additional_geom" 0)
         log_info "  Tuiles   : ${TILES_SUCCESS}/${TILES_TOTAL} (${TILES_FAILED} échec(s))"
         [[ "$FEATURES_PROCESSED" -gt 0 ]] && log_info "  Features : ${FEATURES_PROCESSED}"
         if [[ "$TILES_FAILED" -gt 0 ]]; then
             log_warn "${TILES_FAILED} tuile(s) en échec — le gmapsupp.img sera incomplet"
             PARTIAL_FAILURE=true
+        fi
+        # Tech-spec #2 AC17 : alerte si des features ont été skipées à cause
+        # d'un échec bucket additionnel (FFI OGR_F_SetGeomField ou WKT).
+        if [[ "$SKIPPED_ADDITIONAL_GEOM" -gt 0 ]]; then
+            log_warn "${SKIPPED_ADDITIONAL_GEOM} feature(s) skipée(s) suite à un échec sur"
+            log_warn "  bucket multi-Data additionnel (AC17). Cherche 'FEATURE SKIPPED'"
+            log_warn "  dans les logs mpforge pour le détail."
         fi
     fi
 }
