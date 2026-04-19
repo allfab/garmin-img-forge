@@ -55,17 +55,6 @@ pub enum TypAction {
     },
 }
 
-/// Parse a hex type code like `0x01`, `0x3F`, `0x10000`, or a plain decimal.
-fn parse_hex_type(s: &str) -> Result<u32, String> {
-    let trimmed = s.trim();
-    let parsed = if let Some(stripped) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
-        u32::from_str_radix(stripped, 16)
-    } else {
-        trimmed.parse::<u32>()
-    };
-    parsed.map_err(|_| format!("Valeur de type invalide : {s}"))
-}
-
 #[derive(Parser)]
 #[command(name = "imgforge")]
 #[command(about = "Garmin IMG map compiler based on mkgmap")]
@@ -303,12 +292,6 @@ pub enum Commands {
         /// Continue building if a tile fails
         #[arg(long)]
         keep_going: bool,
-
-        /// Liste de type codes Garmin hex (séparés virgules) restreignant les features
-        /// éligibles à l'overview map. Vide = critère EndLevel seul (cf. tech-spec).
-        /// Exemple : `--overview-types 0x01,0x02,0x3F`.
-        #[arg(long, value_name = "TYPES", value_delimiter = ',', value_parser = parse_hex_type)]
-        overview_types: Option<Vec<u32>>,
 
         /// TYP file for custom map styling/symbology
         #[arg(long, value_name = "FILE")]
