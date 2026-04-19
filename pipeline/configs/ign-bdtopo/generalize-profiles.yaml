@@ -1,16 +1,26 @@
 # Tech-spec #2 — profils de simplification multi-niveaux BDTOPO pour mpforge.
 #
+# CATALOGUE 6L PARTAGÉ — header cible 24/23/22/20/18/16 (cf. chaque sources.yaml).
+#
 # Chaque profil est indexé par `source_layer` (nom de couche BDTOPO). mpforge
 # résout le profil au chargement de `sources.yaml` via le champ racine
-# `generalize_profiles_path: "../generalize-profiles.yaml"`.
+# `generalize_profiles_path`.
 #
 # Sémantique des clés (cf. tech-spec-mpforge-multi-data-bdtopo-profiles.md) :
 #   - n         : index de niveau de détail dans MpHeader.levels (0 = le plus
-#                 détaillé = émis en Data0=, 2 = émis en Data2=, etc.).
+#                 détaillé = émis en Data0=, 5 = émis en Data5=).
 #   - smooth    : "chaikin" uniquement pour l'instant (optionnel).
 #   - iterations: itérations de Chaikin (borne [0, 5]).
 #   - simplify  : tolérance Douglas-Peucker en degrés WGS84 (borne [0, 0.001],
 #                 ≈ 110 m). 0.00002 ≈ 2 m ; 0.00005 ≈ 5 m ; 0.00020 ≈ 22 m.
+#
+# ⚠️ CONTIGUÏTÉ DES PALIERS (règle critique) :
+#   Chaque profil doit déclarer des `n` CONTIGUS depuis 0 jusqu'à max(EndLevel)
+#   des règles qui l'utilisent. Sauter un index (ex: `n=0` puis `n=2` sans n=1)
+#   produit un trou dans les sections Data0..DataN du .mp qui désynchronise
+#   l'index RGN côté certains devices (Alpha 100 confirmé : rendu "moitié
+#   vide"). QMapShack est tolérant au trou mais pas les firmwares Garmin.
+#   Diagnostic complet : voir historique git avril 2026.
 #
 # Contraintes fail-fast validées par `load_config` :
 #   - Toute couche routable (is_routable_layer → TRONCON_DE_ROUTE) doit
@@ -25,13 +35,21 @@
 profiles:
   TRONCON_HYDROGRAPHIQUE:
     levels:
-      - { n: 0, simplify: 0.00005 }   # ~5.5 m — conservateur
-      - { n: 2, simplify: 0.00020 }   # ~22 m  — zoom moyen
+      - { n: 0, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00010 }
+      - { n: 3, simplify: 0.00014 }
+      - { n: 4, simplify: 0.00020 }
+      - { n: 5, simplify: 0.00028 }
 
   ZONE_DE_VEGETATION:
     levels:
       - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
-      - { n: 2, simplify: 0.00020 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00010 }
+      - { n: 3, simplify: 0.00014 }
+      - { n: 4, simplify: 0.00020 }
+      - { n: 5, simplify: 0.00028 }
 
   TRONCON_DE_ROUTE:
     # Dispatch conditionnel par CL_ADMIN. Premier match gagne (ordre YAML).
@@ -41,29 +59,83 @@ profiles:
       - field: CL_ADMIN
         values: [Autoroute, Nationale]
         levels:
-          - { n: 0, simplify: 0.00001 }   # ~1 m — préservation routing max
-          - { n: 2, simplify: 0.00008 }
+          - { n: 0, simplify: 0.00001 }
+          - { n: 1, simplify: 0.00002 }
+          - { n: 2, simplify: 0.00003 }
+          - { n: 3, simplify: 0.00005 }
+          - { n: 4, simplify: 0.00008 }
+          - { n: 5, simplify: 0.00013 }
       - field: CL_ADMIN
         values: [Départementale]
         levels:
           - { n: 0, simplify: 0.00003 }
-          - { n: 2, simplify: 0.00010 }
+          - { n: 1, simplify: 0.00004 }
+          - { n: 2, simplify: 0.00006 }
+          - { n: 3, simplify: 0.00007 }
+          - { n: 4, simplify: 0.00010 }
+          - { n: 5, simplify: 0.00014 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
           - { n: 0, simplify: 0.00005 }
-          - { n: 2, simplify: 0.00015 }
+          - { n: 1, simplify: 0.00007 }
+          - { n: 2, simplify: 0.00009 }
+          - { n: 3, simplify: 0.00011 }
+          - { n: 4, simplify: 0.00015 }
+          - { n: 5, simplify: 0.00020 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
           - { n: 0, simplify: 0.00010 }
-          - { n: 2, simplify: 0.00030 }
+          - { n: 1, simplify: 0.00013 }
+          - { n: 2, simplify: 0.00017 }
+          - { n: 3, simplify: 0.00023 }
+          - { n: 4, simplify: 0.00030 }
+          - { n: 5, simplify: 0.00040 }
     levels:
       # Fallback par défaut si aucune `when` ne matche.
       - { n: 0, simplify: 0.00005 }
-      - { n: 2, simplify: 0.00015 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00009 }
+      - { n: 3, simplify: 0.00011 }
+      - { n: 4, simplify: 0.00015 }
+      - { n: 5, simplify: 0.00020 }
 
   COURBE:
     levels:
       - { n: 0, simplify: 0.00008 }
-      - { n: 2, simplify: 0.00025 }
+      - { n: 1, simplify: 0.00011 }
+      - { n: 2, simplify: 0.00014 }
+      - { n: 3, simplify: 0.00019 }
+      - { n: 4, simplify: 0.00025 }
+      - { n: 5, simplify: 0.00033 }
+
+  # Murs, digues — fin au zoom max, agressif ailleurs
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0, simplify: 0.00003 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00010 }
+      - { n: 3, simplify: 0.00018 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00050 }
+
+  # Polygones lacs — chaikin n=0 pour adoucir les contours
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00008 }
+      - { n: 2, simplify: 0.00012 }
+      - { n: 3, simplify: 0.00018 }
+      - { n: 4, simplify: 0.00025 }
+      - { n: 5, simplify: 0.00037 }
+
+  # Zones d'habitation — consolidées depuis les inlines des sources.yaml
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00008 }
+      - { n: 2, simplify: 0.00012 }
+      - { n: 3, simplify: 0.00020 }
+      - { n: 4, simplify: 0.00035 }
+      - { n: 5, simplify: 0.00055 }

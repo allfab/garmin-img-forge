@@ -159,6 +159,12 @@ fn apply_level_to_polygon(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f6
 /// Tech-spec #2 Task 9: multi-profile entry point for the pipeline. Dispatches
 /// each feature to its profile by `source_layer` (exact match). Returns the
 /// total number of features that produced at least one bucket.
+///
+/// Après l'application du profil, les trous éventuels dans les index
+/// `Data0..DataK` sont comblés par clonage du palier précédent (cf.
+/// [`fill_level_gaps`]) — obligatoire pour le rendu sur certains firmwares
+/// Garmin (Alpha 100 confirmé) qui exigent des sections `DataN=` contiguës
+/// depuis `Data0`.
 pub fn generalize_features_with_profiles(
     features: &mut [Feature],
     profile_map: &BTreeMap<String, GeneralizeProfile>,
@@ -171,11 +177,40 @@ pub fn generalize_features_with_profiles(
         let Some(layer_name) = feature.source_layer.as_deref() else { continue; };
         if let Some(profile) = profile_map.get(layer_name) {
             if apply_profile(feature, profile) > 0 {
+                if let Some(max_n) = profile.max_level_index() {
+                    fill_level_gaps(feature, max_n);
+                }
                 count += 1;
             }
         }
     }
     count
+}
+
+/// Comble les index `Data1..DataK` manquants après [`apply_profile`] en clonant
+/// la géométrie du palier précédent disponible. Garantit que le writer émettra
+/// des sections `Data0..DataK` contiguës dans le `.mp`, condition nécessaire au
+/// rendu correct sur les firmwares Garmin sensibles aux trous d'index RGN
+/// (Alpha 100 rend "moitié vide" si `Data1=` est absent alors que `Data2=`
+/// existe — QMapShack est tolérant mais pas les devices).
+///
+/// Mutation no-op pour les points et pour les features avec géométrie vide.
+pub fn fill_level_gaps(feature: &mut Feature, max_n: u8) {
+    if matches!(feature.geometry_type, GeometryType::Point) {
+        return;
+    }
+    if feature.geometry.is_empty() {
+        return;
+    }
+    // Piste de parcours : `geometry` = Data0 ; additional_geometries[n] pour n>0.
+    let mut last_coords: Vec<(f64, f64)> = feature.geometry.clone();
+    for n in 1..=max_n {
+        if let Some(coords) = feature.additional_geometries.get(&n) {
+            last_coords = coords.clone();
+        } else {
+            feature.additional_geometries.insert(n, last_coords.clone());
+        }
+    }
 }
 
 /// Apply generalization to all features that have a matching layer config.
@@ -687,6 +722,35 @@ levels:
         assert_eq!(count, 1);
         assert!(features[0].additional_geometries.contains_key(&2));
         assert!(features[1].additional_geometries.is_empty());
+    }
+
+    #[test]
+    fn test_generalize_features_with_profiles_fills_level_gaps() {
+        // Profil avec trou explicite (n=0, n=2 sans n=1). Après
+        // generalize_features_with_profiles, fill_level_gaps doit combler n=1
+        // pour garantir la contiguïté des sections DataN= dans le .mp
+        // (requis par le firmware Alpha 100).
+        let mut features = vec![make_linestring_feature(zigzag_coords(), "HYDRO")];
+        let mut map = BTreeMap::new();
+        map.insert(
+            "HYDRO".to_string(),
+            profile_from_yaml(
+                "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
+            ),
+        );
+        generalize_features_with_profiles(&mut features, &map);
+        let f = &features[0];
+        assert!(
+            f.additional_geometries.contains_key(&1),
+            "n=1 must be backfilled for Data0..DataK contiguity"
+        );
+        assert!(f.additional_geometries.contains_key(&2));
+        // Le clone de n=1 doit provenir du palier précédent (n=0 = feature.geometry)
+        assert_eq!(
+            f.additional_geometries.get(&1).unwrap(),
+            &f.geometry,
+            "n=1 (backfilled) should clone n=0 geometry verbatim"
+        );
     }
 
     // =================================================================

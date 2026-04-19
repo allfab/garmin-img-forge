@@ -62,10 +62,6 @@ inputs:
     source_srs: "EPSG:2975"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
-    generalize:
-      smooth: "chaikin"
-      iterations: 1
-      simplify: 0.00005
 
   # ==========================================================================
   # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
@@ -266,12 +262,13 @@ output:
 header:
   name: "BDTOPO-{col:03}-{row:03}"
   copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
-  levels: "5"
+  levels: "6"
   level0: "24"
-  level1: "22"
-  level2: "20"
-  level3: "18"
-  level4: "16"
+  level1: "23"
+  level2: "22"
+  level3: "20"
+  level4: "18"
+  level5: "16"
   simplify_level: "0"
   tree_size: "1000"
   rgn_limit: "1024"

@@ -1,9 +1,18 @@
 # ============================================================================
 # Variante quadrants Garmin (FRANCE-SE, FRANCE-SO, FRANCE-NE, FRANCE-NO) —
-# dérivée de pipeline/configs/ign-bdtopo/departement/sources.yaml.
-# Seule différence : le champ `rules:` pointe vers france-quadrant/garmin-rules.yaml
-# (EndLevel rabaissés pour réduire la taille IMG des quadrants).
-# Toute évolution de departement/sources.yaml doit être répercutée ici.
+# dérivée à l'origine de pipeline/configs/ign-bdtopo/departement/sources.yaml.
+#
+# Divergences intentionnelles vs departement/ :
+#   - `rules:` pointe vers france-quadrant/garmin-rules.yaml (EndLevel rabaissés
+#     pour alléger l'IMG des quadrants : BATIMENT/CONSTRUCTION_LINEAIRE "0"→"1"
+#     puis remap 5L→6L standard).
+#
+# Note : le header 6L (24/23/22/20/18/16) et le catalogue 6L `generalize-profiles.yaml`
+# sont communs à tous les scopes (departement, outre-mer, france-quadrant) depuis
+# la refonte avril 2026 (contiguïté des paliers Data0..DataN obligatoire sur Alpha 100).
+#
+# NE PAS répercuter mécaniquement les évolutions header ou catalogue depuis
+# departement/ sans réviser le remap EndLevel correspondant.
 # ============================================================================
 version: 1
 
@@ -68,10 +77,6 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
-    generalize:
-      smooth: "chaikin"
-      iterations: 1
-      simplify: 0.00005
 
   # ==========================================================================
   # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
@@ -270,12 +275,13 @@ output:
 header:
   name: "BDTOPO-{col:03}-{row:03}"
   copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
-  levels: "5"
+  levels: "6"
   level0: "24"
-  level1: "22"
-  level2: "20"
-  level3: "18"
-  level4: "16"
+  level1: "23"
+  level2: "22"
+  level3: "20"
+  level4: "18"
+  level5: "16"
   simplify_level: "0"
   tree_size: "1000"
   rgn_limit: "1024"
