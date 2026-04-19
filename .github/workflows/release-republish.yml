@@ -149,16 +149,14 @@ jobs:
           NOTES: ${{ steps.wait.outputs.body }}
         run: |
           set -euo pipefail
-          NOTES_HEADER="> Miroir de la release canonique Forgejo : https://forgejo.allfabox.fr/$FORGEJO_REPO/releases/tag/$TAG"
-          FULL_NOTES=$(printf '%s\n\n%s' "$NOTES_HEADER" "$NOTES")
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG existe déjà — upload des assets en mode clobber."
-            gh release edit "$TAG" --title "$RELEASE_NAME" --notes "$FULL_NOTES"
+            gh release edit "$TAG" --title "$RELEASE_NAME" --notes "$NOTES"
             gh release upload "$TAG" assets/* --clobber
           else
             gh release create "$TAG" \
               --title "$RELEASE_NAME" \
-              --notes "$FULL_NOTES" \
+              --notes "$NOTES" \
               assets/*
           fi
           echo "Release GitHub publiée : https://github.com/${{ github.repository }}/releases/tag/$TAG"
