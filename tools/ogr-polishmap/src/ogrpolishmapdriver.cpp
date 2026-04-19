@@ -60,7 +60,7 @@ OGRPolishMapDriver::OGRPolishMapDriver() {
     // SQL dialects supported (OGRSQL is the default OGR SQL)
     SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL");
 
-    // Story 2.2.8 + 4.4: Dataset creation options
+    // Story 2.2.8 + 4.4 + Tech-spec #2 Task 2/4: Dataset creation options
     SetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST,
         "<CreationOptionList>"
         "  <Option name='HEADER_TEMPLATE' type='string' description="
@@ -70,7 +70,24 @@ OGRPolishMapDriver::OGRPolishMapDriver() {
         "  <Option name='FIELD_MAPPING' type='string' description="
         "'Path to a YAML configuration file that defines field mappings from source to Polish Map fields. "
         "Enables automatic field name translation (e.g., NAME to Label, ROAD_TYPE to Type) during ogr2ogr conversion.'/>"
+        "  <Option name='MULTI_GEOM_FIELDS' type='boolean' default='NO' description="
+        "'Enable multi-geometry fields on POLYLINE and POLYGON layers (Data1=, Data2=, ... DataK= "
+        "in the Polish Map output). POI stays mono-geom (MP spec §4.4.3.1).'/>"
+        "  <Option name='MAX_DATA_LEVEL' type='int' default='4' min='1' max='9' description="
+        "'Maximum Data index K when MULTI_GEOM_FIELDS=YES. Adds K OGRGeomFieldDefn "
+        "(geom_level_1..geom_level_K) beside the primary geometry.'/>"
         "</CreationOptionList>");
+
+    // Tech-spec #2 Task 4: Open options (strict opt-in, no auto-detection).
+    SetMetadataItem(GDAL_DMD_OPENOPTIONLIST,
+        "<OpenOptionList>"
+        "  <Option name='MULTI_GEOM_FIELDS' type='boolean' default='NO' description="
+        "'Expose Data1=..DataK= lines parsed from the file as additional OGR geometry "
+        "fields on POLYLINE/POLYGON layers. Without this option the file is opened as "
+        "strictly single-geom features (any DataN>0 lines are parsed but not exposed).'/>"
+        "  <Option name='MAX_DATA_LEVEL' type='int' default='4' min='1' max='9' description="
+        "'Maximum Data index K to expose when MULTI_GEOM_FIELDS=YES at open.'/>"
+        "</OpenOptionList>");
 
     // Function pointers for driver operations
     pfnOpen = Open;

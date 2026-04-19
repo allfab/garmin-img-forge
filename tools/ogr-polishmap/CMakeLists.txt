@@ -290,6 +290,14 @@ target_include_directories(test_header_template PRIVATE
 )
 target_link_libraries(test_header_template PRIVATE ${GDAL_LIBRARIES})
 
+# Test executable - Tech-spec #2 Task 5 : multi-geometry fields
+add_executable(test_multigeometry_fields test/test_multigeometry_fields.cpp ${POLISHMAP_SOURCES})
+target_include_directories(test_multigeometry_fields PRIVATE
+    ${GDAL_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_multigeometry_fields PRIVATE ${GDAL_LIBRARIES})
+
 # Test executable - Real-World SIG Integration (Story 4.3)
 add_executable(test_real_world_integration test/test_real_world_integration.cpp ${POLISHMAP_SOURCES})
 target_include_directories(test_real_world_integration PRIVATE
