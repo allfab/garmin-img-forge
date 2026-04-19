@@ -4,7 +4,7 @@
   <br>
 </h1>
 
-<h4 align="center">Du SIG au GPS en une ligne de commande.<br/>Des cartes Garmin <code>.img</code> <strong>professionnelles</strong>, pilotées par de simples fichiers <strong>YAML</strong>.</h4>
+<h4 align="center">Du SIG au GPS en une ligne de commande.<br/>Des cartes Garmin <code>.img</code> de qualité professionnelle, pilotées par de simples fichiers <strong>YAML</strong>.</h4>
 
 <p align="center">
   <a href="https://imgforge.garmin.allfabox.fr/" target="_blank"><img src="https://img.shields.io/badge/Site-imgforge.garmin.allfabox.fr-526CFE?style=for-the-badge&logoColor=white" /></a>
@@ -15,33 +15,34 @@
 </p>
 
 <p align="center">
-  <a href="#-pourquoi-garmin-img-forge-">Pourquoi</a> •
-  <a href="#-ta-première-carte-en-5-minutes">Démarrage rapide</a> •
-  <a href="#-monter-un-pipeline-de-production">Pipeline de production</a> •
-  <a href="#-galerie">Galerie</a> •
-  <a href="#-liens--ressources">Liens</a>
+  <a href="#pourquoi-garmin-img-forge-">Pourquoi</a> •
+  <a href="#-démarrage-rapide--première-carte-en-5-minutes">Démarrage rapide</a> •
+  <a href="#-mise-en-place-dun-pipeline-de-production">Pipeline de production</a> •
+  <a href="#galerie">Galerie</a> •
+  <a href="#-ressources">Ressources</a>
 </p>
 
 <p align="center">
   <img src="site/docs/assets/images/readme/hero-pipeline.svg" alt="Pipeline Garmin IMG Forge : SIG → mpforge → imgforge → GPS" width="100%"/>
 </p>
 
-> 🪞 **Miroir public en lecture.** Ce dépôt GitHub est un clone miroir filtré d'un dépôt Forgejo interne. Issues et PR GitHub sont bienvenues mais mergées côté source (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
+> **Miroir public en lecture.** Ce dépôt GitHub est un clone miroir filtré d'un dépôt Forgejo interne. Les issues et pull requests GitHub sont bienvenues, mais mergées côté source (voir [CONTRIBUTING.md](./CONTRIBUTING.md)).
 
 ---
 
-## ✨ Pourquoi Garmin IMG Forge ?
+## Pourquoi Garmin IMG Forge ?
 
-Tu as des données SIG (BDTOPO, OpenStreetMap, un shapefile métier, une couche cadastre…) et tu veux les voir sur ton **Edge, eTrex, Oregon ou GPSMAP** — sans clic, sans usine à gaz, sans dépendre d'un outil propriétaire.
+Vous disposez de données SIG vectorielles — BDTOPO, OpenStreetMap, shapefiles métier, couches cadastrales — et souhaitez les exploiter sur un GPS Garmin (Edge, eTrex, Oregon, GPSMAP) sans recourir à une chaîne d'outils propriétaires ni à des manipulations manuelles.
 
-**Garmin IMG Forge** est une chaîne d'outils open source qui transforme **n'importe quelle source SIG** en **carte Garmin** prête à copier sur ton GPS, **via de simples fichiers YAML déclaratifs**.
+**Garmin IMG Forge** est une suite open source qui transforme vos sources SIG en cartes Garmin prêtes à déployer, au moyen de fichiers YAML déclaratifs.
 
-| 🧬 **Déclaratif**       | Un YAML décrit ta carte. L'outil forge le reste. Versionne, diff, rejoue. |
-|-------------------------|----------------------------------------------------------------------------|
-| ⚡ **Zéro friction**    | `mpforge` embarque GDAL + PROJ + GEOS en statique. `imgforge` est **Pure Rust**. Un seul binaire, zéro dépendance système. |
-| 🎯 **Multi-zoom natif** | Profils de simplification conditionnels (`CL_ADMIN`, `IMPORTANCE`…) — jusqu'à **10 géométries par feature** selon le zoom. Absent de `mkgmap`. |
-| 🏗️ **Production-ready** | Pipeline CI complet, releases reproductibles, métadonnées signées SHA-256. |
-| 🆓 **Libre**            | GPL v3 / MIT. Tes données, tes règles, ton infra. |
+| Atout                     | Description |
+|---------------------------|-------------|
+| **Approche déclarative**  | Un fichier YAML décrit la carte cible ; la chaîne se charge du reste. Versionnable, diffable, rejouable à l'identique. |
+| **Déploiement simplifié** | `mpforge` embarque GDAL, PROJ et GEOS en liaison statique. `imgforge` est écrit en Rust pur. Un binaire unique, aucune dépendance système à l'exécution. |
+| **Multi-zoom natif**      | Profils de simplification conditionnels par attribut (`CL_ADMIN`, `IMPORTANCE`…) — jusqu'à **10 géométries par feature** selon le niveau de zoom. Fonctionnalité absente de `mkgmap`. |
+| **Prêt pour la production** | Pipeline CI/CD complet, releases reproductibles, métadonnées et checksums SHA-256 signés. |
+| **Logiciel libre**        | Licences GPL v3 / MIT. Vos données, vos règles, votre infrastructure. |
 
 ### Les briques
 
@@ -50,15 +51,15 @@ Tu as des données SIG (BDTOPO, OpenStreetMap, un shapefile métier, une couche 
 | [`ogr-polishmap`](./tools/ogr-polishmap/)         | Driver GDAL/OGR pour le format Polish Map (`.mp`)      | C++             | MIT     |
 | [`mpforge`](./tools/mpforge/)                     | SIG → tuiles `.mp` (règles YAML, multi-zoom)           | Rust + GDAL     | GPL v3  |
 | [`imgforge`](./tools/imgforge/)                   | `.mp` → Garmin `.img` (remplace `cGPSmapper`)          | Rust pur        | GPL v3  |
-| [`ogr-garminimg`](./tools/ogr-garminimg/) *(WIP)* | Driver GDAL/OGR pour **lire** les `.img` (diagnostic)  | C++             | —       |
+| [`ogr-garminimg`](./tools/ogr-garminimg/) *(WIP)* | Driver GDAL/OGR de lecture pour les `.img` (diagnostic) | C++            | —       |
 
 ---
 
-## 🚀 Ta première carte en 5 minutes
+## 🚀 Démarrage rapide — première carte en 5 minutes
 
-> **Objectif :** produire un `gmapsupp.img` depuis un exemple YAML fourni, et le copier sur ton GPS.
+> **Objectif :** produire un `gmapsupp.img` à partir d'un exemple YAML fourni, puis le déployer sur un GPS Garmin.
 
-### 1. Récupère les binaires *(ou compile depuis les sources — voir [pré-requis](#-pré-requis-détaillés))*
+### 1. Récupérer les binaires *(ou compiler depuis les sources — voir [pré-requis](#pré-requis-détaillés))*
 
 ```bash
 # Binaires statiques Linux x64 publiés à chaque release
@@ -67,7 +68,7 @@ curl -LO https://github.com/allfab/garmin-img-forge/releases/latest/download/img
 chmod +x mpforge imgforge
 ```
 
-### 2. Prends un exemple YAML livré avec le dépôt
+### 2. Sélectionner un exemple YAML livré avec le dépôt
 
 ```bash
 git clone https://github.com/allfab/garmin-img-forge.git
@@ -76,21 +77,21 @@ ls *.yaml
 # simple.yaml • simple-with-mapping.yaml • bdtopo.yaml • france-nord-bdtopo.yaml ...
 ```
 
-### 3. Forge les tuiles `.mp`
+### 3. Générer les tuiles `.mp`
 
 ```bash
 mpforge --config simple.yaml --output /tmp/tuiles/
 ```
 
-### 4. Compile en `.img` pour ton GPS
+### 4. Compiler en `.img` pour le GPS
 
 ```bash
 imgforge /tmp/tuiles/*.mp --output gmapsupp.img
 ```
 
-### 5. Copie sur ton GPS
+### 5. Déployer sur le GPS
 
-Branche ton GPS en USB, dépose `gmapsupp.img` dans le dossier `Garmin/` de la carte SD (ou de la mémoire interne). Débranche. **C'est tout.** La carte apparaît dans ton gestionnaire de cartes Garmin.
+Connectez le GPS en USB, copiez `gmapsupp.img` dans le dossier `Garmin/` de la carte SD (ou de la mémoire interne), puis déconnectez. La carte est immédiatement disponible dans le gestionnaire de cartes Garmin.
 
 <p align="center">
   <img src="site/docs/assets/images/readme/gps-preview.svg" alt="Carte chargée sur un GPS Garmin" width="80%"/>
@@ -98,31 +99,31 @@ Branche ton GPS en USB, dépose `gmapsupp.img` dans le dossier `Garmin/` de la c
 
 ---
 
-## 🏭 Monter un pipeline de production
+## 🏭 Mise en place d'un pipeline de production
 
-Quand tu veux passer de « un exemple qui tourne » à « je publie des cartes régionales à jour toutes les semaines », le dépôt fournit un **squelette de pipeline** prêt à personnaliser.
+Pour passer d'un exemple de démonstration à une production régulière de cartes régionales ou thématiques, le dépôt fournit un **squelette de pipeline** prêt à personnaliser.
 
 ### Anatomie d'un pipeline
 
 ```
 pipeline/
-├── configs/           # TES fichiers YAML (par région, par thématique)
+├── configs/           # Vos fichiers YAML (par région, par thématique)
 │   ├── ign-bdtopo/    #   ├── generalize-profiles.yaml  (profils multi-zoom)
 │   │   └── departement/  #   └── <dept>.yaml            (une carte = un YAML)
 │   └── osm/
 ├── data/              # Sources SIG téléchargées (BDTOPO, extraits OSM…)
 ├── output/<année>/    # Tuiles .mp + gmapsupp.img versionnés
-└── resources/         # TYP files, icônes, ressources partagées
+└── resources/         # Fichiers TYP, icônes, ressources partagées
 ```
 
-### Ton premier pipeline personnalisé, en 4 étapes
+### Mise en place en 4 étapes
 
-**1. Déclare ta carte** — crée `pipeline/configs/ign-bdtopo/departement/mon-departement.yaml` :
+**1. Déclarer la carte** — créer `pipeline/configs/ign-bdtopo/departement/mon-departement.yaml` :
 
 ```yaml
 map:
   name: "Mon Département — Randonnée"
-  id: 61050000                  # ID Garmin unique
+  id: 61050000                  # identifiant Garmin unique
   copyright: "© IGN BDTOPO 2026"
 
 sources:
@@ -141,9 +142,9 @@ output:
   tile_size: 0.5                # degrés
 ```
 
-> 👉 Exemples complets et documentés : [`tools/mpforge/examples/bdtopo-d038-config.yaml`](./tools/mpforge/examples/bdtopo-d038-config.yaml)
+> Exemples complets et documentés : [`tools/mpforge/examples/bdtopo-d038-config.yaml`](./tools/mpforge/examples/bdtopo-d038-config.yaml)
 
-**2. Rejoue le pipeline localement** :
+**2. Exécuter le pipeline en local :**
 
 ```bash
 mpforge --config pipeline/configs/ign-bdtopo/departement/mon-departement.yaml \
@@ -153,13 +154,13 @@ imgforge pipeline/output/2026/v2026.04/*.mp \
          --output pipeline/output/2026/v2026.04/gmapsupp.img
 ```
 
-**3. Intègre en CI** — le dépôt fournit des pipelines Woodpecker pour l'infra interne et des workflows GitHub Actions pour le miroir public. Détails complets dans **[CI-CD.md](./CI-CD.md)**.
+**3. Intégrer en CI** — le dépôt fournit des pipelines Woodpecker pour l'infrastructure interne ainsi que des workflows GitHub Actions pour le miroir public. Documentation complète dans **[CI-CD.md](./CI-CD.md)**.
 
-**4. Publie** — les releases sont pilotées par tag (`mpforge-v*`, `imgforge-v*`) via `scripts/release-tool.sh`. Chaque release produit binaire + `SHA256SUMS` + métadonnées JSON, automatiquement republiés sur le miroir GitHub.
+**4. Publier** — les releases sont pilotées par tag (`mpforge-v*`, `imgforge-v*`) via `scripts/release-tool.sh`. Chaque release produit un binaire, un fichier `SHA256SUMS` et des métadonnées JSON, automatiquement republiés sur le miroir GitHub.
 
 ---
 
-## 🖼️ Galerie
+## Galerie
 
 <p align="center">
   <img src="site/docs/assets/images/readme/yaml-to-map.svg" alt="Un YAML déclaratif devient une carte Garmin" width="100%"/>
@@ -167,20 +168,20 @@ imgforge pipeline/output/2026/v2026.04/*.mp \
 
 ---
 
-## 🧰 Pré-requis détaillés
+## Pré-requis détaillés
 
-Pour **utiliser** les binaires publiés : aucune dépendance. Pour **compiler** depuis les sources :
+Aucune dépendance n'est requise pour exécuter les binaires publiés. Les dépendances suivantes ne s'appliquent qu'à la compilation depuis les sources :
 
 | Composant                                           | Requis pour                          |
 |-----------------------------------------------------|--------------------------------------|
 | **Rust** (via [rustup](https://rustup.rs/))         | `mpforge`, `imgforge`                |
 | **GCC/Clang + CMake ≥ 3.20**                        | `ogr-polishmap` (driver C++)         |
-| **GDAL ≥ 3.6** (3.10+ recommandé)                   | `ogr-polishmap`, dev local `mpforge` |
-| **Python 3.10+ + PyQGIS** *(option)*                | Plugin QGIS                          |
-| **Java 11+ + mkgmap** *(option)*                    | Génération avancée / comparaison     |
+| **GDAL ≥ 3.6** (3.10+ recommandé)                   | `ogr-polishmap`, développement `mpforge` |
+| **Python 3.10+ + PyQGIS** *(optionnel)*             | Plugin QGIS                          |
+| **Java 11+ + mkgmap** *(optionnel)*                 | Génération avancée / comparaison     |
 
 <details>
-<summary><strong>Installation des dépendances (Debian/Ubuntu) + variables d'environnement</strong></summary>
+<summary><strong>Installation des dépendances (Debian/Ubuntu) et variables d'environnement</strong></summary>
 
 ```bash
 # Rust
@@ -214,15 +215,15 @@ cd tools/imgforge      && cargo build --release
 
 ---
 
-## 🔗 Liens & ressources
+## 🔗 Ressources
 
 | Ressource                          | URL |
 |------------------------------------|-----|
-| 🌐 Site & documentation complète   | [imgforge.garmin.allfabox.fr](https://imgforge.garmin.allfabox.fr) |
-| 📥 Cartes Garmin téléchargeables   | [download-maps.garmin.allfabox.fr](https://download-maps.garmin.allfabox.fr/) |
-| 📦 Releases (binaires)             | [github.com/allfab/garmin-img-forge/releases](https://github.com/allfab/garmin-img-forge/releases) |
-| 🔧 CI/CD, tags, releases           | [CI-CD.md](./CI-CD.md) |
-| 🤝 Contribuer                      | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Site et documentation complète     | [imgforge.garmin.allfabox.fr](https://imgforge.garmin.allfabox.fr) |
+| Cartes Garmin téléchargeables      | [download-maps.garmin.allfabox.fr](https://download-maps.garmin.allfabox.fr/) |
+| Releases (binaires)                | [github.com/allfab/garmin-img-forge/releases](https://github.com/allfab/garmin-img-forge/releases) |
+| CI/CD, tags, procédures de release | [CI-CD.md](./CI-CD.md) |
+| Contribuer                         | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 
 ### Structure du dépôt
 
@@ -230,32 +231,32 @@ cd tools/imgforge      && cargo build --release
 garmin-img-forge/
 ├── tools/          # Code source (ogr-polishmap, mpforge, imgforge, ogr-garminimg)
 ├── pipeline/       # Squelette de production (configs YAML, data, output)
-├── scripts/        # Orchestration — doc: scripts/README.md
-├── site/           # Site Zensical (sources)
+├── scripts/        # Orchestration — voir scripts/README.md
+├── site/           # Sources du site Zensical
 ├── docs/           # Documentation projet (specs, planning, images README)
 ├── .woodpecker/    # CI Woodpecker (interne, non miroiré sur GitHub)
-└── .github/        # Workflows + templates GitHub (miroir public)
+└── .github/        # Workflows et templates GitHub (miroir public)
 ```
 
 ---
 
-## 🙏 Crédits
+## Crédits
 
-Sur les épaules de géants :
+Ce projet s'appuie sur des technologies éprouvées de l'écosystème open source :
 
-- **[GDAL](https://gdal.org/)** — la bibliothèque qui rend tout ça possible
-- **[cGPSmapper](https://www.cgpsmapper.com/)** — pour la spec historique du format Polish Map
-- **[mkgmap](https://www.mkgmap.org.uk/)** — inspiration et référence
-- **[IGN](https://www.ign.fr/)** — BDTOPO en licence ouverte
+- **[GDAL](https://gdal.org/)** — bibliothèque de traitement géospatial
+- **[cGPSmapper](https://www.cgpsmapper.com/)** — spécification historique du format Polish Map
+- **[mkgmap](https://www.mkgmap.org.uk/)** — inspiration et référence pour la génération de cartes Garmin
+- **[IGN](https://www.ign.fr/)** — BDTOPO sous licence ouverte
 - **[OpenStreetMap](https://www.openstreetmap.org/)** — données cartographiques libres
-- **[Rust](https://www.rust-lang.org/) + [Zensical](https://zensical.org/) + [Woodpecker](https://woodpecker-ci.org/)** — une stack moderne, sobre, auto-hébergeable
+- **[Rust](https://www.rust-lang.org/) · [Zensical](https://zensical.org/) · [Woodpecker](https://woodpecker-ci.org/)** — stack moderne, sobre et auto-hébergeable
 
 ---
 
-## 📜 Licences
+## Licences
 
 - `ogr-polishmap` : **MIT**
 - `mpforge`, `imgforge` : **GPL v3**
 - Documentation du site : **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.fr)**
 
-Voir [`LICENSE`](./LICENSE) pour les détails.
+Voir [`LICENSE`](./LICENSE) pour le détail.
