@@ -48,6 +48,7 @@ fn create_test_args() -> BuildArgs {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     }
 }

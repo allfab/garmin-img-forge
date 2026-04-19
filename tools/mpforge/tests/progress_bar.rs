@@ -57,6 +57,7 @@ fn test_verbose_level_0_shows_warn_only() {
         skip_existing: false,
         dry_run: false,
         verbose: 0, // WARN level
+        disable_profiles: false,
     };
 
     // Run pipeline with verbose=0 (should succeed, WARN level configured)
@@ -88,6 +89,7 @@ fn test_verbose_level_1_shows_info_logs() {
         skip_existing: false,
         dry_run: false,
         verbose: 1, // INFO level
+        disable_profiles: false,
     };
 
     // Run pipeline with verbose=1 (INFO logs enabled, progress bar active)
@@ -119,6 +121,7 @@ fn test_verbose_level_2_disables_progress_bar_and_shows_debug() {
         skip_existing: false,
         dry_run: false,
         verbose: 2, // DEBUG level
+        disable_profiles: false,
     };
 
     // Run pipeline with verbose=2 (DEBUG logs, progress bar disabled)
@@ -150,6 +153,7 @@ fn test_progress_bar_increments_for_all_tiles_sequential() {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     };
 
     // Run pipeline
@@ -187,6 +191,7 @@ fn test_progress_bar_thread_safe_parallel_jobs_4() {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     };
 
     // Run pipeline with parallel export
@@ -227,6 +232,7 @@ fn test_sequential_and_parallel_produce_same_counts() {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     };
 
     let args_par = BuildArgs {
@@ -239,6 +245,7 @@ fn test_sequential_and_parallel_produce_same_counts() {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     };
 
     // Run both pipelines

@@ -31,6 +31,7 @@ fn make_args(report: Option<String>) -> BuildArgs {
         report,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     }
 }

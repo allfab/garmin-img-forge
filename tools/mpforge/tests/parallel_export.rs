@@ -46,6 +46,7 @@ fn test_jobs_validation_zero_rejected() {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 
@@ -69,6 +70,7 @@ fn test_jobs_exceeds_num_cpus_warning() {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 
@@ -90,6 +92,7 @@ fn test_jobs_valid_value() {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 
@@ -290,6 +293,7 @@ fn create_test_args_with_jobs(jobs: usize) -> BuildArgs {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     }
 }
@@ -751,6 +755,7 @@ fn make_tile_result(points: usize, linestrings: usize, polygons: usize) -> TileR
             point_count: points,
             linestring_count: linestrings,
             polygon_count: polygons,
+            skipped_additional_geom: 0,
         },
         validation_stats: ValidationStats::default(),
         unsupported: UnsupportedTypeStats::default(),
@@ -957,6 +962,7 @@ fn test_parallel_report_json_with_report_file() {
         report: Some(report_path.to_string_lossy().to_string()),
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 

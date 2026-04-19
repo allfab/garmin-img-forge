@@ -370,11 +370,17 @@ dérivent de la géométrie brute (pas d'empilage entre niveaux).
 - bornes : `iterations ∈ [0, 5]`, `simplify ∈ [0.0, 0.001]`
   (≈ 110 m, garde-fou anti-destruction).
 
-**Opt-out strict** : `mpforge build --disable-profiles` (ou env var
-`MPFORGE_PROFILES=off`) ignore catalogue et inline pour revenir au comportement
-mono-Data pré-tech-spec #2. Utilisé pour regénérer le golden sha256
-`tools/mpforge/tests/golden/mpforge-multi-data-profiles-disabled.sha256` sans
-muter les YAML.
+**Opt-out ciblé** : `mpforge build --disable-profiles` (ou env var
+`MPFORGE_PROFILES=off`) ignore **uniquement** le catalogue externe
+(`generalize_profiles_path`). Les champs `generalize:` inline dans
+`sources.yaml` restent actifs — c'est l'état « post-`ZONE_D_HABITATION`,
+pré-multi-Data » capturé par le golden `tools/mpforge/tests/golden/mpforge-multi-data-profiles-disabled.sha256`.
+Permet de regénérer le baseline sans muter les YAML (55/55 sha256
+strictement identiques vérifié sur D038).
+
+Si un jour tu veux un état *strictement* pré-tech-spec #1 (pas d'inline non
+plus), il faudra éditer `sources.yaml` pour retirer le bloc `generalize:`
+de `ZONE_D_HABITATION` — c'est hors scope de `--disable-profiles`.
 
 Voir `pipeline/configs/ign-bdtopo/generalize-profiles.yaml` pour les profils
 BDTOPO en production et `docs/implementation-artifacts/tech-spec-mpforge-multi-data-bdtopo-profiles.md`

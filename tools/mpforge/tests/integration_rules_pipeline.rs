@@ -423,6 +423,7 @@ fn make_overhead_args(jobs: usize) -> BuildArgs {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     }
 }

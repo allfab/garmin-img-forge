@@ -11,11 +11,9 @@ pub mod tiler;
 pub mod writer;
 
 use crate::cli::BuildArgs;
-use crate::config::{Config, ErrorMode, GeneralizeConfig, HeaderConfig, AUTO_ID};
+use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
-use crate::pipeline::geometry_smoother::{
-    generalize_features, generalize_features_with_profiles,
-};
+use crate::pipeline::geometry_smoother::generalize_features_with_profiles;
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -199,10 +197,12 @@ struct TileContext<'a> {
     filename_pattern: &'a str,
     field_mapping_path: Option<&'a Path>,
     header_config: Option<&'a HeaderConfig>,
-    generalize_map: Arc<std::collections::HashMap<String, GeneralizeConfig>>,
-    /// Tech-spec #2 Task 10: unified profile map (inline + external YAML).
-    /// When non-empty, the smoother uses it instead of `generalize_map`, and
-    /// the writer activates `MULTI_GEOM_FIELDS=YES` + `MAX_DATA_LEVEL=max_n`.
+    /// Tech-spec #2 Task 10 (+ M6 code review) : source de vérité UNIQUE pour
+    /// la généralisation. Les entrées `generalize:` inline de `sources.yaml`
+    /// sont converties à `load_config` via `From<GeneralizeConfig>` en
+    /// profils mono-niveau (n=0). Plus de `generalize_map` HashMap legacy —
+    /// éliminé pour supprimer le risque de double-smoothing par bug de
+    /// dispatch entre deux sources de vérité.
     profile_map: Arc<std::collections::BTreeMap<String, crate::config::GeneralizeProfile>>,
     /// Tech-spec #2 Task 10: cached max `n` across all profiles. `None` when
     /// no profile declares any level n > 0 (no extra OGR geom fields needed).
@@ -377,27 +377,18 @@ fn process_single_tile(
     }
     drop(features);
 
-    // 3b. Apply geometry generalization (smoothing + simplification) per-layer
-    // Tech-spec #2 Task 10: prefer the unified profile map (supports
-    // multi-level + dispatch by attribute). Legacy inline-only path remains
-    // available as a safety net for configurations that fail to resolve the
-    // profile map (shouldn't happen in normal flow — load_config fails fast).
+    // 3b. Apply geometry generalization (smoothing + simplification) per-layer.
+    // Tech-spec #2 Task 10 + M6 : source de vérité UNIQUE = `profile_map`.
+    // L'inline `generalize:` a déjà été converti en profils mono-niveau à
+    // `load_config`.
     if !ctx.profile_map.is_empty() {
         let gen_count =
             generalize_features_with_profiles(&mut clipped_features, &ctx.profile_map);
         tracing::debug!(
+            tile_id = %tile_id,
             features_generalized = gen_count,
-            "applied multi-level generalization profiles"
+            "applied generalization profiles"
         );
-    } else if !ctx.generalize_map.is_empty() {
-        let gen_count = generalize_features(&mut clipped_features, &ctx.generalize_map);
-        if gen_count > 0 {
-            tracing::debug!(
-                tile_id = %tile_id,
-                generalized = gen_count,
-                "Geometry generalization applied"
-            );
-        }
     }
 
     if clipped_features.is_empty() {
@@ -785,19 +776,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let should_skip_existing =
         args.skip_existing || config.output.overwrite == Some(false);
 
-    // Story 11.1 — Task 1: Build immutable context shared across workers
-    let generalize_map = Arc::new(config.build_generalize_map());
-    if !generalize_map.is_empty() {
-        let layer_list: Vec<&str> = generalize_map.keys().map(|s| s.as_str()).collect();
-        info!(
-            layers = %layer_list.join(", "),
-            "Geometry generalization configured"
-        );
-    }
-
-    // Tech-spec #2 Task 10: unified profile map (inline + external YAML)
-    // resolved at `load_config`. When non-empty, it supersedes the legacy
-    // inline-only `generalize_map` and activates the multi-geom writer path.
+    // Tech-spec #2 Task 10 : unified profile map (inline + external YAML)
+    // résolue à `load_config`. Source de vérité UNIQUE pour la généralisation.
+    // M6 code review : `build_generalize_map` legacy n'est plus utilisé par
+    // le pipeline — les inline `generalize:` sont convertis via
+    // `From<GeneralizeConfig>` dans `build_profile_map`.
     let profile_map = Arc::new(config.resolved_profile_map.clone());
     let max_data_level: Option<u8> = profile_map
         .values()
@@ -823,7 +806,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         filename_pattern: &config.output.filename_pattern,
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
-        generalize_map,
         profile_map,
         max_data_level,
         spatial_filter_geometries: spatial_filter_geometries.clone(),

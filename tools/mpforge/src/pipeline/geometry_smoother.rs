@@ -75,13 +75,31 @@ pub fn apply_profile(feature: &mut Feature, profile: &GeneralizeProfile) -> usiz
             GeometryType::Polygon => apply_level_to_polygon(&raw, lvl),
             GeometryType::Point => None,
         };
-        let Some(coords) = derived else { continue; };
-        if lvl.n == 0 {
-            feature.geometry = coords;
-        } else {
-            feature.additional_geometries.insert(lvl.n, coords);
+        match derived {
+            Some(coords) => {
+                // H3 code review : passe par le setter unifié qui route n=0
+                // vers `geometry` et n≥1 vers `additional_geometries`, en
+                // garantissant l'invariant structurel.
+                feature.set_level(lvl.n, coords);
+                generated += 1;
+            }
+            None => {
+                // M4 code review : alerte explicite quand un niveau devient
+                // dégénéré (simplify trop agressif, raw trop court). Si c'est
+                // le bucket `n=0`, `feature.geometry` reste = raw (silencieux
+                // sinon, le consommateur ne sait pas pourquoi Data0 n'a pas
+                // bougé).
+                warn!(
+                    source_layer = feature.source_layer.as_deref().unwrap_or(""),
+                    n = lvl.n,
+                    raw_points = raw.len(),
+                    simplify = ?lvl.simplify,
+                    iterations = lvl.iterations,
+                    "level produced no valid geometry (too few points or empty after simplify); \
+                     bucket skipped — for n=0, raw geometry preserved unchanged"
+                );
+            }
         }
-        generated += 1;
     }
     generated
 }
@@ -669,5 +687,83 @@ levels:
         assert_eq!(count, 1);
         assert!(features[0].additional_geometries.contains_key(&2));
         assert!(features[1].additional_geometries.is_empty());
+    }
+
+    // =================================================================
+    // L4 code review — edge cases du smoother
+    // =================================================================
+
+    #[test]
+    fn test_apply_profile_when_value_not_listed_falls_back_to_default() {
+        // Attribut présent mais valeur non listée → branche default.
+        let coords: Vec<(f64, f64)> =
+            (0..8).map(|i| (i as f64 * 0.05, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        feature
+            .attributes
+            .insert("CL_ADMIN".to_string(), "Bretelle".to_string());
+
+        let profile = profile_from_yaml(
+            r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute, Nationale]
+    levels:
+      - { n: 0, simplify: 0.00002 }
+      - { n: 3, simplify: 0.00009 }
+levels:
+  - { n: 0, simplify: 0.00005 }
+  - { n: 2, simplify: 0.00015 }
+"#,
+        );
+        apply_profile(&mut feature, &profile);
+        assert!(
+            feature.additional_geometries.contains_key(&2),
+            "default levels should apply when no when-branch matches"
+        );
+        assert!(!feature.additional_geometries.contains_key(&3));
+    }
+
+    #[test]
+    fn test_apply_profile_attribute_key_missing_uses_default() {
+        // Attribut requis par `when` absent → default.
+        let coords: Vec<(f64, f64)> =
+            (0..8).map(|i| (i as f64 * 0.05, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        // pas d'insertion de CL_ADMIN dans attributes
+
+        let profile = profile_from_yaml(
+            r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute]
+    levels:
+      - { n: 0, simplify: 0.00002 }
+      - { n: 3, simplify: 0.00009 }
+levels:
+  - { n: 0, simplify: 0.00005 }
+  - { n: 2, simplify: 0.00015 }
+"#,
+        );
+        apply_profile(&mut feature, &profile);
+        assert!(feature.additional_geometries.contains_key(&2));
+        assert!(!feature.additional_geometries.contains_key(&3));
+    }
+
+    #[test]
+    fn test_apply_profile_polygon_too_few_points_bucket_dropped() {
+        // Polygon < 4 points → None retourné par apply_level_to_polygon,
+        // bucket additionnel absent, n=0 conserve la géométrie brute.
+        let raw = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)]; // 4 pts (min)
+        let mut f = make_polygon_feature(raw.clone(), "TEST_TINY");
+        let profile = profile_from_yaml(
+            // simplify agressif : risque de dégénération à tous les niveaux
+            "levels:\n  - { n: 0, simplify: 0.0009 }\n  - { n: 2, simplify: 0.0009 }\n",
+        );
+        apply_profile(&mut f, &profile);
+        // Post-condition : invariant structurel maintenu même en cas de
+        // dégénération (M4) — pas de n=0 fantôme dans additional.
+        #[cfg(debug_assertions)]
+        f.assert_multi_bucket_invariant();
     }
 }

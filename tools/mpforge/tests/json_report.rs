@@ -44,6 +44,7 @@ fn create_args_with_report(report_path: &str) -> BuildArgs {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     }
 }
 
@@ -59,6 +60,7 @@ fn create_args_without_report() -> BuildArgs {
         skip_existing: false,
         dry_run: false,
         verbose: 0,
+        disable_profiles: false,
     }
 }
 

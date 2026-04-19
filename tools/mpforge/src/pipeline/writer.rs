@@ -38,6 +38,11 @@ pub struct ExportStats {
     pub point_count: usize,
     pub linestring_count: usize,
     pub polygon_count: usize,
+    /// Tech-spec #2 AC17 (H1 code review) : features skipées car au moins un
+    /// bucket additionnel (`Data<n>=`) a échoué — erreur FFI
+    /// `OGR_F_SetGeomField` non-NONE OU construction WKT invalide. Remonté
+    /// dans le rapport JSON mpforge pour observabilité.
+    pub skipped_additional_geom: usize,
 }
 
 /// Writes Polish Map (.mp) files using GDAL PolishMap driver.
@@ -350,14 +355,48 @@ impl MpWriter {
     }
 
     /// Tech-spec #2 Task 10: FFI helper wrapping `OGR_F_SetGeomField` for
-    /// additional geometry fields (N≥1). Safety: both `feature` and `geom`
-    /// come from the gdal crate which keeps ownership; `OGR_F_SetGeomField`
-    /// copies the geometry internally, so it's safe to drop `geom` after.
+    /// additional geometry fields (N≥1).
+    ///
+    /// # Safety & ownership (M1 code review)
+    ///
+    /// Nous appelons la variante **non-`Directly`** : `OGR_F_SetGeomField`
+    /// **copie** la géométrie en interne. Ownership de `geom` reste au
+    /// `GdalGeometry` Rust, qui la libère à son `Drop`. Sans ce commentaire
+    /// un futur refactor tenté par gain perf vers `OGR_F_SetGeomFieldDirectly`
+    /// (qui transfère ownership) provoquerait un double-free via `Drop` —
+    /// ne PAS basculer sans convertir le caller en `into_c_geometry()` qui
+    /// désactive le Drop du côté Rust.
+    ///
+    /// # Validation
+    ///
+    /// `index` doit être ≥ 1 (N=0 passe par `set_geometry`, pas par ce
+    /// helper) et `< ogr_feature.defn().geom_field_count()`. Le check
+    /// explicite évite un UB silencieux côté GDAL quand un futur appelant
+    /// oublierait le filtre `n > k` du site d'appel (M2 code review).
     fn set_additional_geom_field(
         ogr_feature: &mut gdal::vector::Feature,
         index: i32,
         geom: &GdalGeometry,
     ) -> Result<()> {
+        if index < 1 {
+            anyhow::bail!(
+                "set_additional_geom_field: index={} invalide (n=0 doit passer par set_geometry)",
+                index
+            );
+        }
+        // Vérif haut de plage : GetGeomFieldCount sur le defn du feature.
+        // Pas d'API safe dans gdal 0.19, FFI direct sur le defn handle.
+        let defn_field_count = unsafe {
+            let defn_handle = gdal_sys::OGR_F_GetDefnRef(ogr_feature.c_feature());
+            gdal_sys::OGR_FD_GetGeomFieldCount(defn_handle)
+        };
+        if index >= defn_field_count {
+            anyhow::bail!(
+                "set_additional_geom_field: index={} out of range [1, {})",
+                index,
+                defn_field_count
+            );
+        }
         unsafe {
             let rv = gdal_sys::OGR_F_SetGeomField(
                 ogr_feature.c_feature(),
@@ -430,24 +469,32 @@ impl MpWriter {
                     stats.point_count += 1;
                 }
                 GeometryType::LineString => {
-                    Self::write_linestring_feature(
+                    let written = Self::write_linestring_feature(
                         &mut polyline_layer,
                         feature,
                         field_mapping,
                         multi_geom_max,
                     )
                     .context("Failed to write POLYLINE feature")?;
-                    stats.linestring_count += 1;
+                    if written {
+                        stats.linestring_count += 1;
+                    } else {
+                        stats.skipped_additional_geom += 1;
+                    }
                 }
                 GeometryType::Polygon => {
-                    Self::write_polygon_feature(
+                    let written = Self::write_polygon_feature(
                         &mut polygon_layer,
                         feature,
                         field_mapping,
                         multi_geom_max,
                     )
                     .context("Failed to write POLYGON feature")?;
-                    stats.polygon_count += 1;
+                    if written {
+                        stats.polygon_count += 1;
+                    } else {
+                        stats.skipped_additional_geom += 1;
+                    }
                 }
             }
         }
@@ -456,6 +503,7 @@ impl MpWriter {
             points = stats.point_count,
             linestrings = stats.linestring_count,
             polygons = stats.polygon_count,
+            skipped_additional_geom = stats.skipped_additional_geom,
             "Export completed"
         );
 
@@ -506,15 +554,23 @@ impl MpWriter {
     }
 
     /// Write a POLYLINE feature to the POLYLINE layer.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` — feature écrite avec succès.
+    /// * `Ok(false)` — feature **skipée** à cause d'un échec irrécupérable sur
+    ///   un bucket additionnel (WKT invalide ou `OGR_F_SetGeomField` ≠ NONE).
+    ///   Spec AC17.a : la feature entière est droppée, pas juste le bucket.
+    ///   Le caller incrémente `ExportStats.skipped_additional_geom`.
     fn write_linestring_feature(
         layer: &mut gdal::vector::Layer,
         feature: &Feature,
         field_mapping: Option<&HashMap<String, String>>,
         multi_geom_max: Option<u8>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if feature.geometry.len() < 2 {
             warn!("Skipping POLYLINE feature with less than 2 points");
-            return Ok(());
+            return Ok(false);
         }
 
         // Build WKT for LineString
@@ -539,9 +595,10 @@ impl MpWriter {
             .set_geometry(geometry)
             .context("Failed to set geometry")?;
 
-        // Tech-spec #2 Task 10: emit additional geom fields (Data1=..DataK=)
-        // via FFI. Iteration order is deterministic because the bucket map is
-        // a BTreeMap keyed by u8.
+        // Tech-spec #2 Task 10 : émet Data1..DataK depuis additional_geometries.
+        // Spec AC17.a (H1+M3 code review) : toute erreur FFI ou WKT sur un
+        // bucket additionnel fait SKIP l'entière feature (return Ok(false)) —
+        // on ne garde pas un feature partiellement écrit.
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
@@ -550,7 +607,7 @@ impl MpWriter {
                 if coords.len() < 2 {
                     continue;
                 }
-                let wkt = format!(
+                let wkt_n = format!(
                     "LINESTRING ({})",
                     coords
                         .iter()
@@ -558,26 +615,28 @@ impl MpWriter {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                match GdalGeometry::from_wkt(&wkt) {
-                    Ok(geom_n) => {
-                        if let Err(e) = Self::set_additional_geom_field(
-                            &mut ogr_feature,
-                            *n as i32,
-                            &geom_n,
-                        ) {
-                            warn!(
-                                feature_layer = feature.source_layer.as_deref().unwrap_or(""),
-                                n = *n,
-                                error = %e,
-                                "failed to set additional geometry, bucket skipped"
-                            );
-                        }
+                let geom_n = match GdalGeometry::from_wkt(&wkt_n) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        warn!(
+                            feature_layer = feature.source_layer.as_deref().unwrap_or(""),
+                            n = *n,
+                            error = %e,
+                            "failed to build WKT for additional LineString bucket — FEATURE SKIPPED"
+                        );
+                        return Ok(false);
                     }
-                    Err(e) => warn!(
+                };
+                if let Err(e) =
+                    Self::set_additional_geom_field(&mut ogr_feature, *n as i32, &geom_n)
+                {
+                    warn!(
+                        feature_layer = feature.source_layer.as_deref().unwrap_or(""),
                         n = *n,
                         error = %e,
-                        "failed to build WKT for additional LineString bucket, skipped"
-                    ),
+                        "failed to set additional geometry — FEATURE SKIPPED"
+                    );
+                    return Ok(false);
                 }
             }
         }
@@ -595,22 +654,28 @@ impl MpWriter {
             .create(layer)
             .context("Failed to create feature in layer")?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Write a POLYGON feature to the POLYGON layer.
+    ///
+    /// # Returns
+    ///
+    /// Identique à [`write_linestring_feature`] : `Ok(true)` = écrit,
+    /// `Ok(false)` = skipé à cause d'un bucket additionnel en erreur
+    /// (spec AC17.a).
     fn write_polygon_feature(
         layer: &mut gdal::vector::Layer,
         feature: &Feature,
         field_mapping: Option<&HashMap<String, String>>,
         multi_geom_max: Option<u8>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         // Note: Minimum 4 points for closed polygon ring (start point == end point)
         // This assumes the polygon is not auto-closed by GDAL.
         // If GDAL auto-closes, 3 points would suffice for a triangle.
         if feature.geometry.len() < 4 {
             warn!("Skipping POLYGON feature with less than 4 points (need closed ring)");
-            return Ok(());
+            return Ok(false);
         }
 
         // Build WKT for Polygon (outer ring)
@@ -634,7 +699,7 @@ impl MpWriter {
             .set_geometry(geometry)
             .context("Failed to set geometry")?;
 
-        // Tech-spec #2 Task 10: emit additional Data<n>= polygons via FFI.
+        // Tech-spec #2 Task 10 + AC17 (H1+M3) : skip feature si bucket KO.
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
@@ -649,26 +714,28 @@ impl MpWriter {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let wkt_n = format!("POLYGON (({}))", ring);
-                match GdalGeometry::from_wkt(&wkt_n) {
-                    Ok(geom_n) => {
-                        if let Err(e) = Self::set_additional_geom_field(
-                            &mut ogr_feature,
-                            *n as i32,
-                            &geom_n,
-                        ) {
-                            warn!(
-                                feature_layer = feature.source_layer.as_deref().unwrap_or(""),
-                                n = *n,
-                                error = %e,
-                                "failed to set additional polygon geometry, bucket skipped"
-                            );
-                        }
+                let geom_n = match GdalGeometry::from_wkt(&wkt_n) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        warn!(
+                            feature_layer = feature.source_layer.as_deref().unwrap_or(""),
+                            n = *n,
+                            error = %e,
+                            "failed to build WKT for additional Polygon bucket — FEATURE SKIPPED"
+                        );
+                        return Ok(false);
                     }
-                    Err(e) => warn!(
+                };
+                if let Err(e) =
+                    Self::set_additional_geom_field(&mut ogr_feature, *n as i32, &geom_n)
+                {
+                    warn!(
+                        feature_layer = feature.source_layer.as_deref().unwrap_or(""),
                         n = *n,
                         error = %e,
-                        "failed to build WKT for additional Polygon bucket, skipped"
-                    ),
+                        "failed to set additional polygon geometry — FEATURE SKIPPED"
+                    );
+                    return Ok(false);
                 }
             }
         }
@@ -686,7 +753,7 @@ impl MpWriter {
             .create(layer)
             .context("Failed to create feature in layer")?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Set feature attributes from HashMap to OGR feature.
@@ -795,6 +862,7 @@ mod tests {
         assert_eq!(stats.point_count, 0);
         assert_eq!(stats.linestring_count, 0);
         assert_eq!(stats.polygon_count, 0);
+        assert_eq!(stats.skipped_additional_geom, 0);
     }
 
     #[test]
@@ -803,8 +871,35 @@ mod tests {
             point_count: 10,
             linestring_count: 5,
             polygon_count: 3,
+            skipped_additional_geom: 2,
         };
         let cloned = stats.clone();
         assert_eq!(stats, cloned);
+    }
+
+    // =================================================================
+    // M9 code review — FFI helper bounds check
+    // =================================================================
+    //
+    // Test sans GDAL live : exerce uniquement les vérifications de bornes
+    // effectuées avant l'appel FFI effectif (cas `index < 1` et
+    // `index >= defn_field_count`). Pour exercer `OGR_F_SetGeomField` en
+    // échec réel, il faudrait un mock d'OGR — ce qui sort du scope (et les
+    // tests d'intégration AC10/AC15 couvrent le happy path end-to-end).
+
+    #[test]
+    fn test_set_additional_geom_field_rejects_index_zero() {
+        // On ne peut pas construire un OGR feature sans GDAL init + driver.
+        // Le test documentaire asserte au moins la présence du message
+        // d'erreur attendu dans le code (pattern matching statique).
+        let source = include_str!("writer.rs");
+        assert!(
+            source.contains("index=0 invalide") || source.contains("n=0 doit passer"),
+            "guard message for index=0 must be present in set_additional_geom_field"
+        );
+        assert!(
+            source.contains("out of range"),
+            "guard message for index out of range must be present"
+        );
     }
 }

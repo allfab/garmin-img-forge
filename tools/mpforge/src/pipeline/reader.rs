@@ -1829,6 +1829,11 @@ pub enum GeometryType {
 /// keyed by `n` (N ≥ 1) and emitted by the writer as `Data<n>=`. Keeping
 /// `geometry` as the N=0 alias preserves all existing read sites — the
 /// smoother and writer are the only modules aware of the multi-bucket layout.
+///
+/// **Invariant** : N=0 vit toujours dans `geometry`, jamais dans
+/// `additional_geometries`. Utiliser [`Feature::set_level`] pour muter en
+/// respectant automatiquement cet invariant, et [`Feature::all_levels`] pour
+/// itérer sans se soucier de la distinction (H3 code review).
 #[derive(Debug, Clone)]
 pub struct Feature {
     /// Type of geometry (Point, LineString, or Polygon)
@@ -1838,11 +1843,59 @@ pub struct Feature {
     /// Tech-spec #2 Task 8: additional coordinate buckets for detail levels
     /// N≥1. Populated by `geometry_smoother::apply_profile` when a multi-level
     /// profile matches the feature. Empty in the default (mono-Data0) path.
+    /// **Invariant** : ne jamais contenir la clé `0` — le N=0 vit dans
+    /// `geometry`. Toute violation est un bug.
     pub additional_geometries: std::collections::BTreeMap<u8, Vec<(f64, f64)>>,
     /// Feature attributes (key-value pairs)
     pub attributes: HashMap<String, String>,
     /// Source layer name (for rules engine matching by source_layer)
     pub source_layer: Option<String>,
+}
+
+impl Feature {
+    /// Tech-spec #2 (H3 review) : iterator sur tous les buckets (N=0 depuis
+    /// `geometry`, puis N≥1 depuis `additional_geometries` dans l'ordre
+    /// ascendant du BTreeMap). Respecte l'invariant structurel sans exposer
+    /// la distinction au consommateur.
+    pub fn all_levels(&self) -> impl Iterator<Item = (u8, &[(f64, f64)])> {
+        std::iter::once((0u8, self.geometry.as_slice())).chain(
+            self.additional_geometries
+                .iter()
+                .map(|(n, coords)| (*n, coords.as_slice())),
+        )
+    }
+
+    /// Tech-spec #2 (H3 review) : accès par niveau respectant l'invariant
+    /// `n=0 → geometry` / `n≥1 → additional_geometries`.
+    pub fn level(&self, n: u8) -> Option<&[(f64, f64)]> {
+        if n == 0 {
+            Some(self.geometry.as_slice())
+        } else {
+            self.additional_geometries.get(&n).map(|v| v.as_slice())
+        }
+    }
+
+    /// Tech-spec #2 (H3 review) : setter qui route automatiquement n=0 vers
+    /// `geometry` et n≥1 vers `additional_geometries`. Maintient l'invariant
+    /// structurel sans effort côté appelant.
+    pub fn set_level(&mut self, n: u8, coords: Vec<(f64, f64)>) {
+        if n == 0 {
+            self.geometry = coords;
+        } else {
+            self.additional_geometries.insert(n, coords);
+        }
+    }
+
+    /// L1 code review : garde-fou runtime pour l'invariant structurel
+    /// « N=0 ne vit JAMAIS dans `additional_geometries` ». Utilisé par les
+    /// tests et peut être activé en debug_assert côté pipeline.
+    #[cfg(debug_assertions)]
+    pub fn assert_multi_bucket_invariant(&self) {
+        assert!(
+            !self.additional_geometries.contains_key(&0),
+            "Feature invariant violated: N=0 must live in `geometry`, not `additional_geometries`"
+        );
+    }
 }
 
 impl Feature {
@@ -2229,5 +2282,83 @@ mod tests {
 
         assert_eq!(feature.geometry_type, GeometryType::Polygon);
         assert!(feature.attributes.is_empty());
+    }
+
+    // =================================================================
+    // Tech-spec #2 code review (H3, L1) — Feature helpers + invariant
+    // =================================================================
+
+    #[test]
+    fn test_feature_set_level_routes_n0_to_geometry() {
+        let mut f = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: vec![],
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        f.set_level(0, vec![(1.0, 2.0), (3.0, 4.0)]);
+        assert_eq!(f.geometry, vec![(1.0, 2.0), (3.0, 4.0)]);
+        assert!(!f.additional_geometries.contains_key(&0));
+    }
+
+    #[test]
+    fn test_feature_set_level_routes_n_positive_to_additional() {
+        let mut f = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: vec![(0.0, 0.0)],
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        f.set_level(2, vec![(5.0, 6.0)]);
+        assert!(f.additional_geometries.contains_key(&2));
+        assert_eq!(f.geometry, vec![(0.0, 0.0)], "N=0 untouched");
+    }
+
+    #[test]
+    fn test_feature_all_levels_iterates_ordered() {
+        let mut f = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: vec![(0.0, 0.0)],
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        f.set_level(3, vec![(3.0, 3.0)]);
+        f.set_level(1, vec![(1.0, 1.0)]);
+        f.set_level(2, vec![(2.0, 2.0)]);
+
+        let levels: Vec<u8> = f.all_levels().map(|(n, _)| n).collect();
+        assert_eq!(levels, vec![0, 1, 2, 3], "must yield n=0 first then ascending");
+    }
+
+    #[test]
+    fn test_feature_level_returns_n0_from_geometry() {
+        let f = Feature {
+            geometry_type: GeometryType::Point,
+            geometry: vec![(7.0, 8.0)],
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        assert_eq!(f.level(0), Some([(7.0, 8.0)].as_slice()));
+        assert_eq!(f.level(1), None);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Feature invariant violated")]
+    fn test_feature_invariant_catches_n0_in_additional() {
+        let mut bad = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: vec![(0.0, 0.0)],
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        // Bypass `set_level` on purpose — this is the bug pattern we guard.
+        bad.additional_geometries.insert(0, vec![(9.0, 9.0)]);
+        bad.assert_multi_bucket_invariant();
     }
 }

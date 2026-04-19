@@ -24,6 +24,7 @@ fn test_args() -> BuildArgs {
         skip_existing: false,
         dry_run: false,
         verbose: 2, // suppress progress bar
+        disable_profiles: false,
     }
 }
 

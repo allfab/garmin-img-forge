@@ -124,22 +124,24 @@ fn build_args(cfg_path: &Path) -> BuildArgs {
 }
 
 /// Point GDAL to the freshly-built ogr-polishmap plugin sibling to this
-/// crate so the test exercises the multi-geom writer path even if an older
-/// plugin is installed system-wide (the installed .so predates tech-spec #2
-/// and silently ignores MULTI_GEOM_FIELDS/MAX_DATA_LEVEL).
+/// crate. M8 code review : panic explicite si le plugin frais manque, pour
+/// éviter que le test passe silencieusement sur un plugin système stale (qui
+/// ignore `MULTI_GEOM_FIELDS`/`MAX_DATA_LEVEL` et rendrait l'assertion sur
+/// `Data2=` invalide).
 fn prefer_local_polishmap_plugin() {
     let crate_dir = env!("CARGO_MANIFEST_DIR");
-    let build_dir =
-        PathBuf::from(crate_dir).join("../ogr-polishmap/build");
-    if build_dir.join("ogr_PolishMap.so").exists() {
-        std::env::set_var("GDAL_DRIVER_PATH", build_dir);
-    } else {
-        eprintln!(
-            "warning: fresh ogr-polishmap plugin not found at {} — test may \
-             exercise the stale system plugin instead",
-            build_dir.display()
+    let build_dir = PathBuf::from(crate_dir).join("../ogr-polishmap/build");
+    let so = build_dir.join("ogr_PolishMap.so");
+    if !so.exists() {
+        panic!(
+            "fresh ogr-polishmap plugin not found at {}.\n\
+             Run `cmake --build tools/ogr-polishmap/build --target ogr_PolishMap` first.\n\
+             Without it the test would exercise the stale system plugin that \
+             ignores MULTI_GEOM_FIELDS — AC10 assertion would be invalid.",
+            so.display()
         );
     }
+    std::env::set_var("GDAL_DRIVER_PATH", build_dir);
 }
 
 #[test]
@@ -156,11 +158,11 @@ fn test_mpforge_emits_data0_and_data2_for_autoroute() {
     let cfg = config::load_config(&cfg_path).expect("load_config");
     // Sanity : le profil externe a bien été chargé et propagé.
     assert!(
-        cfg.resolved_profile_map.contains_key("TRONCON_DE_ROUTE"),
+        cfg.profile_map().contains_key("TRONCON_DE_ROUTE"),
         "profile catalog not resolved"
     );
     assert_eq!(
-        cfg.resolved_profile_map["TRONCON_DE_ROUTE"].levels.len(),
+        cfg.profile_map()["TRONCON_DE_ROUTE"].levels.len(),
         2,
         "profile should declare 2 levels"
     );

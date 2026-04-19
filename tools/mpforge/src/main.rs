@@ -60,27 +60,17 @@ fn main() -> ExitCode {
                     .map(|v| v.eq_ignore_ascii_case("off"))
                     .unwrap_or(false);
             if disable_profiles {
-                // Tech-spec #2 AC1 clarification (cf. tech-spec Task 15 §Pré-condition) :
+                // Tech-spec #2 AC1 (cf. tech-spec Task 15 §Pré-condition) :
                 // `--disable-profiles` NE bypasse QUE le catalogue externe
-                // (generalize_profiles_path). L'inline `generalize:` dans
-                // sources.yaml reste actif — c'est l'état "post-Z_D_H, pré-multi-Data"
-                // capturé par le golden baseline. Rebuild `resolved_profile_map`
-                // à partir des seuls inputs inline pour restituer ce comportement.
+                // (generalize_profiles_path). L'inline `generalize:` reste
+                // actif — état "post-Z_D_H, pré-multi-Data" capturé par le
+                // golden baseline. Délégué à `Config::reset_profile_map_to_inline_only`
+                // (H4 code review) plutôt qu'à une mutation directe du champ.
                 tracing::info!(
                     "generalize profiles disabled via --disable-profiles / MPFORGE_PROFILES=off \
                      — external catalog cleared, inline `generalize:` preserved"
                 );
-                config.generalize_profiles_path = None;
-                config.resolved_profile_map.clear();
-                for input in &config.inputs {
-                    if let Some(ref gen) = input.generalize {
-                        if let Some(name) = input.effective_layer_name() {
-                            config
-                                .resolved_profile_map
-                                .insert(name, gen.clone().into());
-                        }
-                    }
-                }
+                config.reset_profile_map_to_inline_only();
             }
 
             if let Err(e) = pipeline::run(&config, args) {

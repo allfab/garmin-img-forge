@@ -32,6 +32,7 @@ error_handling: continue
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 
@@ -71,6 +72,7 @@ error_handling: continue
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 
@@ -113,6 +115,7 @@ error_handling: fail-fast
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 0,
     };
 

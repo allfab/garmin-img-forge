@@ -16,6 +16,11 @@ static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 #[derive(Debug, Deserialize)]
+// L6 code review : `deny_unknown_fields` signale une typo comme
+// `generalize_profile_path` (singulier) plutôt que d'ignorer silencieusement —
+// applicable à tout le Config. Sinon un utilisateur qui fait une coquille
+// voit son catalogue externe silencieusement désactivé sans diagnostic.
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default = "default_version")]
     pub version: u32,
@@ -50,8 +55,44 @@ pub struct Config {
     /// the inline `generalize:` fields and the external file (when present).
     /// Keyed by `source_layer` (BDTOPO layer name resolved via
     /// `effective_layer_name`). Iteration order is deterministic (BTreeMap).
+    ///
+    /// H4 code review : ⚠️ champ `#[doc(hidden)]` public pour permettre aux
+    /// tests d'intégration de construire des fixtures `Config`, mais **ne
+    /// jamais muter directement en production** — utiliser
+    /// [`Config::profile_map`] pour lire et
+    /// [`Config::reset_profile_map_to_inline_only`] pour le use case
+    /// `--disable-profiles`. Une mutation directe contournerait la validation
+    /// `build_profile_map` (conflits inline/externe, F4 routing, bornes
+    /// `LevelSpec`, contrainte `header.levels` — AC18).
     #[serde(skip, default)]
+    #[doc(hidden)]
     pub resolved_profile_map: BTreeMap<String, GeneralizeProfile>,
+}
+
+impl Config {
+    /// H4 code review : accessor en lecture seule vers la map résolue.
+    pub fn profile_map(&self) -> &BTreeMap<String, GeneralizeProfile> {
+        &self.resolved_profile_map
+    }
+
+    /// H4 code review : reset ciblé utilisé par `--disable-profiles` pour
+    /// bypasser le catalogue externe tout en préservant les profils inline
+    /// (Option B, cf. tech-spec Task 15 §Pré-condition). Rebuild la map
+    /// depuis les seuls `inputs[].generalize` (via
+    /// `From<GeneralizeConfig>`), en s'autorisant à ignorer la validation
+    /// F4 parce que les inline sont le sous-ensemble capturé par le golden
+    /// pré-tech-spec #2.
+    pub fn reset_profile_map_to_inline_only(&mut self) {
+        self.generalize_profiles_path = None;
+        self.resolved_profile_map.clear();
+        for input in &self.inputs {
+            if let Some(ref gen) = input.generalize {
+                if let Some(name) = input.effective_layer_name() {
+                    self.resolved_profile_map.insert(name, gen.clone().into());
+                }
+            }
+        }
+    }
 }
 
 fn default_version() -> u32 {
@@ -551,6 +592,48 @@ impl Config {
                 anyhow::bail!(
                     "routable layer '{layer}' profile missing n:0 \
                      (required for routing, cf. Tech-spec #1 F4)"
+                );
+            }
+        }
+
+        // 4) AC18 (H2 code review, F2+F12 adversarial) : valider que le
+        //    `header.levels` de `sources.yaml` peut accueillir le `max(n)`
+        //    de tous les profils. Sans ce check, un profil avec `n: 4` et
+        //    `header.Levels=3` voit son `Data4=` silencieusement droppé par
+        //    imgforge (Tech-spec #1 Q4 warn+ignore).
+        let max_n_over_all = map
+            .values()
+            .filter_map(|p| p.max_level_index())
+            .max()
+            .unwrap_or(0);
+        if max_n_over_all > 0 {
+            let header_levels = self
+                .header
+                .as_ref()
+                .and_then(|h| h.levels.as_deref())
+                .and_then(|s| s.parse::<u32>().ok());
+            if let Some(declared) = header_levels {
+                if (max_n_over_all as u32) >= declared {
+                    anyhow::bail!(
+                        "profile references n={} but mp header declares only {} levels \
+                         (need header.levels >= {}; cf. Tech-spec #1 Q3/Q4: DataN beyond \
+                         levels.len() is silently dropped by imgforge)",
+                        max_n_over_all,
+                        declared,
+                        max_n_over_all as u32 + 1
+                    );
+                }
+            }
+            // Si `header.levels` absent, mpforge retombera sur les défauts du
+            // driver PolishMap (`Levels=5`) — cohérent avec tous les profils
+            // dont `max(n) <= 4`. Pas d'erreur remontée ici mais un warn
+            // informatif pour signaler le reliance sur les défauts.
+            else {
+                warn!(
+                    max_n = max_n_over_all,
+                    "profiles reference n={} without explicit header.levels in sources.yaml \
+                     — relying on driver default Levels=5 (AC18 passes if max(n) < 5)",
+                    max_n_over_all
                 );
             }
         }

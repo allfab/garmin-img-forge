@@ -70,6 +70,7 @@ fn create_test_args() -> BuildArgs {
         report: None,
         skip_existing: false,
         dry_run: false,
+        disable_profiles: false,
         verbose: 2, // suppress progress bar
     }
 }
@@ -172,7 +173,7 @@ fn test_ac2_skip_existing_in_json_report() {
         skip_existing: true,
         report: Some(report_path.to_str().unwrap().to_string()),
         ..create_test_args()
-    };
+            };
     let result2 = pipeline::run(&config, &args_skip);
     assert!(result2.is_ok());
 
@@ -207,7 +208,7 @@ fn test_ac3_dry_run_no_files_created() {
     let args = BuildArgs {
         dry_run: true,
         ..create_test_args()
-    };
+            };
     let result = pipeline::run(&config, &args);
     assert!(result.is_ok(), "Dry-run should succeed: {:?}", result.err());
     let summary = result.unwrap();
@@ -256,7 +257,7 @@ fn test_ac4_dry_run_combined_with_skip_existing() {
         dry_run: true,
         skip_existing: true,
         ..create_test_args()
-    };
+            };
     let result2 = pipeline::run(&config, &args_combined);
     assert!(result2.is_ok(), "Combined dry-run+skip-existing should succeed");
     let summary2 = result2.unwrap();
@@ -393,7 +394,7 @@ fn test_dry_run_flag_in_json_report() {
         dry_run: true,
         report: Some(report_path.to_str().unwrap().to_string()),
         ..create_test_args()
-    };
+            };
     let result = pipeline::run(&config, &args);
     assert!(result.is_ok(), "Dry-run with report should succeed");
 
