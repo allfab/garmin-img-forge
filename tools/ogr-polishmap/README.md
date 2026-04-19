@@ -252,6 +252,60 @@ Sans field mapping, le driver utilise des alias intégrés (`NAME`/`NOM` → Lab
 | Labels UTF-8 | Oui | Oui (auto-conversion CP1252) |
 | Décomposition multi-géométrie | N/A | Oui (MultiPolygon → N Polygon) |
 | Field mapping YAML | N/A | Oui (-dsco FIELD_MAPPING) |
+| Multi-geometry fields (Data1=..DataK=) | Oui (`-oo MULTI_GEOM_FIELDS=YES`) | Oui (`-dsco MULTI_GEOM_FIELDS=YES`) |
+
+---
+
+## Multi-geometry fields (MULTI_GEOM_FIELDS)
+
+Depuis la tech-spec #2, POLYLINE et POLYGON peuvent transporter **N géométries par
+feature** dans le fichier `.mp`, encodées en `Data0=`, `Data1=`, `Data2=`, …,
+`DataK=` (la spec Polish Map autorise jusqu'à `DataN` avec N ≤ 9). POI reste
+mono-géométrie (MP spec §4.4.3.1).
+
+### Activation à l'écriture
+
+```bash
+# dsco MULTI_GEOM_FIELDS=YES ajoute K champs OGRGeomFieldDefn additionnels
+# (geom_level_1..geom_level_K) sur les couches POLYLINE et POLYGON.
+ogr2ogr -f "PolishMap" out.mp in.shp \
+  -dsco MULTI_GEOM_FIELDS=YES \
+  -dsco MAX_DATA_LEVEL=4
+```
+
+Côté code (C++ / GDAL) :
+```cpp
+OGRFeature* f = OGRFeature::CreateFeature(layer->GetLayerDefn());
+f->SetGeometry(detailedLineString);          // primaire → Data0=
+f->SetGeomField(2, simplifiedLineString);    // additionnel → Data2=
+layer->CreateFeature(f);
+```
+
+Côté Rust (FFI bas niveau via `gdal-sys`) : cf. `mpforge::pipeline::writer::MpWriter`.
+
+### Activation à la lecture (opt-in strict)
+
+Sans l'option, les lignes `DataN>0` sont **parsées** mais pas exposées via OGR —
+chaque feature reste strictement mono-géométrie (comportement prévisible et
+rétrocompatible). Pour exposer les géométries additionnelles :
+
+```bash
+ogr2ogr -f "GeoJSON" out.geojson in.mp \
+  -oo MULTI_GEOM_FIELDS=YES \
+  -oo MAX_DATA_LEVEL=4
+```
+
+Le layer expose alors `GetGeomFieldCount() == K + 1`. Les indices non émis dans
+le `.mp` restent vides (trous autorisés : `Data0=` + `Data2=` sans `Data1=`).
+
+### Validation des options
+
+- `MAX_DATA_LEVEL` ∈ `[1, 9]` : `Create()` / `Open()` échoue en dehors.
+- `MULTI_GEOM_FIELDS` absent ⇒ sortie bit-à-bit identique au driver v2026.03.
+
+Voir `test/test_multigeometry_fields.cpp` pour les cas de coverage (happy path
+POLYLINE/POLYGON, POI mono préservé, indices non-contigus, round-trip,
+backward-compat, erreur config).
 
 ---
 

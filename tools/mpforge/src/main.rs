@@ -43,13 +43,31 @@ fn main() -> ExitCode {
         Commands::Build(ref args) => {
             setup_tracing(args.verbose);
 
-            let config = match config::load_config(&args.config) {
+            let mut config = match config::load_config(&args.config) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Error: {:#}", e);
                     return ExitCode::FAILURE;
                 }
             };
+
+            // Tech-spec #2 Task 15: strict opt-out via CLI flag or env var.
+            // Ignores the external profile catalog AND every inline
+            // `generalize:` field — bringing mpforge back to a pre-tech-spec #2
+            // baseline without mutating any YAML.
+            let disable_profiles = args.disable_profiles
+                || std::env::var("MPFORGE_PROFILES")
+                    .map(|v| v.eq_ignore_ascii_case("off"))
+                    .unwrap_or(false);
+            if disable_profiles {
+                tracing::info!(
+                    "generalize profiles disabled via --disable-profiles / MPFORGE_PROFILES=off"
+                );
+                config.resolved_profile_map.clear();
+                for input in &mut config.inputs {
+                    input.generalize = None;
+                }
+            }
 
             if let Err(e) = pipeline::run(&config, args) {
                 eprintln!("Error: {:#}", e);

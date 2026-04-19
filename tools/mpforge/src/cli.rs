@@ -114,6 +114,14 @@ pub struct BuildArgs {
     #[arg(long)]
     pub dry_run: bool,
 
+    /// Tech-spec #2 Task 15: bypass ALL generalization — ignore both
+    /// `generalize_profiles_path` (external catalog) AND the inline
+    /// `generalize:` fields in sources.yaml. Used to regenerate the baseline
+    /// golden `mpforge-multi-data-profiles-disabled.sha256` without having to
+    /// mutate YAML files. Also accepts the env var `MPFORGE_PROFILES=off`.
+    #[arg(long)]
+    pub disable_profiles: bool,
+
     /// Verbosity level (-v: INFO, -vv: DEBUG, -vvv: TRACE)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,

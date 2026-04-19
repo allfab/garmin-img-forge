@@ -313,6 +313,73 @@ Lecture → Règles → Clipping tuile → [Lissage + Simplification] → Export
 
 Les points (POI) ne sont pas affectés. Seuls les polygones et polylignes sont traités.
 
+#### Profils multi-niveaux (tech-spec #2)
+
+En complément du `generalize:` inline (qui reste supporté, équivalent à un
+profil mono-niveau `n=0`), **mpforge** sait charger un **catalogue externe de
+profils** et produire des `.mp` *multi-Data* : chaque feature peut porter
+plusieurs géométries (Data0 = détaillé, Data2 = zoom moyen, Data4 = très
+simplifié…). Le driver `ogr-polishmap` sérialise chaque bucket sur une ligne
+`Data<n>=` distincte.
+
+Activation dans `sources.yaml` :
+
+```yaml
+generalize_profiles_path: "../generalize-profiles.yaml"
+```
+
+Catalogue `generalize-profiles.yaml` :
+
+```yaml
+profiles:
+  BATIMENT: {}    # absent ⇒ géométrie brute (préservation stricte)
+
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00005 }     # détaillé
+      - { n: 2, simplify: 0.00020 }     # zoom moyen
+
+  TRONCON_DE_ROUTE:
+    # Dispatch conditionnel par attribut (premier match gagne).
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0, simplify: 0.00002 }
+          - { n: 2, simplify: 0.00008 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0, simplify: 0.00010 }
+          - { n: 2, simplify: 0.00030 }
+    levels:
+      - { n: 0, simplify: 0.00005 }     # fallback si aucun `when` ne matche
+      - { n: 2, simplify: 0.00015 }
+```
+
+**Sémantique de `n`** : index dans `MpHeader.levels` (0 = le plus détaillé,
+émis en `Data0=` ; 2 = `Data2=` ; etc.). Toutes les géométries additionnelles
+dérivent de la géométrie brute (pas d'empilage entre niveaux).
+
+**Contraintes fail-fast au `load_config`** :
+- couche routable (`TRONCON_DE_ROUTE` et classes rattachées) **doit** déclarer
+  `n: 0` dans chaque branche visible (default ET chaque `when`), cohérent avec
+  F4 tech-spec #1 (routing exige `Data0` strict) ;
+- une même couche présente à la fois en `generalize:` inline et dans le
+  catalogue externe ⇒ conflit refusé ;
+- bornes : `iterations ∈ [0, 5]`, `simplify ∈ [0.0, 0.001]`
+  (≈ 110 m, garde-fou anti-destruction).
+
+**Opt-out strict** : `mpforge build --disable-profiles` (ou env var
+`MPFORGE_PROFILES=off`) ignore catalogue et inline pour revenir au comportement
+mono-Data pré-tech-spec #2. Utilisé pour regénérer le golden sha256
+`tools/mpforge/tests/golden/mpforge-multi-data-profiles-disabled.sha256` sans
+muter les YAML.
+
+Voir `pipeline/configs/ign-bdtopo/generalize-profiles.yaml` pour les profils
+BDTOPO en production et `docs/implementation-artifacts/tech-spec-mpforge-multi-data-bdtopo-profiles.md`
+pour le design complet.
+
 ### Field Mapping Configuration
 
 **mpforge** supporte le mappage personnalisé des champs sources vers les champs canoniques du format Polish Map via un **fichier YAML externe**.
