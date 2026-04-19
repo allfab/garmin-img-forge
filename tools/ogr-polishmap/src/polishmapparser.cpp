@@ -685,10 +685,27 @@ bool PolishMapParser::ParseNextSection(SectionType eTargetType, PolishMapSection
                         }
                     }
                 } else if (STARTS_WITH_CI(osKey.c_str(), "Data") && !EQUAL(osKey.c_str(), "Data0")) {
-                    // Data1, Data2, etc. are multi-resolution levels (ignored in MVP)
+                    // Tech-spec #2 Task 4: round-trip parsing of multi-resolution
+                    // Data1=..Data9= lines for POLYLINE/POLYGON. Stored in
+                    // aoAdditionalCoordsSets, keyed by N. POI remains mono-geom
+                    // (MP spec §4.4.3.1) and ignores these lines.
                     if (eTargetType != SectionType::POI) {
-                        CPLDebug("OGR_POLISHMAP", "Ignoring %s (multi-resolution not yet supported)",
-                                 osKey.c_str());
+                        int nIndex = atoi(osKey.c_str() + 4);
+                        if (nIndex < 1 || nIndex > 9) {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "%s at line %d: DataN index %d out of range [1,9], skipped",
+                                     pszTypeName, m_nCurrentLine, nIndex);
+                        } else {
+                            std::vector<std::pair<double, double>> aoAdditional;
+                            int nPoints = ParseCoordinateList(osValue, aoAdditional);
+                            if (nPoints > 0) {
+                                oSection.aoAdditionalCoordsSets[nIndex] = std::move(aoAdditional);
+                            } else {
+                                CPLError(CE_Warning, CPLE_AppDefined,
+                                         "%s at line %d: invalid coordinates in %s=, skipped",
+                                         pszTypeName, m_nCurrentLine, osKey.c_str());
+                            }
+                        }
                     }
                 } else if (EQUAL(osKey.c_str(), "EndLevel")) {
                     oSection.nEndLevel = atoi(osValue.c_str());
@@ -780,6 +797,7 @@ bool PolishMapParser::ParseNextPolyline(PolishMapPolylineSection& oSection) {
     oSection.nEndLevel = oGeneric.nEndLevel;
     oSection.osLevels = oGeneric.osLevels;
     oSection.aoOtherFields = oGeneric.aoOtherFields;
+    oSection.aoAdditionalCoordsSets = std::move(oGeneric.aoAdditionalCoordsSets);
 
     return true;
 }
@@ -806,6 +824,7 @@ bool PolishMapParser::ParseNextPolygon(PolishMapPolygonSection& oSection) {
     oSection.nEndLevel = oGeneric.nEndLevel;
     oSection.osLevels = oGeneric.osLevels;
     oSection.aoOtherFields = oGeneric.aoOtherFields;
+    oSection.aoAdditionalCoordsSets = std::move(oGeneric.aoAdditionalCoordsSets);
 
     return true;
 }

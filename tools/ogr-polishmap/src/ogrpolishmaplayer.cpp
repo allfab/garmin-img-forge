@@ -299,6 +299,22 @@ OGRFeature* OGRPolishMapLayer::GetNextPolylineFeature() {
         poLine->assignSpatialReference(m_poSRS);
         poFeature->SetGeometryDirectly(poLine);
 
+        // Tech-spec #2 Task 4: attach Data1..DataK additional LineString geoms
+        // when multi-geom mode is active at Open(). Skip indices beyond the
+        // schema defined at construction (geom_level_1..m_nMaxDataLevel).
+        if (m_bMultiGeomFields) {
+            for (const auto& kv : oSection.aoAdditionalCoordsSets) {
+                int nIndex = kv.first;
+                if (nIndex < 1 || nIndex > m_nMaxDataLevel) continue;
+                OGRLineString* poAdd = new OGRLineString();
+                for (const auto& c : kv.second) {
+                    poAdd->addPoint(c.second, c.first);
+                }
+                poAdd->assignSpatialReference(m_poSRS);
+                poFeature->SetGeomFieldDirectly(nIndex, poAdd);
+            }
+        }
+
         // Set fields
         poFeature->SetField("Type", oSection.osType.c_str());
         poFeature->SetField("Label", oSection.osLabel.c_str());
@@ -389,6 +405,31 @@ OGRFeature* OGRPolishMapLayer::GetNextPolygonFeature() {
         poPolygon->addRingDirectly(poRing);
         poPolygon->assignSpatialReference(m_poSRS);
         poFeature->SetGeometryDirectly(poPolygon);
+
+        // Tech-spec #2 Task 4: attach Data1..DataK additional Polygon geoms
+        // with the same auto-closing semantics as the primary ring.
+        if (m_bMultiGeomFields) {
+            for (const auto& kv : oSection.aoAdditionalCoordsSets) {
+                int nIndex = kv.first;
+                if (nIndex < 1 || nIndex > m_nMaxDataLevel) continue;
+                const auto& aoAdd = kv.second;
+                if (aoAdd.size() < 3) continue;
+                OGRPolygon* poAddPoly = new OGRPolygon();
+                OGRLinearRing* poAddRing = new OGRLinearRing();
+                for (const auto& c : aoAdd) {
+                    poAddRing->addPoint(c.second, c.first);
+                }
+                const auto& firstPt = aoAdd.front();
+                const auto& lastPt  = aoAdd.back();
+                if (std::abs(firstPt.first - lastPt.first) > RING_CLOSURE_TOLERANCE ||
+                    std::abs(firstPt.second - lastPt.second) > RING_CLOSURE_TOLERANCE) {
+                    poAddRing->addPoint(firstPt.second, firstPt.first);
+                }
+                poAddPoly->addRingDirectly(poAddRing);
+                poAddPoly->assignSpatialReference(m_poSRS);
+                poFeature->SetGeomFieldDirectly(nIndex, poAddPoly);
+            }
+        }
 
         // Set fields
         poFeature->SetField("Type", oSection.osType.c_str());

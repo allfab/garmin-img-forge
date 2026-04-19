@@ -195,6 +195,15 @@ public:
     const PolishMapHeaderData& GetHeaderData() const { return m_oHeaderData; }
 
     /**
+     * @brief Tech-spec #2 Task 4: enable multi-geom exposure on read path.
+     *        Must be called BEFORE SetParser() (which creates the layers).
+     */
+    void SetMultiGeomFields(bool bEnabled, int nMaxDataLevel) {
+        m_bMultiGeomFields = bEnabled;
+        m_nMaxDataLevel = nMaxDataLevel;
+    }
+
+    /**
      * @brief Set the parser instance for reading.
      *
      * @param poParser Unique pointer to a PolishMapParser instance.

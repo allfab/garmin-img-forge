@@ -97,19 +97,20 @@ void OGRPolishMapDataSource::CreateLayers() {
     // Story 1.4: Pass parser to layers for feature reading
     PolishMapParser* poParser = m_poParser.get();
 
-    // Task 2.2: Create POI layer with wkbPoint geometry type (index 0)
+    // Task 2.2: Create POI layer with wkbPoint geometry type (index 0).
+    // Tech-spec #2 Task 4: POI stays mono-geom (MP spec §4.4.3.1).
     m_apoLayers.push_back(
         std::make_unique<OGRPolishMapLayer>("POI", wkbPoint, poParser));
 
     // Task 2.3: Create POLYLINE layer with wkbLineString geometry type (index 1)
-    // Note: POLYLINE not yet implemented - will be Story 1.5
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, poParser));
+        std::make_unique<OGRPolishMapLayer>("POLYLINE", wkbLineString, poParser,
+                                            m_bMultiGeomFields, m_nMaxDataLevel));
 
     // Task 2.4: Create POLYGON layer with wkbPolygon geometry type (index 2)
-    // Note: POLYGON not yet implemented - will be Story 1.6
     m_apoLayers.push_back(
-        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, poParser));
+        std::make_unique<OGRPolishMapLayer>("POLYGON", wkbPolygon, poParser,
+                                            m_bMultiGeomFields, m_nMaxDataLevel));
 
     // Task 2.5: Layers stored in m_apoLayers vector (3 layers total)
     CPLDebug("OGR_POLISHMAP", "Created %d layers: POI, POLYLINE, POLYGON",

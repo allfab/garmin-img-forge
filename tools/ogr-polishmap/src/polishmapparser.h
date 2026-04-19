@@ -79,6 +79,12 @@ struct PolishMapSection {
     std::string osLevels;                            // "0-3" or empty
     std::map<std::string, std::string> aoOtherFields;// Additional fields
 
+    // Tech-spec #2 Task 4: additional coordinate sets for Data1=..Data9= lines
+    // (POLYLINE/POLYGON only). Keyed by index N. aoCoords remains the bucket 0
+    // storage (alias), preserving backward compatibility for all existing code
+    // paths that read aoCoords.
+    std::map<int, std::vector<std::pair<double, double>>> aoAdditionalCoordsSets;
+
     // Default constructor
     PolishMapSection() : eType(SectionType::POI), nEndLevel(-1) {}
 
@@ -96,6 +102,7 @@ struct PolishMapSection {
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
+        aoAdditionalCoordsSets.clear();
     }
 
     // Get minimum point count for valid geometry
@@ -253,6 +260,11 @@ struct PolishMapPolylineSection {
     std::string osLevels;                            // "0-3" ou vide
     std::map<std::string, std::string> aoOtherFields;// Champs additionnels
 
+    // Tech-spec #2 Task 4: Data1=..Data9= coordinate sets (N>=1). aoCoords
+    // remains the N=0 bucket; aoAdditionalCoordsSets is only populated when
+    // the parser encounters DataN>0 lines.
+    std::map<int, std::vector<std::pair<double, double>>> aoAdditionalCoordsSets;
+
     // Default values
     PolishMapPolylineSection() : nEndLevel(-1) {}
 
@@ -266,6 +278,7 @@ struct PolishMapPolylineSection {
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
+        aoAdditionalCoordsSets.clear();
     }
 };
 
@@ -291,6 +304,10 @@ struct PolishMapPolygonSection {
     std::string osLevels;                            // "0-3" ou vide
     std::map<std::string, std::string> aoOtherFields;// Champs additionnels
 
+    // Tech-spec #2 Task 4: Data1=..Data9= coordinate sets (N>=1). See
+    // PolishMapPolylineSection for semantics.
+    std::map<int, std::vector<std::pair<double, double>>> aoAdditionalCoordsSets;
+
     // Default values
     PolishMapPolygonSection() : nEndLevel(-1) {}
 
@@ -304,6 +321,7 @@ struct PolishMapPolygonSection {
         nEndLevel = -1;
         osLevels.clear();
         aoOtherFields.clear();
+        aoAdditionalCoordsSets.clear();
     }
 };
 

@@ -174,6 +174,25 @@ GDALDataset* OGRPolishMapDriver::Open(GDALOpenInfo* poOpenInfo) {
     // Store header metadata in dataset
     poDS->SetHeaderData(poParser->GetHeaderData());
 
+    // Tech-spec #2 Task 4: explicit opt-in to multi-geom exposure on read path
+    // via open option MULTI_GEOM_FIELDS=YES + MAX_DATA_LEVEL=K. Without the
+    // option, DataN>0 lines are parsed internally but not surfaced via OGR
+    // geom fields (behaviour is predictable: stricly single-geom features).
+    const char* pszMultiGeom =
+        CSLFetchNameValue(poOpenInfo->papszOpenOptions, "MULTI_GEOM_FIELDS");
+    if (pszMultiGeom != nullptr && CPLTestBool(pszMultiGeom)) {
+        const char* pszMaxLevel =
+            CSLFetchNameValue(poOpenInfo->papszOpenOptions, "MAX_DATA_LEVEL");
+        int nMaxLevel = (pszMaxLevel != nullptr) ? atoi(pszMaxLevel) : 4;
+        if (nMaxLevel < 1 || nMaxLevel > 9) {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "MAX_DATA_LEVEL must be in [1, 9], got %d", nMaxLevel);
+            delete poDS;
+            return nullptr;
+        }
+        poDS->SetMultiGeomFields(true, nMaxLevel);
+    }
+
     // Story 1.4: Transfer parser ownership to dataset
     poDS->SetParser(std::move(poParser));
 
