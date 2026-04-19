@@ -5,11 +5,12 @@
 # Divergences intentionnelles vs departement/ :
 #   - `rules:` pointe vers france-quadrant/garmin-rules.yaml (EndLevel rabaissés
 #     pour alléger l'IMG des quadrants : BATIMENT/CONSTRUCTION_LINEAIRE "0"→"1"
-#     puis remap 5L→6L standard).
+#     puis remap 5L→7L standard).
 #
-# Note : le header 6L (24/23/22/20/18/16) et le catalogue 6L `generalize-profiles.yaml`
+# Note : le header 7L (24/23/22/21/20/18/16) et le catalogue 7L `generalize-profiles.yaml`
 # sont communs à tous les scopes (departement, outre-mer, france-quadrant) depuis
-# la refonte avril 2026 (contiguïté des paliers Data0..DataN obligatoire sur Alpha 100).
+# la refonte avril 2026 (contiguïté des paliers Data0..DataN obligatoire, garantie
+# par mpforge fill_level_gaps).
 #
 # NE PAS répercuter mécaniquement les évolutions header ou catalogue depuis
 # departement/ sans réviser le remap EndLevel correspondant.
@@ -275,13 +276,14 @@ output:
 header:
   name: "BDTOPO-{col:03}-{row:03}"
   copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
-  levels: "6"
+  levels: "7"
   level0: "24"
   level1: "23"
   level2: "22"
-  level3: "20"
-  level4: "18"
-  level5: "16"
+  level3: "21"
+  level4: "20"
+  level5: "18"
+  level6: "16"
   simplify_level: "0"
   tree_size: "1000"
   rgn_limit: "1024"

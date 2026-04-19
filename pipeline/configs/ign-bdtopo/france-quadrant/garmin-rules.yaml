@@ -41,7 +41,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
         set:
           Type: "0x01"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "~[0x04]${NUMERO}"
 
       # 2. Nationale (hors Rond-point)
@@ -50,7 +50,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "~[0x05]${NUMERO}"
 
       # 3. Nationale Rond-point (pas de label)
@@ -59,7 +59,7 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "3"
+          EndLevel: "4"
 
       # 4. Departementale (hors Rond-point)
       - match:
@@ -67,7 +67,7 @@ rulesets:
           NATURE: "!Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "~[0x06]${NUMERO}"
 
       # 5. Departementale Rond-point — garde Type=0x05 (couleur RD),
@@ -77,7 +77,7 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "3"
+          EndLevel: "4"
 
       # 6. Route intercommunale (toute NATURE)
       - match:
@@ -122,14 +122,14 @@ rulesets:
           NATURE: "Bretelle"
         set:
           Type: "0x09"
-          EndLevel: "3"
+          EndLevel: "4"
 
       # 12. Type autoroutier
       - match:
           NATURE: "Type autoroutier"
         set:
           Type: "0x01"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "~[0x04]${NUMERO}"
 
       # 13. Chemin
@@ -181,7 +181,7 @@ rulesets:
           POS_SOL: "-1"
         set:
           Type: "0x10e06"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 2. Voie ferree principale (hors souterrain)
@@ -190,7 +190,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10c00"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 3. LGV (hors souterrain)
@@ -199,7 +199,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e02"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 4. Voie de service (hors souterrain)
@@ -208,7 +208,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e03"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 5. Tramway (hors souterrain)
@@ -217,7 +217,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e04"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 6. Funiculaire ou cremaillere (hors souterrain)
@@ -226,7 +226,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10e05"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
       # 7. Sans objet (hors souterrain)
@@ -235,7 +235,7 @@ rulesets:
           POS_SOL: "!-1"
         set:
           Type: "0x10c00"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -294,7 +294,7 @@ rulesets:
           NOM: "*"
         set:
           Type: "0x54"
-          EndLevel: "5"
+          EndLevel: "6"
           Label: "${NOM}"
           CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
@@ -318,7 +318,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
-          EndLevel: "5"
+          EndLevel: "6"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -965,7 +965,7 @@ rulesets:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "5"
+          EndLevel: "6"
           Label: "Bois"
 
       # 2. Foret fermee de coniferes (EndLevel=1 [FRANCE-SE], Label raccourci)
@@ -1121,7 +1121,7 @@ rulesets:
           NATURE: "Aérodrome"
         set:
           Type: "0x02d0b"
-          EndLevel: "5"
+          EndLevel: "6"
           Label: "${GRAPHIE}"
 
       # 2. Altiport
@@ -3455,7 +3455,7 @@ rulesets:
           NAME: "*"
         set:
           Type: "0x10f04"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
@@ -3463,4 +3463,4 @@ rulesets:
           NAME: ""
         set:
           Type: "0x10f04"
-          EndLevel: "3"
+          EndLevel: "4"
