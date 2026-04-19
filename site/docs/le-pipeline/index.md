@@ -2,6 +2,11 @@
 
 Cette section décrit **étape par étape** le processus complet de création d'une carte Garmin topographique à partir des données IGN BD TOPO. Chaque étape est illustrée avec les commandes réelles à exécuter.
 
+<figure markdown>
+  ![Pipeline Garmin IMG Forge : SIG → mpforge → imgforge → GPS](../assets/images/readme/hero-pipeline.svg){ width="100%" }
+  <figcaption>Du jeu de données SIG au GPS Garmin, sans étape manuelle.</figcaption>
+</figure>
+
 ---
 
 ## Vue d'ensemble

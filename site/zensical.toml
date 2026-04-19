@@ -8,7 +8,7 @@ docs_dir = "docs"
 site_dir = "_site"
 use_directory_urls = true
 extra_css = ["stylesheets/hero.css", "stylesheets/extra.css", "stylesheets/donate.css"]
-extra_javascript = ["javascripts/lemonsqueezy.js", "javascripts/umami-tracking.js", "javascripts/downloads-manifest.js"]
+extra_javascript = ["javascripts/lemonsqueezy.js", "javascripts/umami-tracking.js", "javascripts/downloads-manifest.js", "javascripts/medium-zoom.min.js", "javascripts/image-zoom.js"]
 
 [theme]
 name = "classic"

@@ -2,6 +2,11 @@
 
 **Des cartes topographiques Garmin gratuites, précises et à jour — forgées depuis les données ouvertes de l'IGN, avec un pipeline 100 % open-source.**
 
+<figure markdown>
+  ![Un YAML déclaratif devient une carte Garmin](../assets/images/readme/yaml-to-map.svg){ width="100%" }
+  <figcaption>L'approche déclarative : tes règles de symbologie en YAML, l'outil forge le <code>.img</code>.</figcaption>
+</figure>
+
 ---
 
 ## Pourquoi ce projet ?
