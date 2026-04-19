@@ -130,7 +130,7 @@ fn main() -> Result<()> {
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
-            area_name, product_version, keep_going, typ_file,
+            area_name, product_version, keep_going, overview_types, typ_file,
             dem, dem_dists, dem_interpolation, dem_source_srs,
         } => {
             if let Some(j) = jobs {
@@ -181,6 +181,11 @@ fn main() -> Result<()> {
             let dem_config_clone = dem_config.clone();
             let shared_dem_clone = shared_dem.clone();
 
+            // Overview whitelist (CLI flag, optional). `None` = pas de filtre par type.
+            let overview_whitelist: Option<std::collections::HashSet<u32>> =
+                overview_types.as_ref().map(|v| v.iter().copied().collect());
+            let overview_whitelist_ref = overview_whitelist.as_ref();
+
             use rayon::prelude::*;
 
             let results: Vec<Result<_, anyhow::Error>> = mp_files.par_iter().map(|entry| {
@@ -210,18 +215,26 @@ fn main() -> Result<()> {
                     }
                 }
 
+                // Extraire les features overview pendant que MpFile est encore en mémoire.
+                // Paliers mpforge : Data5/Data6 sont les deux plus grossiers du header 7L.
+                let overview_features = imgforge::img::overview_map::extract_overview_features(
+                    &mp, 5, 6, overview_whitelist_ref,
+                );
+
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
-                Ok((tile, counts, path.display().to_string()))
+                Ok((tile, counts, path.display().to_string(), overview_features))
             }).collect();
 
             // Handle keep-going: collect successes, log failures
             use imgforge::img::assembler::TileSubfiles;
+            use imgforge::img::overview_map::OverviewFeature;
             let mut tile_subfiles = Vec::with_capacity(results.len());
+            let mut all_overview_features: Vec<OverviewFeature> = Vec::new();
             let mut errors = 0usize;
 
             for result in results {
                 match result {
-                    Ok((tile, (pts, lines, polys), _path)) => {
+                    Ok((tile, (pts, lines, polys), _path, overview_features)) => {
                         report.total_points += pts;
                         report.total_polylines += lines;
                         report.total_polygons += polys;
@@ -236,6 +249,7 @@ fn main() -> Result<()> {
                             nod: tile.nod,
                             dem: tile.dem,
                         });
+                        all_overview_features.extend(overview_features);
                     }
                     Err(e) => {
                         if keep_going {
@@ -336,9 +350,38 @@ fn main() -> Result<()> {
                 tdb.build()
             };
 
+            // Construire la sub-map overview à partir des features agrégées.
+            // On skip l'overview si aucune feature éligible ou si les bounds sont dégénérées —
+            // inutile d'embarquer une overview "vide" que le firmware Alpha 100 pourrait rejeter.
+            let overview_map_id = imgforge::img::assembler::compute_overview_map_id(fid);
+            let overview_tile = if all_overview_features.is_empty() {
+                tracing::warn!(
+                    "Aucune feature éligible overview (EndLevel+whitelist) — overview non embarquée."
+                );
+                None
+            } else {
+                let overview_data = imgforge::img::overview_map::build_overview_map(
+                    &tile_subfiles,
+                    &all_overview_features,
+                    overview_map_id,
+                    effective_codepage,
+                );
+                Some(TileSubfiles {
+                    map_number: overview_data.map_number,
+                    description: format!("{} overview", map_desc),
+                    tre: overview_data.tre,
+                    rgn: overview_data.rgn,
+                    lbl: overview_data.lbl,
+                    net: None, nod: None, dem: None,
+                })
+            };
+
             // Build gmapsupp with overview map embedded
-            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(
-                &tile_subfiles, map_desc, &gmapsupp_meta,
+            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_overview(
+                &tile_subfiles,
+                overview_tile.as_ref(),
+                map_desc,
+                &gmapsupp_meta,
                 typ_data.as_deref(),
             )?;
             std::fs::write(&output, &gmapsupp)?;
