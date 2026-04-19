@@ -36,9 +36,10 @@ pipeline/resources/typfiles/xIGNBBTOP.typ
 site/docs/telechargements/.publish.lock
 
 *.sha256
-!tests/golden/*.sha256
+!tools/imgforge/tests/golden/*.sha256
+!tools/mpforge/tests/golden/*.sha256
 
 # Aire de travail temporaire (baseline + flamegraph tech-spec #2)
-baseline-runs/
+tools/mpforge/scratch/
 perf.data*
 flamegraph.svg
