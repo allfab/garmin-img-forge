@@ -77,7 +77,7 @@ mpforge build --config <fichier.yaml> [options]
 | `--report <path>` | Exporte un rapport JSON d'exécution | - |
 | `--skip-existing` | Reprend un export interrompu en sautant les tuiles déjà générées | `false` |
 | `--dry-run` | Mode prévisualisation : affiche ce qui serait exporté sans écrire | `false` |
-| `--disable-profiles` | Bypasse le catalogue externe `generalize_profiles_path` (les `generalize:` inline restent actifs). Utilisé pour regénérer le golden baseline mono-Data. Accepte aussi l'env var `MPFORGE_PROFILES=off`. Voir [Profils multi-niveaux](#profils-multi-niveaux-tech-spec-2) | `false` |
+| `--disable-profiles` | Bypasse le catalogue externe `generalize_profiles_path` (les `generalize:` inline restent actifs). Accepte aussi l'env var `MPFORGE_PROFILES=off`. Voir [Profils multi-niveaux](#profils-multi-niveaux) | `false` |
 | `--fail-fast` | Arrêt immédiat à la première erreur | `false` |
 | `-v` / `-vv` / `-vvv` | Verbosité progressive (INFO / DEBUG / TRACE) | - |
 
@@ -187,14 +187,14 @@ Deux modes configurables dans le YAML (`error_handling`) ou en CLI (`--fail-fast
 }
 ```
 
-Le champ `skipped_additional_geom` compte les features qui ont été droppées parce qu'au moins un bucket `Data<n>=` additionnel a échoué à l'écriture (erreur FFI `OGR_F_SetGeomField` ≠ NONE, ou WKT invalide). Il n'apparaît pas quand la valeur est `0` (mode mono-Data). Voir [Profils multi-niveaux](#profils-multi-niveaux-tech-spec-2).
+Le champ `skipped_additional_geom` compte les features qui ont été droppées parce qu'au moins un bucket `Data<n>=` additionnel a échoué à l'écriture (erreur FFI `OGR_F_SetGeomField` ≠ NONE, ou WKT invalide). Il n'apparaît pas quand la valeur est `0` (mode mono-Data). Voir [Profils multi-niveaux](#profils-multi-niveaux).
 
-## Profils multi-niveaux (tech-spec #2)
+## Profils multi-niveaux
 
-Depuis la tech-spec #2, `mpforge` peut produire des `.mp` **multi-Data** : chaque feature transporte plusieurs géométries (`Data0=` détaillée, `Data2=` simplifiée pour zoom moyen, etc.), sélectionnées par `imgforge` selon le niveau de zoom. Deux mécanismes coexistent :
+`mpforge` peut produire des `.mp` **multi-Data** : chaque feature transporte plusieurs géométries (`Data0=` détaillée, `Data2=` simplifiée pour zoom moyen, etc.), sélectionnées par `imgforge` selon le niveau de zoom. Deux mécanismes coexistent :
 
-1. **Inline** dans `sources.yaml` via `generalize:` — pré-tech-spec #2, conservé. Produit une géométrie mono-niveau (`n=0`).
-2. **Catalogue externe** `generalize_profiles_path: "./generalize-profiles.yaml"` — tech-spec #2. Permet des profils multi-level par type BDTOPO, avec dispatch par attribut (ex. `CL_ADMIN` pour `TRONCON_DE_ROUTE`) et bornes fail-fast au chargement (`iterations ∈ [0, 5]`, `simplify ∈ [0, 0.001]`).
+1. **Inline** dans `sources.yaml` via `generalize:` — produit une géométrie mono-niveau (`n=0`).
+2. **Catalogue externe** `generalize_profiles_path: "./generalize-profiles.yaml"` — profils multi-level par type BDTOPO, avec dispatch par attribut (ex. `CL_ADMIN` pour `TRONCON_DE_ROUTE`) et bornes fail-fast au chargement (`iterations ∈ [0, 5]`, `simplify ∈ [0, 0.001]`).
 
 Sémantique de `n` : index dans `MpHeader.levels` (0 = le plus détaillé, émis en `Data0=`). Le driver `ogr-polishmap` sérialise chaque bucket sur une ligne `Data<n>=` distincte.
 
@@ -202,11 +202,11 @@ Voir [Étape 2 — Configuration](../le-pipeline/etape-2-configuration.md#géné
 
 **Contraintes fail-fast** au `load_config` :
 
-- couche routable (`is_routable_layer` → `TRONCON_DE_ROUTE`) doit déclarer `n: 0` dans **chaque** branche visible (default + chaque `when`) — F4 tech-spec #1.
-- conflit inline/externe sur le même `source_layer` rejeté.
-- `max(n)` sur tous les profils doit être `< header.levels.len()` (AC18) pour éviter le drop silencieux côté imgforge.
+- Toute couche routable (`TRONCON_DE_ROUTE`) doit déclarer `n: 0` dans **chaque** branche visible (default + chaque `when`) — le routing exige un `Data0=` pour construire le graphe NET/NOD.
+- Conflit inline/externe sur le même `source_layer` rejeté.
+- `max(n)` sur tous les profils doit être `< header.levels.len()` — sinon `imgforge` drop silencieusement les `DataN` hors plage.
 
-**Opt-out** : `mpforge build --disable-profiles` bypasse uniquement le catalogue externe (l'inline reste actif). Utilisé pour regénérer le golden baseline AC1.
+**Opt-out** : `mpforge build --disable-profiles` bypasse uniquement le catalogue externe (l'inline reste actif).
 
 ## Configuration YAML
 

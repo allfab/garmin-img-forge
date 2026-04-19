@@ -38,9 +38,9 @@ Cela signifie que **tous les outils basés sur GDAL** (QGIS, ogr2ogr, Python/GDA
 | Field mapping YAML | N/A | Oui (`-dsco FIELD_MAPPING`) |
 | Multi-geometry fields (Data1..DataK) | Oui (`-oo MULTI_GEOM_FIELDS=YES`) | Oui (`-dsco MULTI_GEOM_FIELDS=YES`) |
 
-## Multi-geometry fields (tech-spec #2)
+## Multi-geometry fields
 
-Depuis la tech-spec #2, les couches POLYLINE et POLYGON peuvent transporter **N géométries par feature** (jusqu'à `Data9=`), consommées par `imgforge` au zoom level correspondant. POI reste mono-géométrie (spec MP §4.4.3.1).
+Les couches POLYLINE et POLYGON peuvent transporter **N géométries par feature** (jusqu'à `Data9=`), consommées par `imgforge` au zoom level correspondant. POI reste mono-géométrie (spec MP §4.4.3.1).
 
 **Activation à l'écriture** — le driver ajoute N-1 `OGRGeomFieldDefn` additionnels (`geom_level_1`..`geom_level_K`) quand `MULTI_GEOM_FIELDS=YES` :
 

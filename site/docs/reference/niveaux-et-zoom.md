@@ -165,9 +165,9 @@ imgforge build tiles/ \
     --jobs 8
 ```
 
-### Multi-Data : coupler niveau ↔ bucket (tech-spec #2)
+### Multi-Data : coupler niveau ↔ bucket
 
-Depuis tech-spec #2, une feature peut porter **plusieurs géométries** (`Data0=` très détaillée, `Data2=` simplifiée pour zoom moyen, etc.). `imgforge` sélectionne le bucket approprié au moment du rendu. L'indice `n` d'un `LevelSpec` dans `generalize-profiles.yaml` correspond directement à l'**index** dans `MpHeader.levels` :
+Une feature peut porter **plusieurs géométries** (`Data0=` très détaillée, `Data2=` simplifiée pour zoom moyen, etc.). `imgforge` sélectionne le bucket approprié au moment du rendu. L'indice `n` d'un `LevelSpec` dans `generalize-profiles.yaml` correspond directement à l'**index** dans `MpHeader.levels` :
 
 | Index `n` | Header | Bucket émis | Consommé par imgforge à |
 |---|---|---|---|
@@ -175,9 +175,9 @@ Depuis tech-spec #2, une feature peut porter **plusieurs géométries** (`Data0=
 | `2` | `Level2=20` | `Data2=` | zoom moyen (`Level2`) |
 | `4` | `Level4=16` | `Data4=` | zoom grossier (`Level4`) |
 
-**Contrainte fail-fast AC18** : `max(n)` sur tous les profils doit être `< header.levels.len()` — sinon imgforge drop silencieusement les buckets hors plage (Tech-spec #1 Q4 warn+ignore). `mpforge` valide au `load_config` et échoue avec un message explicite.
+**Contrainte fail-fast** : `max(n)` sur tous les profils doit être `< header.levels.len()` — sinon `imgforge` drop silencieusement les buckets hors plage. `mpforge` valide au `load_config` et échoue avec un message explicite.
 
-Voir [mpforge — profils multi-niveaux](../le-projet/mpforge.md#profils-multi-niveaux-tech-spec-2) et [Étape 2 — Profils multi-niveaux](../le-pipeline/etape-2-configuration.md#profils-multi-niveaux-tech-spec-2).
+Voir [mpforge — profils multi-niveaux](../le-projet/mpforge.md#profils-multi-niveaux) et [Étape 2 — Profils multi-niveaux](../le-pipeline/etape-2-configuration.md#profils-multi-niveaux).
 
 ### Estimation de l'impact sur la taille
 

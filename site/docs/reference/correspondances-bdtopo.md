@@ -46,13 +46,13 @@ Cette page documente comment les couches de la BD TOPO IGN sont transposées en 
 | `LIEU_DIT_NON_HABITE` | `POI 0x6400+` | Lieu-dit, sommet, col |
 | `COMMUNE` | `POI 0x0400+` | Chef-lieu de commune |
 
-## Profils de simplification par couche (tech-spec #2)
+## Profils de simplification par couche
 
-Depuis la tech-spec #2, `mpforge` applique des **profils de simplification multi-niveaux** aux couches BD TOPO via le catalogue `pipeline/configs/ign-bdtopo/generalize-profiles.yaml`. Chaque feature peut porter plusieurs géométries (`Data0=` détaillée, `Data2=` pour zoom moyen), sélectionnées par `imgforge` au rendu. Tolérances Douglas-Peucker en degrés WGS84.
+`mpforge` applique des **profils de simplification multi-niveaux** aux couches BD TOPO via le catalogue `pipeline/configs/ign-bdtopo/generalize-profiles.yaml`. Chaque feature peut porter plusieurs géométries (`Data0=` détaillée, `Data2=` pour zoom moyen), sélectionnées par `imgforge` au rendu. Tolérances Douglas-Peucker en degrés WGS84.
 
 | Couche BD TOPO | Profil | `Data0` (détaillé) | `Data2` (zoom moyen) | Rationale |
 |---|---|---|---|---|
-| `BATIMENT` | **aucun** | raw (pas de DP) | — | Géométrie préservée telle que livrée (AC12) |
+| `BATIMENT` | **aucun** | raw (pas de DP) | — | Géométrie préservée telle que livrée par l'IGN |
 | `TRONCON_HYDROGRAPHIQUE` | mono-level | `simplify: 0.00005` (~5 m) | `simplify: 0.00020` (~22 m) | Cours d'eau détaillés + version zoom moyen |
 | `ZONE_DE_VEGETATION` | mono-level + Chaikin | Chaikin 1× + `simplify: 0.00005` | `simplify: 0.00020` | Lissage naturel des contours |
 | `TRONCON_DE_ROUTE` (Autoroute, Nationale) | dispatch `when: CL_ADMIN` | `simplify: 0.00001` (~1 m) | `simplify: 0.00008` | Préservation routing max |
@@ -62,9 +62,9 @@ Depuis la tech-spec #2, `mpforge` applique des **profils de simplification multi
 | `TRONCON_DE_ROUTE` (autres) | fallback `levels` default | `simplify: 0.00005` | `simplify: 0.00015` | CL_ADMIN inconnue |
 | `COURBE` | mono-level | `simplify: 0.00008` | `simplify: 0.00025` | Courbes de niveau |
 
-**Contraintes** : toute couche routable (`TRONCON_DE_ROUTE`) **doit** déclarer `n: 0` sur chaque branche (garantie routing). Les tolérances `n: 0` des classes routables sont bornées à `≤ 0.00010°` (~11 m) pour préserver la connexité aux intersections (AC16).
+**Contraintes** : toute couche routable (`TRONCON_DE_ROUTE`) **doit** déclarer `n: 0` sur chaque branche (garantie routing). Les tolérances `n: 0` des classes routables sont bornées à `≤ 0.00010°` (~11 m) pour préserver la connexité aux intersections.
 
-Voir [Étape 2 — Profils multi-niveaux](../le-pipeline/etape-2-configuration.md#profils-multi-niveaux-tech-spec-2) pour la sémantique YAML.
+Voir [Étape 2 — Profils multi-niveaux](../le-pipeline/etape-2-configuration.md#profils-multi-niveaux) pour la sémantique YAML.
 
 ## Règles de catégorisation
 

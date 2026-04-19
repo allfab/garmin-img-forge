@@ -258,7 +258,7 @@ Sans field mapping, le driver utilise des alias intégrés (`NAME`/`NOM` → Lab
 
 ## Multi-geometry fields (MULTI_GEOM_FIELDS)
 
-Depuis la tech-spec #2, POLYLINE et POLYGON peuvent transporter **N géométries par
+POLYLINE et POLYGON peuvent transporter **N géométries par
 feature** dans le fichier `.mp`, encodées en `Data0=`, `Data1=`, `Data2=`, …,
 `DataK=` (la spec Polish Map autorise jusqu'à `DataN` avec N ≤ 9). POI reste
 mono-géométrie (MP spec §4.4.3.1).

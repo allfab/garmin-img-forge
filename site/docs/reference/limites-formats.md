@@ -16,9 +16,9 @@ Tout format a ses contraintes. Les connaître permet d'anticiper les problèmes 
 | **Pas de topologie** | Chaque feature est indépendante. Les relations topologiques (réseau routier) sont reconstruites par le compilateur. |
 | **`Data0=` à `Data9=` par feature** | La spec MP autorise jusqu'à 10 géométries par polyligne/polygone (zoom levels). POI reste mono-géométrie. |
 
-### Multi-geometry fields (Data1..Data9) — tech-spec #2
+### Multi-geometry fields (Data1..Data9)
 
-Depuis tech-spec #2, mpforge + ogr-polishmap produisent des `.mp` **multi-Data** : chaque POLYLINE / POLYGON peut transporter plusieurs géométries (détaillée → simplifiée). imgforge sélectionne le bucket approprié selon le zoom.
+`mpforge` + `ogr-polishmap` produisent des `.mp` **multi-Data** : chaque POLYLINE / POLYGON peut transporter plusieurs géométries (détaillée → simplifiée). `imgforge` sélectionne le bucket approprié selon le zoom.
 
 ```
 [POLYLINE]
@@ -29,7 +29,7 @@ Data2=(45.268551,4.807629),(45.268334,4.805908),...  # simplifié, zoom moyen
 [END]
 ```
 
-POI reste mono-géométrie (spec MP §4.4.3.1). Voir [mpforge — profils multi-niveaux](../le-projet/mpforge.md#profils-multi-niveaux-tech-spec-2) pour l'activation.
+POI reste mono-géométrie (spec MP §4.4.3.1). Voir [mpforge — profils multi-niveaux](../le-projet/mpforge.md#profils-multi-niveaux) pour l'activation.
 
 ### Workaround : multi-géométries
 
@@ -74,7 +74,7 @@ Ces limites influencent directement les choix de configuration :
 | Taille | Volumineux | Compact |
 | Éditable | Oui | Non |
 | Utilisable sur GPS | Non | Oui |
-| Multi-niveaux de zoom | Oui (buckets `Data0..Data9=` depuis tech-spec #2) | Oui (natif) |
+| Multi-niveaux de zoom | Oui (buckets `Data0..Data9=`) | Oui (natif) |
 | Routing | Attributs seulement | Topologie complète |
 
 Le format Polish Map est un **format de travail** — on l'inspecte, on le corrige, on le valide. Le format Garmin IMG est un **format de distribution** — optimisé pour l'affichage et la navigation sur appareil embarqué.

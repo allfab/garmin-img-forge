@@ -313,7 +313,7 @@ Lecture → Règles → Clipping tuile → [Lissage + Simplification] → Export
 
 Les points (POI) ne sont pas affectés. Seuls les polygones et polylignes sont traités.
 
-#### Profils multi-niveaux (tech-spec #2)
+#### Profils multi-niveaux
 
 En complément du `generalize:` inline (qui reste supporté, équivalent à un
 profil mono-niveau `n=0`), **mpforge** sait charger un **catalogue externe de
@@ -362,9 +362,9 @@ profiles:
 dérivent de la géométrie brute (pas d'empilage entre niveaux).
 
 **Contraintes fail-fast au `load_config`** :
-- couche routable (`TRONCON_DE_ROUTE` et classes rattachées) **doit** déclarer
-  `n: 0` dans chaque branche visible (default ET chaque `when`), cohérent avec
-  F4 tech-spec #1 (routing exige `Data0` strict) ;
+- toute couche routable (`TRONCON_DE_ROUTE` et classes rattachées) **doit**
+  déclarer `n: 0` dans chaque branche visible (default ET chaque `when`) — le
+  routing exige un `Data0=` pour construire le graphe NET/NOD ;
 - une même couche présente à la fois en `generalize:` inline et dans le
   catalogue externe ⇒ conflit refusé ;
 - bornes : `iterations ∈ [0, 5]`, `simplify ∈ [0.0, 0.001]`
@@ -373,18 +373,12 @@ dérivent de la géométrie brute (pas d'empilage entre niveaux).
 **Opt-out ciblé** : `mpforge build --disable-profiles` (ou env var
 `MPFORGE_PROFILES=off`) ignore **uniquement** le catalogue externe
 (`generalize_profiles_path`). Les champs `generalize:` inline dans
-`sources.yaml` restent actifs — c'est l'état « post-`ZONE_D_HABITATION`,
-pré-multi-Data » capturé par le golden `tools/mpforge/tests/golden/mpforge-multi-data-profiles-disabled.sha256`.
-Permet de regénérer le baseline sans muter les YAML (55/55 sha256
-strictement identiques vérifié sur D038).
-
-Si un jour tu veux un état *strictement* pré-tech-spec #1 (pas d'inline non
-plus), il faudra éditer `sources.yaml` pour retirer le bloc `generalize:`
-de `ZONE_D_HABITATION` — c'est hors scope de `--disable-profiles`.
+`sources.yaml` restent actifs. Si tu veux un état sans aucune généralisation
+(pas d'inline non plus), édite `sources.yaml` pour retirer les blocs
+`generalize:` — c'est hors scope de `--disable-profiles`.
 
 Voir `pipeline/configs/ign-bdtopo/generalize-profiles.yaml` pour les profils
-BDTOPO en production et `docs/implementation-artifacts/tech-spec-mpforge-multi-data-bdtopo-profiles.md`
-pour le design complet.
+BDTOPO en production.
 
 ### Field Mapping Configuration
 

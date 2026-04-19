@@ -183,7 +183,7 @@ inputs:
 !!! note "Pipeline"
     La généralisation s'applique **après** le clipping sur les tuiles et **avant** l'export en Polish Map. Les points (POI) ne sont pas affectés.
 
-### Profils multi-niveaux (tech-spec #2)
+### Profils multi-niveaux
 
 Le `generalize:` inline ci-dessus produit **une seule** géométrie simplifiée (`Data0=`). Pour des cartes plus riches, `mpforge` accepte un **catalogue externe** qui déclare des profils **multi-niveaux** : chaque feature porte plusieurs géométries, de la plus détaillée à la plus grossière, consommées par `imgforge` selon le zoom.
 
@@ -235,16 +235,16 @@ profiles:
 
 **Contraintes fail-fast au `load_config`** :
 
-- Couche routable (`TRONCON_DE_ROUTE` via `is_routable_layer`) **doit** déclarer `n: 0` dans chaque branche visible (default ET chaque `when`). Sans ça, le routing côté imgforge casse (pas de `Data0=` = pas d'arc NET/NOD).
+- Toute couche routable (`TRONCON_DE_ROUTE`) **doit** déclarer `n: 0` dans chaque branche visible (default ET chaque `when`). Sans ça, le routing côté `imgforge` casse (pas de `Data0=` = pas d'arc NET/NOD).
 - Un même `source_layer` ne peut pas apparaître à la fois en `generalize:` inline **et** dans le catalogue externe → conflit rejeté.
-- `max(n)` sur tous les profils doit être `< header.levels.len()` (sinon imgforge drop silencieusement les `DataN` hors de portée).
+- `max(n)` sur tous les profils doit être `< header.levels.len()` (sinon `imgforge` drop silencieusement les `DataN` hors de portée).
 - `iterations` hors `[0, 5]` ou `simplify` hors `[0, 0.001]` → erreur explicite au chargement.
 
 !!! tip "Opt-out strict"
-    `mpforge build --disable-profiles` (ou env var `MPFORGE_PROFILES=off`) bypasse **uniquement** le catalogue externe. Les `generalize:` inline restent actifs. Utilisé pour regénérer le golden baseline mono-Data (AC1 tech-spec #2).
+    `mpforge build --disable-profiles` (ou env var `MPFORGE_PROFILES=off`) bypasse **uniquement** le catalogue externe. Les `generalize:` inline restent actifs.
 
 !!! note "Pré-requis driver"
-    Le writer multi-Data nécessite le driver `ogr-polishmap` à jour (tech-spec #2). Le script `build-garmin-map.sh` auto-détecte `~/.gdal/plugins/ogr_PolishMap.so` ou `tools/ogr-polishmap/build/ogr_PolishMap.so` et expose `GDAL_DRIVER_PATH` automatiquement. Si `mpforge` est lancé directement, vérifier que le plugin système est à jour (`ogrinfo --formats | grep Polish` pour valider).
+    Le writer multi-Data nécessite le driver `ogr-polishmap` à jour. Le script `build-garmin-map.sh` auto-détecte `~/.gdal/plugins/ogr_PolishMap.so` ou `tools/ogr-polishmap/build/ogr_PolishMap.so` et expose `GDAL_DRIVER_PATH` automatiquement. Si `mpforge` est lancé directement, vérifier que le plugin système est à jour (`ogrinfo --formats | grep Polish` pour valider).
 
 ## 2. Field mapping
 
