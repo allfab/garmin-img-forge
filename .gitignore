@@ -43,3 +43,7 @@ site/docs/telechargements/.publish.lock
 tools/mpforge/scratch/
 perf.data*
 flamegraph.svg
+
+# Firmwares extraits (RE Alpha 100 — couverture EUD interopérabilité, pas de redistribution)
+docs/firmwares/Alpha_100_FR/*.bin
+docs/firmwares/Alpha_100_FR/ghidra-projects/
