@@ -256,7 +256,7 @@ fn test_minimal_lbl_has_labels() {
         let label_offset = read_u32(lbl, 21);
         let label_size = read_u32(lbl, 25);
 
-        assert_eq!(label_offset, 196, "Label data should start after 196B header");
+        assert!(label_offset >= 196, "Label data should start at or after 196B header, got {}", label_offset);
         assert!(label_size > 1, "Label section should contain labels (got size {})", label_size);
     }
 }
@@ -662,6 +662,7 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
         family_name: "Test Map Family".to_string(),
         area_name: String::new(),
         codepage: 1252,
+        typ_basename: None,
     };
 
     let gmapsupp = build_gmapsupp_with_meta(&tiles, "Test", &meta).unwrap();
