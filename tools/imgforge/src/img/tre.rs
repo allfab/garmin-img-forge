@@ -345,11 +345,7 @@ impl TreWriter {
 /// Calculate the four MapValues written at TRE header offset 0x9A (154).
 /// Ported from mkgmap MapValues.java by Steve Ratcliffe.
 /// These are integrity checksums derived from the map ID and header length.
-///
-/// Exposed `pub(crate)` car partagé entre `TreWriter` (sub-maps détail) et
-/// `overview_map::build_tre` (sub-map overview). Les deux appellent avec
-/// `header_length = TRE_HEADER_LEN (188)` pour parité binaire vérifiée sur hardware.
-pub(crate) fn calc_map_values(map_id: u32, header_length: u32) -> [u32; 4] {
+fn calc_map_values(map_id: u32, header_length: u32) -> [u32; 4] {
     // Converts the digits in the map id to the values seen in this section.
     const MAP_ID_CODE_TABLE: [u8; 16] = [
         0, 1, 0xf, 5,
@@ -550,14 +546,6 @@ mod tests {
         for v in &vals {
             assert_ne!(*v, 0, "MapValues should not be zero");
         }
-        // NOTE — golden-bytes vs mesure Pré-jalon 0 :
-        // La mesure Alpha 100 pour sub-map `00380001` rapporte
-        // `6d 77 f6 11 61 77 41 55 6c 77 95 55 6c 77 95 55` (cf.
-        // docs/firmwares/Alpha_100_FR/jalon-0-pre-test-hash-mapid.md).
-        // `calc_map_values(0x00380001, 188)` ne produit PAS ces bytes — divergence
-        // probablement due à un encodage `map_id` différent en production (décimal
-        // vs hex, offset family-id, etc.). À élucider avant d'en faire une assertion.
-        // En l'état on se contente du check non-nul ci-dessus.
     }
 
     #[test]

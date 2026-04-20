@@ -423,20 +423,6 @@ fn build_tre(
     buf.extend_from_slice(&map_id.to_le_bytes());
     // Reserved @120
     buf.extend_from_slice(&0u32.to_le_bytes());
-
-    // MapValues @154-169 (4 × u32) — integrity checksum required by Alpha 100 firmware.
-    // Réutilise tre::calc_map_values pour parité binaire avec les sub-maps détail acceptées.
-    // Voir docs/firmwares/Alpha_100_FR/jalon-0-pre-test-hash-mapid.md pour la preuve.
-    // NOTE : on N'écrit PAS le bloc ExtType @124-153 présent dans TreWriter détail — un
-    // test hardware du 2026-04-20 a montré que son ajout rend l'IMG non reconnu par
-    // l'Alpha 100. Scope strict du tech-spec : MapValues uniquement.
-    common_header::pad_to(&mut buf, 154);
-    let map_values = super::tre::calc_map_values(map_id, TRE_HEADER_LEN as u32);
-    for v in &map_values {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    assert_eq!(buf.len(), 170);
-
     // Pad to header length
     common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
 
@@ -843,31 +829,5 @@ mod tests {
         let pointer = u16::from_le_bytes([ov.rgn[rgn_header_len], ov.rgn[rgn_header_len + 1]]);
         // Pointer = offset polylines = 2 (pointer size) + points_data_len. Points standard = 8 B.
         assert_eq!(pointer, 2 + 8, "pointer must skip 2B pointer + 8B point record");
-    }
-
-    /// MapValues @TRE+0x9A — intégrité exigée par le firmware Alpha 100.
-    /// Garantit que l'overview émet les 16 bytes non-nuls calculés via
-    /// `tre::calc_map_values` (parité binaire avec les sub-maps détail).
-    #[test]
-    fn test_overview_tre_has_mapvalues() {
-        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        // F10 : map_id au format hex aligné sur tre.rs::test_map_values_known_id (0x00380001).
-        // Overview utilise la convention <family>0000, donc 0x00380000.
-        const OVERVIEW_MAP_ID: u32 = 0x0038_0000;
-        let ov = build_overview_map(&tiles, &[], OVERVIEW_MAP_ID, 1252);
-        assert!(ov.tre.len() >= TRE_HEADER_LEN as usize);
-        let mv = &ov.tre[0x9A..0x9A + 16];
-        assert!(
-            mv.iter().any(|&b| b != 0),
-            "MapValues @0x9A doit être non-nul, trouvé: {:?}",
-            mv
-        );
-        let expected: [u32; 4] =
-            super::super::tre::calc_map_values(OVERVIEW_MAP_ID, TRE_HEADER_LEN as u32);
-        let mut expected_bytes = Vec::with_capacity(16);
-        for v in &expected {
-            expected_bytes.extend_from_slice(&v.to_le_bytes());
-        }
-        assert_eq!(mv, &expected_bytes[..], "MapValues divergent du calc_map_values de référence");
     }
 }
