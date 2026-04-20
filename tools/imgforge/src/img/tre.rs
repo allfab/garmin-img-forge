@@ -580,4 +580,54 @@ mod tests {
             val
         }
     }
+
+    /// Probe `calc_map_values` avec plusieurs encodages candidats du `map_id`
+    /// pour le mapper contre les 16 bytes @TRE+0x9A mesurés dans un IMG accepté
+    /// par l'Alpha 100. Ne tourne pas en CI : `cargo test -- --ignored probe_mapvalues_encodings --nocapture`.
+    #[test]
+    #[ignore]
+    fn probe_mapvalues_encodings() {
+        // Cible : sub-map 00380001 de tmp/gmapsupp-20260420.img (jalon-0b).
+        let target_name = "00380001";
+        let expected_hex = "6d 77 f6 11 61 77 41 55 6c 77 95 55 6c 77 95 55";
+
+        let expected: Vec<u8> = expected_hex
+            .split_whitespace()
+            .map(|s| u8::from_str_radix(s, 16).unwrap())
+            .collect();
+
+        // Candidats map_id pour le même nom "00380001".
+        let candidates: Vec<(&str, u32)> = vec![
+            ("V1 hex direct (0x00380001)", 0x0038_0001),
+            ("V2 decimal-as-hex (00380001 → 380_001 déc)", 380_001),
+            ("V3 BCD→u32 (chaque digit ASCII comme nibble)", 0x0038_0001), // same bits
+            ("V4 endian-swap (0x01003800)", 0x0100_3800),
+            ("V5 family×10000 (0x0038=56, 56*10000+1=560001)", 560_001),
+            ("V6 family×10000 hex pack ((56<<16)|1)", (56 << 16) | 1),
+            ("V7 map_in_family seul (1)", 1),
+            ("V8 name-string parsed dec (380001)", 380_001),
+            ("V9 mkgmap mapname: lu comme int décimal du nom", 38_0001u32),
+            ("V10 zero-padded left (hex complet)", 0x0038_0001),
+            // Cross-check A1 : overview 11000000 = compute_overview_map_id(1100)
+            ("V11 overview prod (11_000_000 dec)", 11_000_000),
+            ("V12 overview D038 prod (380_000 dec)", 380_000),
+        ];
+
+        println!("\n=== Probe MapValues encodings ===");
+        println!("target sub-map : {}", target_name);
+        println!("expected @0x9A : {}\n", expected_hex);
+
+        for (label, map_id) in &candidates {
+            let mv = calc_map_values(*map_id, TRE_HEADER_LEN as u32);
+            let mut bytes = Vec::with_capacity(16);
+            for v in &mv {
+                bytes.extend_from_slice(&v.to_le_bytes());
+            }
+            let hex: Vec<String> = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            let hex_str = hex.join(" ");
+            let match_marker = if bytes == expected { "✅ MATCH" } else { "  ---  " };
+            println!("{} map_id=0x{:08x} ({:>10})  {}  {}", match_marker, map_id, map_id, hex_str, label);
+        }
+        println!();
+    }
 }
