@@ -73,6 +73,7 @@ REDUCE_POINT_DENSITY=""    # imgforge --reduce-point-density (réf. mkgmap : 4.0
 SIMPLIFY_POLYGONS=""       # imgforge --simplify-polygons (format "24:12,18:10,16:8")
 MIN_SIZE_POLYGON=""        # imgforge --min-size-polygon (réf. mkgmap : 8)
 MERGE_LINES=false          # imgforge --merge-lines
+PACKAGING="legacy"         # imgforge --packaging (legacy | gmp)
 
 # Contrôle
 DRY_RUN=false
@@ -353,6 +354,7 @@ IMGFORGE :
     --simplify-polygons SPEC   Épsilon DP polygones par résolution (ex. "24:12,18:10,16:8")
     --min-size-polygon N       Filtre polygones < N unités carte (réf. mkgmap : 8)
     --merge-lines              Fusionne polylignes adjacentes même type/label
+    --packaging MODE           legacy (6 FAT par tuile, défaut) | gmp (1 .GMP consolidé)
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
@@ -437,6 +439,7 @@ parse_args() {
             --simplify-polygons)    SIMPLIFY_POLYGONS="$2";    shift 2 ;;
             --min-size-polygon)     MIN_SIZE_POLYGON="$2";     shift 2 ;;
             --merge-lines)          MERGE_LINES=true;          shift   ;;
+            --packaging)            PACKAGING="$2";            shift 2 ;;
             --dry-run)       DRY_RUN=true; shift ;;
             --publish)       PUBLISH=true; shift ;;
             --publish-target=*) PUBLISH_TARGET="${1#*=}"; shift ;;
@@ -503,6 +506,12 @@ validate_params() {
         errors=$(( errors + 1 ))
     elif [[ "$JOBS" -gt 64 ]]; then
         log_warn "--jobs ${JOBS} : valeur élevée, ${JOBS} workers GDAL en parallèle consommeront beaucoup de RAM"
+    fi
+
+    # --- packaging : legacy | gmp ---
+    if [[ "$PACKAGING" != "legacy" && "$PACKAGING" != "gmp" ]]; then
+        log_error "--packaging : valeur attendue 'legacy' ou 'gmp', reçu '${PACKAGING}'"
+        errors=$(( errors + 1 ))
     fi
 
     # Fallback des jobs par étape sur $JOBS si non spécifiés
@@ -1104,6 +1113,8 @@ run_imgforge() {
         cmd+=(--no-route)
     fi
     [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
+
+    cmd+=(--packaging "$PACKAGING")
 
     if [[ -n "$REDUCE_POINT_DENSITY" || -n "$SIMPLIFY_POLYGONS" || -n "$MIN_SIZE_POLYGON" || "$MERGE_LINES" == true ]]; then
         log_info "Optimisations imgforge actives :"
