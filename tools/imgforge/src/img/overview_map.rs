@@ -1,17 +1,141 @@
-// OverviewMap — overview tile with real polygon geometry for gmapsupp
+// OverviewMap — overview sub-map with real simplified geometries for gmapsupp
 //
-// Many Garmin devices (Alpha 100, etc.) require an overview map in the gmapsupp
-// to render any tiles. The overview map is a low-resolution tile covering the
-// entire map set bounds, with bounding-box polygons (type 0x4A = background)
-// representing each detail tile.
+// Many Garmin devices (Alpha 100) require an overview map in the gmapsupp to
+// render any tiles at low zoom levels. This module aggregates features from all
+// detail tiles' .mp files, selects those eligible for the overview (EndLevel
+// structural criterion + optional CLI whitelist), and writes a 2-level TRE/RGN/LBL
+// sub-map with bits 17 (inherited parent) / 18 (leaf data).
+//
+// Overview structure replicates the mkgmap osmmap.img layout measured from the
+// reference build: map format marker 0x00040101, 2 map levels, typed overview
+// tables (point/polyline/polygon) populated from the distinct type_codes present.
 
-use super::common_header::{self, CommonHeader};
-use super::tre::TRE_HEADER_LEN;
-use super::lbl::LBL_HEADER_LEN;
+use std::collections::HashSet;
+
 use super::assembler::TileSubfiles;
+use super::common_header::{self, CommonHeader};
+use super::coord::Coord;
+use super::lbl::LBL_HEADER_LEN;
 use super::line_preparer;
+use super::point::Point;
+use super::polygon::Polygon;
+use super::polyline::Polyline;
+use super::rgn::RgnWriter;
+use super::tre::TRE_HEADER_LEN;
+use crate::parser::mp_types::MpFile;
 
-const RGN_HEADER_LEN: u16 = 125;
+// ── Feature view piped from .mp to overview builder ───────────────────────
+
+/// Feature extracted from a parsed `.mp` for overview rendering.
+/// Flat: overview v1 does not carry labels.
+#[derive(Debug, Clone)]
+pub struct OverviewFeature {
+    pub type_code: u32,
+    pub is_point: bool,
+    pub is_line: bool,
+    pub is_polygon: bool,
+    pub coords: Vec<Coord>,
+}
+
+/// Extract the features eligible for the overview from one `.mp`.
+///
+/// Two filters:
+/// 1. Structural: `end_level >= detail_max_level`. Scope rules (garmin-rules.yaml)
+///    already control EndLevel per feature, so imgforge stays scope-agnostic.
+/// 2. Optional whitelist: if `type_whitelist` is `Some`, only features whose
+///    `type_code` is in the set are retained.
+///
+/// For lines/polygons, the geometry is taken from bucket `overview_level`, with
+/// a fallback down to a coarser bucket if the requested one is absent.
+pub fn extract_overview_features(
+    mp: &MpFile,
+    overview_level: u8,
+    detail_max_level: u8,
+    type_whitelist: Option<&HashSet<u32>>,
+) -> Vec<OverviewFeature> {
+    let mut out = Vec::new();
+
+    let passes_whitelist = |t: u32| -> bool {
+        type_whitelist.map(|w| w.contains(&t)).unwrap_or(true)
+    };
+    let passes_endlevel = |el: Option<u8>| -> bool {
+        el.unwrap_or(0) >= detail_max_level
+    };
+
+    for p in &mp.points {
+        if !passes_endlevel(p.end_level) { continue; }
+        if !passes_whitelist(p.type_code) { continue; }
+        out.push(OverviewFeature {
+            type_code: p.type_code,
+            is_point: true,
+            is_line: false,
+            is_polygon: false,
+            coords: vec![p.coord],
+        });
+    }
+
+    for pl in &mp.polylines {
+        if !passes_endlevel(pl.end_level) { continue; }
+        if !passes_whitelist(pl.type_code) { continue; }
+        if let Some(coords) = pick_bucket(&pl.geometries, overview_level, 2) {
+            out.push(OverviewFeature {
+                type_code: pl.type_code,
+                is_point: false,
+                is_line: true,
+                is_polygon: false,
+                coords,
+            });
+        }
+    }
+
+    for pg in &mp.polygons {
+        if !passes_endlevel(pg.end_level) { continue; }
+        if !passes_whitelist(pg.type_code) { continue; }
+        if let Some(coords) = pick_bucket(&pg.geometries, overview_level, 3) {
+            out.push(OverviewFeature {
+                type_code: pg.type_code,
+                is_point: false,
+                is_line: false,
+                is_polygon: true,
+                coords,
+            });
+        }
+    }
+
+    out
+}
+
+/// Priorité pour choisir le bucket de géométrie :
+/// 1. Exact `level`.
+/// 2. Plus grossier (N > level) — le plus proche au-dessus ; toujours moins dense, donc sûr
+///    pour une overview.
+/// 3. Un seul palier plus fin (`level - 1`) — fallback AC 3 quand seul Data5 existe pour
+///    un overview_level=6. Au-delà d'un palier d'écart on rejette pour éviter qu'une
+///    feature ne gonfle le RGN overview avec une géométrie Data0/Data1.
+///
+/// Note mpforge : les paliers sont normalement contigus (`fill_level_gaps`), donc le cas 3
+/// ne se déclenche qu'en configuration dégénérée ou sur des `MpFile` synthétiques de test.
+fn pick_bucket(
+    geoms: &std::collections::BTreeMap<u8, Vec<Coord>>,
+    level: u8,
+    min_coords: usize,
+) -> Option<Vec<Coord>> {
+    let candidate = geoms
+        .get(&level)
+        .cloned()
+        .or_else(|| geoms.range((level.saturating_add(1))..).next().map(|(_, v)| v.clone()))
+        .or_else(|| {
+            if level == 0 { None }
+            else { geoms.get(&(level - 1)).cloned() }
+        })?;
+    if candidate.len() >= min_coords {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+// ── Overview sub-map output bundle ────────────────────────────────────────
 
 pub struct OverviewMapData {
     pub map_number: String,
@@ -20,24 +144,39 @@ pub struct OverviewMapData {
     pub lbl: Vec<u8>,
 }
 
-/// Generate an overview map with bounding-box polygons for each tile
-pub fn build_overview_map(tiles: &[TileSubfiles], map_id: u32, codepage: u16) -> OverviewMapData {
+/// Build the overview sub-map from tile bounds + aggregated features.
+pub fn build_overview_map(
+    tiles: &[TileSubfiles],
+    features: &[OverviewFeature],
+    map_id: u32,
+    codepage: u16,
+) -> OverviewMapData {
     let (north, east, south, west) = compute_merged_bounds(tiles);
 
-    // Collect per-tile bounds for polygon generation
-    let tile_bounds: Vec<(i32, i32, i32, i32)> = tiles.iter()
-        .filter(|t| t.tre.len() >= 33)
-        .map(|t| common_header::read_tre_bounds(&t.tre))
-        .collect();
+    // Level 0 is the leaf data level with bits=18.
+    let leaf_resolution: i32 = 18;
+    let shift_leaf = 24 - leaf_resolution;
+    let clat_leaf = center_aligned(north, south, shift_leaf);
+    let clon_leaf = center_aligned(east, west, shift_leaf);
 
-    let tre = build_tre(north, east, south, west, map_id, &tile_bounds);
-    let rgn = build_rgn(north, east, south, west, &tile_bounds);
+    // Encode all features into a single leaf subdivision RGN block.
+    let (rgn, leaf_flags) = build_rgn(features, clat_leaf, clon_leaf, shift_leaf);
+
+    let tre = build_tre(
+        north, east, south, west, map_id,
+        features, leaf_flags, clat_leaf, clon_leaf,
+    );
     let lbl = build_lbl(codepage);
 
     OverviewMapData {
         map_number: format!("{:08}", map_id),
         tre, rgn, lbl,
     }
+}
+
+fn center_aligned(hi: i32, lo: i32, shift: i32) -> i32 {
+    let c = (hi + lo) / 2;
+    if shift <= 0 { c } else { (c >> shift) << shift }
 }
 
 fn compute_merged_bounds(tiles: &[TileSubfiles]) -> (i32, i32, i32, i32) {
@@ -51,13 +190,140 @@ fn compute_merged_bounds(tiles: &[TileSubfiles]) -> (i32, i32, i32, i32) {
             n = n.max(tn); e = e.max(te); s = s.min(ts); w = w.min(tw);
         }
     }
-    (n, e, s, w)
+    if n == i32::MIN {
+        (0, 0, 0, 0)
+    } else {
+        (n, e, s, w)
+    }
 }
 
-// ── TRE: two levels, subdivision with polygon content ──
+// ── RGN: encode real geometries into one leaf subdivision ────────────────
 
-fn build_tre(north: i32, east: i32, south: i32, west: i32, map_id: u32,
-             tile_bounds: &[(i32, i32, i32, i32)]) -> Vec<u8> {
+/// Returns (RGN bytes, leaf_content_flags).
+/// `leaf_content_flags` = bitmask of HAS_POINTS(0x10)|HAS_POLYLINES(0x40)|HAS_POLYGONS(0x80).
+fn build_rgn(
+    features: &[OverviewFeature],
+    subdiv_center_lat: i32,
+    subdiv_center_lon: i32,
+    shift: i32,
+) -> (Vec<u8>, u8) {
+    let mut points_data: Vec<u8> = Vec::new();
+    let mut polylines_data: Vec<u8> = Vec::new();
+    let mut polygons_data: Vec<u8> = Vec::new();
+
+    for f in features {
+        if f.is_point {
+            encode_point(&mut points_data, f, subdiv_center_lat, subdiv_center_lon, shift);
+        } else if f.is_line {
+            encode_line(&mut polylines_data, f, subdiv_center_lat, subdiv_center_lon, shift);
+        } else if f.is_polygon {
+            encode_polygon(&mut polygons_data, f, subdiv_center_lat, subdiv_center_lon, shift);
+        }
+    }
+
+    let mut flags: u8 = 0;
+    if !points_data.is_empty() { flags |= 0x10; }
+    if !polylines_data.is_empty() { flags |= 0x40; }
+    if !polygons_data.is_empty() { flags |= 0x80; }
+
+    // Use RgnWriter to compose the subdivision (handles the section pointers).
+    let mut rgn_writer = RgnWriter::new();
+    rgn_writer.write_subdivision(&points_data, &[], &polylines_data, &polygons_data);
+    (rgn_writer.build(), flags)
+}
+
+fn encode_point(out: &mut Vec<u8>, f: &OverviewFeature, clat: i32, clon: i32, shift: i32) {
+    if f.coords.is_empty() { return; }
+    if f.type_code >= 0x10000 {
+        // Extended point — skipped in v1 (overview keeps standard types only for Alpha 100 parity).
+        return;
+    }
+    let mut p = Point::new(f.type_code, f.coords[0]);
+    // Subtype, if any, is encoded only for standard 0x100-0xFFFF types.
+    if f.type_code >= 0x100 {
+        p.has_sub_type = true;
+        p.sub_type = (f.type_code & 0xFF) as u8;
+        p.type_code = (f.type_code >> 8) & 0xFF;
+    }
+    out.extend_from_slice(&p.write(clat, clon, shift));
+}
+
+fn encode_line(out: &mut Vec<u8>, f: &OverviewFeature, clat: i32, clon: i32, shift: i32) {
+    if f.coords.len() < 2 { return; }
+    // v1 : RGN overview ne supporte que les types standards à 1 octet.
+    // Polyline::write encode `(type_code & 0xFF)` → pour 0x100-0xFFFF le high byte
+    // serait silencieusement tronqué, pour ≥0x10000 il faudrait le chemin étendu.
+    if f.type_code >= 0x100 {
+        tracing::debug!(type_code = format!("0x{:X}", f.type_code),
+            "Overview line skipped: type ≥ 0x100 non supporté en v1");
+        return;
+    }
+    if !first_delta_fits_i16(&f.coords[0], clat, clon, shift) {
+        tracing::warn!(type_code = format!("0x{:X}", f.type_code),
+            "Overview line skipped: premier delta hors i16 (overview trop large pour bits=18)");
+        return;
+    }
+    let deltas = compute_local_deltas(&f.coords, shift);
+    let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) else { return; };
+    let pl = Polyline::new(f.type_code, f.coords.clone());
+    out.extend_from_slice(&pl.write(clat, clon, shift, &bitstream, false));
+}
+
+fn encode_polygon(out: &mut Vec<u8>, f: &OverviewFeature, clat: i32, clon: i32, shift: i32) {
+    if f.coords.len() < 3 { return; }
+    if f.type_code >= 0x100 {
+        tracing::debug!(type_code = format!("0x{:X}", f.type_code),
+            "Overview polygon skipped: type ≥ 0x100 non supporté en v1");
+        return;
+    }
+    if !first_delta_fits_i16(&f.coords[0], clat, clon, shift) {
+        tracing::warn!(type_code = format!("0x{:X}", f.type_code),
+            "Overview polygon skipped: premier delta hors i16 (overview trop large pour bits=18)");
+        return;
+    }
+    let deltas = compute_local_deltas(&f.coords, shift);
+    let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) else { return; };
+    let pg = Polygon::new(f.type_code, f.coords.clone());
+    out.extend_from_slice(&pg.write(clat, clon, shift, &bitstream));
+}
+
+/// Vérifie que le premier delta (lat, lon) d'une feature tient dans i16 signé après
+/// shift. `Polyline::write`/`Polygon::write` clampent sinon, ce qui décalerait visiblement
+/// la géométrie. Protège contre les overviews couvrant > ~3° où la subdiv leaf unique
+/// ne suffit plus (scopes futurs hors département / france-quadrant).
+fn first_delta_fits_i16(first: &Coord, clat: i32, clon: i32, shift: i32) -> bool {
+    let half = if shift > 0 { (1i32 << shift) / 2 } else { 0 };
+    let dx = (first.longitude() - clon + half) >> shift;
+    let dy = (first.latitude() - clat + half) >> shift;
+    (-32768..=32767).contains(&dx) && (-32768..=32767).contains(&dy)
+}
+
+/// Compute successive (dx, dy) deltas in shifted local coordinates, with the
+/// rounding bias used elsewhere in the codebase (mkgmap MapObject).
+fn compute_local_deltas(coords: &[Coord], shift: i32) -> Vec<(i32, i32)> {
+    let half = if shift > 0 { (1i32 << shift) / 2 } else { 0 };
+    let quant = |lat: i32, lon: i32| -> (i32, i32) {
+        ((lon + half) >> shift, (lat + half) >> shift)
+    };
+    let mut deltas = Vec::with_capacity(coords.len().saturating_sub(1));
+    for window in coords.windows(2) {
+        let (ax, ay) = quant(window[0].latitude(), window[0].longitude());
+        let (bx, by) = quant(window[1].latitude(), window[1].longitude());
+        deltas.push((bx - ax, by - ay));
+    }
+    deltas
+}
+
+// ── TRE: 2-level hierarchy with typed overview tables ─────────────────────
+
+fn build_tre(
+    north: i32, east: i32, south: i32, west: i32,
+    map_id: u32,
+    features: &[OverviewFeature],
+    leaf_flags: u8,
+    clat_leaf: i32,
+    clon_leaf: i32,
+) -> Vec<u8> {
     let mut buf = Vec::new();
     let common = CommonHeader::new(TRE_HEADER_LEN, "GARMIN TRE");
     common.write(&mut buf);
@@ -68,50 +334,47 @@ fn build_tre(north: i32, east: i32, south: i32, west: i32, map_id: u32,
     common_header::write_i24(&mut buf, south);
     common_header::write_i24(&mut buf, west);
 
-    // Two levels: level 1 = inherited topdiv, level 0 = data level with polygons
+    // Map levels: level 1 (inherited parent, bits=17) + level 0 (leaf, bits=18, 1 subdiv).
     let mut levels_data = Vec::new();
-    levels_data.extend_from_slice(&[0x01 | 0x80, 15, 1, 0]); // level 1 inherited, res=15, 1 subdiv
-    levels_data.extend_from_slice(&[0x00, 17, 1, 0]);          // level 0, res=17, 1 subdiv
+    levels_data.extend_from_slice(&[0x01 | 0x80, 17, 1, 0]); // level 1, inherited, 1 subdiv
+    levels_data.extend_from_slice(&[0x00,        18, 1, 0]); // level 0, leaf, 1 subdiv
 
-    let shift_top = 24 - 15i32;
-    let shift_data = 24 - 17i32;
-    let clat_top = (((north + south) / 2) >> shift_top) << shift_top;
-    let clon_top = (((east + west) / 2) >> shift_top) << shift_top;
-    let clat_dat = (((north + south) / 2) >> shift_data) << shift_data;
-    let clon_dat = (((east + west) / 2) >> shift_data) << shift_data;
+    let shift_top = 24 - 17i32;
+    let clat_top = center_aligned(north, south, shift_top);
+    let clon_top = center_aligned(east, west, shift_top);
     let w_top = (((east - west) >> shift_top) as u16).max(1);
     let h_top = (((north - south) >> shift_top) as u16).max(1);
-    let w_dat = (((east - west) >> shift_data) as u16).max(1);
-    let h_dat = (((north - south) >> shift_data) as u16).max(1);
+    let shift_leaf = 24 - 18i32;
+    let w_leaf = (((east - west) >> shift_leaf) as u16).max(1);
+    let h_leaf = (((north - south) >> shift_leaf) as u16).max(1);
 
-    // Build RGN polygon data to know its size for the subdiv RGN pointer
-    let rgn_polygon_data = build_rgn_polygon_data(
-        clat_dat, clon_dat, shift_data, tile_bounds
-    );
-    let has_polygons = !rgn_polygon_data.is_empty();
-
+    // Subdivisions: topdiv (16 B, has_children, next_level=2) + leaf (14 B, is_last) + 4-byte terminator.
     let mut subdivs_data = Vec::new();
-    // Subdiv 1 (topdiv, level 1): 16 bytes — has children
-    put_u24(&mut subdivs_data, 0);
-    subdivs_data.push(0x00); // no content in topdiv
+
+    // Subdiv 1 (topdiv at level 1): 16 bytes.
+    put_u24(&mut subdivs_data, 0);                // RGN offset = 0 (no direct data)
+    subdivs_data.push(0x00);                      // no content flags
     put_i24(&mut subdivs_data, clon_top);
     put_i24(&mut subdivs_data, clat_top);
-    subdivs_data.extend_from_slice(&(w_top | 0x8000).to_le_bytes());
+    subdivs_data.extend_from_slice(&(w_top | 0x8000).to_le_bytes()); // last at level 1
     subdivs_data.extend_from_slice(&h_top.to_le_bytes());
-    subdivs_data.extend_from_slice(&2u16.to_le_bytes()); // next_level = subdiv 2
+    subdivs_data.extend_from_slice(&2u16.to_le_bytes()); // next_level pointer = subdiv #2
 
-    // Subdiv 2 (level 0): 14 bytes — leaf, with polygon content
-    // RGN offset: start of polygon data in RGN data section
-    put_u24(&mut subdivs_data, 0); // RGN offset placeholder (will be 0 = start of data section)
-    let content_flags = if has_polygons { 0x80u8 } else { 0x00u8 }; // 0x80 = has polygons
-    subdivs_data.push(content_flags);
-    put_i24(&mut subdivs_data, clon_dat);
-    put_i24(&mut subdivs_data, clat_dat);
-    subdivs_data.extend_from_slice(&(w_dat | 0x8000).to_le_bytes());
-    subdivs_data.extend_from_slice(&h_dat.to_le_bytes());
-    // 4-byte terminator for last subdiv at this level
+    // Subdiv 2 (leaf at level 0): 14 bytes.
+    put_u24(&mut subdivs_data, 0);                // RGN offset = start of data section
+    subdivs_data.push(leaf_flags);                // 0x10|0x40|0x80 as applicable
+    put_i24(&mut subdivs_data, clon_leaf);
+    put_i24(&mut subdivs_data, clat_leaf);
+    subdivs_data.extend_from_slice(&(w_leaf | 0x8000).to_le_bytes()); // last at level 0
+    subdivs_data.extend_from_slice(&h_leaf.to_le_bytes());
+
+    // 4-byte terminator after all subdivs.
     subdivs_data.extend_from_slice(&0u32.to_le_bytes());
 
+    // Overview tables: one entry per distinct type_code present in `features`, max_level=1.
+    let (point_ov, polyline_ov, polygon_ov) = build_overview_tables(features);
+
+    // ── Header section pointers ──
     let mut offset = TRE_HEADER_LEN as u32;
 
     // Map levels @33
@@ -129,136 +392,116 @@ fn build_tre(north: i32, east: i32, south: i32, west: i32, map_id: u32,
     buf.push(0x01);
     // Display priority @64
     common_header::write_u24(&mut buf, 0x19);
-    // Map format marker @67 — overview = 0x00040101
+    // Map format marker @67 — overview = 0x00040101 (mkgmap osmmap.img parity).
     buf.extend_from_slice(&0x00040101u32.to_le_bytes());
     // Reserved @71
     buf.extend_from_slice(&1u16.to_le_bytes());
     buf.push(0x00);
 
-    // Polyline overview @74 (empty)
+    // Polyline overview @74
     assert_eq!(buf.len(), 74);
-    common_header::write_section(&mut buf, offset, 0);
+    common_header::write_section(&mut buf, offset, polyline_ov.len() as u32);
+    offset += polyline_ov.len() as u32;
     buf.extend_from_slice(&2u16.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
-    // Polygon overview @88 — one entry for type 0x4A
+
+    // Polygon overview @88
     assert_eq!(buf.len(), 88);
-    let polygon_overview = if has_polygons {
-        vec![0x4A, 0x00] // type 0x4A, max_level 0
-    } else {
-        Vec::new()
-    };
-    common_header::write_section(&mut buf, offset, polygon_overview.len() as u32);
-    offset += polygon_overview.len() as u32;
+    common_header::write_section(&mut buf, offset, polygon_ov.len() as u32);
+    offset += polygon_ov.len() as u32;
     buf.extend_from_slice(&2u16.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
-    // Point overview @102 (empty)
+
+    // Point overview @102
     assert_eq!(buf.len(), 102);
-    common_header::write_section(&mut buf, offset, 0);
+    common_header::write_section(&mut buf, offset, point_ov.len() as u32);
+    offset += point_ov.len() as u32;
     buf.extend_from_slice(&3u16.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
+
     // MapID @116
     buf.extend_from_slice(&map_id.to_le_bytes());
     // Reserved @120
     buf.extend_from_slice(&0u32.to_le_bytes());
-    // Pad to header
+    // Pad to header length
     common_header::pad_to(&mut buf, TRE_HEADER_LEN as usize);
 
-    // Section data
+    // ── Section data ──
     buf.extend_from_slice(&levels_data);
     buf.extend_from_slice(&subdivs_data);
-    buf.extend_from_slice(&polygon_overview);
+    buf.extend_from_slice(&polyline_ov);
+    buf.extend_from_slice(&polygon_ov);
+    buf.extend_from_slice(&point_ov);
+
+    // F11 : garde-fou invariant — toute nouvelle section doit incrémenter `offset`.
+    // Si on ajoute une section (ex: copyright non vide) sans tenir compte de son offset
+    // cumulé, cet assert échouera et forcera la mise à jour du tracking.
+    let expected_body_len = levels_data.len() + subdivs_data.len()
+        + polyline_ov.len() + polygon_ov.len() + point_ov.len();
+    assert_eq!(
+        offset as usize,
+        TRE_HEADER_LEN as usize + expected_body_len,
+        "TRE section offset tracking désynchronisé — vérifier l'ordre des write_section"
+    );
     buf
 }
 
-// ── RGN: real polygon data (bounding boxes) ──
+/// Build the three overview tables (point/polyline/polygon), 2 bytes per line/polygon entry
+/// and 3 bytes per point entry. Only standard types (< 0x10000) are emitted — extended types
+/// are skipped in v1 to keep parity with the mkgmap osmmap.img reference.
+fn build_overview_tables(features: &[OverviewFeature]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let mut points: Vec<(u8, u8)> = Vec::new();   // (type, subtype)
+    let mut polylines: Vec<u8> = Vec::new();
+    let mut polygons: Vec<u8> = Vec::new();
 
-fn build_rgn(north: i32, east: i32, south: i32, west: i32,
-             tile_bounds: &[(i32, i32, i32, i32)]) -> Vec<u8> {
-    let mut buf = Vec::new();
-    let common = CommonHeader::new(RGN_HEADER_LEN, "GARMIN RGN");
-    common.write(&mut buf);
-
-    // Build polygon data for subdivision 2 (data level)
-    let shift = 24 - 17i32;
-    let clat = (((north + south) / 2) >> shift) << shift;
-    let clon = (((east + west) / 2) >> shift) << shift;
-    let polygon_data = build_rgn_polygon_data(clat, clon, shift, tile_bounds);
-
-    // Data section @21: offset=header_len, size=polygon_data.len()
-    common_header::write_section(&mut buf, RGN_HEADER_LEN as u32, polygon_data.len() as u32);
-    common_header::pad_to(&mut buf, RGN_HEADER_LEN as usize);
-
-    buf.extend_from_slice(&polygon_data);
-    buf
-}
-
-/// Build RGN polygon records: one type 0x4A background polygon per tile
-fn build_rgn_polygon_data(
-    subdiv_center_lat: i32,
-    subdiv_center_lon: i32,
-    shift: i32,
-    tile_bounds: &[(i32, i32, i32, i32)],
-) -> Vec<u8> {
-    let mut polygons_data = Vec::new();
-
-    for &(tn, te, ts, tw) in tile_bounds {
-        // Build a rectangle polygon: SW → SE → NE → NW
-        // Garmin closes polygons implicitly (first point connects back to last)
-        let corners: [(i32, i32); 4] = [
-            (ts, tw), // SW (lat, lon)
-            (ts, te), // SE
-            (tn, te), // NE
-            (tn, tw), // NW
-        ];
-
-        // First point: delta from subdivision center
-        let half = (1i32 << shift) / 2;
-        let first_dx = ((corners[0].1 - subdiv_center_lon + half) >> shift).clamp(-32768, 32767);
-        let first_dy = ((corners[0].0 - subdiv_center_lat + half) >> shift).clamp(-32768, 32767);
-
-        // Remaining deltas (each relative to previous point, in shifted units)
-        let mut deltas = Vec::new();
-        for i in 1..corners.len() {
-            let prev_lon = (corners[i-1].1 + half) >> shift;
-            let prev_lat = (corners[i-1].0 + half) >> shift;
-            let cur_lon = (corners[i].1 + half) >> shift;
-            let cur_lat = (corners[i].0 + half) >> shift;
-            deltas.push((cur_lon - prev_lon, cur_lat - prev_lat));
-        }
-
-        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
-            // Type byte: 0x4A (background/transparent polygon)
-            let mut type_byte = 0x4Au8;
-            if bitstream.len() > 256 {
-                type_byte |= 0x80; // 2-byte length flag
-            }
-            polygons_data.push(type_byte);
-
-            // Label offset: 0 (no label)
-            polygons_data.push(0x00);
-            polygons_data.push(0x00);
-            polygons_data.push(0x00);
-
-            // First point delta (signed i16 LE)
-            polygons_data.extend_from_slice(&(first_dx as i16).to_le_bytes());
-            polygons_data.extend_from_slice(&(first_dy as i16).to_le_bytes());
-
-            // Bitstream length (Garmin convention: stored as actual_bytes - 1)
-            let blen = bitstream.len() - 1;
-            if blen >= 256 {
-                polygons_data.extend_from_slice(&(blen as u16).to_le_bytes());
+    for f in features {
+        if f.type_code >= 0x10000 { continue; }
+        if f.is_point {
+            // Points supportent 0x100-0xFFFF via (type, subtype).
+            let t = if f.type_code < 0x100 {
+                (f.type_code as u8, 0u8)
             } else {
-                polygons_data.push(blen as u8);
-            }
-
-            polygons_data.extend_from_slice(&bitstream);
+                ((f.type_code >> 8) as u8, f.type_code as u8)
+            };
+            if !points.contains(&t) { points.push(t); }
+        } else if f.is_line {
+            // v1 : même contrainte que encode_line — skip types ≥0x100 pour rester
+            // cohérent avec le RGN écrit et éviter une table qui mentionne des types
+            // que l'overview ne rend pas.
+            if f.type_code >= 0x100 { continue; }
+            let t = f.type_code as u8;
+            if !polylines.contains(&t) { polylines.push(t); }
+        } else if f.is_polygon {
+            if f.type_code >= 0x100 { continue; }
+            let t = f.type_code as u8;
+            if !polygons.contains(&t) { polygons.push(t); }
         }
     }
+    points.sort();
+    polylines.sort();
+    polygons.sort();
 
-    polygons_data
+    let mut point_bytes = Vec::with_capacity(points.len() * 3);
+    for (t, st) in &points {
+        point_bytes.push(*t);
+        point_bytes.push(1); // max_level = 1 (inherited parent level)
+        point_bytes.push(*st);
+    }
+    let mut polyline_bytes = Vec::with_capacity(polylines.len() * 2);
+    for t in &polylines {
+        polyline_bytes.push(*t);
+        polyline_bytes.push(1);
+    }
+    let mut polygon_bytes = Vec::with_capacity(polygons.len() * 2);
+    for t in &polygons {
+        polygon_bytes.push(*t);
+        polygon_bytes.push(1);
+    }
+
+    (point_bytes, polyline_bytes, polygon_bytes)
 }
 
-// ── LBL: minimal with proper PlacesHeader ──
+// ── LBL: minimal with proper PlacesHeader (v1 = no labels) ───────────────
 
 fn build_lbl(codepage: u16) -> Vec<u8> {
     let mut buf = Vec::new();
@@ -274,21 +517,19 @@ fn build_lbl(codepage: u16) -> Vec<u8> {
     buf.push(0x00); // mult @29
     buf.push(6);    // enc=Format6 @30
 
-    // PlacesHeader — all empty, valid offsets
-    for &rec in &[3u16, 5, 5, 4] { // Country, Region, City, POI index
+    for &rec in &[3u16, 5, 5, 4] {
         write_empty_sec(&mut buf, lbl_end, rec);
     }
-    // POI properties (13 bytes)
     buf.extend_from_slice(&lbl_end.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
     buf.extend_from_slice(&[0u8; 5]);
-    for &rec in &[4u16, 3, 6, 5, 3] { // POI type, Zip, Highway, Exit, HwyData
+    for &rec in &[4u16, 3, 6, 5, 3] {
         write_empty_sec(&mut buf, lbl_end, rec);
     }
 
     assert_eq!(buf.len(), 170);
     buf.extend_from_slice(&codepage.to_le_bytes());
-    buf.extend_from_slice(&[0u8; 4]); // sort IDs
+    buf.extend_from_slice(&[0u8; 4]);
     buf.extend_from_slice(&(LBL_HEADER_LEN as u32).to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
     buf.extend_from_slice(&lbl_end.to_le_bytes());
@@ -311,83 +552,282 @@ fn write_empty_sec(buf: &mut Vec<u8>, end: u32, rec: u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::assembler::TileSubfiles;
+    use crate::parser::mp_types::{MpFile, MpHeader, MpPoint, MpPolyline, MpPolygon, RoutingMode};
+    use std::collections::BTreeMap;
+
+    fn c(lat: i32, lon: i32) -> Coord { Coord::new(lat, lon) }
 
     fn make_test_tile(north: i32, east: i32, south: i32, west: i32) -> TileSubfiles {
-        // Build a minimal TRE with bounds at offsets 21-32
         let mut tre = vec![0u8; 33];
-        // header_len at offset 0
         tre[0] = 188; tre[1] = 0;
-        // type at offset 2
         tre[2..12].copy_from_slice(b"GARMIN TRE");
-        // bounds at offset 21
-        let nb = north.to_le_bytes();
-        tre[21] = nb[0]; tre[22] = nb[1]; tre[23] = nb[2];
-        let eb = east.to_le_bytes();
-        tre[24] = eb[0]; tre[25] = eb[1]; tre[26] = eb[2];
-        let sb = south.to_le_bytes();
-        tre[27] = sb[0]; tre[28] = sb[1]; tre[29] = sb[2];
-        let wb = west.to_le_bytes();
-        tre[30] = wb[0]; tre[31] = wb[1]; tre[32] = wb[2];
-
+        tre[21..24].copy_from_slice(&north.to_le_bytes()[..3]);
+        tre[24..27].copy_from_slice(&east.to_le_bytes()[..3]);
+        tre[27..30].copy_from_slice(&south.to_le_bytes()[..3]);
+        tre[30..33].copy_from_slice(&west.to_le_bytes()[..3]);
         TileSubfiles {
             map_number: "11000001".to_string(),
             description: "Test tile".to_string(),
-            tre,
-            rgn: vec![0u8; 125],
-            lbl: vec![0u8; 196],
-            net: None,
-            nod: None,
-            dem: None,
+            tre, rgn: vec![0u8; 125], lbl: vec![0u8; 196],
+            net: None, nod: None, dem: None,
         }
     }
 
+    fn empty_mp() -> MpFile {
+        MpFile {
+            header: MpHeader {
+                id: 0, name: String::new(), copyright: String::new(),
+                levels: Vec::new(), codepage: 1252, datum: String::new(),
+                transparent: false, draw_priority: 0, preview_lat: 0.0, preview_lon: 0.0,
+                lower_case: false, order_by_decreasing_area: false,
+                reduce_point_density: None, simplify_polygons: None,
+                min_size_polygon: None, merge_lines: false,
+                routing_mode: RoutingMode::Auto,
+                country_name: String::new(), country_abbr: String::new(),
+                region_name: String::new(), region_abbr: String::new(),
+                product_version: 0,
+            },
+            points: Vec::new(), polylines: Vec::new(), polygons: Vec::new(),
+        }
+    }
+
+    fn pl_with(type_code: u32, end_level: u8, buckets: &[(u8, Vec<Coord>)]) -> MpPolyline {
+        let mut g = BTreeMap::new();
+        for (n, v) in buckets { g.insert(*n, v.clone()); }
+        MpPolyline {
+            type_code, label: String::new(), geometries: g,
+            end_level: Some(end_level), direction: false, road_id: None, route_param: None,
+        }
+    }
+
+    fn pg_with(type_code: u32, end_level: u8, buckets: &[(u8, Vec<Coord>)]) -> MpPolygon {
+        let mut g = BTreeMap::new();
+        for (n, v) in buckets { g.insert(*n, v.clone()); }
+        MpPolygon { type_code, label: String::new(), geometries: g, end_level: Some(end_level) }
+    }
+
+    // ── Extraction tests (AC 1/2/3) ──
+
     #[test]
-    fn test_overview_tre_valid() {
-        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
-        assert!(ov.tre.len() >= TRE_HEADER_LEN as usize);
-        assert_eq!(&ov.tre[2..12], b"GARMIN TRE");
-        assert_eq!(u32::from_le_bytes([ov.tre[67], ov.tre[68], ov.tre[69], ov.tre[70]]), 0x00040101);
+    fn test_extract_overview_features_endlevel_filter() {
+        let mut mp = empty_mp();
+        mp.polylines.push(pl_with(0x01, 0, &[(5, vec![c(0,0), c(1,1)])]));
+        mp.polylines.push(pl_with(0x01, 3, &[(5, vec![c(0,0), c(1,1)])]));
+        mp.polylines.push(pl_with(0x01, 6, &[(5, vec![c(0,0), c(1,1)])]));
+        let out = extract_overview_features(&mp, 5, 6, None);
+        assert_eq!(out.len(), 1, "only EndLevel=6 should pass");
     }
 
     #[test]
-    fn test_overview_rgn_has_polygon_data() {
-        let tiles = vec![
-            make_test_tile(2143196, 262632, 2138930, 255409),
-            make_test_tile(2148000, 270000, 2143196, 262632),
+    fn test_extract_overview_features_whitelist() {
+        let mut mp = empty_mp();
+        for t in [0x01u32, 0x02, 0x3F, 0x50] {
+            mp.polylines.push(pl_with(t, 6, &[(5, vec![c(0,0), c(1,1)])]));
+        }
+        let wl: HashSet<u32> = [0x01u32, 0x3F].iter().copied().collect();
+        let out = extract_overview_features(&mp, 5, 6, Some(&wl));
+        assert_eq!(out.len(), 2);
+        let kept: HashSet<u32> = out.iter().map(|f| f.type_code).collect();
+        assert!(kept.contains(&0x01) && kept.contains(&0x3F));
+    }
+
+    #[test]
+    fn test_extract_overview_features_fallback_level() {
+        let mut mp = empty_mp();
+        mp.polylines.push(pl_with(0x01, 6, &[(5, vec![c(0,0), c(1,1), c(2,2)])]));
+        let out = extract_overview_features(&mp, 6, 6, None);
+        assert_eq!(out.len(), 1, "should fall back to bucket 5 when 6 absent");
+        assert_eq!(out[0].coords.len(), 3);
+    }
+
+    /// F5 : si seuls des paliers très détaillés existent (>1 palier sous l'overview_level),
+    /// la feature doit être rejetée plutôt qu'écrire Data0/1 dans le RGN overview.
+    #[test]
+    fn test_pick_bucket_rejects_too_fine_fallback() {
+        let mut mp = empty_mp();
+        // overview_level=6 mais uniquement Data0 disponible → rejet.
+        mp.polylines.push(pl_with(0x01, 6, &[(0, vec![c(0,0), c(1,1)])]));
+        let out = extract_overview_features(&mp, 6, 6, None);
+        assert!(out.is_empty(), "bucket too fine (>1 level finer) must be rejected");
+    }
+
+    /// F5 : priorité au plus grossier (N > level) avant de retomber plus fin.
+    #[test]
+    fn test_pick_bucket_prefers_coarser_over_finer() {
+        let mut mp = empty_mp();
+        // overview_level=5 : buckets 4 (fin) et 6 (grossier) présents → on prend 6.
+        mp.polylines.push(pl_with(0x01, 6, &[
+            (4, vec![c(0,0), c(1,1), c(2,2), c(3,3)]),
+            (6, vec![c(0,0), c(1,1)]),
+        ]));
+        let out = extract_overview_features(&mp, 5, 6, None);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].coords.len(), 2, "must use coarser bucket 6 (2 pts) not finer bucket 4");
+    }
+
+    #[test]
+    fn test_extract_point_endlevel() {
+        let mut mp = empty_mp();
+        mp.points.push(MpPoint { type_code: 0x2C, label: String::new(), coord: c(1,1), end_level: Some(6) });
+        mp.points.push(MpPoint { type_code: 0x2C, label: String::new(), coord: c(2,2), end_level: Some(0) });
+        let out = extract_overview_features(&mp, 5, 6, None);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].is_point);
+    }
+
+    #[test]
+    fn test_extract_polygon_requires_3_coords() {
+        let mut mp = empty_mp();
+        // Polygon with only 2 coords should be rejected.
+        mp.polygons.push(pg_with(0x03, 6, &[(5, vec![c(0,0), c(1,1)])]));
+        mp.polygons.push(pg_with(0x03, 6, &[(5, vec![c(0,0), c(1,1), c(2,2)])]));
+        let out = extract_overview_features(&mp, 5, 6, None);
+        assert_eq!(out.len(), 1);
+    }
+
+    // ── TRE structure tests (AC 4/5) ──
+
+    #[test]
+    fn test_build_tre_two_levels_mkgmap_parity() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![
+            OverviewFeature {
+                type_code: 0x01, is_point: false, is_line: true, is_polygon: false,
+                coords: vec![c(2140000, 258000), c(2141000, 259000)],
+            },
         ];
-        let ov = build_overview_map(&tiles, 12345, 1252);
-        // RGN should be larger than just the header (125 bytes)
-        assert!(ov.rgn.len() > RGN_HEADER_LEN as usize,
-            "RGN should contain polygon data, got {} bytes", ov.rgn.len());
-        // Data section size should be > 0
-        let data_size = u32::from_le_bytes([ov.rgn[25], ov.rgn[26], ov.rgn[27], ov.rgn[28]]);
-        assert!(data_size > 0, "RGN data section size should be > 0");
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        // Map format marker @67
+        assert_eq!(u32::from_le_bytes([ov.tre[67], ov.tre[68], ov.tre[69], ov.tre[70]]), 0x00040101);
+        // Map levels section offset @33
+        let ml_off = u32::from_le_bytes([ov.tre[33], ov.tre[34], ov.tre[35], ov.tre[36]]) as usize;
+        let ml_size = u32::from_le_bytes([ov.tre[37], ov.tre[38], ov.tre[39], ov.tre[40]]) as usize;
+        assert_eq!(ml_size, 8, "two 4-byte level records");
+        let ml = &ov.tre[ml_off..ml_off + ml_size];
+        assert_eq!(ml[0] & 0x80, 0x80, "level 1 inherited flag");
+        assert_eq!(ml[1], 17, "level 1 bits");
+        assert_eq!(ml[4] & 0x80, 0x00, "level 0 not inherited");
+        assert_eq!(ml[5], 18, "level 0 bits");
     }
 
     #[test]
-    fn test_overview_rgn_polygon_type() {
+    fn test_build_tre_type_tables_populated() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
-        // First byte of data section should be polygon type 0x4A
-        let data_start = RGN_HEADER_LEN as usize;
-        assert_eq!(ov.rgn[data_start] & 0x7F, 0x4A,
-            "First polygon type should be 0x4A (background)");
+        let features = vec![
+            OverviewFeature {
+                type_code: 0x01, is_point: false, is_line: true, is_polygon: false,
+                coords: vec![c(2140000, 258000), c(2141000, 259000)],
+            },
+            OverviewFeature {
+                type_code: 0x03, is_point: false, is_line: false, is_polygon: true,
+                coords: vec![c(2140000, 258000), c(2141000, 259000), c(2140500, 258500)],
+            },
+            OverviewFeature {
+                type_code: 0x2C, is_point: true, is_line: false, is_polygon: false,
+                coords: vec![c(2140000, 258000)],
+            },
+        ];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        // Polyline overview table — offset(@74) + size(@78)
+        let pl_size = u32::from_le_bytes([ov.tre[78], ov.tre[79], ov.tre[80], ov.tre[81]]);
+        assert_eq!(pl_size, 2, "one polyline overview entry = 2 bytes");
+        // Polygon overview table — size @92
+        let pg_size = u32::from_le_bytes([ov.tre[92], ov.tre[93], ov.tre[94], ov.tre[95]]);
+        assert_eq!(pg_size, 2, "one polygon overview entry = 2 bytes");
+        // Point overview table — size @106
+        let pt_size = u32::from_le_bytes([ov.tre[106], ov.tre[107], ov.tre[108], ov.tre[109]]);
+        assert_eq!(pt_size, 3, "one point overview entry = 3 bytes");
+        // 0x4B (background) must NOT be auto-added into the polygon table.
+        let pg_off = u32::from_le_bytes([ov.tre[88], ov.tre[89], ov.tre[90], ov.tre[91]]) as usize;
+        assert_eq!(ov.tre[pg_off], 0x03, "polygon overview should contain source type, not 0x4B");
+    }
+
+    #[test]
+    fn test_overview_tre_common_header() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
+        assert_eq!(&ov.tre[2..12], b"GARMIN TRE");
+    }
+
+    #[test]
+    fn test_overview_rgn_has_feature_data() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![OverviewFeature {
+            type_code: 0x01, is_point: false, is_line: true, is_polygon: false,
+            coords: vec![c(2140000, 258000), c(2141000, 259000)],
+        }];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        assert!(ov.rgn.len() > super::super::rgn::RGN_HEADER_LEN as usize);
     }
 
     #[test]
     fn test_overview_lbl_sections() {
-        let lbl = build_lbl(1252);
-        assert_eq!(lbl.len(), LBL_HEADER_LEN as usize + 1);
-        let country_off = u32::from_le_bytes([lbl[31], lbl[32], lbl[33], lbl[34]]);
-        assert_eq!(country_off, LBL_HEADER_LEN as u32 + 1);
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
+        assert_eq!(ov.lbl.len(), LBL_HEADER_LEN as usize + 1);
     }
 
     #[test]
     fn test_overview_map_number_format() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 11001855, 1252);
-        assert_eq!(ov.map_number, "11001855");
+        let ov = build_overview_map(&tiles, &[], 11000000, 1252);
+        assert_eq!(ov.map_number, "11000000");
+    }
+
+    /// F4 : vérifie que l'offset RGN de la subdiv TRE (0) pointe bien sur le
+    /// premier byte des données RGN (post-header 125 B) et que ce byte correspond
+    /// au type encodé. Protège contre un futur refactor de RgnWriter qui ferait
+    /// décrocher les deux silencieusement.
+    #[test]
+    fn test_tre_rgn_offset_matches_rgn_data_start() {
+        let rgn_header_len = super::super::rgn::RGN_HEADER_LEN as usize;
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        // Cas polyline-only : pas de pointers en tête de subdiv, le premier byte
+        // est directement le type byte (ici 0x01).
+        let features = vec![OverviewFeature {
+            type_code: 0x01, is_point: false, is_line: true, is_polygon: false,
+            coords: vec![c(2140000, 258000), c(2141000, 259000)],
+        }];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+
+        // TRE : subdiv #2 (leaf) — rgn_offset (3 octets u24 LE) en tête du record de 14 B.
+        // Section subdivisions @41 dans le header.
+        let subdivs_off = u32::from_le_bytes([ov.tre[41], ov.tre[42], ov.tre[43], ov.tre[44]]) as usize;
+        // Subdiv 1 (topdiv) = 16 B ; subdiv 2 démarre après.
+        let leaf_off = subdivs_off + 16;
+        let tre_rgn_offset = (ov.tre[leaf_off] as u32)
+            | ((ov.tre[leaf_off + 1] as u32) << 8)
+            | ((ov.tre[leaf_off + 2] as u32) << 16);
+        assert_eq!(tre_rgn_offset, 0, "leaf RGN offset must point to start of RGN data section");
+
+        // RGN : data section @21, offset(4)+size(4). Data commence à RGN_HEADER_LEN.
+        let rgn_data_off = u32::from_le_bytes([ov.rgn[21], ov.rgn[22], ov.rgn[23], ov.rgn[24]]) as usize;
+        assert_eq!(rgn_data_off, rgn_header_len, "RGN data section must start immediately after header");
+        // Premier byte des données = type byte de la polyline (pas de pointer car une seule section).
+        assert_eq!(ov.rgn[rgn_data_off] & 0x7F, 0x01, "first RGN byte must be the polyline type");
+    }
+
+    /// F4 (bis) : avec contenu mixte points+polylines, le début de la subdiv RGN
+    /// doit être un pointer de 2 octets vers la section polylines (cf. RgnWriter).
+    /// Garantit que la disposition multi-sections reste synchronisée.
+    #[test]
+    fn test_rgn_mixed_content_has_section_pointer() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![
+            OverviewFeature {
+                type_code: 0x2C, is_point: true, is_line: false, is_polygon: false,
+                coords: vec![c(2140000, 258000)],
+            },
+            OverviewFeature {
+                type_code: 0x01, is_point: false, is_line: true, is_polygon: false,
+                coords: vec![c(2140000, 258000), c(2141000, 259000)],
+            },
+        ];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        let rgn_header_len = super::super::rgn::RGN_HEADER_LEN as usize;
+        // Avec points + polylines, RgnWriter écrit 1 pointer de 2 octets en tête.
+        let pointer = u16::from_le_bytes([ov.rgn[rgn_header_len], ov.rgn[rgn_header_len + 1]]);
+        // Pointer = offset polylines = 2 (pointer size) + points_data_len. Points standard = 8 B.
+        assert_eq!(pointer, 2 + 8, "pointer must skip 2B pointer + 8B point record");
     }
 }
