@@ -72,45 +72,20 @@ pub fn build_gmapsupp_with_meta_and_typ(
     meta: &GmapsuppMeta,
     typ_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, ImgError> {
-    build_gmapsupp_with_overview(tiles, None, description, meta, typ_data)
-}
-
-/// Assemble with an optional overview sub-map embedded before the detail tiles.
-///
-/// The overview lives in the gmapsupp as a dedicated sub-map whose map number follows the
-/// `<family_id>0000` convention (see `compute_overview_map_id`). Its subfiles (TRE/RGN/LBL)
-/// are written between the MPS and the detail tiles so Alpha 100 firmware can find it at
-/// the start of the IMG filesystem.
-pub fn build_gmapsupp_with_overview(
-    tiles: &[TileSubfiles],
-    overview: Option<&TileSubfiles>,
-    description: &str,
-    meta: &GmapsuppMeta,
-    typ_data: Option<&[u8]>,
-) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
     }
 
     let mut fs = ImgFilesystem::new(description);
 
-    // --- File ordering: MPS first, overview next, then detail tiles, TYP, SRT ---
-    // Alpha 100 firmware requires MPS first; the overview must precede detail tiles so the
-    // firmware resolves it during the initial directory scan at low zoom levels.
+    // --- File ordering matters! mkgmap order: MPS first, then tiles, TYP, SRT ---
+    // Some Garmin firmware (Alpha 100) expects MPS as the first subfile.
 
-    // 1. MPS first (mkgmap convention). Includes an entry for the overview sub-map when present.
-    let mps_data = build_mps(tiles, overview, meta);
+    // 1. MPS first (mkgmap convention) — no overview map (causes issues on Alpha 100)
+    let mps_data = build_mps(tiles, meta);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
-    // 2. Overview sub-map (TRE/RGN/LBL only — never NET/NOD/DEM).
-    if let Some(ov) = overview {
-        let name = format!("{:>08}", ov.map_number);
-        fs.add_file(&name, "TRE", ov.tre.clone());
-        fs.add_file(&name, "RGN", ov.rgn.clone());
-        fs.add_file(&name, "LBL", ov.lbl.clone());
-    }
-
-    // 3. Tile subfiles
+    // 2. Tile subfiles
     for tile in tiles {
         let name = format!("{:>08}", tile.map_number);
         fs.add_file(&name, "TRE", tile.tre.clone());
@@ -153,18 +128,19 @@ pub fn build_gmapsupp_with_overview(
     fs.sync()
 }
 
-/// Compute overview map ID from family_id.
-///
-/// Convention `<family_id>0000`, alignée sur le défaut mkgmap `--overview-mapnumber`
-/// (cf. `mkgmap/combiners/OverviewBuilder.java` : défaut `63240000` pour family 6324).
-/// Doit tenir en 8 chiffres décimaux pour le nom de fichier FAT.
+/// Compute overview map ID from family_id
+/// Convention: family_id * 10000 + 0xFFFF-like high number
+/// Must fit in 8 decimal digits for FAT filename
 pub fn compute_overview_map_id(family_id: u16) -> u32 {
-    let id = (family_id as u32) * 10000;
+    // Use family_id * 10000 + 1855 (matches MapSetToolkit pattern)
+    let base = (family_id as u32) * 10000;
+    let id = base + 1855;
+    // Ensure it fits in 8 decimal digits
     if id > 99999999 { 99999999 } else { id }
 }
 
-/// Build MPS entries for the tile set plus optional overview sub-map.
-fn build_mps(tiles: &[TileSubfiles], overview: Option<&TileSubfiles>, meta: &GmapsuppMeta) -> Vec<u8> {
+/// Build MPS entries for tiles (no overview map — causes rendering issues on Alpha 100)
+fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
     let mut mps = MpsWriter::new();
     mps.codepage = meta.codepage;
 
@@ -175,25 +151,7 @@ fn build_mps(tiles: &[TileSubfiles], overview: Option<&TileSubfiles>, meta: &Gma
         family_name: meta.family_name.clone(),
     });
 
-    // Overview sub-map first so the firmware sees it before the detail tiles.
-    if let Some(ov) = overview {
-        let map_num: u32 = ov.map_number.parse().unwrap_or(0);
-        let desc = if ov.description.is_empty() {
-            meta.family_name.clone()
-        } else {
-            ov.description.clone()
-        };
-        mps.add_map(MpsMapEntry {
-            product_id: meta.product_id,
-            family_id: meta.family_id,
-            map_number: map_num,
-            map_name: desc.clone(),
-            map_description: desc,
-            area_name: meta.area_name.clone(),
-        });
-    }
-
-    // One map entry per detail tile
+    // One map entry per tile
     for tile in tiles {
         let map_num: u32 = tile.map_number.parse().unwrap_or(0);
         let desc = if tile.description.is_empty() {
@@ -410,10 +368,9 @@ mod tests {
 
     #[test]
     fn test_overview_map_id_computation() {
-        assert_eq!(compute_overview_map_id(1100), 11000000);
-        assert_eq!(compute_overview_map_id(6324), 63240000); // mkgmap default
-        assert_eq!(compute_overview_map_id(26038), 99999999); // capped (26038*10000 > 8 chiffres)
-        assert_eq!(compute_overview_map_id(1), 10000);
+        assert_eq!(compute_overview_map_id(1100), 11001855);
+        assert_eq!(compute_overview_map_id(26038), 99999999); // capped
+        assert_eq!(compute_overview_map_id(1), 11855);
     }
 
     #[test]
