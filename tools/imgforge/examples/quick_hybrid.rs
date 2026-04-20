@@ -22,6 +22,8 @@ fn main() {
         family_name: "IGN BDTOPO".to_string(),
         area_name: "D038".to_string(),
         codepage: 1252,
+        typ_basename: None,
+        packaging: Default::default(),
     };
     
     let gmapsupp = build_gmapsupp_with_meta_and_typ(

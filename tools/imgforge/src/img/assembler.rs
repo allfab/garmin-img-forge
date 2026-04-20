@@ -2,7 +2,20 @@
 
 use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
+use super::gmp::GmpWriter;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
+
+/// Mode d'emballage des sous-sections de tuile dans l'IMG.
+///
+/// - `Legacy` : 6 fichiers FAT par tuile (TRE/RGN/LBL/NET/NOD/DEM) — comportement historique.
+/// - `Gmp` : 1 fichier FAT `.GMP` par tuile — format Garmin "NT" consolidé, aligné sur
+///   les IMG Garmin modernes (cf. `docs/implementation-artifacts/imgforge-gmp-format.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Packaging {
+    #[default]
+    Legacy,
+    Gmp,
+}
 
 /// Subfiles for a single tile
 pub struct TileSubfiles {
@@ -26,6 +39,8 @@ pub struct GmapsuppMeta {
     /// TYP filename stem (without extension), e.g. "I2023100" from "I2023100.typ".
     /// If None, uses family_id formatted as 8-digit string.
     pub typ_basename: Option<String>,
+    /// Packaging mode pour les sous-sections de tuile (Legacy = 6 FAT files / Gmp = 1 `.GMP`).
+    pub packaging: Packaging,
 }
 
 impl Default for GmapsuppMeta {
@@ -37,6 +52,7 @@ impl Default for GmapsuppMeta {
             area_name: String::new(),
             codepage: 0,
             typ_basename: None,
+            packaging: Packaging::Legacy,
         }
     }
 }
@@ -85,20 +101,35 @@ pub fn build_gmapsupp_with_meta_and_typ(
     let mps_data = build_mps(tiles, meta);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
-    // 2. Tile subfiles
+    // 2. Tile subfiles — packaging legacy (6 FAT) ou GMP consolidé (1 FAT).
     for tile in tiles {
         let name = format!("{:>08}", tile.map_number);
-        fs.add_file(&name, "TRE", tile.tre.clone());
-        fs.add_file(&name, "RGN", tile.rgn.clone());
-        fs.add_file(&name, "LBL", tile.lbl.clone());
-        if let Some(ref net) = tile.net {
-            fs.add_file(&name, "NET", net.clone());
-        }
-        if let Some(ref nod) = tile.nod {
-            fs.add_file(&name, "NOD", nod.clone());
-        }
-        if let Some(ref dem) = tile.dem {
-            fs.add_file(&name, "DEM", dem.clone());
+        match meta.packaging {
+            Packaging::Legacy => {
+                fs.add_file(&name, "TRE", tile.tre.clone());
+                fs.add_file(&name, "RGN", tile.rgn.clone());
+                fs.add_file(&name, "LBL", tile.lbl.clone());
+                if let Some(ref net) = tile.net {
+                    fs.add_file(&name, "NET", net.clone());
+                }
+                if let Some(ref nod) = tile.nod {
+                    fs.add_file(&name, "NOD", nod.clone());
+                }
+                if let Some(ref dem) = tile.dem {
+                    fs.add_file(&name, "DEM", dem.clone());
+                }
+            }
+            Packaging::Gmp => {
+                let gmp_bytes = GmpWriter::new(
+                    tile.tre.clone(),
+                    tile.rgn.clone(),
+                    tile.lbl.clone(),
+                    tile.net.clone(),
+                    tile.nod.clone(),
+                    tile.dem.clone(),
+                ).write();
+                fs.add_file(&name, "GMP", gmp_bytes);
+            }
         }
     }
 
@@ -351,6 +382,7 @@ mod tests {
             area_name: String::new(),
             codepage: 0,
             typ_basename: None,
+            packaging: Packaging::Legacy,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ));
         assert!(result.is_ok());
@@ -403,6 +435,7 @@ mod tests {
             area_name: String::new(),
             codepage: 1252,
             typ_basename: None,
+            packaging: Packaging::Legacy,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None);
         assert!(result.is_ok());

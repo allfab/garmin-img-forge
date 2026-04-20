@@ -177,7 +177,12 @@ imgforge build tiles/ --jobs 8 --dem ./srtm_hgt/
 
 # Build avec DEM BDAltiv2 Lambert 93
 imgforge build tiles/ --jobs 8 --dem ./bdaltiv2/ --dem-source-srs EPSG:2154
+
+# Build avec packaging GMP (format Garmin NT consolidé : 1 .GMP par tuile au lieu de 6 FAT files)
+imgforge build tiles/ --packaging gmp
 ```
+
+**Note sur `--packaging`** : `legacy` (défaut) produit 6 entrées FAT par tuile (TRE/RGN/LBL/NET/NOD/DEM) — format historique mkgmap/cGPSmapper. `gmp` consolide ces sections dans un unique sous-fichier `.GMP` (format Garmin NT, utilisé par les cartes Garmin modernes telles que Topo France v6 Pro). Spec binaire : [`docs/implementation-artifacts/imgforge-gmp-format.md`](../../docs/implementation-artifacts/imgforge-gmp-format.md).
 
 ### Commande `typ` : Compilation/décompilation TYP
 

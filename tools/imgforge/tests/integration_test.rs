@@ -662,6 +662,8 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
         family_name: "Test Map Family".to_string(),
         area_name: String::new(),
         codepage: 1252,
+        typ_basename: None,
+        packaging: Default::default(),
     };
 
     let gmapsupp = build_gmapsupp_with_meta(&tiles, "Test", &meta).unwrap();

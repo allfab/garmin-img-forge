@@ -14,6 +14,24 @@ pub enum TypEncodingArg {
     Auto,
 }
 
+/// Mode d'emballage des sous-sections de tuile dans le gmapsupp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum PackagingArg {
+    /// 6 fichiers FAT par tuile (TRE/RGN/LBL/NET/NOD/DEM) — comportement historique.
+    Legacy,
+    /// 1 fichier FAT `.GMP` par tuile (format Garmin NT consolidé).
+    Gmp,
+}
+
+impl From<PackagingArg> for crate::img::assembler::Packaging {
+    fn from(v: PackagingArg) -> Self {
+        match v {
+            PackagingArg::Legacy => Self::Legacy,
+            PackagingArg::Gmp => Self::Gmp,
+        }
+    }
+}
+
 impl From<TypEncodingArg> for crate::typ::TypEncoding {
     fn from(v: TypEncodingArg) -> Self {
         match v {
@@ -312,6 +330,11 @@ pub enum Commands {
         /// Source SRS for ASC files (e.g. EPSG:2154 for Lambert 93)
         #[arg(long, value_name = "SRS")]
         dem_source_srs: Option<String>,
+
+        /// Packaging des sous-sections de tuile : `legacy` (6 FAT files) ou `gmp` (1 `.GMP`).
+        /// Défaut : `legacy` pour ne pas casser les builds existants.
+        #[arg(long, value_enum, default_value = "legacy")]
+        packaging: PackagingArg,
     },
 
     /// Compile/décompile un fichier TYP Garmin (texte ↔ binaire).

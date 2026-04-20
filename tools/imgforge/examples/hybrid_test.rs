@@ -50,6 +50,8 @@ fn main() {
         family_name: "TEST-HYBRID".to_string(),
         area_name: String::new(),
         codepage: 1252,
+        typ_basename: None,
+        packaging: Default::default(),
     };
     let typ = include_bytes!("/tmp/mkgmap-tiles-extracted/typ.bin");
     let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(typ)).unwrap();
