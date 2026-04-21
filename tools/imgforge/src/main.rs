@@ -337,10 +337,76 @@ fn main() -> Result<()> {
                 tdb.build()
             };
 
+            // Overview map (parité SUD Alpha 100) — kill-switch IMGFORGE_NO_OVERVIEW=1 pour fallback
+            let no_overview = std::env::var("IMGFORGE_NO_OVERVIEW")
+                .map(|v| !matches!(v.as_str(), "" | "0" | "false" | "FALSE" | "no" | "NO"))
+                .unwrap_or(false);
+            // Diagnostic : si IMGFORGE_OVERVIEW_INJECT=<dir> est défini, on charge TRE/RGN/LBL
+            // bruts depuis <dir>/<stem>.{TRE,RGN,LBL} et on conserve le nom FAT d'origine.
+            let inject_dir = std::env::var("IMGFORGE_OVERVIEW_INJECT").ok();
+            let overview = if no_overview {
+                None
+            } else if let Some(dir) = inject_dir {
+                use std::path::PathBuf;
+                let dir_path = PathBuf::from(&dir);
+                let stem = std::fs::read_dir(&dir_path)
+                    .ok()
+                    .and_then(|mut it| it.find_map(|e| {
+                        let e = e.ok()?;
+                        let p = e.path();
+                        if p.extension().and_then(|s| s.to_str()) == Some("TRE") {
+                            p.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+                        } else { None }
+                    }))
+                    .unwrap_or_else(|| panic!("Aucun *.TRE dans {}", dir));
+                let load = |ext: &str| std::fs::read(dir_path.join(format!("{}.{}", stem, ext)))
+                    .unwrap_or_else(|e| panic!("Impossible de lire {}.{}: {}", stem, ext, e));
+                let mut tre = load("TRE");
+                let rgn = load("RGN");
+                let lbl = load("LBL");
+
+                // Patch optionnel : MapID (@0x74) et bounds (@0x15..0x20) avec valeurs D038.
+                // Activé par IMGFORGE_OVERVIEW_PATCH=1. Permet de tester si la structure
+                // cgpsmapper reste acceptée quand on réaffecte MapID/bounds.
+                if std::env::var("IMGFORGE_OVERVIEW_PATCH").map(|v| v == "1").unwrap_or(false) {
+                    let overview_id = imgforge::img::assembler::compute_overview_map_id(fid);
+                    tre[0x74..0x78].copy_from_slice(&overview_id.to_le_bytes());
+                    // Bounds = union des bounds des tuiles détail
+                    let mut n = i32::MIN; let mut e = i32::MIN;
+                    let mut s = i32::MAX; let mut w = i32::MAX;
+                    for t in &tile_subfiles {
+                        if t.tre.len() >= 33 {
+                            let (tn, te, ts, tw) = imgforge::img::common_header::read_tre_bounds(&t.tre);
+                            n = n.max(tn); e = e.max(te); s = s.min(ts); w = w.min(tw);
+                        }
+                    }
+                    let put_i24 = |buf: &mut [u8], v: i32| {
+                        let b = v.to_le_bytes();
+                        buf[0] = b[0]; buf[1] = b[1]; buf[2] = b[2];
+                    };
+                    put_i24(&mut tre[0x15..0x18], n);
+                    put_i24(&mut tre[0x18..0x1B], e);
+                    put_i24(&mut tre[0x1B..0x1E], s);
+                    put_i24(&mut tre[0x1E..0x21], w);
+                    tracing::info!("Overview injection patchée : MapID={} bounds N={} E={} S={} W={}", overview_id, n, e, s, w);
+                } else {
+                    tracing::info!("Injection overview brute depuis {} (stem={})", dir, stem);
+                }
+
+                Some(imgforge::img::overview_map::OverviewMapData {
+                    map_number: stem, tre, rgn, lbl,
+                })
+            } else {
+                let overview_id = imgforge::img::assembler::compute_overview_map_id(fid);
+                Some(imgforge::img::overview_map::build_overview_map(
+                    &tile_subfiles, overview_id, effective_codepage,
+                ))
+            };
+
             // Build gmapsupp with overview map embedded
-            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_meta_and_typ(
+            let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_overview(
                 &tile_subfiles, map_desc, &gmapsupp_meta,
-                typ_data.as_deref(),
+                typ_data.as_deref(), overview.as_ref(),
             )?;
             std::fs::write(&output, &gmapsupp)?;
 

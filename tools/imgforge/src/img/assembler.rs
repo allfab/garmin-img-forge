@@ -4,6 +4,7 @@ use crate::error::ImgError;
 use super::filesystem::ImgFilesystem;
 use super::gmp::GmpWriter;
 use super::mps::{MpsWriter, MpsMapEntry, MpsProductEntry};
+use super::overview_map::OverviewMapData;
 
 /// Mode d'emballage des sous-sections de tuile dans l'IMG.
 ///
@@ -88,18 +89,46 @@ pub fn build_gmapsupp_with_meta_and_typ(
     meta: &GmapsuppMeta,
     typ_data: Option<&[u8]>,
 ) -> Result<Vec<u8>, ImgError> {
+    build_gmapsupp_with_overview(tiles, description, meta, typ_data, None)
+}
+
+/// Assemble with overview map (mirroir SUD Alpha 100 — cf. tech-spec overview-multilevel-wide-zoom)
+pub fn build_gmapsupp_with_overview(
+    tiles: &[TileSubfiles],
+    description: &str,
+    meta: &GmapsuppMeta,
+    typ_data: Option<&[u8]>,
+    overview: Option<&OverviewMapData>,
+) -> Result<Vec<u8>, ImgError> {
     if tiles.is_empty() {
         return Err(ImgError::InvalidFormat("No tiles to assemble".into()));
     }
 
     let mut fs = ImgFilesystem::new(description);
 
-    // --- File ordering matters! mkgmap order: MPS first, then tiles, TYP, SRT ---
+    // --- File ordering: MPS first, overview TRE/RGN/LBL, tiles, TYP, SRT ---
     // Some Garmin firmware (Alpha 100) expects MPS as the first subfile.
 
-    // 1. MPS first (mkgmap convention) — no overview map (causes issues on Alpha 100)
-    let mps_data = build_mps(tiles, meta);
+    // 1. MPS first (mkgmap convention). L-record overview opt-in via IMGFORGE_MPS_OVERVIEW=1
+    // pour diagnostic (AC 7 inversée : parité mkgmap plutôt que SUD stricte).
+    let mps_with_overview = std::env::var("IMGFORGE_MPS_OVERVIEW")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    let mps_ov = if mps_with_overview { overview.map(|o| o.map_number.as_str()) } else { None };
+    let mps_data = build_mps(tiles, meta, mps_ov);
     fs.add_file("MAKEGMAP", "MPS", mps_data);
+
+    // 1b. Overview map subfiles (parité SUD : TRE/RGN/LBL juste après le MPS).
+    // Bisection diagnostique Alpha 100 via IMGFORGE_OVERVIEW_PARTS (liste CSV : tre,rgn,lbl).
+    if let Some(ov) = overview {
+        let parts = std::env::var("IMGFORGE_OVERVIEW_PARTS")
+            .unwrap_or_else(|_| "tre,rgn,lbl".to_string());
+        let parts_lc = parts.to_ascii_lowercase();
+        let want = |p: &str| parts_lc.split(',').any(|x| x.trim() == p);
+        if want("tre") { fs.add_file(&ov.map_number, "TRE", ov.tre.clone()); }
+        if want("rgn") { fs.add_file(&ov.map_number, "RGN", ov.rgn.clone()); }
+        if want("lbl") { fs.add_file(&ov.map_number, "LBL", ov.lbl.clone()); }
+    }
 
     // 2. Tile subfiles — packaging legacy (6 FAT) ou GMP consolidé (1 FAT).
     for tile in tiles {
@@ -170,8 +199,9 @@ pub fn compute_overview_map_id(family_id: u16) -> u32 {
     if id > 99999999 { 99999999 } else { id }
 }
 
-/// Build MPS entries for tiles (no overview map — causes rendering issues on Alpha 100)
-fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
+/// Build MPS entries. Si `overview_map_number` est fourni, insère un L-record additionnel
+/// pour l'overview (parité mkgmap `osmmap.img` — cf. AC 7 tech-spec).
+fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta, overview_map_number: Option<&str>) -> Vec<u8> {
     let mut mps = MpsWriter::new();
     mps.codepage = meta.codepage;
 
@@ -181,6 +211,20 @@ fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
         family_id: meta.family_id,
         family_name: meta.family_name.clone(),
     });
+
+    // Overview map entry (optionnel, parité mkgmap)
+    if let Some(ov_num) = overview_map_number {
+        let ov_map_num: u32 = ov_num.parse().unwrap_or(0);
+        let ov_desc = format!("{} overview", meta.family_name);
+        mps.add_map(MpsMapEntry {
+            product_id: meta.product_id,
+            family_id: meta.family_id,
+            map_number: ov_map_num,
+            map_name: ov_desc.clone(),
+            map_description: ov_desc,
+            area_name: String::new(),
+        });
+    }
 
     // One map entry per tile
     for tile in tiles {
