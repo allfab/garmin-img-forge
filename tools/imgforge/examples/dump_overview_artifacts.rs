@@ -1,8 +1,12 @@
 // Build intermediate : génère les artefacts TRE/RGN/LBL de l'overview produits par
 // `build_overview_map` avec des tiles factices couvrant D038 (Isère), et les écrit
-// dans tmp/overview/intermediate/ pour validation hex byte-à-byte contre SUD.
+// dans `<repo-root>/tmp/overview/intermediate/` pour validation hex byte-à-byte
+// contre SUD.
 //
 // Usage : `cargo run -p imgforge --example dump_overview_artifacts`
+// Le path de sortie est résolu via `CARGO_MANIFEST_DIR` pour être indépendant du
+// répertoire courant (l'example était initialement CWD-dépendant et écrivait dans
+// `tools/imgforge/tmp/` quand lancé depuis le crate).
 
 use imgforge::img::assembler::TileSubfiles;
 use imgforge::img::overview_map::build_overview_map;
@@ -45,7 +49,13 @@ fn main() {
     let overview_id: u32 = (fid as u32) * 10000 + 1855; // 11001855
     let ov = build_overview_map(&tiles, overview_id, 1252);
 
-    let root = PathBuf::from("tmp/overview/intermediate");
+    // CARGO_MANIFEST_DIR = .../tools/imgforge ; remonter 2× pour atteindre repo-root.
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("CARGO_MANIFEST_DIR doit avoir 2 ancêtres (tools/imgforge → repo-root)")
+        .to_path_buf();
+    let root = repo_root.join("tmp/overview/intermediate");
     fs::create_dir_all(&root).expect("mkdir intermediate");
     let stem = format!("{:08}", overview_id);
     for (ext, data) in [("TRE", &ov.tre), ("RGN", &ov.rgn), ("LBL", &ov.lbl)] {
