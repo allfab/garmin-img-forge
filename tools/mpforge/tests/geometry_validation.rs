@@ -22,6 +22,7 @@ fn test_nan_coordinates_detected() {
         geometry: vec![(f64::NAN, 45.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
@@ -35,6 +36,7 @@ fn test_infinity_coordinates_detected() {
         geometry: vec![(f64::INFINITY, 45.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
@@ -48,6 +50,7 @@ fn test_valid_coordinates_pass() {
         geometry: vec![(2.35, 48.85)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(validate_coordinates(&feature));
@@ -61,6 +64,7 @@ fn test_neg_infinity_detected() {
         geometry: vec![(1.0, 2.0), (f64::NEG_INFINITY, 3.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
@@ -73,6 +77,7 @@ fn test_nan_in_y_coordinate_detected() {
         geometry: vec![(2.35, f64::NAN)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
@@ -86,6 +91,7 @@ fn test_mixed_valid_invalid_coordinates() {
         geometry: vec![(1.0, 2.0), (3.0, 4.0), (f64::NAN, 5.0), (6.0, 7.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(!validate_coordinates(&feature));
@@ -99,6 +105,7 @@ fn test_empty_coordinates_pass() {
         geometry: vec![],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(validate_coordinates(&feature));
@@ -115,6 +122,7 @@ fn test_many_valid_coordinates() {
         geometry: coords,
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     assert!(validate_coordinates(&feature));
@@ -131,6 +139,7 @@ fn create_valid_polygon_feature() -> Feature {
         geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     }
 }
@@ -153,6 +162,7 @@ fn test_valid_point_passes() {
         geometry: vec![(2.35, 48.85)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -168,6 +178,7 @@ fn test_valid_linestring_passes() {
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -185,6 +196,7 @@ fn test_self_intersecting_polygon_repaired() {
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -220,6 +232,7 @@ fn test_nan_feature_rejected() {
         geometry: vec![(f64::NAN, 45.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -235,6 +248,7 @@ fn test_infinity_feature_rejected() {
         geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -258,6 +272,7 @@ fn test_stats_accumulate_correctly() {
         geometry: vec![(f64::NAN, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     validate_and_repair(&invalid, &mut stats);
@@ -355,6 +370,7 @@ fn test_degenerate_linestring_rejected() {
         geometry: vec![(0.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
     let mut stats = ValidationStats::default();
@@ -390,6 +406,7 @@ fn test_pipeline_with_invalid_features_mixed() {
             geometry: vec![(0.5, 0.5)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         },
         // NaN coordinates → rejected
@@ -398,6 +415,7 @@ fn test_pipeline_with_invalid_features_mixed() {
             geometry: vec![(f64::NAN, 0.5)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         },
         // Valid linestring
@@ -406,6 +424,7 @@ fn test_pipeline_with_invalid_features_mixed() {
             geometry: vec![(0.1, 0.1), (0.9, 0.9)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         },
         // Infinity coordinates → rejected
@@ -414,6 +433,7 @@ fn test_pipeline_with_invalid_features_mixed() {
             geometry: vec![(f64::INFINITY, 0.0), (1.0, 1.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         },
     ];
@@ -471,6 +491,7 @@ fn test_validation_stats_accumulate_across_tiles() {
         geometry: vec![(0.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
 

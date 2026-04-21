@@ -1848,6 +1848,9 @@ pub struct Feature {
     pub additional_geometries: std::collections::BTreeMap<u8, Vec<(f64, f64)>>,
     /// Feature attributes (key-value pairs)
     pub attributes: HashMap<String, String>,
+    /// Snapshot des attributs BDTOPO **avant** le moteur de règles.
+    /// `None` pour les configs sans `overview_levels` (tous les scopes production 7L).
+    pub source_attributes: Option<HashMap<String, String>>,
     /// Source layer name (for rules engine matching by source_layer)
     pub source_layer: Option<String>,
 }
@@ -2069,6 +2072,7 @@ impl Feature {
             geometry: coords,
             additional_geometries: std::collections::BTreeMap::new(),
             attributes,
+            source_attributes: None,
             source_layer: None,
         })
     }
@@ -2158,6 +2162,7 @@ impl Feature {
             geometry: geometry_coords,
             additional_geometries: std::collections::BTreeMap::new(),
             attributes,
+            source_attributes: None,
             source_layer: None,
         }])
     }
@@ -2237,6 +2242,7 @@ mod tests {
             geometry: vec![(2.3488, 48.8534)], // Paris coordinates
             additional_geometries: std::collections::BTreeMap::new(),
             attributes,
+            source_attributes: None,
             source_layer: None,
         };
 
@@ -2261,6 +2267,7 @@ mod tests {
             geometry: coords.clone(),
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
 
@@ -2277,6 +2284,7 @@ mod tests {
             geometry: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
 
@@ -2295,6 +2303,7 @@ mod tests {
             geometry: vec![],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
         f.set_level(0, vec![(1.0, 2.0), (3.0, 4.0)]);
@@ -2309,6 +2318,7 @@ mod tests {
             geometry: vec![(0.0, 0.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
         f.set_level(2, vec![(5.0, 6.0)]);
@@ -2323,6 +2333,7 @@ mod tests {
             geometry: vec![(0.0, 0.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
         f.set_level(3, vec![(3.0, 3.0)]);
@@ -2340,6 +2351,7 @@ mod tests {
             geometry: vec![(7.0, 8.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
         assert_eq!(f.level(0), Some([(7.0, 8.0)].as_slice()));
@@ -2355,6 +2367,7 @@ mod tests {
             geometry: vec![(0.0, 0.0)],
             additional_geometries: std::collections::BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: None,
         };
         // Bypass `set_level` on purpose — this is the bug pattern we guard.

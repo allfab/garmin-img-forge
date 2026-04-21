@@ -10,6 +10,7 @@
 
 use crate::config::{OverviewLevels, PromotionRule};
 use crate::pipeline::reader::Feature;
+use std::collections::HashMap;
 
 /// Clé de l'attribut `EndLevel` sur `Feature.attributes`. Aligné avec le
 /// mapping `garmin-rules.yaml` qui écrit cette clé via `set: { EndLevel: ... }`.
@@ -23,8 +24,11 @@ pub fn resolve_promotion(
     rules: &OverviewLevels,
 ) -> Option<u8> {
     let layer_rules = rules.promotion.get(layer)?;
+    // Dispatch sur les attributs BDTOPO source (pré-règles).
+    // Fallback sur attributes si source_attributes absent (configs sans overview_levels).
+    let attrs = feature.source_attributes.as_ref().unwrap_or(&feature.attributes);
     for rule in layer_rules {
-        if matches_rule(rule, feature) {
+        if matches_rule_attrs(rule, attrs) {
             return Some(rule.promote_to);
         }
     }
@@ -50,9 +54,9 @@ pub fn apply_promotion(feature: &mut Feature, layer: &str, rules: &OverviewLevel
 
 /// AND sur tous les champs de `match`. Pour chaque champ, au moins une valeur
 /// de la liste doit matcher (ou ne pas matcher, si préfixe `!`).
-fn matches_rule(rule: &PromotionRule, feature: &Feature) -> bool {
+fn matches_rule_attrs(rule: &PromotionRule, attrs: &HashMap<String, String>) -> bool {
     for (field, values) in &rule.match_ {
-        if !field_matches(values, feature.attributes.get(field).map(|s| s.as_str())) {
+        if !field_matches(values, attrs.get(field).map(|s| s.as_str())) {
             return false;
         }
     }
@@ -103,6 +107,7 @@ mod tests {
             geometry: vec![(0.0, 0.0), (1.0, 0.0)],
             additional_geometries: Default::default(),
             attributes,
+            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -248,5 +253,42 @@ mod tests {
         let mut f = make_feature("BATIMENT", &[("CL_ADMIN", "Autoroute")]);
         apply_promotion(&mut f, "BATIMENT", &ov);
         assert!(!f.attributes.contains_key("EndLevel"));
+    }
+
+    #[test]
+    fn test_promotion_uses_source_attributes_when_attributes_stripped() {
+        // Cas clé du fix source_attributes : CL_ADMIN absent de attributes
+        // (post-règles) mais présent dans source_attributes (pré-règles).
+        let ov = ov_with_rules(
+            "TRONCON_DE_ROUTE",
+            vec![rule(&[("CL_ADMIN", &["Autoroute"])], 9)],
+        );
+        let mut f = make_feature("TRONCON_DE_ROUTE", &[("Type", "0x01"), ("EndLevel", "4")]);
+        f.source_attributes = Some({
+            let mut m = HashMap::new();
+            m.insert("CL_ADMIN".to_string(), "Autoroute".to_string());
+            m
+        });
+        apply_promotion(&mut f, "TRONCON_DE_ROUTE", &ov);
+        assert_eq!(
+            f.attributes["EndLevel"], "9",
+            "promotion doit monter EndLevel via source_attributes même si CL_ADMIN absent de attributes"
+        );
+    }
+
+    #[test]
+    fn test_no_promotion_when_source_attributes_absent_and_attributes_stripped() {
+        // Sans source_attributes ni CL_ADMIN dans attributes → pas de promotion.
+        let ov = ov_with_rules(
+            "TRONCON_DE_ROUTE",
+            vec![rule(&[("CL_ADMIN", &["Autoroute"])], 9)],
+        );
+        let mut f = make_feature("TRONCON_DE_ROUTE", &[("Type", "0x01"), ("EndLevel", "4")]);
+        // source_attributes absent → fallback sur attributes → pas de CL_ADMIN → pas de match
+        apply_promotion(&mut f, "TRONCON_DE_ROUTE", &ov);
+        assert_eq!(
+            f.attributes["EndLevel"], "4",
+            "pas de promotion quand ni source_attributes ni attributes ne portent le champ de dispatch"
+        );
     }
 }

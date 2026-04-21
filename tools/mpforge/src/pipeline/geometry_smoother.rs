@@ -29,10 +29,12 @@ pub fn generalize_feature(feature: &mut Feature, config: &GeneralizeConfig) -> b
 /// unmatched branches).
 fn resolve_levels<'a>(
     profile: &'a GeneralizeProfile,
-    attributes: &HashMap<String, String>,
+    feature: &Feature,
 ) -> Option<&'a [LevelSpec]> {
+    // Dispatch sur les attributs BDTOPO source (pré-règles) quand disponibles.
+    let attrs = feature.source_attributes.as_ref().unwrap_or(&feature.attributes);
     for clause in &profile.when {
-        if let Some(val) = attributes.get(&clause.field) {
+        if let Some(val) = attrs.get(&clause.field) {
             if clause.values.iter().any(|v| v == val) {
                 return Some(&clause.levels);
             }
@@ -61,7 +63,7 @@ pub fn apply_profile(feature: &mut Feature, profile: &GeneralizeProfile) -> usiz
     if matches!(feature.geometry_type, GeometryType::Point) {
         return 0;
     }
-    let Some(levels) = resolve_levels(profile, &feature.attributes) else {
+    let Some(levels) = resolve_levels(profile, feature) else {
         return 0;
     };
 
@@ -185,7 +187,7 @@ pub fn generalize_features_with_profiles(
                 // du profil). Sinon une feature qui match une branche courte
                 // (ex: Communale n=0..6) serait paddée jusqu'au max d'une
                 // autre branche (ex: Autoroute n=0..9) — brise l'AC7/8.
-                let branch_levels = resolve_levels(profile, &feature.attributes);
+                let branch_levels = resolve_levels(profile, feature);
                 let branch_max = branch_levels
                     .map(|ls| ls.iter().map(|l| l.n).max().unwrap_or(0))
                     .unwrap_or(0);
@@ -361,6 +363,7 @@ mod tests {
             geometry: coords,
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -371,6 +374,7 @@ mod tests {
             geometry: coords,
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -381,6 +385,7 @@ mod tests {
             geometry: vec![coord],
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
+            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -948,6 +953,38 @@ levels:
         apply_profile(&mut feature, &profile);
         assert!(feature.additional_geometries.contains_key(&2));
         assert!(!feature.additional_geometries.contains_key(&3));
+    }
+
+    #[test]
+    fn test_resolve_levels_uses_source_attributes() {
+        // Cas clé du fix source_attributes : CL_ADMIN absent de attributes (post-règles)
+        // mais présent dans source_attributes (pré-règles) → la branche when: doit matcher.
+        let profile = profile_from_yaml(r#"
+when:
+  - field: CL_ADMIN
+    values: [Autoroute]
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 9, simplify: 0.005 }
+levels:
+  - { n: 0, simplify: 0.00005 }
+"#);
+        let coords: Vec<(f64, f64)> = (0..15).map(|i| (i as f64 * 0.001, 0.0)).collect();
+        let mut f = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        // Simule l'état post-règles : CL_ADMIN absent de attributes
+        f.attributes.insert("Type".to_string(), "0x01".to_string());
+        f.attributes.insert("EndLevel".to_string(), "9".to_string());
+        // Mais présent dans source_attributes (snapshot pré-règles)
+        f.source_attributes = Some({
+            let mut m = HashMap::new();
+            m.insert("CL_ADMIN".to_string(), "Autoroute".to_string());
+            m
+        });
+        apply_profile(&mut f, &profile);
+        assert!(
+            f.additional_geometries.contains_key(&9),
+            "when: dispatch doit utiliser source_attributes — n=9 doit être généré"
+        );
     }
 
     #[test]

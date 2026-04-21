@@ -242,7 +242,7 @@ fn process_single_tile(
     }
 
     // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
-    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
+    let (mut features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
         Ok(result) => result,
         Err(e) => {
             if ctx.error_mode == ErrorMode::FailFast {
@@ -262,6 +262,16 @@ fn process_single_tile(
 
     if features.is_empty() {
         return Ok(TileOutcome::Skipped { existing: false });
+    }
+
+    // Snapshot pré-règles : conserve les attributs BDTOPO source pour que
+    // apply_promotion et resolve_levels puissent dispatcher post-règles.
+    // Déclenché seulement quand overview_levels est configuré pour ne pas
+    // pénaliser les builds production 7L standards.
+    if ctx.config.overview_levels.is_some() {
+        for feature in features.iter_mut() {
+            feature.source_attributes = Some(feature.attributes.clone());
+        }
     }
 
     // 2. Apply rules engine (Arc<RulesFile> is read-only, thread-safe)

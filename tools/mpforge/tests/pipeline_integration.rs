@@ -263,6 +263,7 @@ fn test_clipping_with_boundary_features() {
         geometry: vec![(0.5, 0.5), (1.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     };
 
@@ -340,6 +341,7 @@ fn test_clipping_performance_1000_features() {
                     geometry: vec![(0.5, 0.5)],
                     additional_geometries: std::collections::BTreeMap::new(),
                     attributes: HashMap::new(),
+                    source_attributes: None,
                     source_layer: None,
                 }
             }
@@ -350,6 +352,7 @@ fn test_clipping_performance_1000_features() {
                     geometry: vec![(-0.5, 0.5), (1.5, 0.5)],
                     additional_geometries: std::collections::BTreeMap::new(),
                     attributes: HashMap::new(),
+                    source_attributes: None,
                     source_layer: None,
                 }
             }
@@ -366,6 +369,7 @@ fn test_clipping_performance_1000_features() {
                     ],
                     additional_geometries: std::collections::BTreeMap::new(),
                     attributes: HashMap::new(),
+                    source_attributes: None,
                     source_layer: None,
                 }
             }

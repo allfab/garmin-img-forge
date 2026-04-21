@@ -21,6 +21,7 @@ fn create_point_feature(x: f64, y: f64) -> Feature {
         geometry: vec![(x, y)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     }
 }
@@ -32,6 +33,7 @@ fn create_line_feature(x1: f64, y1: f64, x2: f64, y2: f64) -> Feature {
         geometry: vec![(x1, y1), (x2, y2)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     }
 }
@@ -49,6 +51,7 @@ fn create_polygon_feature(x_min: f64, y_min: f64, x_max: f64, y_max: f64) -> Fea
         ],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
+        source_attributes: None,
         source_layer: None,
     }
 }
