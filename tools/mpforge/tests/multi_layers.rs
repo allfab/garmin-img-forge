@@ -135,6 +135,7 @@ fn test_geopackage_invalid_layer_continue_mode() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
+        overview_levels: None,
     };
 
     let result = SourceReader::read_all_sources(&config);
@@ -214,6 +215,7 @@ fn test_geopackage_invalid_layer_fail_fast_mode() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
+        overview_levels: None,
     };
 
     let result = SourceReader::read_all_sources(&config);

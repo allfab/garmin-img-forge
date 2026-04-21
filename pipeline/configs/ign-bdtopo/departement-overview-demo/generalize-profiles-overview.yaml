@@ -1,0 +1,124 @@
+# Tech-spec overview wide-zoom — catalogue étendu 10L (n=0..9).
+#
+# Fixture démo opt-in : catalogue dédié aux couches promues pour alimenter
+# Data7/Data8/Data9 de l'overview map. Les couches non promues (BATIMENT,
+# CONSTRUCTION_LINEAIRE, etc.) sont volontairement ABSENTES — elles
+# conservent leur comportement 7L du catalogue production.
+#
+# Sémantique identique à `../generalize-profiles.yaml` :
+#   - n=0..6 : paliers détail standard (mêmes tolérances que prod).
+#   - n=7..9 : paliers overview ajoutés par `overview_levels.header_extension`
+#              dans `sources.yaml`. DP agressif, Chaikin désactivé.
+#
+# ⚠️ n=7..9 restreints aux seules branches `when` promues (Autoroute,
+# Nationale, Départementale pour TRONCON_DE_ROUTE) : une feature Communale
+# ou Chemin reste limitée à n=0..6 puisque son `when` ne déclare pas les
+# paliers overview. C'est ce qui implémente l'AC8 ("features non matchées
+# par une règle de promotion n'émettent pas de Data7/8/9").
+#
+# Tolérances overview (dérivées de la taille pixel cible Alpha 100) :
+#   - n=7 : simplify 0.0005  (~55 m)
+#   - n=8 : simplify 0.0015  (~165 m)
+#   - n=9 : simplify 0.005   (~550 m)
+
+profiles:
+  TRONCON_DE_ROUTE:
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0, simplify: 0.00001 }
+          - { n: 1, simplify: 0.00002 }
+          - { n: 2, simplify: 0.00002 }
+          - { n: 3, simplify: 0.00003 }
+          - { n: 4, simplify: 0.00005 }
+          - { n: 5, simplify: 0.00008 }
+          - { n: 6, simplify: 0.00013 }
+          - { n: 7, simplify: 0.0005 }
+          - { n: 8, simplify: 0.0015 }
+          - { n: 9, simplify: 0.005 }
+      - field: CL_ADMIN
+        values: [Départementale]
+        levels:
+          - { n: 0, simplify: 0.00003 }
+          - { n: 1, simplify: 0.00003 }
+          - { n: 2, simplify: 0.00004 }
+          - { n: 3, simplify: 0.00006 }
+          - { n: 4, simplify: 0.00007 }
+          - { n: 5, simplify: 0.00010 }
+          - { n: 6, simplify: 0.00014 }
+          - { n: 7, simplify: 0.0005 }
+          - { n: 8, simplify: 0.0015 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0, simplify: 0.00005 }
+          - { n: 1, simplify: 0.00006 }
+          - { n: 2, simplify: 0.00007 }
+          - { n: 3, simplify: 0.00009 }
+          - { n: 4, simplify: 0.00011 }
+          - { n: 5, simplify: 0.00015 }
+          - { n: 6, simplify: 0.00020 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0, simplify: 0.00010 }
+          - { n: 1, simplify: 0.00012 }
+          - { n: 2, simplify: 0.00014 }
+          - { n: 3, simplify: 0.00017 }
+          - { n: 4, simplify: 0.00023 }
+          - { n: 5, simplify: 0.00030 }
+          - { n: 6, simplify: 0.00040 }
+    levels:
+      - { n: 0, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00007 }
+      - { n: 3, simplify: 0.00009 }
+      - { n: 4, simplify: 0.00011 }
+      - { n: 5, simplify: 0.00015 }
+      - { n: 6, simplify: 0.00020 }
+
+  TRONCON_HYDROGRAPHIQUE:
+    when:
+      - field: CLASSE
+        values: ["Cours d'eau principal"]
+        levels:
+          - { n: 0, simplify: 0.00005 }
+          - { n: 1, simplify: 0.00006 }
+          - { n: 2, simplify: 0.00008 }
+          - { n: 3, simplify: 0.00010 }
+          - { n: 4, simplify: 0.00014 }
+          - { n: 5, simplify: 0.00020 }
+          - { n: 6, simplify: 0.00028 }
+          - { n: 7, simplify: 0.0005 }
+          - { n: 8, simplify: 0.0015 }
+    levels:
+      - { n: 0, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00014 }
+      - { n: 5, simplify: 0.00020 }
+      - { n: 6, simplify: 0.00028 }
+
+  ZONE_DE_VEGETATION:
+    when:
+      - field: NATURE
+        values: ["Forêt fermée"]
+        levels:
+          - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+          - { n: 1, simplify: 0.00006 }
+          - { n: 2, simplify: 0.00008 }
+          - { n: 3, simplify: 0.00010 }
+          - { n: 4, simplify: 0.00014 }
+          - { n: 5, simplify: 0.00020 }
+          - { n: 6, simplify: 0.00028 }
+          - { n: 7, simplify: 0.0005 }
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00014 }
+      - { n: 5, simplify: 0.00020 }
+      - { n: 6, simplify: 0.00028 }

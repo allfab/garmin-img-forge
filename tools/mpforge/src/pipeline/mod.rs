@@ -4,6 +4,7 @@
 
 pub mod geometry_smoother;
 pub mod geometry_validator;
+pub mod promotion;
 pub mod reader;
 pub mod route_params;
 pub mod tile_naming;
@@ -377,13 +378,27 @@ fn process_single_tile(
     }
     drop(features);
 
+    // 3b-pre. Tech-spec overview wide-zoom : appliquer la promotion overview
+    // AVANT le smoother, pour que `fill_level_gaps` comble jusqu'au palier
+    // overview cible après `apply_profile`. Noop si `overview_levels` absent.
+    if let Some(ref overview) = ctx.config.overview_levels {
+        for feature in clipped_features.iter_mut() {
+            if let Some(layer) = feature.source_layer.clone() {
+                promotion::apply_promotion(feature, &layer, overview);
+            }
+        }
+    }
+
     // 3b. Apply geometry generalization (smoothing + simplification) per-layer.
     // Tech-spec #2 Task 10 + M6 : source de vérité UNIQUE = `profile_map`.
     // L'inline `generalize:` a déjà été converti en profils mono-niveau à
     // `load_config`.
     if !ctx.profile_map.is_empty() {
-        let gen_count =
-            generalize_features_with_profiles(&mut clipped_features, &ctx.profile_map);
+        let gen_count = generalize_features_with_profiles(
+            &mut clipped_features,
+            &ctx.profile_map,
+            ctx.config.overview_levels.as_ref(),
+        );
         tracing::debug!(
             tile_id = %tile_id,
             features_generalized = gen_count,
@@ -783,11 +798,30 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // le pipeline — les inline `generalize:` sont convertis via
     // `From<GeneralizeConfig>` dans `build_profile_map`.
     let profile_map = Arc::new(config.resolved_profile_map.clone());
-    let max_data_level: Option<u8> = profile_map
+    // F4 fix : `max_data_level` agrège le max(n) de tous les profils ET le
+    // max(promote_to) des règles overview — sinon le writer n'alloue pas les
+    // OGRGeomFieldDefn pour Data7/8/9 quand la promotion force un niveau
+    // au-delà du max déclaré par les profils.
+    let profile_max = profile_map
         .values()
         .filter_map(|p| p.max_level_index())
         .max()
-        .filter(|k| *k > 0);
+        .unwrap_or(0);
+    let promote_max = config
+        .overview_levels
+        .as_ref()
+        .map(|ov| {
+            ov.promotion
+                .values()
+                .flat_map(|rules| rules.iter().map(|r| r.promote_to))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    let max_data_level: Option<u8> = {
+        let k = profile_max.max(promote_max);
+        if k > 0 { Some(k) } else { None }
+    };
     if !profile_map.is_empty() {
         let layer_list: Vec<&str> = profile_map.keys().map(|s| s.as_str()).collect();
         info!(

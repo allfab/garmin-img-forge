@@ -4,7 +4,8 @@
 //! simplification to feature geometries. Configured per-layer via
 //! the `generalize` directive in source YAML configuration.
 
-use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec};
+use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec, OverviewLevels};
+use crate::pipeline::promotion;
 use crate::pipeline::reader::{Feature, GeometryType};
 use geo::{ChaikinSmoothing, LineString, Polygon, Simplify};
 use std::collections::{BTreeMap, HashMap};
@@ -168,6 +169,7 @@ fn apply_level_to_polygon(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f6
 pub fn generalize_features_with_profiles(
     features: &mut [Feature],
     profile_map: &BTreeMap<String, GeneralizeProfile>,
+    overview: Option<&OverviewLevels>,
 ) -> usize {
     if profile_map.is_empty() {
         return 0;
@@ -175,10 +177,30 @@ pub fn generalize_features_with_profiles(
     let mut count = 0;
     for feature in features.iter_mut() {
         let Some(layer_name) = feature.source_layer.as_deref() else { continue; };
-        if let Some(profile) = profile_map.get(layer_name) {
+        let layer_name = layer_name.to_string();
+        if let Some(profile) = profile_map.get(&layer_name) {
             if apply_profile(feature, profile) > 0 {
-                if let Some(max_n) = profile.max_level_index() {
-                    fill_level_gaps(feature, max_n);
+                // F1 fix : le max de remplissage est borné à la branche `when`
+                // effectivement résolue pour cette feature (pas au max global
+                // du profil). Sinon une feature qui match une branche courte
+                // (ex: Communale n=0..6) serait paddée jusqu'au max d'une
+                // autre branche (ex: Autoroute n=0..9) — brise l'AC7/8.
+                let branch_levels = resolve_levels(profile, &feature.attributes);
+                let branch_max = branch_levels
+                    .map(|ls| ls.iter().map(|l| l.n).max().unwrap_or(0))
+                    .unwrap_or(0);
+
+                // F4 fix : la promotion overview force le remplissage jusqu'au
+                // palier cible MÊME si la branche ne déclare pas ce n. Les
+                // paliers manquants sont clonés par `fill_level_gaps` depuis
+                // le dernier palier effectivement produit — contrat Alpha 100.
+                let promote_n = overview
+                    .and_then(|ov| promotion::resolve_promotion(feature, &layer_name, ov))
+                    .unwrap_or(0);
+
+                let upper = branch_max.max(promote_n);
+                if upper > 0 {
+                    fill_level_gaps(feature, upper);
                 }
                 count += 1;
             }
@@ -718,7 +740,7 @@ levels:
                 "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
             ),
         );
-        let count = generalize_features_with_profiles(&mut features, &map);
+        let count = generalize_features_with_profiles(&mut features, &map, None);
         assert_eq!(count, 1);
         assert!(features[0].additional_geometries.contains_key(&2));
         assert!(features[1].additional_geometries.is_empty());
@@ -738,7 +760,7 @@ levels:
                 "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
             ),
         );
-        generalize_features_with_profiles(&mut features, &map);
+        generalize_features_with_profiles(&mut features, &map, None);
         let f = &features[0];
         assert!(
             f.additional_geometries.contains_key(&1),
@@ -756,6 +778,120 @@ levels:
     // =================================================================
     // L4 code review — edge cases du smoother
     // =================================================================
+
+    #[test]
+    fn test_fill_level_gaps_fills_up_to_branch_max_even_if_some_levels_degenerate() {
+        // F1 régression : une feature dont une branche `when` déclare
+        // n=0..6 mais dont un niveau intermédiaire dégénère (simplify trop
+        // agressif → apply_level_to_line retourne None) doit quand même être
+        // paddée jusqu'au branch_max=6 (contiguïté Alpha 100).
+        // On simule en utilisant un raw très court sur lequel simplify=0.0005
+        // produit None pour les niveaux hauts. Le filling doit clone depuis
+        // le dernier palier valide.
+        let short_raw = vec![(0.0, 0.0), (0.0001, 0.0), (0.0002, 0.0)];
+        let mut features = vec![make_linestring_feature(short_raw, "SHORT_LAYER")];
+        let mut map = BTreeMap::new();
+        map.insert(
+            "SHORT_LAYER".to_string(),
+            profile_from_yaml(
+                "levels:\n  \
+                 - { n: 0, simplify: 0.00001 }\n  \
+                 - { n: 3, simplify: 0.00001 }\n  \
+                 - { n: 6, simplify: 0.0009 }\n",
+            ),
+        );
+        generalize_features_with_profiles(&mut features, &map, None);
+        let f = &features[0];
+        // Branch_max = 6 même si n=6 dégénère → pad contiguïté 1..=6.
+        for n in 1u8..=6 {
+            assert!(
+                f.additional_geometries.contains_key(&n),
+                "n={n} must be present for Alpha 100 contiguity even if intermediate levels degenerate"
+            );
+        }
+    }
+
+    #[test]
+    fn test_overview_promotion_pads_up_to_promote_to_even_without_lvlspec() {
+        // F4 régression : promotion overview force le padding jusqu'à
+        // promote_to même si le profil ne déclare pas ce n dans la branche
+        // résolue. fill_level_gaps clone depuis le dernier palier produit.
+        use crate::config::{OverviewLevels, PromotionRule};
+        let mut features = vec![make_linestring_feature(
+            (0..10).map(|i| (i as f64 * 0.001, 0.0)).collect(),
+            "TRONCON_DE_ROUTE",
+        )];
+        features[0]
+            .attributes
+            .insert("CL_ADMIN".to_string(), "Autoroute".to_string());
+        let mut map = BTreeMap::new();
+        map.insert(
+            "TRONCON_DE_ROUTE".to_string(),
+            // Profil DELIBEREMENT SANS n=9 — le promote_to:9 doit quand même
+            // produire Data9 par clonage (F4 fix).
+            profile_from_yaml("levels:\n  - { n: 0, simplify: 0.00001 }\n"),
+        );
+        let mut promotion_rules = BTreeMap::new();
+        let mut match_map = BTreeMap::new();
+        match_map.insert("CL_ADMIN".to_string(), vec!["Autoroute".to_string()]);
+        promotion_rules.insert(
+            "TRONCON_DE_ROUTE".to_string(),
+            vec![PromotionRule {
+                match_: match_map,
+                promote_to: 9,
+            }],
+        );
+        let ov = OverviewLevels {
+            header_extension: vec![14, 12, 10],
+            promotion: promotion_rules,
+        };
+        generalize_features_with_profiles(&mut features, &map, Some(&ov));
+        let f = &features[0];
+        for n in 1u8..=9 {
+            assert!(
+                f.additional_geometries.contains_key(&n),
+                "n={n} must be filled up to promote_to=9 via cloning (F4)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fill_level_gaps_up_to_n9() {
+        // Tech-spec overview wide-zoom Task 9 : un profil déclarant n=0 et n=9
+        // (trous explicites n=1..8) doit produire 10 paliers contigus après
+        // generalize_features_with_profiles. Garantit que fill_level_gaps est
+        // bien level-agnostic jusqu'à u8 arbitraire — condition Alpha 100.
+        let mut features = vec![make_linestring_feature(
+            (0..20)
+                .map(|i| (i as f64 * 0.001, 0.0))
+                .collect(),
+            "TRONCON_DE_ROUTE",
+        )];
+        let mut map = BTreeMap::new();
+        map.insert(
+            "TRONCON_DE_ROUTE".to_string(),
+            profile_from_yaml(
+                "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 9, simplify: 0.005 }\n",
+            ),
+        );
+        generalize_features_with_profiles(&mut features, &map, None);
+        let f = &features[0];
+        // n=0 dans geometry, n=1..=9 dans additional_geometries (10 paliers
+        // au total, tous clonés à partir du précédent pour combler les trous).
+        for n in 1u8..=9 {
+            assert!(
+                f.additional_geometries.contains_key(&n),
+                "n={n} must be backfilled (Alpha 100 contiguïté)"
+            );
+        }
+        // Niveaux intermédiaires 1..8 clonés depuis n=0 (pas de simplify
+        // spécifique). Le n=9 diffère (simplify=0.005).
+        assert_eq!(
+            f.additional_geometries.get(&8).unwrap(),
+            &f.geometry,
+            "n=8 (backfilled) should clone n=0 geometry verbatim"
+        );
+    }
 
     #[test]
     fn test_apply_profile_when_value_not_listed_falls_back_to_default() {

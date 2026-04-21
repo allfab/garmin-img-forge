@@ -61,6 +61,7 @@ fn make_config(filenames: &[&str]) -> Config {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
+        overview_levels: None,
     }
 }
 
