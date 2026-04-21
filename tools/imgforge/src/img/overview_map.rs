@@ -10,7 +10,11 @@ use super::lbl::LBL_HEADER_LEN;
 use super::assembler::TileSubfiles;
 use super::line_preparer;
 
-const RGN_HEADER_LEN: u16 = 125;
+// Format cgpsmapper minimal (CommonHeader 21 B + data_section 8 B). SUD utilise ce
+// layout 29 B ; le 125 B mkgmap (avec 4 sections étendues à zéro) est rejeté par
+// le firmware Alpha 100 car l'offset 0 des sections polyline/polygon/point_overview
+// est interprété comme valide et casse le parse.
+const RGN_HEADER_LEN: u16 = 29;
 
 /// Header TRE overview — parité SUD Alpha 100 : 120 bytes (MapID à l'offset 116 = fin
 /// du header). Les firmwares Garmin refusent l'overview si header_length déclare 188
@@ -35,10 +39,12 @@ pub fn build_overview_map(tiles: &[TileSubfiles], map_id: u32, codepage: u16) ->
         .map(|t| common_header::read_tre_bounds(&t.tre))
         .collect();
 
-    // Structure SUD Alpha 100 : leaf 1 dégénéré (placeholder, type polylines, w=0 h=1),
-    // leaf 2 = coverage pleine avec TOUS les polygones, leaf 3 = coverage pleine vide (LAST).
-    // Les centres des 3 leaves matchent le centre D038 (vs SUD qui a des leaves très proches
-    // du centre bounds mais pas identiques — firmware tolère les 2).
+    // Structure SUD Alpha 100 stricte (validée par test hybride G le 2026-04-21) :
+    //   leaf 1 : dégénéré (w=0 h=1), types=0x20 (indexed-points), 8 B dummy record dans RGN
+    //   leaf 2 : coverage pleine, types=0x90 (polygons+points), rgn_start=8, porte les polygones
+    //   leaf 3 : coverage pleine, types=0x80 (polygons), LAST, vide
+    // Les 8 B de leaf 1 dans le RGN sont obligatoires pour que le firmware Alpha 100 accepte
+    // le TRE — sans eux (leaves chevauchées à rgn_start=0), la carte est rejetée sans message.
     let shift_data = 24 - 16i32;
     let clat_center = (north + south) / 2;
     let clon_center = (east + west) / 2;
@@ -46,18 +52,19 @@ pub fn build_overview_map(tiles: &[TileSubfiles], map_id: u32, codepage: u16) ->
     let h_half_full = ((((north - south) / 2) >> shift_data) as u16).max(1);
 
     let rgn_all = build_rgn_polygon_data(clat_center, clon_center, shift_data, &tile_bounds);
-    let has_polygons = !rgn_all.is_empty();
 
-    // leaf 1 : dégénéré (w=0 h=1) — marqueur SUD
-    // leaf 2 : w/h pleins, type=0x80 (polygons), RGN=0, contient tous les polygones
-    // leaf 3 : w/h pleins, type=0x80, RGN=size(rgn_all), vide, LAST
+    // 8 B dummy record en tête du RGN data : copie de SUD (type=0x0b, label_offset=0x000e17,
+    // deltas zéros). Le firmware lit 8 B au début de chaque subdiv data (readData(ofs, 8)
+    // dans cgpsmapper img_internal.cpp:1243) — sans ces 8 B, les leafs se chevauchent à
+    // rgn_start=0 et le TRE est rejeté.
+    let leaf1_preamble: Vec<u8> = vec![0x0b, 0x17, 0x0e, 0x00, 0x00, 0x00, 0x00, 0x00];
+
     let leaf_specs: Vec<(i32, i32, u16, u16, u8)> = vec![
-        (clat_center, clon_center, 0u16, 1u16, 0x00),  // leaf 1 dégénéré, no content (évite parse polyline sur RGN@0 polygone)
-        (clat_center, clon_center, w_half_full, h_half_full,
-            if has_polygons { 0x80 } else { 0x00 }),    // leaf 2 main (polygons)
+        (clat_center, clon_center, 0u16, 1u16, 0x20),  // leaf 1 dégénéré, types=indexed-points
+        (clat_center, clon_center, w_half_full, h_half_full, 0x90), // leaf 2 main (polygons+points)
         (clat_center, clon_center, w_half_full, h_half_full, 0x80), // leaf 3 placeholder LAST
     ];
-    let leaf_rgn_data: Vec<Vec<u8>> = vec![Vec::new(), rgn_all, Vec::new()];
+    let leaf_rgn_data: Vec<Vec<u8>> = vec![leaf1_preamble, rgn_all, Vec::new()];
 
     let tre = build_tre(north, east, south, west, map_id, &leaf_specs, &leaf_rgn_data);
     let rgn = build_rgn(&leaf_rgn_data);
@@ -147,6 +154,12 @@ fn build_tre(
     // Construction du header (120 bytes)
     let mut buf = Vec::with_capacity(OVERVIEW_TRE_HEADER_LEN as usize);
     CommonHeader::new(OVERVIEW_TRE_HEADER_LEN, "GARMIN TRE").write(&mut buf);
+    // Timestamp hardcodé 1990-08-23 10:49:35 (épreuvé SUD Alpha 100). Le firmware Alpha 100
+    // rejette silencieusement un overview TRE dont le timestamp est postérieur à une date
+    // interne du firmware — tests 2026-04-21, chimère M confirme coupable exclusif parmi
+    // les diffs NEW vs SUD patched. Patch in-place du timestamp @0x0E..0x15 écrit par
+    // CommonHeader::write (7 bytes : year_lo year_hi month day hour min sec).
+    buf[0x0E..0x15].copy_from_slice(&[0xc6, 0x07, 0x08, 0x17, 0x0a, 0x31, 0x23]);
 
     // Bounds @21 (12 bytes)
     common_header::write_i24(&mut buf, north);
@@ -244,8 +257,11 @@ fn build_subdivs(
         rgn_off += rgn_bytes.len() as u32;
     }
 
-    // Terminator 4 bytes
-    buf.extend_from_slice(&[0u8; 4]);
+    // End-marker 4 bytes = taille totale du RGN data. Le firmware calcule la taille
+    // de géométrie de la dernière subdiv comme (end_marker - rgn_ofs_last). Avec un
+    // terminator à zéro la dernière leaf paraît vide et l'overview est rejeté.
+    let rgn_data_total: u32 = leaf_rgn_data.iter().map(|v| v.len() as u32).sum();
+    buf.extend_from_slice(&rgn_data_total.to_le_bytes());
     assert_eq!(buf.len(), 62);
     buf
 }
@@ -451,10 +467,12 @@ mod tests {
     fn test_overview_rgn_polygon_type() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
         let ov = build_overview_map(&tiles, 12345, 1252);
-        // First byte of data section should be polygon type 0x4A
+        // Data layout: [8 B leaf1 dummy indexed-point record][polygones leaf 2]
+        // Premier byte = 0x0b (type preamble SUD), puis polygone 0x4A à offset 29+8=37.
         let data_start = RGN_HEADER_LEN as usize;
-        assert_eq!(ov.rgn[data_start] & 0x7F, 0x4A,
-            "First polygon type should be 0x4A (background)");
+        assert_eq!(ov.rgn[data_start], 0x0b, "preamble leaf1 expected");
+        assert_eq!(ov.rgn[data_start + 8] & 0x7F, 0x4A,
+            "Polygone leaf2 (après preamble 8 B) should start with type 0x4A");
     }
 
     #[test]
