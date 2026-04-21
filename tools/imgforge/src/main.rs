@@ -199,6 +199,18 @@ fn main() -> Result<()> {
                     route, net, no_route, copyright_clone.as_deref(),
                 );
 
+                // Extraction des features overview Phase 2.
+                // OVERVIEW_DETAIL_MAX_LEVEL=7 : seules les features avec EndLevel >= 7 incluses
+                // (DataN wide-zoom produits par mpforge overview_levels). Pour les MP standard
+                // (7 niveaux détail, pas d'overview), aucune feature n'a EndLevel >= 7
+                // → Vec::new() → fallback bounding-box Phase 1.
+                use imgforge::img::overview_features::{
+                    OVERVIEW_DETAIL_MAX_LEVEL, OVERVIEW_NB_PALIERS,
+                };
+                let overview_features = imgforge::img::overview_features::extract_overview_features(
+                    &mp, OVERVIEW_DETAIL_MAX_LEVEL, OVERVIEW_NB_PALIERS,
+                );
+
                 let mut tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
 
@@ -211,21 +223,24 @@ fn main() -> Result<()> {
                 }
 
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
-                Ok((tile, counts, path.display().to_string()))
+                Ok((tile, overview_features, counts, path.display().to_string()))
             }).collect();
 
             // Handle keep-going: collect successes, log failures
             use imgforge::img::assembler::TileSubfiles;
+            use imgforge::img::overview_features::OverviewFeature;
             let mut tile_subfiles = Vec::with_capacity(results.len());
+            let mut all_overview_features: Vec<OverviewFeature> = Vec::new();
             let mut errors = 0usize;
 
             for result in results {
                 match result {
-                    Ok((tile, (pts, lines, polys), _path)) => {
+                    Ok((tile, ov_feats, (pts, lines, polys), _path)) => {
                         report.total_points += pts;
                         report.total_polylines += lines;
                         report.total_polygons += polys;
                         report.tiles_compiled += 1;
+                        all_overview_features.extend(ov_feats);
                         tile_subfiles.push(TileSubfiles {
                             map_number: tile.map_number,
                             description: tile.description,
@@ -346,7 +361,7 @@ fn main() -> Result<()> {
             } else {
                 let overview_id = imgforge::img::assembler::compute_overview_map_id(fid);
                 Some(imgforge::img::overview_map::build_overview_map(
-                    &tile_subfiles, overview_id, effective_codepage,
+                    &tile_subfiles, &all_overview_features, overview_id, effective_codepage,
                 ))
             };
 

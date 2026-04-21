@@ -15,6 +15,7 @@ pub mod polyline;
 pub mod polygon;
 pub mod line_preparer;
 pub mod overview;
+pub mod overview_features;
 pub mod overview_map;
 pub mod lbl;
 pub mod labelenc;

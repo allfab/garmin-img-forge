@@ -9,6 +9,7 @@ use super::common_header::{self, CommonHeader};
 use super::lbl::LBL_HEADER_LEN;
 use super::assembler::TileSubfiles;
 use super::line_preparer;
+use super::overview_features::OverviewFeature;
 
 // Format cgpsmapper minimal (CommonHeader 21 B + data_section 8 B). SUD utilise ce
 // layout 29 B ; le 125 B mkgmap (avec 4 sections étendues à zéro) est rejeté par
@@ -70,38 +71,52 @@ pub struct OverviewMapData {
 
 /// Génère un overview standalone parité SUD Alpha 100.
 ///
-/// Structure validée empiriquement (chimères G/J/L/M, 2026-04-21) :
-/// - TRE : header 120 B cgpsmapper, section subdivs = 1 topdiv + 3 leafs + end-marker
-///   (taille RGN data), sections polyline/polygon/point_overview non-zéro, copyright
-///   `cgpsmapper version0096a\0DEFAULT\0` inline, timestamp 1990-08-23 hardcodé.
-/// - RGN : header 29 B (format cgpsmapper minimal) ; data = `LEAF1_PREAMBLE` (8 B
-///   dummy indexed-point) + polygones bounding-box des tuiles détail (type 0x4A) +
-///   leaf 3 vide (placeholder LAST).
-/// - LBL : header 196 B, section label minimale (1 byte).
-///
-/// Les 3 leafs partagent le même centre (D038 bounds center) avec w/h pleins ;
-/// leaf 1 est un placeholder dégénéré (w=0, h=1, types=0x20) qui réserve les
-/// 8 B de préambule RGN obligatoires au firmware Alpha 100.
-pub fn build_overview_map(tiles: &[TileSubfiles], map_id: u32, codepage: u16) -> OverviewMapData {
+/// Deux chemins :
+/// - `features` vide → fallback Phase 1 (2 paliers bits 14/16, bounding-boxes 0x4A).
+///   Structure validée Alpha 100 (chimères G/J/L/M, 2026-04-21).
+/// - `features` non vide → Phase 2 (4 paliers bits 10/12/14/16, géométrie réelle).
+///   Prérequis : mpforge overview_levels extension (Data7/8/9, EndLevel réécrits).
+pub fn build_overview_map(
+    tiles: &[TileSubfiles],
+    features: &[OverviewFeature],
+    map_id: u32,
+    codepage: u16,
+) -> OverviewMapData {
     let (north, east, south, west) = compute_merged_bounds(tiles);
+    let clat_center = (north + south) / 2;
+    let clon_center = (east + west) / 2;
 
+    if features.is_empty() {
+        build_overview_phase1(north, east, south, west, clat_center, clon_center, tiles, map_id, codepage)
+    } else {
+        build_overview_phase2(north, east, south, west, clat_center, clon_center, features, map_id, codepage)
+    }
+}
+
+// ── Phase 1 : fallback bounding-box (parité SUD, 2 paliers bits 14/16) ──
+
+fn build_overview_phase1(
+    north: i32, east: i32, south: i32, west: i32,
+    clat_center: i32, clon_center: i32,
+    tiles: &[TileSubfiles],
+    map_id: u32,
+    codepage: u16,
+) -> OverviewMapData {
     let tile_bounds: Vec<(i32, i32, i32, i32)> = tiles.iter()
         .filter(|t| t.tre.len() >= 33)
         .map(|t| common_header::read_tre_bounds(&t.tre))
         .collect();
 
     let shift_data = 24 - 16i32;
-    let clat_center = (north + south) / 2;
-    let clon_center = (east + west) / 2;
     let w_half_full = ((((east - west) / 2) >> shift_data) as u16).max(1);
     let h_half_full = ((((north - south) / 2) >> shift_data) as u16).max(1);
 
     let rgn_all = build_rgn_polygon_data(clat_center, clon_center, shift_data, &tile_bounds);
 
     let leaf_specs: Vec<(i32, i32, u16, u16, u8)> = vec![
-        (clat_center, clon_center, 0u16, 1u16, 0x20),                // leaf 1 : placeholder indexed-points
-        (clat_center, clon_center, w_half_full, h_half_full, 0x90),  // leaf 2 : main polygons+points
-        (clat_center, clon_center, w_half_full, h_half_full, 0x80),  // leaf 3 : LAST placeholder vide
+        (clat_center, clon_center, 0u16, 1u16, 0x20),
+        (clat_center, clon_center, w_half_full, h_half_full, 0x90),
+        (clat_center, clon_center, w_half_full, h_half_full, 0x80),
     ];
     let leaf_rgn_data: Vec<Vec<u8>> = vec![LEAF1_PREAMBLE.to_vec(), rgn_all, Vec::new()];
 
@@ -109,10 +124,144 @@ pub fn build_overview_map(tiles: &[TileSubfiles], map_id: u32, codepage: u16) ->
     let rgn = build_rgn(&leaf_rgn_data);
     let lbl = build_lbl(codepage);
 
-    OverviewMapData {
-        map_number: format!("{:08}", map_id),
-        tre, rgn, lbl,
+    OverviewMapData { map_number: format!("{:08}", map_id), tre, rgn, lbl }
+}
+
+// ── Phase 2 : 4 paliers bits 10/12/14/16 avec features réelles ──
+
+fn build_overview_phase2(
+    north: i32, east: i32, south: i32, west: i32,
+    clat_center: i32, clon_center: i32,
+    features: &[OverviewFeature],
+    map_id: u32,
+    codepage: u16,
+) -> OverviewMapData {
+    // Encode les polygones pour chaque palier avec le shift de ce palier.
+    // palier_index : 0=bits16(shift 8), 1=bits14(shift 10), 2=bits12(shift 12), 3=bits10(shift 14)
+    let palier_shifts: [i32; 4] = [24 - 16, 24 - 14, 24 - 12, 24 - 10]; // [8, 10, 12, 14]
+
+    // nonleaf_by_subdiv[i] = données RGN du non-leaf subdiv (i+1) dans la section subdivs :
+    //   [0] → subdiv 1 bits=10 (palier 3, coarsest, visible tous niveaux overview par inherited)
+    //   [1] → subdiv 2 bits=12 (palier 2)
+    //   [2] → subdiv 3 bits=14 (palier 1)
+    // L'ordre est intentionnel et doit rester coarser-first pour que les offsets RGN
+    // calculés par build_subdivs_4levels correspondent à l'ordre de concaténation dans build_rgn.
+    let nonleaf_by_subdiv: [Vec<u8>; 3] = [
+        build_polygon_rgn_for_palier(features, 3, clat_center, clon_center, palier_shifts[3]),
+        build_polygon_rgn_for_palier(features, 2, clat_center, clon_center, palier_shifts[2]),
+        build_polygon_rgn_for_palier(features, 1, clat_center, clon_center, palier_shifts[1]),
+    ];
+    // Note: features provenant de plusieurs tuiles ne sont pas dédoublonnées. Des features
+    // géographiquement proches découpées aux limites de tuile apparaîtront comme polygones
+    // fragments distincts — artefact acceptable pour un overview wide-zoom.
+
+    let shift_leaf = palier_shifts[0]; // 8
+    let w_half_16 = ((((east - west) / 2) >> shift_leaf) as u16).max(1);
+    let h_half_16 = ((((north - south) / 2) >> shift_leaf) as u16).max(1);
+
+    let leaf2_data = build_polygon_rgn_for_palier(features, 0, clat_center, clon_center, shift_leaf);
+    let leaf_data: [Vec<u8>; 3] = [LEAF1_PREAMBLE.to_vec(), leaf2_data, Vec::new()];
+
+    let leaf_specs: [(i32, i32, u16, u16, u8); 3] = [
+        (clat_center, clon_center, 0u16, 1u16, 0x20),
+        (clat_center, clon_center, w_half_16, h_half_16, 0x90),
+        (clat_center, clon_center, w_half_16, h_half_16, 0x80),
+    ];
+
+    // Calcul dynamique des types polygons présents pour la section polygon_overview du TRE.
+    let polygon_overview_data = compute_polygon_overview_data(features);
+
+    let tre = build_tre_4levels(
+        north, east, south, west, map_id,
+        &nonleaf_by_subdiv, &leaf_specs, &leaf_data,
+        &polygon_overview_data,
+    );
+    // Données RGN : concat de tous les subdiv dans l'ordre (3 non-leaf + 3 leaf)
+    let all_rgn: Vec<Vec<u8>> = nonleaf_by_subdiv.into_iter()
+        .chain(leaf_data.into_iter())
+        .collect();
+    let rgn = build_rgn(&all_rgn);
+    let lbl = build_lbl(codepage);
+
+    OverviewMapData { map_number: format!("{:08}", map_id), tre, rgn, lbl }
+}
+
+/// Encode les polygones d'un palier donné en données RGN (format identique aux leafs Phase 1).
+fn build_polygon_rgn_for_palier(
+    features: &[OverviewFeature],
+    palier_index: u8,
+    center_lat: i32,
+    center_lon: i32,
+    shift: i32,
+) -> Vec<u8> {
+    let mut out = Vec::new();
+    let half = (1i32 << shift) / 2;
+
+    for f in features.iter().filter(|f| f.is_polygon && f.palier_index == palier_index) {
+        if f.geometry.len() < 3 {
+            continue;
+        }
+        let coords = &f.geometry;
+        let first_dx = ((coords[0].longitude() - center_lon + half) >> shift).clamp(-32768, 32767);
+        let first_dy = ((coords[0].latitude() - center_lat + half) >> shift).clamp(-32768, 32767);
+
+        let deltas: Vec<(i32, i32)> = (1..coords.len())
+            .map(|i| {
+                let prev_lon = (coords[i - 1].longitude() + half) >> shift;
+                let prev_lat = (coords[i - 1].latitude() + half) >> shift;
+                let cur_lon = (coords[i].longitude() + half) >> shift;
+                let cur_lat = (coords[i].latitude() + half) >> shift;
+                (cur_lon - prev_lon, cur_lat - prev_lat)
+            })
+            .collect();
+
+        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
+            // Types Garmin dans les records RGN sont 7 bits (bit7 = flag longueur étendue).
+            // Masquer à 0x7F évite la corruption si type_code a le bit7 positionné.
+            let mut type_byte = (f.type_code & 0x7F) as u8;
+            if bitstream.len() > 256 {
+                type_byte |= 0x80;
+            }
+            out.push(type_byte);
+            out.extend_from_slice(&[0x00, 0x00, 0x00]); // label offset = 0
+            out.extend_from_slice(&(first_dx as i16).to_le_bytes());
+            out.extend_from_slice(&(first_dy as i16).to_le_bytes());
+            let blen = bitstream.len() - 1;
+            if blen >= 256 {
+                out.extend_from_slice(&(blen as u16).to_le_bytes());
+            } else {
+                out.push(blen as u8);
+            }
+            out.extend_from_slice(&bitstream);
+        }
     }
+    out
+}
+
+/// Construit la liste polygon_overview (types × 2B) depuis les features réelles.
+///
+/// Le masque `& 0x7F` est correct : les types Garmin dans la section polygon_overview
+/// du TRE sont aussi 7 bits (cohérent avec les records RGN). Les types BDTOPO utilisés
+/// (0x4A, 0x4B…) sont tous < 0x80, donc sans perte pour le domaine courant.
+fn compute_polygon_overview_data(features: &[OverviewFeature]) -> Vec<u8> {
+    let mut types: Vec<u8> = features
+        .iter()
+        .filter(|f| f.is_polygon)
+        .map(|f| (f.type_code & 0x7F) as u8)
+        .collect::<std::collections::HashSet<u8>>()
+        .into_iter()
+        .collect();
+    types.sort_unstable();
+    if types.is_empty() {
+        // Fallback au même contenu que Phase 1 si pas de polygones
+        return POLYGON_OVERVIEW_DATA.to_vec();
+    }
+    let mut out = Vec::with_capacity(types.len() * 2);
+    for t in types {
+        out.push(t);
+        out.push(0x00);
+    }
+    out
 }
 
 fn compute_merged_bounds(tiles: &[TileSubfiles]) -> (i32, i32, i32, i32) {
@@ -275,10 +424,196 @@ fn build_subdivs(
     buf
 }
 
-// ── RGN: data section = concat des polygones des 3 leafs ──
+// ── TRE Phase 2 : 4 paliers bits 10/12/14/16 ──
 
-fn build_rgn(leaf_rgn_data: &[Vec<u8>]) -> Vec<u8> {
-    let total_data: Vec<u8> = leaf_rgn_data.iter().flatten().copied().collect();
+/// Construit le TRE Phase 2 : header 120 B identique + 4 map levels + 6 subdivs.
+///
+/// Structure : 3 non-leaf (bits 10/12/14) + 3 leaf (bits 16) + end-marker = 94 B.
+/// Les sections COPYRIGHT/POINT_OVERVIEW restent identiques à Phase 1.
+/// POLYGON_OVERVIEW_DATA est calculé dynamiquement depuis les types de features.
+fn build_tre_4levels(
+    north: i32, east: i32, south: i32, west: i32,
+    map_id: u32,
+    nonleaf_rgn_data: &[Vec<u8>; 3],
+    leaf_specs: &[(i32, i32, u16, u16, u8); 3],
+    leaf_rgn_data: &[Vec<u8>; 3],
+    polygon_overview_data: &[u8],
+) -> Vec<u8> {
+    let subdivs = build_subdivs_4levels(
+        (north + south) / 2,
+        (east + west) / 2,
+        north, east, south, west,
+        nonleaf_rgn_data, leaf_specs, leaf_rgn_data,
+    );
+
+    let map_levels: Vec<u8> = {
+        let mut v = Vec::with_capacity(16);
+        v.extend_from_slice(&[0x80 | 3, 10, 1, 0]); // level 3 inherited bits=10
+        v.extend_from_slice(&[0x80 | 2, 12, 1, 0]); // level 2 inherited bits=12
+        v.extend_from_slice(&[0x80 | 1, 14, 1, 0]); // level 1 inherited bits=14
+        v.extend_from_slice(&[0x00, 16, 3, 0]);      // level 0 leaf bits=16, 3 subdivs
+        v
+    };
+
+    let data_start = OVERVIEW_TRE_HEADER_LEN as u32;
+    let copy_str_off = data_start;
+    let copy_rec_off = copy_str_off + COPYRIGHT_STRINGS.len() as u32;
+    let subdivs_off = copy_rec_off + COPYRIGHT_RECORDS.len() as u32;
+    let map_levels_off = subdivs_off + subdivs.len() as u32;
+    let polygon_ov_off = map_levels_off + map_levels.len() as u32;
+    let point_ov_off = polygon_ov_off + polygon_overview_data.len() as u32;
+
+    let mut buf = Vec::with_capacity(OVERVIEW_TRE_HEADER_LEN as usize);
+    CommonHeader::new(OVERVIEW_TRE_HEADER_LEN, "GARMIN TRE").write(&mut buf);
+    patch_sud_timestamp(&mut buf);
+
+    common_header::write_i24(&mut buf, north);
+    common_header::write_i24(&mut buf, east);
+    common_header::write_i24(&mut buf, south);
+    common_header::write_i24(&mut buf, west);
+
+    common_header::write_section(&mut buf, map_levels_off, map_levels.len() as u32);
+    common_header::write_section(&mut buf, subdivs_off, subdivs.len() as u32);
+    common_header::write_section(&mut buf, copy_rec_off, COPYRIGHT_RECORDS.len() as u32);
+    buf.extend_from_slice(&3u16.to_le_bytes());
+    buf.extend_from_slice(&[0u8; 4]);
+    buf.push(0x01);
+    common_header::write_u24(&mut buf, 0x19);
+    buf.extend_from_slice(&0x00040101u32.to_le_bytes());
+    buf.extend_from_slice(&1u16.to_le_bytes());
+    buf.push(0x00);
+
+    assert_eq!(buf.len(), 74);
+    common_header::write_section(&mut buf, polygon_ov_off, 0);
+    buf.extend_from_slice(&2u16.to_le_bytes());
+    buf.extend_from_slice(&[0u8; 4]);
+    assert_eq!(buf.len(), 88);
+    common_header::write_section(&mut buf, polygon_ov_off, polygon_overview_data.len() as u32);
+    buf.extend_from_slice(&2u16.to_le_bytes());
+    buf.extend_from_slice(&[0u8; 4]);
+    assert_eq!(buf.len(), 102);
+    common_header::write_section(&mut buf, point_ov_off, POINT_OVERVIEW_DATA.len() as u32);
+    buf.extend_from_slice(&3u16.to_le_bytes());
+    buf.extend_from_slice(&[0u8; 4]);
+    assert_eq!(buf.len(), 116);
+    buf.extend_from_slice(&map_id.to_le_bytes());
+    assert_eq!(buf.len(), OVERVIEW_TRE_HEADER_LEN as usize);
+
+    buf.extend_from_slice(COPYRIGHT_STRINGS);
+    buf.extend_from_slice(&COPYRIGHT_RECORDS);
+    buf.extend_from_slice(&subdivs);
+    buf.extend_from_slice(&map_levels);
+    buf.extend_from_slice(polygon_overview_data);
+    buf.extend_from_slice(&POINT_OVERVIEW_DATA);
+
+    // Padding au même SUD_TRE_TOTAL_LEN=301 que Phase 1 par précaution.
+    // La structure Phase 2 produit typiquement 271-291 B, donc toujours < 301.
+    // Si la structure venait à dépasser 301 B (> 10 types polygon), on laisse croître
+    // sans troncature plutôt que de corrompre les données.
+    if buf.len() < SUD_TRE_TOTAL_LEN {
+        buf.resize(SUD_TRE_TOTAL_LEN, 0);
+    }
+    buf
+}
+
+/// Construit la section subdivs Phase 2 :
+/// 3 non-leaf (bits 10/12/14, 16 B chacun) + 3 leafs (bits 16, 14 B chacun) + end-marker = 94 B.
+fn build_subdivs_4levels(
+    center_lat: i32, center_lon: i32,
+    north: i32, east: i32, south: i32, west: i32,
+    nonleaf_data: &[Vec<u8>; 3],
+    leaf_specs: &[(i32, i32, u16, u16, u8); 3],
+    leaf_data: &[Vec<u8>; 3],
+) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(94);
+
+    // Largeurs/hauteurs pour chaque niveau inherited.
+    // hw(shift) = (span >> shift) / 2 ≡ span >> (shift+1).
+    // Pour bits N : shift = 24-N, résultat = span >> (25-N).
+    // Cohérent avec Phase 1 topdiv bits14 : shift_top=10, w = ((east-west)>>10)/2 = >>11.
+    let hw = |shift: i32| -> (u16, u16) {
+        let w = (((east - west) >> shift) as u16 / 2).max(1);
+        let h = (((north - south) >> shift) as u16 / 2).max(1);
+        (w, h)
+    };
+    let (w10, h10) = hw(24 - 10); // bits10: shift=14 → span >> 15
+    let (w12, h12) = hw(24 - 12); // bits12: shift=12 → span >> 13
+    let (w14, h14) = hw(24 - 14); // bits14: shift=10 → span >> 11
+
+    // Offsets RGN cumulatifs pour les 6 subdivs
+    let offsets: [u32; 6] = {
+        let mut o = [0u32; 6];
+        o[0] = 0;
+        o[1] = o[0] + nonleaf_data[0].len() as u32;
+        o[2] = o[1] + nonleaf_data[1].len() as u32;
+        o[3] = o[2] + nonleaf_data[2].len() as u32;
+        o[4] = o[3] + leaf_data[0].len() as u32;
+        o[5] = o[4] + leaf_data[1].len() as u32;
+        o
+    };
+
+    // Types bytes pour les non-leaf : 0x80 si des polygones, 0x00 si vide
+    let nl_types = [
+        if nonleaf_data[0].is_empty() { 0x00u8 } else { 0x80 },
+        if nonleaf_data[1].is_empty() { 0x00u8 } else { 0x80 },
+        if nonleaf_data[2].is_empty() { 0x00u8 } else { 0x80 },
+    ];
+
+    // Subdiv 1 : non-leaf bits=10, LAST (seul à ce niveau), next_level=2
+    put_u24(&mut buf, offsets[0]);
+    buf.push(nl_types[0]);
+    put_i24(&mut buf, center_lon);
+    put_i24(&mut buf, center_lat);
+    buf.extend_from_slice(&(w10 | 0x8000).to_le_bytes()); // LAST à son niveau
+    buf.extend_from_slice(&h10.to_le_bytes());
+    buf.extend_from_slice(&2u16.to_le_bytes()); // next_level → subdiv 2
+
+    // Subdiv 2 : non-leaf bits=12, LAST, next_level=3
+    put_u24(&mut buf, offsets[1]);
+    buf.push(nl_types[1]);
+    put_i24(&mut buf, center_lon);
+    put_i24(&mut buf, center_lat);
+    buf.extend_from_slice(&(w12 | 0x8000).to_le_bytes());
+    buf.extend_from_slice(&h12.to_le_bytes());
+    buf.extend_from_slice(&3u16.to_le_bytes()); // next_level → subdiv 3
+
+    // Subdiv 3 : non-leaf bits=14, LAST, next_level=4 (premier leaf)
+    put_u24(&mut buf, offsets[2]);
+    buf.push(nl_types[2]);
+    put_i24(&mut buf, center_lon);
+    put_i24(&mut buf, center_lat);
+    buf.extend_from_slice(&(w14 | 0x8000).to_le_bytes());
+    buf.extend_from_slice(&h14.to_le_bytes());
+    buf.extend_from_slice(&4u16.to_le_bytes()); // next_level → subdiv 4
+
+    // Leafs 4,5,6 (même layout que Phase 1)
+    for (i, ((clat, clon, w_half, h_half, type_byte), rgn_bytes)) in
+        leaf_specs.iter().zip(leaf_data.iter()).enumerate()
+    {
+        let is_last = i == 2;
+        put_u24(&mut buf, offsets[3 + i]);
+        buf.push(*type_byte);
+        put_i24(&mut buf, *clon);
+        put_i24(&mut buf, *clat);
+        let w_field = if is_last { w_half | 0x8000 } else { *w_half };
+        buf.extend_from_slice(&w_field.to_le_bytes());
+        buf.extend_from_slice(&h_half.to_le_bytes());
+        let _ = rgn_bytes; // offset déjà calculé dans offsets
+    }
+
+    // End-marker = taille totale des données RGN
+    let total: u32 = nonleaf_data.iter().map(|v| v.len() as u32).sum::<u32>()
+        + leaf_data.iter().map(|v| v.len() as u32).sum::<u32>();
+    buf.extend_from_slice(&total.to_le_bytes());
+
+    assert_eq!(buf.len(), 94, "Phase 2: 3×16 + 3×14 + 4 = 94 B");
+    buf
+}
+
+// ── RGN: data section = concat des données des subdivs (Phase 1: 3 leafs ; Phase 2: 3 non-leaf + 3 leafs) ──
+
+fn build_rgn(subdiv_data: &[Vec<u8>]) -> Vec<u8> {
+    let total_data: Vec<u8> = subdiv_data.iter().flatten().copied().collect();
     let mut buf = Vec::with_capacity(RGN_HEADER_LEN as usize + total_data.len());
     CommonHeader::new(RGN_HEADER_LEN, "GARMIN RGN").write(&mut buf);
     patch_sud_timestamp(&mut buf);
@@ -442,7 +777,7 @@ mod tests {
     #[test]
     fn test_overview_tre_valid() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         assert_eq!(ov.tre.len(), SUD_TRE_TOTAL_LEN, "padding final 301 B parité SUD");
         assert_eq!(&ov.tre[0..2], &(OVERVIEW_TRE_HEADER_LEN).to_le_bytes(), "header_len = 120");
         assert_eq!(&ov.tre[2..12], b"GARMIN TRE");
@@ -466,7 +801,7 @@ mod tests {
         // Si ce test échoue, vérifier que patch_sud_timestamp() est toujours appelé
         // après CommonHeader::write dans build_tre/build_rgn/build_lbl.
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         assert_eq!(&ov.tre[0x0E..0x15], &SUD_CGPSMAPPER_TIMESTAMP,
             "TRE timestamp doit être 1990-08-23 (parité SUD Alpha 100) — cf. session 2026-04-21");
         assert_eq!(&ov.rgn[0x0E..0x15], &SUD_CGPSMAPPER_TIMESTAMP,
@@ -480,7 +815,7 @@ mod tests {
         // AC Phase 1 — les invariants structurels des subdivs validés empiriquement
         // (chimère L + tests G/J/K, session 2026-04-21). Garde-fou régression.
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         let sub_off = u32::from_le_bytes([ov.tre[0x29], ov.tre[0x2a], ov.tre[0x2b], ov.tre[0x2c]]) as usize;
         let sub_len = u32::from_le_bytes([ov.tre[0x2d], ov.tre[0x2e], ov.tre[0x2f], ov.tre[0x30]]) as usize;
         assert_eq!(sub_len, 62, "1 topdiv (16 B) + 3 leafs (14 B) + end-marker (4 B)");
@@ -512,7 +847,7 @@ mod tests {
         // AC Phase 1 — RGN overview en format cgpsmapper minimal (29 B) avec préambule
         // leaf 1 exact (8 B indexed-point dummy) en tête du data.
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         assert_eq!(&ov.rgn[0..2], &(RGN_HEADER_LEN).to_le_bytes(), "RGN header_len = 29 (format cgpsmapper)");
         assert_eq!(&ov.rgn[2..12], b"GARMIN RGN");
         let data_off = u32::from_le_bytes([ov.rgn[0x15], ov.rgn[0x16], ov.rgn[0x17], ov.rgn[0x18]]);
@@ -527,7 +862,7 @@ mod tests {
             make_test_tile(2143196, 262632, 2138930, 255409),
             make_test_tile(2148000, 270000, 2143196, 262632),
         ];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         assert!(ov.rgn.len() > RGN_HEADER_LEN as usize,
             "RGN should contain polygon data, got {} bytes", ov.rgn.len());
         let data_size = u32::from_le_bytes([ov.rgn[25], ov.rgn[26], ov.rgn[27], ov.rgn[28]]);
@@ -537,7 +872,7 @@ mod tests {
     #[test]
     fn test_overview_rgn_polygon_type() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 12345, 1252);
+        let ov = build_overview_map(&tiles, &[], 12345, 1252);
         // Data layout: [8 B LEAF1_PREAMBLE][polygones leaf 2]
         let data_start = RGN_HEADER_LEN as usize;
         assert_eq!(ov.rgn[data_start], 0x0b, "preamble leaf1 expected");
@@ -556,7 +891,116 @@ mod tests {
     #[test]
     fn test_overview_map_number_format() {
         let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
-        let ov = build_overview_map(&tiles, 11001855, 1252);
+        let ov = build_overview_map(&tiles, &[], 11001855, 1252);
         assert_eq!(ov.map_number, "11001855");
+    }
+
+    // ── Tests Phase 2 ──
+
+    fn make_test_feature(
+        type_code: u32,
+        palier_index: u8,
+        end_level: u8,
+        is_polygon: bool,
+    ) -> OverviewFeature {
+        use super::super::coord::Coord;
+        OverviewFeature {
+            type_code,
+            end_level,
+            geometry: vec![
+                Coord::new(2138930, 255409),
+                Coord::new(2143196, 255409),
+                Coord::new(2143196, 262632),
+            ],
+            is_polygon,
+            palier_index,
+        }
+    }
+
+    // AC 8 : 4 paliers TRE (bits 10/12/14/16) quand features non vides
+    #[test]
+    fn test_overview_phase2_4levels_in_tre() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![make_test_feature(0x4A, 0, 7, true)];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+
+        let tre = &ov.tre;
+        let levels_off = u32::from_le_bytes([tre[0x21], tre[0x22], tre[0x23], tre[0x24]]) as usize;
+        let levels_size = u32::from_le_bytes([tre[0x25], tre[0x26], tre[0x27], tre[0x28]]) as usize;
+        assert_eq!(levels_size, 16, "Phase 2 : 4 paliers × 4 bytes = 16 B");
+
+        assert_eq!(tre[levels_off],     0x83, "level 3 inherited (0x83)");
+        assert_eq!(tre[levels_off + 1], 10,   "level 3 bits=10");
+        assert_eq!(tre[levels_off + 4], 0x82, "level 2 inherited (0x82)");
+        assert_eq!(tre[levels_off + 5], 12,   "level 2 bits=12");
+        assert_eq!(tre[levels_off + 8], 0x81, "level 1 inherited (0x81)");
+        assert_eq!(tre[levels_off + 9], 14,   "level 1 bits=14");
+        assert_eq!(tre[levels_off + 12], 0x00, "level 0 leaf (0x00)");
+        assert_eq!(tre[levels_off + 13], 16,   "level 0 bits=16");
+    }
+
+    #[test]
+    fn test_overview_phase2_subdivs_size_94() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![make_test_feature(0x4A, 0, 7, true)];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+
+        let sub_len = u32::from_le_bytes([
+            ov.tre[0x2d], ov.tre[0x2e], ov.tre[0x2f], ov.tre[0x30],
+        ]) as usize;
+        assert_eq!(sub_len, 94, "Phase 2 : 3×16 + 3×14 + 4 = 94 B");
+    }
+
+    #[test]
+    fn test_overview_phase2_timestamps_preserved() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![make_test_feature(0x4A, 1, 8, true)];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        assert_eq!(&ov.tre[0x0E..0x15], &SUD_CGPSMAPPER_TIMESTAMP,
+            "Phase 2 TRE doit aussi porter le timestamp 1990-08-23 (garde-fou Alpha 100)");
+        assert_eq!(&ov.rgn[0x0E..0x15], &SUD_CGPSMAPPER_TIMESTAMP);
+        assert_eq!(&ov.lbl[0x0E..0x15], &SUD_CGPSMAPPER_TIMESTAMP);
+    }
+
+    // F9 — test couvrant le chemin non-leaf non vide (palier_index ∈ {1,2,3})
+    #[test]
+    fn test_overview_phase2_nonleaf_nonempty() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        // palier_index=2 (bits12 non-leaf subdiv 2)
+        let features = vec![make_test_feature(0x4A, 2, 9, true)];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+
+        let sub_off = u32::from_le_bytes([ov.tre[0x29], ov.tre[0x2a], ov.tre[0x2b], ov.tre[0x2c]]) as usize;
+        let sub_len = u32::from_le_bytes([ov.tre[0x2d], ov.tre[0x2e], ov.tre[0x2f], ov.tre[0x30]]) as usize;
+        assert_eq!(sub_len, 94, "Phase 2: 94 B attendus");
+
+        // Subdiv 1 (bits10, palier 3) : vide → type=0x00
+        assert_eq!(ov.tre[sub_off + 3], 0x00, "subdiv 1 bits10 vide → type=0x00");
+        // Subdiv 2 (bits12, palier 2) : non vide → type=0x80
+        assert_eq!(ov.tre[sub_off + 16 + 3], 0x80, "subdiv 2 bits12 non-leaf avec données → type=0x80");
+        // Subdiv 3 (bits14, palier 1) : vide → type=0x00
+        assert_eq!(ov.tre[sub_off + 32 + 3], 0x00, "subdiv 3 bits14 vide → type=0x00");
+
+        // End-marker = total RGN data : doit être > 0 (subdiv 2 a des données)
+        let end_marker = u32::from_le_bytes([
+            ov.tre[sub_off + 90], ov.tre[sub_off + 91], ov.tre[sub_off + 92], ov.tre[sub_off + 93],
+        ]);
+        assert!(end_marker > 0, "end-marker doit refléter les données RGN non-leaf");
+
+        // RGN data doit être > 0
+        let rgn_data_len = (ov.rgn.len() as u32).saturating_sub(RGN_HEADER_LEN as u32);
+        assert!(rgn_data_len > 0, "RGN data non vide pour palier 2");
+    }
+
+    #[test]
+    fn test_overview_phase2_leaf1_preamble_present() {
+        let tiles = vec![make_test_tile(2143196, 262632, 2138930, 255409)];
+        let features = vec![make_test_feature(0x4A, 0, 7, true)];
+        let ov = build_overview_map(&tiles, &features, 12345, 1252);
+        // RGN data = [nonleaf_bits10][nonleaf_bits12][nonleaf_bits14][LEAF1_PREAMBLE][leaf2_features][]
+        let data_off = u32::from_le_bytes([ov.rgn[0x15], ov.rgn[0x16], ov.rgn[0x17], ov.rgn[0x18]]) as usize;
+        // Offset dans le RGN data où LEAF1_PREAMBLE commence = après les 3 non-leaf data (tous vides dans ce test)
+        assert_eq!(&ov.rgn[data_off..data_off + 8], &LEAF1_PREAMBLE,
+            "LEAF1_PREAMBLE doit être présent au début des données leaf 1");
     }
 }

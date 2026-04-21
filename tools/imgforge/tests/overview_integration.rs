@@ -71,7 +71,7 @@ fn test_overview_present_in_gmapsupp() {
     ];
     let meta = default_meta(1100);
     let overview_id = compute_overview_map_id(meta.family_id);
-    let overview = build_overview_map(&tiles, overview_id, meta.codepage);
+    let overview = build_overview_map(&tiles, &[], overview_id, meta.codepage);
 
     let img = build_gmapsupp_with_overview(&tiles, "Test", &meta, None, Some(&overview))
         .expect("build failed");
@@ -92,7 +92,7 @@ fn test_overview_map_levels_match_sud_parity() {
     let tiles = vec![make_tile("11000001", 2143196, 262632, 2138930, 255409)];
     let meta = default_meta(1100);
     let overview_id = compute_overview_map_id(meta.family_id);
-    let overview = build_overview_map(&tiles, overview_id, meta.codepage);
+    let overview = build_overview_map(&tiles, &[], overview_id, meta.codepage);
 
     // Parse directement la TRE produite
     let tre = &overview.tre;
@@ -105,6 +105,45 @@ fn test_overview_map_levels_match_sud_parity() {
     // Level 0 leaf bits=16
     assert_eq!(tre[levels_off + 4], 0x00);
     assert_eq!(tre[levels_off + 5], 16);
+}
+
+// AC 8 — Phase 2 : 4 paliers TRE (bits 10/12/14/16) quand features overview présentes
+#[test]
+fn test_overview_phase2_4levels() {
+    use imgforge::img::coord::Coord;
+    use imgforge::img::overview_features::OverviewFeature;
+
+    let tiles = vec![make_tile("11000001", 2143196, 262632, 2138930, 255409)];
+    let meta = default_meta(1100);
+    let overview_id = compute_overview_map_id(meta.family_id);
+
+    let features = vec![OverviewFeature {
+        type_code: 0x4A,
+        end_level: 7,
+        geometry: vec![
+            Coord::new(2138930, 255409),
+            Coord::new(2143196, 255409),
+            Coord::new(2143196, 262632),
+        ],
+        is_polygon: true,
+        palier_index: 0,
+    }];
+
+    let overview = build_overview_map(&tiles, &features, overview_id, meta.codepage);
+    let tre = &overview.tre;
+
+    let levels_off = u32::from_le_bytes([tre[0x21], tre[0x22], tre[0x23], tre[0x24]]) as usize;
+    let levels_size = u32::from_le_bytes([tre[0x25], tre[0x26], tre[0x27], tre[0x28]]) as usize;
+
+    assert_eq!(levels_size, 16, "AC 8 : 4 paliers × 4 bytes = 16 B");
+    assert_eq!(tre[levels_off],      0x83, "level 3 inherited bits=10");
+    assert_eq!(tre[levels_off + 1],  10);
+    assert_eq!(tre[levels_off + 4],  0x82, "level 2 inherited bits=12");
+    assert_eq!(tre[levels_off + 5],  12);
+    assert_eq!(tre[levels_off + 8],  0x81, "level 1 inherited bits=14");
+    assert_eq!(tre[levels_off + 9],  14);
+    assert_eq!(tre[levels_off + 12], 0x00, "level 0 leaf bits=16");
+    assert_eq!(tre[levels_off + 13], 16);
 }
 
 #[test]
