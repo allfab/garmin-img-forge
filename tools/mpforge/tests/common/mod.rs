@@ -31,6 +31,7 @@ pub fn attrs(pairs: &[(&str, &str)]) -> HashMap<String, String> {
 }
 
 /// Helper: evaluate a feature and assert Type, EndLevel, and optionally Label
+#[allow(dead_code)]
 pub fn assert_transform(
     ruleset: &rules::Ruleset,
     feature_attrs: &HashMap<String, String>,

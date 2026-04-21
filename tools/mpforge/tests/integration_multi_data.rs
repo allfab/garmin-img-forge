@@ -33,7 +33,7 @@ fn write_highway_shapefile(dir: &Path) -> PathBuf {
         .create_vector_only(&shp_path)
         .expect("create SHP");
 
-    let mut layer = ds
+    let layer = ds
         .create_layer(LayerOptions {
             name: "TRONCON_DE_ROUTE",
             srs: None,
@@ -57,7 +57,7 @@ fn write_highway_shapefile(dir: &Path) -> PathBuf {
         .defn()
         .field_index("CL_ADMIN")
         .expect("CL_ADMIN idx");
-    let defn = layer.defn().clone();
+    let defn = layer.defn();
     let mut feat = gdal::vector::Feature::new(&defn).expect("new feature");
     feat.set_geometry(geom).expect("set geom");
     feat.set_field_string(cl_admin_idx, "Autoroute")
