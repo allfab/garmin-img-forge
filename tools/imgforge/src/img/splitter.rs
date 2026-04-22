@@ -9,7 +9,6 @@
 
 use super::area::Area;
 use super::coord::Coord;
-use super::line_clipper;
 
 // ── Splitting limits from mkgmap MapSplitter.java ──────────────────────────
 
