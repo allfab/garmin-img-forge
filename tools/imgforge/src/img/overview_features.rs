@@ -14,12 +14,20 @@ use std::collections::BTreeMap;
 use crate::img::coord::Coord;
 use crate::parser::mp_types::MpFile;
 
-/// Niveau de détail maximal pour les maps standard (7 niveaux 24/23/22/21/20/18/16).
-/// Les features avec EndLevel >= cette valeur sont des features overview (DataN wide-zoom).
-pub const OVERVIEW_DETAIL_MAX_LEVEL: u8 = 7;
-
 /// Nombre de paliers overview Phase 2 : bits 10/12/14/16.
 pub const OVERVIEW_NB_PALIERS: u8 = 4;
+
+/// Calcule le nombre de niveaux de détail (bits >= 16) dans `levels`.
+/// Retourne l'index du premier niveau avec bits < 16, ou `levels.len()` si aucun.
+/// Exemple : [24,23,22,21,20,18,16,14,12,10] → 7.
+///
+/// Précondition : `levels` doit être triés par bits décroissants (invariant Polish Map / YAML
+/// mpforge). Un ordre quelconque peut produire un split erroné.
+pub fn compute_detail_level_count(levels: &[u8]) -> u8 {
+    levels.iter()
+        .position(|&bits| bits < 16)
+        .unwrap_or_else(|| levels.len().min(u8::MAX as usize)) as u8
+}
 
 /// Feature overview : une entité extraite d'un bucket DataN du MP,
 /// destinée à être encodée dans un subdiv de l'overview map.
@@ -36,10 +44,11 @@ pub struct OverviewFeature {
 
 /// Extrait les features overview (polygones uniquement) d'un MP parsé.
 ///
-/// `detail_max_level` : niveau de détail maximal — cf. `OVERVIEW_DETAIL_MAX_LEVEL`.
+/// `detail_max_level` : index du premier palier overview (= nombre de niveaux de détail).
 /// Features avec EndLevel < detail_max_level → ignorées (features détail uniquement).
 ///
-/// `nb_overview_levels` : nombre de paliers overview — cf. `OVERVIEW_NB_PALIERS`.
+/// `nb_overview_levels` : nombre de paliers overview.
+/// Retourne immédiatement Vec::new() si 0 (MP standard sans overview_levels).
 ///
 /// Retourne Vec::new() si aucune feature éligible → build_overview_map bascule sur
 /// le fallback bounding-box Phase 1.
@@ -51,6 +60,9 @@ pub fn extract_overview_features(
     detail_max_level: u8,
     nb_overview_levels: u8,
 ) -> Vec<OverviewFeature> {
+    if nb_overview_levels == 0 {
+        return Vec::new();
+    }
     let mut features = Vec::new();
     let max_palier = nb_overview_levels.saturating_sub(1);
 
