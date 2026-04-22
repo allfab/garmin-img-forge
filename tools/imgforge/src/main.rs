@@ -81,17 +81,19 @@ fn main() -> Result<()> {
 
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            // Même logique de split que Build : exclure les niveaux overview (bits < 16)
-            // du TRE de la tuile de détail pour éviter le crash firmware Alpha 100.
+            // Détection dynamique du split détail / overview.
+            // bits >= 16 → niveaux de détail ; bits < 16 → niveaux overview.
+            // Si detail_level_count == 0 (tuile purement overview, ex: Option B 3L bits 14/12/10),
+            // aucun truncate : mp.header.levels est passé intact à build_subfiles.
             let detail_level_count =
                 imgforge::img::overview_features::compute_detail_level_count(
                     &mp.header.levels,
                 );
-            mp.header.levels.truncate(detail_level_count as usize);
-            anyhow::ensure!(
-                !mp.header.levels.is_empty(),
-                "Aucun niveau de détail (bits≥16) dans ce MP — vérifier --levels (ex: '24,23,22,21,20,18,16')"
-            );
+            if detail_level_count > 0 {
+                // Tuile hybride (ex: 10L overview-demo) ou détail pur (7L standard) :
+                // exclure les paliers overview du TRE pour éviter le crash firmware Alpha 100.
+                mp.header.levels.truncate(detail_level_count as usize);
+            }
 
             // Build DEM if --dem provided
             let dem_config = dem.as_ref().map(|paths| {
@@ -215,27 +217,32 @@ fn main() -> Result<()> {
                 // bits >= 16 → niveaux de détail (portés par la tuile GMP).
                 // bits < 16  → niveaux overview (portés exclusivement par l'overview tile).
                 // Respecte la config déclarative YAML (overview_levels.header_extension).
+                //
+                // Cas tuile purement overview (Option B, ex: [14,12,10]) :
+                //   detail_level_count == 0 → nb_overview = 0, pas de truncate.
+                //   mp.header.levels passé intact à build_subfiles.
                 let detail_level_count =
                     imgforge::img::overview_features::compute_detail_level_count(
                         &mp.header.levels,
                     );
-                let nb_overview = (mp.header.levels.len().min(u8::MAX as usize) as u8)
-                    .saturating_sub(detail_level_count);
+                let nb_overview = if detail_level_count == 0 {
+                    0u8
+                } else {
+                    (mp.header.levels.len().min(u8::MAX as usize) as u8)
+                        .saturating_sub(detail_level_count)
+                };
 
                 let overview_features =
                     imgforge::img::overview_features::extract_overview_features(
                         &mp, detail_level_count, nb_overview,
                     );
 
-                // Exclure les niveaux overview (bits < 16) du TRE de la tuile de détail.
-                // Sans ce truncate, les paliers overview apparaissent dans le TRE
-                // et font crasher le firmware Alpha 100.
-                mp.header.levels.truncate(detail_level_count as usize);
-                anyhow::ensure!(
-                    !mp.header.levels.is_empty(),
-                    "Aucun niveau de détail (bits≥16) dans {} — vérifier --levels (ex: '24,23,22,21,20,18,16')",
-                    path.display()
-                );
+                // Tronquer uniquement si la tuile contient des niveaux overview à exclure
+                // (tuile hybride 10L ou détail pur 7L avec paliers overview parasites).
+                // Tuile purement overview (detail_level_count == 0) : inchangée.
+                if detail_level_count > 0 && nb_overview > 0 {
+                    mp.header.levels.truncate(detail_level_count as usize);
+                }
 
                 let mut tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
