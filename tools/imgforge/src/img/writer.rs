@@ -177,40 +177,84 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     tre.copyright_message = mp.header.copyright.clone();
     tre.codepage = mp.header.codepage;
     tre.has_routing = net_writer_opt.is_some();
+    let num_levels = tre_levels.len();
     tre.levels = tre_levels;
     tre.subdivisions = all_subdivisions;
     // mkgmap: lastRgnPos = rgnFile.position() - HEADER_LEN → end of RGN body
     tre.last_rgn_pos = rgn.position();
 
-    // Build overviews (deduplicated)
+    // Build overviews with correct max_level per type.
+    // max_level = highest TRE level index at which features of that type are visible.
+    // For points: end_level.unwrap_or(0) (same semantics as filter at line ~602).
+    // For lines/polygons: max DataN key visible given end_level (mirrors feature_visible_at_level).
     // Polish Map type codes: < 0x10000 = standard (type=high byte, subtype=low byte),
     //                        >= 0x10000 = extended (prefix 0x1)
+
+    // Points: group by type_code → max(end_level.unwrap_or(0))
+    let mut point_max: HashMap<u32, u8> = HashMap::new();
     for mp_point in &mp.points {
-        if mp_point.type_code < 0x10000 {
-            let (t, st) = split_type_subtype(mp_point.type_code);
-            tre.point_overviews.push(PointOverview::new(t, 0, st));
+        let ml = mp_point.end_level.unwrap_or(0);
+        let e = point_max.entry(mp_point.type_code).or_insert(0);
+        *e = (*e).max(ml);
+    }
+    for (tc, ml) in &point_max {
+        if *tc < 0x10000 {
+            let (t, st) = split_type_subtype(*tc);
+            tre.point_overviews.push(PointOverview::new(t, *ml, st));
         } else {
-            tre.ext_point_overviews.push(ExtPointOverview::from_type_code(mp_point.type_code, 0));
+            tre.ext_point_overviews.push(ExtPointOverview::from_type_code(*tc, *ml));
         }
     }
+
+    // Lines: group by type_code → max visible DataN level
+    let mut line_max: HashMap<u32, u8> = HashMap::new();
     for mp_line in &mp.polylines {
-        if mp_line.type_code < 0x10000 {
-            tre.polyline_overviews.push(PolylineOverview::new(mp_line.type_code as u8, 0));
+        let ml = mp_line.geometries.keys()
+            .filter(|&&n| match mp_line.end_level {
+                None | Some(0) => true,
+                Some(e) => n <= e,
+            })
+            .copied()
+            .max()
+            .unwrap_or(0);
+        let e = line_max.entry(mp_line.type_code).or_insert(0);
+        *e = (*e).max(ml);
+    }
+    for (tc, ml) in &line_max {
+        if *tc < 0x10000 {
+            tre.polyline_overviews.push(PolylineOverview::new(*tc as u8, *ml));
         } else {
-            tre.ext_polyline_overviews.push(ExtPolylineOverview::from_type_code(mp_line.type_code, 0));
+            tre.ext_polyline_overviews.push(ExtPolylineOverview::from_type_code(*tc, *ml));
         }
     }
+
+    // Polygons: group by type_code → max visible DataN level
+    let mut poly_max: HashMap<u32, u8> = HashMap::new();
     for mp_poly in &mp.polygons {
-        if mp_poly.type_code < 0x10000 {
-            tre.polygon_overviews.push(PolygonOverview::new(mp_poly.type_code as u8, 0));
+        let ml = mp_poly.geometries.keys()
+            .filter(|&&n| match mp_poly.end_level {
+                None | Some(0) => true,
+                Some(e) => n <= e,
+            })
+            .copied()
+            .max()
+            .unwrap_or(0);
+        let e = poly_max.entry(mp_poly.type_code).or_insert(0);
+        *e = (*e).max(ml);
+    }
+    for (tc, ml) in &poly_max {
+        if *tc < 0x10000 {
+            tre.polygon_overviews.push(PolygonOverview::new(*tc as u8, *ml));
         } else {
-            tre.ext_polygon_overviews.push(ExtPolygonOverview::from_type_code(mp_poly.type_code, 0));
+            tre.ext_polygon_overviews.push(ExtPolygonOverview::from_type_code(*tc, *ml));
         }
     }
+
     tre.polyline_overviews.sort();
     tre.polyline_overviews.dedup();
-    // Background polygon overview — type 0x4B is added to every subdivision
-    tre.polygon_overviews.push(PolygonOverview::new(0x4B, 0));
+    // Background polygon overview — type 0x4B is added to every subdivision at all levels
+    let bg_max_level = num_levels.saturating_sub(1) as u8;
+    tre.polygon_overviews.push(PolygonOverview::new(0x4B, bg_max_level));
     tre.polygon_overviews.sort();
     tre.polygon_overviews.dedup();
     tre.point_overviews.sort();
