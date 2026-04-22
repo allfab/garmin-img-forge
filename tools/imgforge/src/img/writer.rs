@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use super::area::Area;
 use super::coord::Coord;
 use super::filesystem::ImgFilesystem;
+use super::filters::{round_coords, remove_obsolete_points, passes_size_filter, passes_remove_empty};
 use super::labelenc::LabelEncoding;
 use super::lbl::LblWriter;
 use super::line_preparer;
@@ -624,6 +625,13 @@ fn filter_features_for_level(
     // Cause-racine du bug Alpha 100 wide-zoom : fix #3 antérieur ajoutait une
     // branche `OR EndLevel >= level` qui surémittait aux levels 0..EndLevel
     // même sans DataL explicite, gonflant les bytes RGN aux wide-zoom levels.
+    // Chaîne de filtres mkgmap normalFilters (cf. MapBuilder.java:1246-1283) :
+    // RoundCoords → SizeFilter(1) → RemoveObsolete → DP → RemoveEmpty.
+    // Notre DP s'exécute ici-même (au lieu d'être séparé en filter) ; les
+    // autres filtres sont plugés post-DP, ordre pragmatique puisque DP est
+    // déjà en place : DP → RoundCoords → SizeFilter(1) → RemoveObsolete → RemoveEmpty.
+    // Gate `shift > 0` (level > 0) pour ne pas toucher au niveau détail (routing).
+    let shift_u: u32 = shift.max(0) as u32;
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| feature_visible_at_level(l.end_level, &l.geometries, level))
         .filter_map(|(i, l)| {
@@ -637,6 +645,16 @@ fn filter_features_for_level(
                 let simplified = douglas_peucker(&coords, eps);
                 if simplified.len() >= 2 {
                     pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
+                }
+            }
+            if shift_u > 0 {
+                pts = round_coords(&pts, shift_u);
+                if !passes_size_filter(&pts, shift_u, 1) {
+                    return None;
+                }
+                pts = remove_obsolete_points(&pts, false);
+                if !passes_remove_empty(&pts, false) {
+                    return None;
                 }
             }
             Some(SplitLine { mp_index: i, points: pts })
@@ -667,6 +685,18 @@ fn filter_features_for_level(
                 let simplified = douglas_peucker(&coords, eps);
                 if simplified.len() >= 3 {
                     pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
+                }
+            }
+            // Même chaîne mkgmap pour les polygones (SizeFilter + RemoveObsolete
+            // s'appliquent aux shapes cf. `processShapes`), gated sur `shift > 0`.
+            if shift_u > 0 {
+                pts = round_coords(&pts, shift_u);
+                if !passes_size_filter(&pts, shift_u, 1) {
+                    return None;
+                }
+                pts = remove_obsolete_points(&pts, true);
+                if !passes_remove_empty(&pts, true) {
+                    return None;
                 }
             }
             Some(SplitShape { mp_index: i, points: pts })
