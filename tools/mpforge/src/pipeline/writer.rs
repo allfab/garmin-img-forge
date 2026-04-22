@@ -599,9 +599,24 @@ impl MpWriter {
         // Spec AC17.a (H1+M3 code review) : toute erreur FFI ou WKT sur un
         // bucket additionnel fait SKIP l'entière feature (return Ok(false)) —
         // on ne garde pas un feature partiellement écrit.
+        //
+        // Sémantique r4924 (PolishMapDataSource + setResolution(elem, level))
+        // pour les polylines multi-Data avec `EndLevel=E>0` : `DataN` avec
+        // `N > E` produit `min=bits(E) > max=bits(N)` → intervalle vide →
+        // polyline filtrée par MapArea.addLines + MapBuilder.processLines.
+        // L'émettre pollue le .mp et force imgforge à gérer un cas invisible.
+        // `EndLevel=0` (ou absent) = pas de borne wide-zoom → on émet tout.
+        let end_level_cap: u8 = feature
+            .attributes
+            .get("EndLevel")
+            .and_then(|s| s.parse::<u8>().ok())
+            .unwrap_or(0);
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
+                    continue;
+                }
+                if end_level_cap > 0 && *n > end_level_cap {
                     continue;
                 }
                 if coords.len() < 2 {
@@ -700,9 +715,19 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Tech-spec #2 Task 10 + AC17 (H1+M3) : skip feature si bucket KO.
+        // Sémantique r4924 : `DataN` avec `N > EndLevel > 0` produit intervalle
+        // min/max vide, polygone filtré en aval. Voir write_linestring_feature.
+        let end_level_cap: u8 = feature
+            .attributes
+            .get("EndLevel")
+            .and_then(|s| s.parse::<u8>().ok())
+            .unwrap_or(0);
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
+                    continue;
+                }
+                if end_level_cap > 0 && *n > end_level_cap {
                     continue;
                 }
                 if coords.len() < 4 {
