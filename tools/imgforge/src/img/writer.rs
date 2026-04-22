@@ -590,14 +590,14 @@ fn filter_features_for_level(
         .map(|(i, p)| SplitPoint { mp_index: i, location: p.coord })
         .collect();
 
-    // Auto-simplification: when no explicit simplification is configured and shift > 0,
-    // apply a default DP epsilon to prevent quantization artifacts (self-intersections,
-    // degenerate edges) caused by coordinate quantization at lower resolutions.
+    // Auto-simplification — parité mkgmap `MapBuilder.java:215` (default reducePointError=2.6)
+    // et `DouglasPeuckerFilter.maxErrorDistance = filterDistance × (1 << shift)`.
+    // Gated sur `shift > 0 && level > 0` pour protéger le niveau détail.
     let shift = mp.header.levels.get(level as usize)
         .map(|&res| (24i32 - res as i32).max(0))
         .unwrap_or(0);
     let auto_epsilon = if shift > 0 && level > 0 {
-        Some((1i32 << shift) as f64 * 0.5)
+        Some((1i32 << shift) as f64 * 2.6)
     } else {
         None
     };
@@ -627,10 +627,9 @@ fn filter_features_for_level(
     // même sans DataL explicite, gonflant les bytes RGN aux wide-zoom levels.
     // Chaîne de filtres mkgmap normalFilters (cf. MapBuilder.java:1246-1283) :
     // RoundCoords → SizeFilter(1) → RemoveObsolete → DP → RemoveEmpty.
-    // Notre DP s'exécute ici-même (au lieu d'être séparé en filter) ; les
-    // autres filtres sont plugés post-DP, ordre pragmatique puisque DP est
-    // déjà en place : DP → RoundCoords → SizeFilter(1) → RemoveObsolete → RemoveEmpty.
-    // Gate `shift > 0` (level > 0) pour ne pas toucher au niveau détail (routing).
+    // Ordre strict : le DP opère sur de la géométrie déjà quantifiée et
+    // nettoyée des colinéaires, ce qui maximise son efficacité. Gated sur
+    // `shift > 0` (level > 0) pour protéger le niveau détail.
     let shift_u: u32 = shift.max(0) as u32;
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| feature_visible_at_level(l.end_level, &l.geometries, level))
@@ -640,6 +639,13 @@ fn filter_features_for_level(
                 return None;
             }
             let mut pts = geom.to_vec();
+            if shift_u > 0 {
+                pts = round_coords(&pts, shift_u);
+                if !passes_size_filter(&pts, shift_u, 1) {
+                    return None;
+                }
+                pts = remove_obsolete_points(&pts, false);
+            }
             if let Some(eps) = line_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
                 let simplified = douglas_peucker(&coords, eps);
@@ -647,15 +653,8 @@ fn filter_features_for_level(
                     pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
                 }
             }
-            if shift_u > 0 {
-                pts = round_coords(&pts, shift_u);
-                if !passes_size_filter(&pts, shift_u, 1) {
-                    return None;
-                }
-                pts = remove_obsolete_points(&pts, false);
-                if !passes_remove_empty(&pts, false) {
-                    return None;
-                }
+            if shift_u > 0 && !passes_remove_empty(&pts, false) {
+                return None;
             }
             Some(SplitLine { mp_index: i, points: pts })
         })
@@ -679,7 +678,15 @@ fn filter_features_for_level(
                 }
             }
             let mut pts = geom.to_vec();
-            // Polygon simplification
+            // Même chaîne mkgmap pour les polygones (cf. `processShapes`), ordre strict
+            // Round → Size → RemoveObsolete → DP → RemoveEmpty. Gated sur `shift > 0`.
+            if shift_u > 0 {
+                pts = round_coords(&pts, shift_u);
+                if !passes_size_filter(&pts, shift_u, 1) {
+                    return None;
+                }
+                pts = remove_obsolete_points(&pts, true);
+            }
             if let Some(eps) = poly_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
                 let simplified = douglas_peucker(&coords, eps);
@@ -687,17 +694,8 @@ fn filter_features_for_level(
                     pts = simplified.iter().map(|&(lat, lon)| Coord::new(lat, lon)).collect();
                 }
             }
-            // Même chaîne mkgmap pour les polygones (SizeFilter + RemoveObsolete
-            // s'appliquent aux shapes cf. `processShapes`), gated sur `shift > 0`.
-            if shift_u > 0 {
-                pts = round_coords(&pts, shift_u);
-                if !passes_size_filter(&pts, shift_u, 1) {
-                    return None;
-                }
-                pts = remove_obsolete_points(&pts, true);
-                if !passes_remove_empty(&pts, true) {
-                    return None;
-                }
+            if shift_u > 0 && !passes_remove_empty(&pts, true) {
+                return None;
             }
             Some(SplitShape { mp_index: i, points: pts })
         })
