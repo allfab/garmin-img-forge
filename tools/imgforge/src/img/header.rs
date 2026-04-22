@@ -4,8 +4,10 @@ const HEADER_SIZE: usize = 512;
 
 // Key offsets from mkgmap ImgHeader.java
 const OFF_XOR: usize = 0x00;
+const OFF_VERSION: usize = 0x08; // gmapsupp product version (major | minor<<8), LE u16
 const OFF_UPDATE_MONTH: usize = 0x0A;
 const OFF_UPDATE_YEAR: usize = 0x0B;
+const OFF_SUPP: usize = 0x0E; // 1=hide gmapsupp on PC, 0=visible
 const OFF_CHECKSUM: usize = 0x0F;
 const OFF_SIGNATURE: usize = 0x10; // "DSKIMG\0"
 const OFF_UNK_1: usize = 0x17;
@@ -75,6 +77,15 @@ impl ImgHeader {
         buf[OFF_MAP_FILE_IDENTIFIER..OFF_MAP_FILE_IDENTIFIER + 7].copy_from_slice(garmin);
 
         buf[OFF_UNK_1] = 0x02;
+
+        // gmapsupp product version — mkgmap ImgHeader.java:169-178.
+        // Alpha 100 utilise ce marqueur pour reconnaître un gmapsupp valide ;
+        // sans lui, le firmware charge l'IMG mais ne monte pas les niveaux
+        // wide-zoom correctement (écran blanc au dézoom). Valeur fixe 1.0
+        // (major=1, minor=0 → u16 LE = 0x0001).
+        put_u16_le(&mut buf, OFF_VERSION, 0x0001);
+        // OFF_SUPP = 0 : gmapsupp visible sur PC (pas de "hide" demandé).
+        buf[OFF_SUPP] = 0x00;
 
         // Directory start block
         buf[OFF_DIRECTORY_START_BLOCK] = self.directory_start_entry;
