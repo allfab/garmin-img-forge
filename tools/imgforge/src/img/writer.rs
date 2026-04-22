@@ -607,22 +607,17 @@ fn build_multilevel_hierarchy(
 // ── Feature filtering per level ────────────────────────────────────────────
 
 /// Strict r4924 semantics (PolishMapDataSource → MapArea + MapBuilder filters) :
-/// une feature est visible au level L ssi `DataL` existe explicitement ET
-/// (`EndLevel = 0` ⇒ toujours ok, sinon `L ≤ EndLevel`). Au-delà,
-/// `setResolution(elem, L)` produit `min > max` → intervalle vide → feature
-/// filtrée par `MapArea.addLines` (max) + `MapBuilder.processLines` (min).
+/// une feature est visible au level L ssi `DataL` existe explicitement.
+/// La plage de résolution (min/max) n'est pas modélisée dans le RGN binaire —
+/// c'est la présence de DataL dans le MP qui détermine la visibilité.
+/// r4924 `setResolution` : quand endLevel>0, min=res(endLevel)/max=res(L) ;
+/// quand endLevel==0, min=max=res(L) (chaque DataN visible exactement à L).
 fn feature_visible_at_level(
-    end_level: Option<u8>,
+    _end_level: Option<u8>,
     geometries: &std::collections::BTreeMap<u8, Vec<crate::img::coord::Coord>>,
     level: u8,
 ) -> bool {
-    if !geometries.contains_key(&level) {
-        return false;
-    }
-    match end_level {
-        None | Some(0) => true,      // pas de borne wide-zoom : chaque DataN visible au level N
-        Some(e) => level <= e,       // r4924 : min > max si L > EndLevel → invisible
-    }
+    geometries.contains_key(&level)
 }
 
 /// Filter features visible at a given zoom level within parent bounds.

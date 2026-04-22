@@ -601,22 +601,20 @@ impl MpWriter {
         // on ne garde pas un feature partiellement écrit.
         //
         // Sémantique r4924 (PolishMapDataSource + setResolution(elem, level))
-        // pour les polylines multi-Data avec `EndLevel=E>0` : `DataN` avec
-        // `N > E` produit `min=bits(E) > max=bits(N)` → intervalle vide →
-        // polyline filtrée par MapArea.addLines + MapBuilder.processLines.
-        // L'émettre pollue le .mp et force imgforge à gérer un cas invisible.
-        // `EndLevel=0` (ou absent) = pas de borne wide-zoom → on émet tout.
+        // pour les polylines multi-Data avec EndLevel=E : DataN avec N > E
+        // produit min=bits(E) > max=bits(N) → intervalle vide → polyline filtrée.
+        // EndLevel=0 → seulement Data0=. EndLevel absent → pas de borne (u8::MAX).
         let end_level_cap: u8 = feature
             .attributes
             .get("EndLevel")
             .and_then(|s| s.parse::<u8>().ok())
-            .unwrap_or(0);
+            .unwrap_or(u8::MAX);
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
                     continue;
                 }
-                if end_level_cap > 0 && *n > end_level_cap {
+                if *n > end_level_cap {
                     continue;
                 }
                 if coords.len() < 2 {
@@ -715,19 +713,19 @@ impl MpWriter {
             .context("Failed to set geometry")?;
 
         // Tech-spec #2 Task 10 + AC17 (H1+M3) : skip feature si bucket KO.
-        // Sémantique r4924 : `DataN` avec `N > EndLevel > 0` produit intervalle
-        // min/max vide, polygone filtré en aval. Voir write_linestring_feature.
+        // Sémantique r4924 : DataN avec N > EndLevel produit intervalle vide,
+        // polygone filtré en aval. EndLevel=0 → Data0 seul. Absent → u8::MAX.
         let end_level_cap: u8 = feature
             .attributes
             .get("EndLevel")
             .and_then(|s| s.parse::<u8>().ok())
-            .unwrap_or(0);
+            .unwrap_or(u8::MAX);
         if let Some(k) = multi_geom_max {
             for (n, coords) in &feature.additional_geometries {
                 if *n == 0 || *n > k {
                     continue;
                 }
-                if end_level_cap > 0 && *n > end_level_cap {
+                if *n > end_level_cap {
                     continue;
                 }
                 if coords.len() < 4 {
