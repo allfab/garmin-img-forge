@@ -156,6 +156,39 @@ impl MapArea {
         !self.points.is_empty() || !self.lines.is_empty() || !self.shapes.is_empty()
     }
 
+    /// Parité mkgmap `MapArea.canAddSize(el, POINT_KIND)` (MapArea.java:608-614).
+    fn can_add_point(&self) -> bool {
+        if self.points.len() >= MAX_NUM_POINTS {
+            return false;
+        }
+        self.total_size() + POINT_SIZE <= WANTED_MAX_AREA_SIZE
+    }
+
+    /// Parité mkgmap `MapArea.canAddSize(el, LINE_KIND)` (MapArea.java:616-630),
+    /// `numElements` fixé à 1 (on ne split pas une polyline en plusieurs records
+    /// ici ; LineSplitterFilter côté mkgmap intervient plus tard).
+    fn can_add_line(&self, line: &SplitLine) -> bool {
+        if self.lines.len() >= MAX_NUM_LINES {
+            return false;
+        }
+        let n = predicted_max_num_points(&line.points, self.resolution);
+        if n <= 1 {
+            return true;
+        }
+        self.total_size() + LINE_OVERHEAD + n * LINE_POINT_SIZE <= WANTED_MAX_AREA_SIZE
+    }
+
+    /// Parité mkgmap `MapArea.canAddSize(el, SHAPE_KIND)` (MapArea.java:632-642).
+    /// mkgmap ne pose PAS de limite de count sur les shapes ici (pas de
+    /// MAX_NUM_SHAPES dans MapSplitter) ; seule la taille compte.
+    fn can_add_shape(&self, shape: &SplitShape) -> bool {
+        let n = predicted_max_num_points(&shape.points, self.resolution);
+        if n <= 3 {
+            return true;
+        }
+        self.total_size() + SHAPE_OVERHEAD + n * SHAPE_POINT_SIZE <= WANTED_MAX_AREA_SIZE
+    }
+
     /// Must split — mkgmap hard limits (MapSplitter.addAreasToList)
     fn must_split(&self) -> bool {
         self.lines.len() > MAX_NUM_LINES
@@ -174,6 +207,57 @@ impl MapArea {
         let min_dim_scaled = MIN_DIMENSION.checked_shl(shift).unwrap_or(MIN_DIMENSION);
         self.bounds.max_dimension() > min_dim_scaled
             && self.total_size() > WANTED_MAX_AREA_SIZE
+    }
+
+    /// Overflow split — parité mkgmap `MapArea.split(1, 1, bounds, true)`
+    /// + `distPointsIntoNewAreas` / `distLinesIntoNewAreas` / `distShapesIntoNewAreas`
+    /// (MapArea.java:251-305, 316-358).
+    ///
+    /// Utilisé quand une MapArea dépasse les seuils mais que `bounds` est trop
+    /// petit pour un split géographique (cf. `MapSplitter.addAreasToList:185-189`
+    /// branche `mustSplit`). On distribue les features par "paquets" qui tiennent
+    /// dans une MapArea (via `can_add_*`), en créant une nouvelle area dès que
+    /// le paquet courant refuse. Les bounds de chaque overflow area grossissent
+    /// dynamiquement avec les features ajoutées (via `add_*` qui étend le bbox).
+    fn split_overflow(&self) -> Vec<MapArea> {
+        let mut result: Vec<MapArea> = Vec::new();
+        // MapArea primaire : garde les bounds d'origine (même si on ne split pas
+        // géographiquement, la cellule TRE garde son ancrage géographique).
+        let mut current = MapArea::new(self.bounds, self.resolution);
+
+        // Shapes en premier (comme mkgmap : distShapesIntoNewAreas appelé avant
+        // distPoints/distLines, MapArea.java:250-253).
+        for shape in &self.shapes {
+            if !current.can_add_shape(shape) {
+                result.push(std::mem::replace(
+                    &mut current,
+                    MapArea::new(self.bounds, self.resolution),
+                ));
+            }
+            current.add_shape(shape.clone());
+        }
+        for pt in &self.points {
+            if !current.can_add_point() {
+                result.push(std::mem::replace(
+                    &mut current,
+                    MapArea::new(self.bounds, self.resolution),
+                ));
+            }
+            current.add_point(pt.clone());
+        }
+        for line in &self.lines {
+            if !current.can_add_line(line) {
+                result.push(std::mem::replace(
+                    &mut current,
+                    MapArea::new(self.bounds, self.resolution),
+                ));
+            }
+            current.add_line(line.clone());
+        }
+        if current.has_data() {
+            result.push(current);
+        }
+        result
     }
 
     /// Split into nx*ny sub-areas with real feature distribution — mkgmap MapArea.split
@@ -478,13 +562,20 @@ fn add_area_recursive(area: MapArea, depth: usize, result: &mut Vec<MapArea>) {
     let min_dim_scaled = MIN_DIMENSION.checked_shl(shift).unwrap_or(MIN_DIMENSION);
     if area.bounds.max_dimension() <= min_dim_scaled {
         if area.must_split() {
-            eprintln!(
-                "WARNING: subdivision too small to divide but exceeds limits \
-                 (pts={}, lines={}, shapes={}, rgn={}B)",
-                area.points.len(), area.lines.len(), area.shapes.len(), area.total_size()
-            );
+            // Parité mkgmap `MapSplitter.addAreasToList:185-189` : quand on ne
+            // peut plus splitter géographiquement mais qu'on dépasse les seuils
+            // (MAX_NUM_LINES / MAX_NUM_POINTS / MAX_RGN_SIZE), on force un
+            // overflow split qui distribue les features en plusieurs MapAreas
+            // partageant les mêmes bounds. L'Alpha 100 refuse de rendre les
+            // subdivs avec > 255 lignes (bug wide-zoom blanc).
+            for sub in area.split_overflow() {
+                if sub.has_data() {
+                    result.push(sub);
+                }
+            }
+        } else {
+            result.push(area);
         }
-        result.push(area);
         return;
     }
 
@@ -618,6 +709,42 @@ mod tests {
             area.add_point(SplitPoint { mp_index: i, location: pt(50, 50) });
         }
         assert!(area.must_split());
+    }
+
+    #[test]
+    fn test_overflow_split_distributes_lines_when_too_small_to_divide() {
+        // Parité mkgmap MapSplitter.addAreasToList:185-189 — quand bounds < MIN_DIMENSION<<shift
+        // mais lines > MAX_NUM_LINES, on doit forcer l'overflow split au lieu d'accepter
+        // une subdiv avec > 255 lignes (Alpha 100 refuse de la rendre).
+        // Bounds tiny au level 5 (res=18, shift=6, min_dim_scaled = 10<<6 = 640 units).
+        // bounds 100 units → trop petit, mais 400 lignes doit forcer overflow.
+        let mut area = MapArea::new(Area::new(0, 0, 100, 100), 18);
+        for i in 0..400 {
+            area.add_line(SplitLine {
+                mp_index: i,
+                points: vec![pt(50, 50), pt(51, 51)],
+            });
+        }
+        assert!(area.must_split());
+        let result = add_areas_to_list(vec![area], usize::MAX);
+        // Chaque subdiv doit respecter MAX_NUM_LINES
+        for (i, sub) in result.iter().enumerate() {
+            assert!(
+                sub.lines.len() <= MAX_NUM_LINES,
+                "subdiv {} has {} lines > MAX_NUM_LINES",
+                i, sub.lines.len()
+            );
+        }
+        // Total lignes préservé (aucune perdue)
+        let total: usize = result.iter().map(|a| a.lines.len()).sum();
+        assert_eq!(total, 400);
+        // Au moins 2 subdivs — 400 lignes de 2 pts = ~400*19 bytes = 7600B, tient en 1 subdiv
+        // par WANTED_MAX_AREA_SIZE mais le cap `lines.len() >= 255` nous force à splitter.
+        assert!(
+            result.len() >= 2,
+            "overflow split should produce >= 2 subdivs, got {}",
+            result.len()
+        );
     }
 
     #[test]
