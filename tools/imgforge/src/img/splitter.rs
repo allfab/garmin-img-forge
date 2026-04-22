@@ -164,9 +164,15 @@ impl MapArea {
             || self.total_size() > MAX_RGN_SIZE
     }
 
-    /// Want split — mkgmap soft limits
+    /// Want split — mkgmap soft limits (MapSplitter.java:159).
+    /// Le plancher min_dimension est shifté par la résolution : au level 5
+    /// (bits=18, shift=6), MIN_DIMENSION << shift = 640 units. Sans ce shift
+    /// on continue à splitter jusqu'à 10 units aux wide-zoom levels, ce qui
+    /// produit 2× plus de subdivs que mkgmap.
     fn want_split(&self) -> bool {
-        self.bounds.max_dimension() > MIN_DIMENSION
+        let shift = (24i32 - self.resolution as i32).max(0) as u32;
+        let min_dim_scaled = MIN_DIMENSION.checked_shl(shift).unwrap_or(MIN_DIMENSION);
+        self.bounds.max_dimension() > min_dim_scaled
             && self.total_size() > WANTED_MAX_AREA_SIZE
     }
 
@@ -467,8 +473,10 @@ fn add_area_recursive(area: MapArea, depth: usize, result: &mut Vec<MapArea>) {
         return;
     }
 
-    if area.bounds.max_dimension() <= MIN_DIMENSION {
-        // Too small to divide further (tooSmallToDivide)
+    // Trop petite pour divisions plus fines — parité mkgmap : plancher shifté par résolution.
+    let shift = (24i32 - area.resolution as i32).max(0) as u32;
+    let min_dim_scaled = MIN_DIMENSION.checked_shl(shift).unwrap_or(MIN_DIMENSION);
+    if area.bounds.max_dimension() <= min_dim_scaled {
         if area.must_split() {
             eprintln!(
                 "WARNING: subdivision too small to divide but exceeds limits \
