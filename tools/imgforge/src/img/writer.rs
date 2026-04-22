@@ -547,16 +547,29 @@ fn build_multilevel_hierarchy(
 
 // ── Feature filtering per level ────────────────────────────────────────────
 
+/// Strict r4924 semantics (PolishMapDataSource → MapArea + MapBuilder filters) :
+/// une feature est visible au level L ssi `DataL` existe explicitement ET
+/// (`EndLevel = 0` ⇒ toujours ok, sinon `L ≤ EndLevel`). Au-delà,
+/// `setResolution(elem, L)` produit `min > max` → intervalle vide → feature
+/// filtrée par `MapArea.addLines` (max) + `MapBuilder.processLines` (min).
+fn feature_visible_at_level(
+    end_level: Option<u8>,
+    geometries: &std::collections::BTreeMap<u8, Vec<crate::img::coord::Coord>>,
+    level: u8,
+) -> bool {
+    if !geometries.contains_key(&level) {
+        return false;
+    }
+    match end_level {
+        None | Some(0) => true,      // pas de borne wide-zoom : chaque DataN visible au level N
+        Some(e) => level <= e,       // r4924 : min > max si L > EndLevel → invisible
+    }
+}
+
 /// Filter features visible at a given zoom level within parent bounds.
 ///
-/// EndLevel semantics (Polish Map format):
-/// - None → visible only at level 0
-/// - Some(N) → visible at levels 0 through N
-///
-/// For level K: include features where end_level.unwrap_or(0) >= K
-///
 /// Applies geometry optimizations (simplification, min-size filtering, area sorting)
-/// based on MpHeader options.
+/// based on MpHeader options. Cf. `feature_visible_at_level` pour la règle d'inclusion.
 fn filter_features_for_level(
     mp: &MpFile,
     level: u8,
@@ -602,13 +615,17 @@ fn filter_features_for_level(
         .or(mp.header.reduce_point_density)
         .or(auto_epsilon);
 
-    // Politique mkgmap-compatible : accepter la feature à ce level si elle y a un
-    // bucket DataN explicite, même si EndLevel < level. mpforge émet parfois
-    // Data5=/Data6= pour des polylines avec EndLevel=4 (type 0x05 routes) ;
-    // sans ce fallback, imgforge exclut ces polylines des subdivs wide-zoom et
-    // l'Alpha 100 n'affiche plus les routes en dézoom.
+    // Sémantique mkgmap r4924 (PolishMapDataSource : lineStringMap par level,
+    // setResolution(elem, level) calculé pour chaque bucket) : une polyline est
+    // émise au level L ssi `DataL` existe ET (EndLevel=0 ⇒ ok, sinon L ≤ EndLevel).
+    // Au-delà de L > EndLevel, r4924 produirait min=extractResolution(EndLevel)
+    // et max=bits(L) < min → intervalle vide → feature filtrée par le filter
+    // chain (MapArea.addLines max filter + MapBuilder.processLines min filter).
+    // Cause-racine du bug Alpha 100 wide-zoom : fix #3 antérieur ajoutait une
+    // branche `OR EndLevel >= level` qui surémittait aux levels 0..EndLevel
+    // même sans DataL explicite, gonflant les bytes RGN aux wide-zoom levels.
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
-        .filter(|(_, l)| l.geometries.contains_key(&level) || l.end_level.unwrap_or(0) >= level)
+        .filter(|(_, l)| feature_visible_at_level(l.end_level, &l.geometries, level))
         .filter_map(|(i, l)| {
             let geom = l.geometry_for_level(level);
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
@@ -628,9 +645,9 @@ fn filter_features_for_level(
 
     let min_size = mp.header.min_size_polygon;
 
-    // Même politique que pour les lignes — inclure si bucket DataN explicite OU EndLevel couvre.
+    // Même règle r4924 que pour les polylines (cf. commentaire ci-dessus).
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
-        .filter(|(_, s)| s.geometries.contains_key(&level) || s.end_level.unwrap_or(0) >= level)
+        .filter(|(_, s)| feature_visible_at_level(s.end_level, &s.geometries, level))
         .filter_map(|(i, s)| {
             let geom = s.geometry_for_level(level);
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
@@ -1363,8 +1380,11 @@ mod tests {
     }
 
     #[test]
-    fn filter_features_selects_correct_bucket_per_level() {
-        // Polyline avec Data0 (3pts) et Data2 (2pts) ; demande niveaux 0, 1, 2.
+    fn filter_features_strict_r4924_only_explicit_buckets() {
+        // Sémantique r4924 : une polyline apparaît UNIQUEMENT aux levels où elle
+        // a un bucket DataN explicite (et où N ≤ EndLevel). Pas de fallback.
+        // Polyline avec Data0 + Data2, EndLevel=2 → visible aux levels 0 et 2,
+        // PAS au level 1 (bucket Data1 absent).
         let content = r#"
 [IMG ID]
 ID=1
@@ -1381,21 +1401,21 @@ Data2=(48.0,7.0),(48.2,7.2)
         let bounds = compute_bounds(&mp).unwrap();
 
         let (_, lines0, _) = filter_features_for_level(&mp, 0, &bounds);
-        assert_eq!(lines0.len(), 1);
-        assert_eq!(lines0[0].points.len(), 3, "level 0 → bucket exact Data0");
+        assert_eq!(lines0.len(), 1, "level 0 → bucket Data0 présent");
+        assert_eq!(lines0[0].points.len(), 3);
 
         let (_, lines1, _) = filter_features_for_level(&mp, 1, &bounds);
-        assert_eq!(lines1.len(), 1);
-        assert_eq!(lines1[0].points.len(), 2, "level 1 → fallback Politique B vers Data2");
+        assert_eq!(lines1.len(), 0, "level 1 → Data1 absent → feature exclue (r4924)");
 
         let (_, lines2, _) = filter_features_for_level(&mp, 2, &bounds);
-        assert_eq!(lines2.len(), 1);
-        assert_eq!(lines2[0].points.len(), 2, "level 2 → bucket exact Data2");
+        assert_eq!(lines2.len(), 1, "level 2 → bucket Data2 présent (2 ≤ EndLevel=2)");
+        assert_eq!(lines2[0].points.len(), 2);
     }
 
     #[test]
-    fn filter_features_data0_only_applies_to_all_levels() {
-        // Polyline avec seulement Data0 → fallback "plus détaillé" pour tous les niveaux.
+    fn filter_features_data0_only_restricted_to_level0() {
+        // r4924 : Data0-only avec EndLevel=0 n'est visible qu'au level 0.
+        // (Historiquement imgforge propageait à tous levels — bug Alpha 100 wide-zoom.)
         let content = r#"
 [IMG ID]
 ID=1
@@ -1403,17 +1423,54 @@ Levels=24,22,20
 [END-IMG ID]
 [POLYLINE]
 Type=0x06
-EndLevel=2
+EndLevel=0
 Data0=(48.0,7.0),(48.1,7.1),(48.2,7.2),(48.3,7.3)
 [END]
 "#;
         let mp = mp_with_multi_data(content);
         let bounds = compute_bounds(&mp).unwrap();
-        for lvl in 0..=2 {
+
+        let (_, lines0, _) = filter_features_for_level(&mp, 0, &bounds);
+        assert_eq!(lines0.len(), 1, "level 0 → bucket Data0 explicite");
+        assert!(!lines0[0].points.is_empty());
+
+        for lvl in 1..=2 {
             let (_, lines, _) = filter_features_for_level(&mp, lvl, &bounds);
-            assert_eq!(lines.len(), 1, "level {} should include the polyline", lvl);
-            // niveau 0 : pas de DP. Niveaux > 0 : DP auto peut réduire.
-            assert!(!lines[0].points.is_empty());
+            assert_eq!(lines.len(), 0, "level {} : pas de DataN explicite → exclu", lvl);
+        }
+    }
+
+    #[test]
+    fn filter_features_beyond_endlevel_excluded() {
+        // Polyline Data0..Data6 avec EndLevel=4 : r4924 émet 7 polylines mais
+        // celles aux levels 5 et 6 ont min>max → invisibles. imgforge doit les
+        // exclure dès le filtre pour éviter la surémission (cause Alpha 100).
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,23,22,21,20,18,16
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+EndLevel=4
+Data0=(48.0,7.0),(48.1,7.1)
+Data1=(48.0,7.0),(48.1,7.1)
+Data2=(48.0,7.0),(48.1,7.1)
+Data3=(48.0,7.0),(48.1,7.1)
+Data4=(48.0,7.0),(48.1,7.1)
+Data5=(48.0,7.0),(48.1,7.1)
+Data6=(48.0,7.0),(48.1,7.1)
+[END]
+"#;
+        let mp = mp_with_multi_data(content);
+        let bounds = compute_bounds(&mp).unwrap();
+        for lvl in 0..=4 {
+            let (_, lines, _) = filter_features_for_level(&mp, lvl, &bounds);
+            assert_eq!(lines.len(), 1, "level {} ≤ EndLevel=4 → inclus", lvl);
+        }
+        for lvl in 5..=6 {
+            let (_, lines, _) = filter_features_for_level(&mp, lvl, &bounds);
+            assert_eq!(lines.len(), 0, "level {} > EndLevel=4 → exclu (r4924 min>max)", lvl);
         }
     }
 
