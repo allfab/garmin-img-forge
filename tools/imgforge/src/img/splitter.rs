@@ -17,7 +17,7 @@ pub const MAX_DIVISION_SIZE: i32 = 0x7FFF;
 pub const MAX_RGN_SIZE: usize = 0xFFF8; // 65528 bytes
 pub const MAX_NUM_LINES: usize = 0xFF;
 pub const MAX_NUM_POINTS: usize = 0xFF;
-pub const WANTED_MAX_AREA_SIZE: usize = 0x2FFF; // 12287 bytes (abaissé depuis 0x3FFF/16 KB pour réduire la pression RGN sur les quadrants type FRANCE-SE)
+pub const WANTED_MAX_AREA_SIZE: usize = 0x3FFF; // 16383 bytes — parité mkgmap MapSplitter.java:66
 pub const MIN_DIMENSION: i32 = 10;
 pub const LARGE_OBJECT_DIM: i32 = 8192;
 
@@ -27,6 +27,37 @@ const LINE_OVERHEAD: usize = 11;
 const LINE_POINT_SIZE: usize = 4;
 const SHAPE_OVERHEAD: usize = 11;
 const SHAPE_POINT_SIZE: usize = 4;
+
+/// Parité mkgmap `PredictFilterPoints.predictedMaxNumPoints` — compte les points
+/// qui resteraient après rounding à la résolution cible (doublons collapsés).
+/// À haute résolution (shift=0), retourne le compte brut. À bits=18 (shift=6),
+/// les points dans le même bucket de 64 units collapsent en 1 seul.
+fn predicted_max_num_points(points: &[Coord], resolution: u8) -> usize {
+    if points.is_empty() {
+        return 0;
+    }
+    let shift = (24i32 - resolution as i32).max(0) as u32;
+    let (half, mask): (i32, i32) = if shift == 0 {
+        (0, !0)
+    } else {
+        (1 << (shift - 1), !((1 << shift) - 1))
+    };
+    let mut n = 0usize;
+    let mut last_lat = 0i32;
+    let mut last_lon = 0i32;
+    for p in points {
+        let lat = (p.latitude().wrapping_add(half)) & mask;
+        let lon = (p.longitude().wrapping_add(half)) & mask;
+        if n == 0 {
+            n = 1;
+        } else if lat != last_lat || lon != last_lon {
+            n += 1;
+        }
+        last_lat = lat;
+        last_lon = lon;
+    }
+    n
+}
 
 // ── Feature types for splitting ────────────────────────────────────────────
 
@@ -98,15 +129,21 @@ impl MapArea {
         self.sizes[0] += POINT_SIZE;
     }
 
-    /// Add a line — mkgmap addSize: 11 + numPoints * 4
+    /// Add a line — mkgmap addSize: 11 + predictedMaxNumPoints * 4.
+    /// Utilise la prédiction de points APRÈS rounding à la résolution courante
+    /// (parité mkgmap PredictFilterPoints). Sans ça, nos estimations brutes à
+    /// haute résolution surévaluent de 5-10× aux wide-zoom levels (shift≥6),
+    /// déclenchant want_split trop souvent → prolifération de subdivs.
     pub fn add_line(&mut self, line: SplitLine) {
-        self.sizes[1] += LINE_OVERHEAD + line.points.len() * LINE_POINT_SIZE;
+        let n = predicted_max_num_points(&line.points, self.resolution);
+        self.sizes[1] += LINE_OVERHEAD + n * LINE_POINT_SIZE;
         self.lines.push(line);
     }
 
-    /// Add a shape — mkgmap addSize: 11 + numPoints * 4
+    /// Add a shape — mkgmap addSize: 11 + predictedMaxNumPoints * 4
     pub fn add_shape(&mut self, shape: SplitShape) {
-        self.sizes[2] += SHAPE_OVERHEAD + shape.points.len() * SHAPE_POINT_SIZE;
+        let n = predicted_max_num_points(&shape.points, self.resolution);
+        self.sizes[2] += SHAPE_OVERHEAD + n * SHAPE_POINT_SIZE;
         self.shapes.push(shape);
     }
 
@@ -171,31 +208,32 @@ impl MapArea {
             sub_areas[idx].add_point(pt.clone());
         }
 
-        // Max cell dimensions for large object detection — mkgmap MapArea.split
-        let max_cell_w = (self.bounds.width() / nx.max(1) as i32)
-            .min(MAX_DIVISION_SIZE / 2)
-            .max(LARGE_OBJECT_DIM * 2);
-        let max_cell_h = (self.bounds.height() / ny.max(1) as i32)
-            .min(MAX_DIVISION_SIZE / 2)
-            .max(LARGE_OBJECT_DIM * 2);
+        // Max cell dimensions for large object detection — parité mkgmap MapArea.java:260-271.
+        // maxSize est shifté selon la résolution : plus la résolution est faible (wide-zoom),
+        // plus maxSize est grand. Sans ce shift, notre plafond fixe `MAX_DIVISION_SIZE/2`
+        // (≈16K units) déclenche les "largeObjectArea" beaucoup trop souvent aux wide-zoom
+        // levels (bits≤20) → prolifération de subdivs dédiés, bytes RGN dupliqués.
+        const MAX_RESOLUTION: i32 = 24;
+        let max_size = {
+            let shifted = (MAX_DIVISION_SIZE as i64) << (MAX_RESOLUTION - self.resolution as i32).max(0);
+            let clamped = shifted.min(((1i64 << 24) - 1) as i64).max(0x8000);
+            clamped as i32
+        };
+        let cell_w = self.bounds.width() / nx.max(1) as i32;
+        let cell_h = self.bounds.height() / ny.max(1) as i32;
+        let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
+        let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: large objects go to a dedicated subdiv; otherwise clip to each
-        // overlapping cell so that intersection points are bit-exact across adjacent
-        // subdivisions (fixes contour discontinuities at subdivision boundaries).
+        // ── Lines: parité mkgmap MapArea.java:310-324 — une polyline va ENTIÈRE
+        // dans une seule sub-area (celle de son centre via pickArea). Si son bbox
+        // dépasse la taille de la cell ET ne tient pas dans la cell cible, elle
+        // obtient son propre "largeObjectArea" dédié (feature entière, pas clippée).
+        // Pas de clipping par cellule : duplication des bytes RGN à éviter.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
             }
             let line_bbox = Area::from_coords(&line.points);
-
-            // Large object: dedicated area covers the whole feature — no clipping
-            if line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h {
-                let mut dedicated = MapArea::new(line_bbox, self.resolution);
-                dedicated.add_line(line.clone());
-                sub_areas.push(dedicated);
-                continue;
-            }
-
             let first = &line.points[0];
             let target = pick_area(
                 first.longitude() as i64,
@@ -203,52 +241,30 @@ impl MapArea {
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            // Fast path: line fully inside target cell → bitstream unchanged
-            if sub_areas[target].bounds.contains_area(&line_bbox) {
-                sub_areas[target].add_line(line.clone());
+            // Large object (mkgmap) : si la polyline dépasse la cell ET ne tient
+            // pas dans la cell cible → subdiv dédié contenant la polyline entière.
+            let exceeds_cell = line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h;
+            let fits_target = sub_areas[target].bounds.contains_area(&line_bbox);
+            if exceeds_cell && !fits_target {
+                let mut dedicated = MapArea::new(line_bbox, self.resolution);
+                dedicated.add_line(line.clone());
+                sub_areas.push(dedicated);
                 continue;
             }
 
-            // Line spans multiple cells: clip against each overlapping bbox
-            for (i, bounds) in sub_bounds.iter().enumerate() {
-                if !bounds.intersects(&line_bbox) {
-                    continue;
-                }
-                match line_clipper::clip_to_bbox(&line.points, bounds) {
-                    None => {
-                        // Entirely inside this cell (rare given the check above,
-                        // but possible with degenerate bboxes) — keep as-is.
-                        sub_areas[i].add_line(line.clone());
-                    }
-                    Some(segments) => {
-                        for seg in segments {
-                            if seg.len() >= 2 {
-                                sub_areas[i].add_line(SplitLine {
-                                    mp_index: line.mp_index,
-                                    points: seg,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
+            // Sinon : ajout entier dans la cell cible (même si elle déborde un peu).
+            sub_areas[target].add_line(line.clone());
         }
 
-        // ── Shapes: distribute by first point, clip if spanning multiple areas ──
+        // ── Shapes: parité mkgmap MapArea.java:280-295 — shape entier dans une
+        // seule sub-area (center), sauf si bbox dépasse maxSize (split forcé dans
+        // toutes les cellules chevauchées). On n'active pas ce split agressif par
+        // défaut ; comportement = comme les polylines (dedicated si trop gros).
         for shape in &self.shapes {
             if shape.points.len() < 3 {
                 continue;
             }
             let shape_bbox = Area::from_coords(&shape.points);
-
-            // Large object: if shape bounds exceed cell dimensions, create dedicated area
-            if shape_bbox.width() > max_cell_w || shape_bbox.height() > max_cell_h {
-                let mut dedicated = MapArea::new(shape_bbox, self.resolution);
-                dedicated.add_shape(shape.clone());
-                sub_areas.push(dedicated);
-                continue;
-            }
-
             let first = &shape.points[0];
             let target = pick_area(
                 first.longitude() as i64,
@@ -256,25 +272,16 @@ impl MapArea {
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            if sub_areas[target].bounds.contains_area(&shape_bbox) {
-                // Entire shape fits in target area — no clipping needed
-                sub_areas[target].add_shape(shape.clone());
-            } else {
-                // Shape spans multiple areas — clip to ALL overlapping areas
-                // including target (mkgmap splitIntoAreas behavior)
-                for (i, bounds) in sub_bounds.iter().enumerate() {
-                    if !bounds.intersects(&shape_bbox) {
-                        continue;
-                    }
-                    let clipped = clip_polygon_to_rect(&shape.points, bounds);
-                    if clipped.len() >= 3 {
-                        sub_areas[i].add_shape(SplitShape {
-                            mp_index: shape.mp_index,
-                            points: clipped,
-                        });
-                    }
-                }
+            let exceeds_cell = shape_bbox.width() > max_cell_w || shape_bbox.height() > max_cell_h;
+            let fits_target = sub_areas[target].bounds.contains_area(&shape_bbox);
+            if exceeds_cell && !fits_target {
+                let mut dedicated = MapArea::new(shape_bbox, self.resolution);
+                dedicated.add_shape(shape.clone());
+                sub_areas.push(dedicated);
+                continue;
             }
+
+            sub_areas[target].add_shape(shape.clone());
         }
 
         sub_areas
@@ -652,7 +659,11 @@ mod tests {
     }
 
     #[test]
-    fn test_split_lines_clipped_to_each_cell() {
+    fn test_split_line_entire_in_single_cell_or_dedicated() {
+        // Parité mkgmap MapArea.java:310-324 — une polyline qui traverse
+        // plusieurs cells reste ENTIÈRE dans la cell de son centre (ou subdiv
+        // dédié si elle dépasse la taille max de cell). PAS de clipping qui
+        // dupliquerait la géométrie dans plusieurs sub-areas voisines.
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
@@ -664,47 +675,33 @@ mod tests {
 
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        // With boundary clipping, a line crossing N cells produces N segments,
-        // one per cell, each preserving bit-exact boundary crossings.
-        assert!(total_lines >= 2, "expected clipping across cells, got {total_lines}");
-        // All clipped segments must lie within their host cell
-        for sub in &subs {
-            for line in &sub.lines {
-                for p in &line.points {
-                    assert!(sub.bounds.contains_coord(p));
-                }
-            }
-        }
+        // La ligne doit apparaître UNE SEULE FOIS (dans une seule sub-area ou
+        // dans un dedicated subdiv).
+        assert_eq!(total_lines, 1, "line must not be duplicated across cells");
     }
 
     #[test]
-    fn test_split_line_boundary_points_match_between_adjacent_cells() {
-        // Two adjacent cells share the edge at lon = 500. A diagonal line
-        // crossing that edge must emit the same coordinate on both sides,
-        // which is the pre-requisite for continuous contours on device.
-        let bounds = Area::new(0, 0, 1000, 1000);
+    fn test_split_large_line_gets_dedicated_area() {
+        // Une polyline dont le bbox dépasse max_cell_w/h ET qui ne tient pas
+        // dans la cell de son centre → subdiv dédié (mkgmap largeObjectArea).
+        let bounds = Area::new(0, 0, (LARGE_OBJECT_DIM * 8) as i32, (LARGE_OBJECT_DIM * 8) as i32);
         let mut area = MapArea::new(bounds, 24);
+        // Ligne qui traverse presque toute la zone → trop grande pour tenir
+        // dans un seul quart.
         area.add_line(SplitLine {
             mp_index: 0,
-            points: vec![pt(100, 100), pt(900, 900)],
+            points: vec![
+                pt(100, 100),
+                pt((LARGE_OBJECT_DIM * 7) as i32, (LARGE_OBJECT_DIM * 7) as i32),
+            ],
         });
 
         let subs = area.split(2, 2);
-        let mut boundary_coords: Vec<Coord> = Vec::new();
-        for sub in &subs {
-            for line in &sub.lines {
-                for p in &line.points {
-                    if p.longitude() == 500 || p.latitude() == 500 {
-                        boundary_coords.push(*p);
-                    }
-                }
-            }
-        }
-        assert!(!boundary_coords.is_empty());
-        for bc in &boundary_coords {
-            let n = boundary_coords.iter().filter(|p| **p == *bc).count();
-            assert!(n >= 2, "boundary coord {bc:?} not mirrored in adjacent cell");
-        }
+        // 4 cells (2×2) + 1 dedicated = 5 sub-areas au total.
+        assert!(subs.len() >= 5, "expected extra dedicated subdiv, got {}", subs.len());
+        // La ligne n'apparaît qu'une seule fois globalement.
+        let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
+        assert_eq!(total_lines, 1);
     }
 
     #[test]

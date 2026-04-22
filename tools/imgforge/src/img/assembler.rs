@@ -109,8 +109,11 @@ pub fn build_gmapsupp_with_overview(
     // --- File ordering: MPS first, overview TRE/RGN/LBL, tiles, TYP, SRT ---
     // Some Garmin firmware (Alpha 100) expects MPS as the first subfile.
 
-    // 1. MPS first (mkgmap convention). Parité SUD stricte : pas de L-record overview.
-    let mps_data = build_mps(tiles, meta);
+    // 1. MPS first (mkgmap convention). Un L-record est émis pour chaque tuile
+    // détail + un L-record pour la sub-map overview (si fournie). Sans L-record
+    // overview le firmware Alpha 100 ignore complètement la sub-map → écran vide
+    // en dézoom. Vérifié byte-par-byte sur SUD Topo France V6 Pro `17131519`.
+    let mps_data = build_mps(tiles, meta, overview.map(|o| o.map_number.as_str()));
     fs.add_file("MAKEGMAP", "MPS", mps_data);
 
     // 1b. Overview map subfiles (parité SUD : TRE/RGN/LBL juste après le MPS).
@@ -189,9 +192,15 @@ pub fn compute_overview_map_id(family_id: u16) -> u32 {
     if id > 99999999 { 99999999 } else { id }
 }
 
-/// Build MPS entries. Parité SUD stricte : pas de L-record pour l'overview
-/// (SUD Topo France V6 Pro n'en insère pas et l'Alpha 100 valide ce format).
-fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
+/// Build MPS entries. Un L-record par tuile détail + un L-record pour l'overview
+/// (si fournie). L'overview utilise `map_description = "Preview Map"` — signature
+/// reproduite sur SUD Topo France V6 Pro (sub-map `17131519`), sans laquelle le
+/// firmware Alpha 100 ignore la sub-map et n'affiche rien en dézoom.
+fn build_mps(
+    tiles: &[TileSubfiles],
+    meta: &GmapsuppMeta,
+    overview_map_number: Option<&str>,
+) -> Vec<u8> {
     let mut mps = MpsWriter::new();
     mps.codepage = meta.codepage;
 
@@ -216,6 +225,19 @@ fn build_mps(tiles: &[TileSubfiles], meta: &GmapsuppMeta) -> Vec<u8> {
             map_number: map_num,
             map_name: desc.clone(),
             map_description: desc,
+            area_name: meta.area_name.clone(),
+        });
+    }
+
+    // Overview L-record en dernier, tel que SUD Topo France V6 Pro l'émet.
+    if let Some(ov_name) = overview_map_number {
+        let ov_num: u32 = ov_name.parse().unwrap_or(0);
+        mps.add_map(MpsMapEntry {
+            product_id: meta.product_id,
+            family_id: meta.family_id,
+            map_number: ov_num,
+            map_name: meta.family_name.clone(),
+            map_description: "Preview Map".to_string(),
             area_name: meta.area_name.clone(),
         });
     }

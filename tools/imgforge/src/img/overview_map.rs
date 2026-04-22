@@ -44,8 +44,11 @@ const COPYRIGHT_STRINGS: &[u8] = b"cgpsmapper version0096a\0DEFAULT\0";
 /// 2 records copyright × 3 bytes (LBL offsets reproduits tels quels depuis SUD).
 const COPYRIGHT_RECORDS: [u8; 6] = [0x01, 0x00, 0x00, 0x37, 0x0e, 0x00];
 
-/// Polygon overview section du TRE : 2 entrées (types 0x4A background + 0x4B sea).
-const POLYGON_OVERVIEW_DATA: [u8; 4] = [0x4A, 0x00, 0x4B, 0x00];
+/// Polygon overview section du TRE : 1 entrée (type 0x50 — "Forêt fermée" défini dans TYP
+/// `I2023100.txt`). Remplace 0x4A/0x4B (non définis dans notre TYP → rendu invisible sur
+/// Alpha 100 wide-zoom). Les polygones générés restent des bounding-boxes de tuiles ; seul
+/// le type de rendu change pour tester la visibilité.
+const POLYGON_OVERVIEW_DATA: [u8; 2] = [0x50, 0x00];
 
 /// Point overview section du TRE : 1 entrée (type 0x0B, cohérent avec le preamble leaf 1).
 const POINT_OVERVIEW_DATA: [u8; 3] = [0x0B, 0x00, 0x00];
@@ -658,8 +661,9 @@ fn build_rgn_polygon_data(
         }
 
         if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, false) {
-            // Type byte: 0x4A (background/transparent polygon)
-            let mut type_byte = 0x4Au8;
+            // Type byte: 0x50 — type polygone défini dans notre TYP (I2023100.txt).
+            // cf. POLYGON_OVERVIEW_DATA pour la motivation.
+            let mut type_byte = 0x50u8;
             if bitstream.len() > 256 {
                 type_byte |= 0x80; // 2-byte length flag
             }
@@ -876,8 +880,8 @@ mod tests {
         // Data layout: [8 B LEAF1_PREAMBLE][polygones leaf 2]
         let data_start = RGN_HEADER_LEN as usize;
         assert_eq!(ov.rgn[data_start], 0x0b, "preamble leaf1 expected");
-        assert_eq!(ov.rgn[data_start + 8] & 0x7F, 0x4A,
-            "Polygone leaf2 (après preamble 8 B) doit démarrer avec type 0x4A");
+        assert_eq!(ov.rgn[data_start + 8] & 0x7F, 0x50,
+            "Polygone leaf2 (après preamble 8 B) doit démarrer avec type 0x50");
     }
 
     #[test]

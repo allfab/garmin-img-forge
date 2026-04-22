@@ -484,6 +484,32 @@ fn build_multilevel_hierarchy(
                 subdiv.has_children = true;
             }
         }
+
+        // Patch first_child pointers for non-leaf parents with empty children.
+        // Garmin format: parent P's children range is [P.first_child, P_next.first_child).
+        // Propager le first_child du sibling successeur rend la range vide sans pointer à 0
+        // (ce que l'Alpha 100 rejette — rendu wide-zoom cassé).
+        let total = all_subdivisions.len() as u16;
+        let mut zoom_levels: Vec<u8> = all_subdivisions.iter().map(|s| s.zoom_level).collect();
+        zoom_levels.sort_unstable();
+        zoom_levels.dedup();
+        for &lvl in zoom_levels.iter().filter(|&&l| l != leaf_level) {
+            let indices: Vec<usize> = all_subdivisions.iter()
+                .enumerate()
+                .filter(|(_, s)| s.zoom_level == lvl)
+                .map(|(i, _)| i)
+                .collect();
+            // Walk backward, carrying the last valid first_child seen.
+            let mut last_valid: u16 = total + 1; // fallback: out-of-range → empty range
+            for &idx in indices.iter().rev() {
+                let subdiv = &all_subdivisions[idx];
+                if let Some(fc) = subdiv.children.first().copied() {
+                    last_valid = fc;
+                } else if subdiv.has_children {
+                    all_subdivisions[idx].children = vec![last_valid];
+                }
+            }
+        }
     }
 
     // Build extTypeOffsets data if we have extended data
@@ -576,8 +602,13 @@ fn filter_features_for_level(
         .or(mp.header.reduce_point_density)
         .or(auto_epsilon);
 
+    // Politique mkgmap-compatible : accepter la feature à ce level si elle y a un
+    // bucket DataN explicite, même si EndLevel < level. mpforge émet parfois
+    // Data5=/Data6= pour des polylines avec EndLevel=4 (type 0x05 routes) ;
+    // sans ce fallback, imgforge exclut ces polylines des subdivs wide-zoom et
+    // l'Alpha 100 n'affiche plus les routes en dézoom.
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
-        .filter(|(_, l)| l.end_level.unwrap_or(0) >= level)
+        .filter(|(_, l)| l.geometries.contains_key(&level) || l.end_level.unwrap_or(0) >= level)
         .filter_map(|(i, l)| {
             let geom = l.geometry_for_level(level);
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
@@ -597,8 +628,9 @@ fn filter_features_for_level(
 
     let min_size = mp.header.min_size_polygon;
 
+    // Même politique que pour les lignes — inclure si bucket DataN explicite OU EndLevel couvre.
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
-        .filter(|(_, s)| s.end_level.unwrap_or(0) >= level)
+        .filter(|(_, s)| s.geometries.contains_key(&level) || s.end_level.unwrap_or(0) >= level)
         .filter_map(|(i, s)| {
             let geom = s.geometry_for_level(level);
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
