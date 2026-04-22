@@ -319,6 +319,7 @@ fn main() -> Result<()> {
                 family_id: fid,
                 product_id: pid,
                 family_name: family_name.as_deref().unwrap_or("Map").to_string(),
+                series_name: series_name.as_deref().unwrap_or("imgforge").to_string(),
                 area_name: area_name.as_deref().unwrap_or("").to_string(),
                 codepage: effective_codepage,
                 typ_basename: typ_file.as_ref().map(|p| {

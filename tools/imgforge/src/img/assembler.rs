@@ -35,6 +35,7 @@ pub struct GmapsuppMeta {
     pub family_id: u16,
     pub product_id: u16,
     pub family_name: String,
+    pub series_name: String,
     pub area_name: String,
     pub codepage: u16,
     /// TYP filename stem (without extension), e.g. "I2023100" from "I2023100.typ".
@@ -50,6 +51,7 @@ impl Default for GmapsuppMeta {
             family_id: 1,
             product_id: 1,
             family_name: "Map".to_string(),
+            series_name: "imgforge".to_string(),
             area_name: String::new(),
             codepage: 0,
             typ_basename: None,
@@ -211,11 +213,24 @@ fn build_mps(
         family_name: meta.family_name.clone(),
     });
 
-    // One map entry per tile
+    // One map entry per tile.
+    //
+    // Parité mkgmap `MapBlock.writeBody` (mkgmap MapBlock.java:43-52) :
+    //   write2(productId) write2(familyId) write4(mapNumber)
+    //   writeString(seriesName)       ← CONSTANT à travers toute la famille
+    //   writeString(mapDescription)   ← CONSTANT (description du produit)
+    //   writeString(areaName)         ← PER-TUILE (ex "Area 63240001")
+    //   write4(hexNumber) write4(0)
+    //
+    // Avant ce fix, imgforge stockait `tile.description` en `map_name` ET
+    // `map_description`, et laissait `area_name` vide : chaque L-record
+    // annonçait une seriesName différente ("BDTOPO-000-000", "BDTOPO-005-006"...)
+    // → Alpha 100 voyait une famille incohérente et refusait le rendu
+    // multi-tuiles en wide-zoom.
     for tile in tiles {
         let map_num: u32 = tile.map_number.parse().unwrap_or(0);
-        let desc = if tile.description.is_empty() {
-            meta.family_name.clone()
+        let area = if tile.description.is_empty() {
+            format!("Area {}", tile.map_number)
         } else {
             tile.description.clone()
         };
@@ -223,9 +238,12 @@ fn build_mps(
             product_id: meta.product_id,
             family_id: meta.family_id,
             map_number: map_num,
-            map_name: desc.clone(),
-            map_description: desc,
-            area_name: meta.area_name.clone(),
+            // field 1 (seriesName) — constant pour toute la famille
+            map_name: meta.series_name.clone(),
+            // field 2 (mapDescription) — constant, description produit
+            map_description: meta.family_name.clone(),
+            // field 3 (areaName) — unique par tuile
+            area_name: area,
         });
     }
 
@@ -236,9 +254,9 @@ fn build_mps(
             product_id: meta.product_id,
             family_id: meta.family_id,
             map_number: ov_num,
-            map_name: meta.family_name.clone(),
+            map_name: meta.series_name.clone(),
             map_description: "Preview Map".to_string(),
-            area_name: meta.area_name.clone(),
+            area_name: meta.family_name.clone(),
         });
     }
 
@@ -421,6 +439,7 @@ mod tests {
             family_id: 6324,  // 0x18B4
             product_id: 2,
             family_name: "Test".to_string(),
+            series_name: "Test Series".to_string(),
             area_name: String::new(),
             codepage: 0,
             typ_basename: None,
@@ -474,6 +493,7 @@ mod tests {
             family_id: 1100,
             product_id: 1,
             family_name: "Test".to_string(),
+            series_name: "Test Series".to_string(),
             area_name: String::new(),
             codepage: 1252,
             typ_basename: None,
