@@ -336,18 +336,32 @@ fn build_multilevel_hierarchy(
         // Determine parent for each area, then sort by parent to guarantee
         // contiguous child subdivision numbers per parent (Garmin format requirement:
         // children are encoded as "first child number" + contiguous range).
+        //
+        // Si center n'est contenu par aucun parent (déborde à cause de
+        // largeObjectArea ou overflow_split à un bounds différent du parent),
+        // on rabat sur le parent géographiquement le PLUS PROCHE (distance
+        // du centre au bbox). Sans ce fallback, `parent=1 (topdiv)` laissait
+        // des subdivs orphelines — Alpha 100 navigue le TRE depuis topdiv
+        // via `next_level_subdiv` et ignore les subdivs non rattachées à
+        // un parent du niveau précédent → écran vide en wide-zoom.
         let area_parents: Vec<u16> = areas.iter().map(|area| {
             let center = area.bounds.center();
-            parent_areas.iter()
-                .find(|(pa, _)| pa.contains_coord(&center))
-                .map(|(_, n)| *n as u16)
-                .unwrap_or_else(|| {
-                    eprintln!(
-                        "WARNING: subdivision center ({},{}) not contained in any parent, assigning to topdiv",
-                        center.latitude(), center.longitude()
-                    );
-                    1
+            if let Some((_, n)) = parent_areas.iter().find(|(pa, _)| pa.contains_coord(&center)) {
+                return *n as u16;
+            }
+            // Fallback : distance² (lat, lon) du centre à chaque bbox parent
+            let (c_lat, c_lon) = (center.latitude() as i64, center.longitude() as i64);
+            let closest = parent_areas.iter()
+                .map(|(pa, n)| {
+                    let dx = c_lon.max(pa.min_lon() as i64).min(pa.max_lon() as i64) - c_lon;
+                    let dy = c_lat.max(pa.min_lat() as i64).min(pa.max_lat() as i64) - c_lat;
+                    let d2 = dx*dx + dy*dy;
+                    (d2, *n as u16)
                 })
+                .min_by_key(|(d2, _)| *d2)
+                .map(|(_, n)| n)
+                .unwrap_or(1);
+            closest
         }).collect();
 
         // Sort areas by parent number to ensure contiguity
