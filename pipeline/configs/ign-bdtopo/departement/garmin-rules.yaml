@@ -17,7 +17,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
         set:
           Type: "0x01"
-          EndLevel: "4"
+          EndLevel: "6"
           Label: "~[0x04]${NUMERO}"
 
       # 2. Nationale (hors Rond-point)
@@ -105,7 +105,7 @@ rulesets:
           NATURE: "Type autoroutier"
         set:
           Type: "0x01"
-          EndLevel: "4"
+          EndLevel: "6"
           Label: "~[0x04]${NUMERO}"
 
       # 13. Chemin
