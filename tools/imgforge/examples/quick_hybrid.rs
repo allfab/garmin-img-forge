@@ -20,6 +20,7 @@ fn main() {
         family_id: 26038,
         product_id: 1,
         family_name: "IGN BDTOPO".to_string(),
+        series_name: "IGN-BDTOPO-MAP".to_string(),
         area_name: "D038".to_string(),
         codepage: 1252,
         typ_basename: None,

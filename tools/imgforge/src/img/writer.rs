@@ -613,10 +613,16 @@ fn build_multilevel_hierarchy(
 /// r4924 `setResolution` : quand endLevel>0, min=res(endLevel)/max=res(L) ;
 /// quand endLevel==0, min=max=res(L) (chaque DataN visible exactement à L).
 fn feature_visible_at_level(
-    _end_level: Option<u8>,
+    end_level: Option<u8>,
     geometries: &std::collections::BTreeMap<u8, Vec<crate::img::coord::Coord>>,
     level: u8,
 ) -> bool {
+    // r4924 : L > EndLevel → min=extractResolution(EndLevel), max=bits(L) < min → feature filtrée.
+    if let Some(el) = end_level {
+        if level > el {
+            return false;
+        }
+    }
     geometries.contains_key(&level)
 }
 

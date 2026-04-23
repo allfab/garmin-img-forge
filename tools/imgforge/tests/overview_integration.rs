@@ -32,6 +32,7 @@ fn default_meta(fid: u16) -> GmapsuppMeta {
         family_id: fid,
         product_id: 1,
         family_name: "Test".to_string(),
+        series_name: "Test".to_string(),
         area_name: String::new(),
         codepage: 1252,
         typ_basename: None,

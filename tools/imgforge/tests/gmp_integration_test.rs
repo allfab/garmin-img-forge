@@ -48,7 +48,7 @@ fn gmp_packaging_single_file_per_tile() {
     let tiles = vec![make_tile("11000001", 0x10), make_tile("11000002", 0x20)];
     let meta = GmapsuppMeta {
         family_id: 1100, product_id: 1,
-        family_name: "T".into(), area_name: String::new(),
+        family_name: "T".into(), series_name: "T".into(), area_name: String::new(),
         codepage: 1252, typ_basename: None,
         packaging: Packaging::Gmp,
     };
@@ -70,7 +70,7 @@ fn legacy_packaging_unchanged() {
     let tiles = vec![make_tile("11000001", 0x10), make_tile("11000002", 0x20)];
     let meta = GmapsuppMeta {
         family_id: 1100, product_id: 1,
-        family_name: "T".into(), area_name: String::new(),
+        family_name: "T".into(), series_name: "T".into(), area_name: String::new(),
         codepage: 1252, typ_basename: None,
         packaging: Packaging::Legacy,
     };
@@ -96,7 +96,7 @@ fn gmp_roundtrip_subsections_recovered_from_img() {
     let lbl_ref = tile.lbl.clone();
     let meta = GmapsuppMeta {
         family_id: 1100, product_id: 1,
-        family_name: "T".into(), area_name: String::new(),
+        family_name: "T".into(), series_name: "T".into(), area_name: String::new(),
         codepage: 1252, typ_basename: None,
         packaging: Packaging::Gmp,
     };

@@ -14,7 +14,7 @@ pub mod writer;
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
-use crate::pipeline::geometry_smoother::generalize_features_with_profiles;
+use crate::pipeline::geometry_smoother::{generalize_features_with_profiles, fill_level_gaps};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -414,6 +414,22 @@ fn process_single_tile(
             features_generalized = gen_count,
             "applied generalization profiles"
         );
+    }
+
+    // 3c. Pour les features sans profil de généralisation mais avec EndLevel > 0,
+    // cloner Data0 dans Data1..DataEndLevel. Sans cela, imgforge ne les affiche
+    // qu'au niveau 0 (feature_visible_at_level vérifie geometries.contains_key(level)).
+    // Cas typiques : TRONCON_DE_VOIE_FERREE (EndLevel=4), FRANCE_GR (EndLevel=4),
+    // CIMETIERE (EndLevel=2), ZONE_D_ACTIVITE_OU_D_INTERET (EndLevel=2).
+    for feature in clipped_features.iter_mut() {
+        let Some(layer_name) = feature.source_layer.as_deref() else { continue };
+        if ctx.profile_map.contains_key(layer_name) { continue }
+        let end_level = feature.attributes.get("EndLevel")
+            .and_then(|s| s.parse::<u8>().ok())
+            .unwrap_or(0);
+        if end_level > 0 {
+            fill_level_gaps(feature, end_level);
+        }
     }
 
     if clipped_features.is_empty() {

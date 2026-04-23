@@ -1,60 +1,39 @@
-
+use std::fs;
 use imgforge::img::assembler::{TileSubfiles, GmapsuppMeta, build_gmapsupp_with_meta_and_typ};
 
+fn read_tile(base: &str, number: &str) -> TileSubfiles {
+    let p = format!("{base}/{number}");
+    TileSubfiles {
+        map_number: number.to_string(),
+        description: number.to_string(),
+        tre: fs::read(format!("{p}.TRE")).expect("read TRE"),
+        rgn: fs::read(format!("{p}.RGN")).expect("read RGN"),
+        lbl: fs::read(format!("{p}.LBL")).expect("read LBL"),
+        net: None, nod: None, dem: None,
+    }
+}
+
 fn main() {
-    let tiles: Vec<TileSubfiles> = vec![
-        TileSubfiles {
-            map_number: "63240001".to_string(),
-            description: "63240001".to_string(),
-            tre: include_bytes!("/tmp/mkgmap-tiles-extracted/63240001.TRE").to_vec(),
-            rgn: include_bytes!("/tmp/mkgmap-tiles-extracted/63240001.RGN").to_vec(),
-            lbl: include_bytes!("/tmp/mkgmap-tiles-extracted/63240001.LBL").to_vec(),
-            net: None, nod: None, dem: None,
-        },
-        TileSubfiles {
-            map_number: "63240002".to_string(),
-            description: "63240002".to_string(),
-            tre: include_bytes!("/tmp/mkgmap-tiles-extracted/63240002.TRE").to_vec(),
-            rgn: include_bytes!("/tmp/mkgmap-tiles-extracted/63240002.RGN").to_vec(),
-            lbl: include_bytes!("/tmp/mkgmap-tiles-extracted/63240002.LBL").to_vec(),
-            net: None, nod: None, dem: None,
-        },
-        TileSubfiles {
-            map_number: "63240003".to_string(),
-            description: "63240003".to_string(),
-            tre: include_bytes!("/tmp/mkgmap-tiles-extracted/63240003.TRE").to_vec(),
-            rgn: include_bytes!("/tmp/mkgmap-tiles-extracted/63240003.RGN").to_vec(),
-            lbl: include_bytes!("/tmp/mkgmap-tiles-extracted/63240003.LBL").to_vec(),
-            net: None, nod: None, dem: None,
-        },
-        TileSubfiles {
-            map_number: "63240004".to_string(),
-            description: "63240004".to_string(),
-            tre: include_bytes!("/tmp/mkgmap-tiles-extracted/63240004.TRE").to_vec(),
-            rgn: include_bytes!("/tmp/mkgmap-tiles-extracted/63240004.RGN").to_vec(),
-            lbl: include_bytes!("/tmp/mkgmap-tiles-extracted/63240004.LBL").to_vec(),
-            net: None, nod: None, dem: None,
-        },
-        TileSubfiles {
-            map_number: "63240005".to_string(),
-            description: "63240005".to_string(),
-            tre: include_bytes!("/tmp/mkgmap-tiles-extracted/63240005.TRE").to_vec(),
-            rgn: include_bytes!("/tmp/mkgmap-tiles-extracted/63240005.RGN").to_vec(),
-            lbl: include_bytes!("/tmp/mkgmap-tiles-extracted/63240005.LBL").to_vec(),
-            net: None, nod: None, dem: None,
-        },
+    let base = "/tmp/mkgmap-tiles-extracted";
+    let tiles = vec![
+        read_tile(base, "63240001"),
+        read_tile(base, "63240002"),
+        read_tile(base, "63240003"),
+        read_tile(base, "63240004"),
+        read_tile(base, "63240005"),
     ];
     let meta = GmapsuppMeta {
         family_id: 26038,
         product_id: 1,
         family_name: "TEST-HYBRID".to_string(),
+        series_name: "TEST".to_string(),
         area_name: String::new(),
         codepage: 1252,
         typ_basename: None,
         packaging: Default::default(),
     };
-    let typ = include_bytes!("/tmp/mkgmap-tiles-extracted/typ.bin");
-    let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(typ)).unwrap();
-    std::fs::write("/tmp/test-3tiles/gmapsupp-hybrid.img", &gmapsupp).unwrap();
+    let typ = fs::read(format!("{base}/typ.bin")).expect("read typ.bin");
+    let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(&typ)).unwrap();
+    fs::write("/tmp/test-3tiles/gmapsupp-hybrid.img", &gmapsupp).unwrap();
     println!("Written {} bytes", gmapsupp.len());
 }
