@@ -93,6 +93,14 @@ pub struct MapArea {
     /// Estimated RGN sizes: [points, lines, shapes]
     sizes: [usize; 3],
     pub resolution: u8,
+    /// Union of bboxes of all features actually added (parité mkgmap
+    /// `MapArea.addToBounds` → `getFullBounds`). `None` tant qu'aucune feature
+    /// n'a été ajoutée : on retombe alors sur `bounds` initial.
+    full_min_lat: i32,
+    full_min_lon: i32,
+    full_max_lat: i32,
+    full_max_lon: i32,
+    has_full_bounds: bool,
 }
 
 impl MapArea {
@@ -104,6 +112,45 @@ impl MapArea {
             shapes: Vec::new(),
             sizes: [0; 3],
             resolution,
+            full_min_lat: i32::MAX,
+            full_min_lon: i32::MAX,
+            full_max_lat: i32::MIN,
+            full_max_lon: i32::MIN,
+            has_full_bounds: false,
+        }
+    }
+
+    /// Union des bboxes de toutes les features ajoutées — parité mkgmap
+    /// `MapArea.getFullBounds()` (MapArea.java:488-490). Utilisé pour
+    /// `createSubdivision(parent, ma.getFullBounds(), z)` afin que le bbox
+    /// déclaré de la subdivision TRE englobe réellement les features qu'elle
+    /// contient, y compris celles qui débordent du bounds initial de la cell
+    /// (tolérées par le splitter quand `shape ≤ maxWidth/maxHeight`).
+    /// Sans ça, Alpha 100 / BaseCamp clippent strictement au half déclaré →
+    /// zones vides là où les features débordent. GPSMapedit tolère et rend
+    /// correctement, ce qui masque le bug avec les lecteurs non-Garmin.
+    pub fn full_bounds(&self) -> Area {
+        if !self.has_full_bounds {
+            return self.bounds;
+        }
+        Area::new(self.full_min_lat, self.full_min_lon, self.full_max_lat, self.full_max_lon)
+    }
+
+    #[inline]
+    fn extend_bounds_coord(&mut self, co: &Coord) {
+        let lat = co.latitude();
+        let lon = co.longitude();
+        if lat < self.full_min_lat { self.full_min_lat = lat; }
+        if lat > self.full_max_lat { self.full_max_lat = lat; }
+        if lon < self.full_min_lon { self.full_min_lon = lon; }
+        if lon > self.full_max_lon { self.full_max_lon = lon; }
+        self.has_full_bounds = true;
+    }
+
+    #[inline]
+    fn extend_bounds_points(&mut self, points: &[Coord]) {
+        for p in points {
+            self.extend_bounds_coord(p);
         }
     }
 
@@ -124,6 +171,7 @@ impl MapArea {
 
     /// Add a point — mkgmap addSize: +9 bytes
     pub fn add_point(&mut self, pt: SplitPoint) {
+        self.extend_bounds_coord(&pt.location);
         self.points.push(pt);
         self.sizes[0] += POINT_SIZE;
     }
@@ -136,6 +184,7 @@ impl MapArea {
     pub fn add_line(&mut self, line: SplitLine) {
         let n = predicted_max_num_points(&line.points, self.resolution);
         self.sizes[1] += LINE_OVERHEAD + n * LINE_POINT_SIZE;
+        self.extend_bounds_points(&line.points);
         self.lines.push(line);
     }
 
@@ -143,6 +192,7 @@ impl MapArea {
     pub fn add_shape(&mut self, shape: SplitShape) {
         let n = predicted_max_num_points(&shape.points, self.resolution);
         self.sizes[2] += SHAPE_OVERHEAD + n * SHAPE_POINT_SIZE;
+        self.extend_bounds_points(&shape.points);
         self.shapes.push(shape);
     }
 

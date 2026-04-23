@@ -424,10 +424,18 @@ fn build_multilevel_hierarchy(
             subdiv_counter += 1;
 
             let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
-            subdiv.set_center(&area.bounds.center());
+            // Parité mkgmap `createSubdivision(parent, ma.getFullBounds(), z)`
+            // (MapBuilder.java:913). `full_bounds` = union des bboxes des
+            // features ajoutées — peut être plus grand que la cell initiale
+            // si des shapes/lines débordent (tolérées par le splitter quand
+            // `bbox ≤ maxWidth/maxHeight`). Sans ça, Alpha 100 / BaseCamp
+            // clippent strictement au half déclaré → zones vides. GPSMapedit
+            // tolère et rend correctement, masquant le bug.
+            let full = area.full_bounds();
+            subdiv.set_center(&full.center());
             subdiv.set_bounds(
-                area.bounds.min_lat(), area.bounds.min_lon(),
-                area.bounds.max_lat(), area.bounds.max_lon(),
+                full.min_lat(), full.min_lon(),
+                full.max_lat(), full.max_lon(),
             );
             subdiv.parent = parent_num;
             // is_last marks the last child in each parent's group, NOT the last at the level.
