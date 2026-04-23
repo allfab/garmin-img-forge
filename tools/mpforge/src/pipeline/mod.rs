@@ -16,13 +16,14 @@ use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
 use crate::rules::{self, RuleStats, RulesFile};
 use crate::pipeline::geometry_smoother::{generalize_features_with_profiles, fill_level_gaps};
 use crate::pipeline::geometry_validator::ValidationStats;
-use crate::pipeline::reader::{MultiGeometryStats, SourceReader, UnsupportedTypeStats};
+use crate::pipeline::reader::{Feature, MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
 use crate::pipeline::tiler::{clip_feature_to_tile, TileProcessor, TileBounds};
 use crate::pipeline::writer::{ExportStats, MpWriter};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -204,12 +205,42 @@ struct TileContext<'a> {
     /// profils mono-niveau (n=0). Plus de `generalize_map` HashMap legacy —
     /// éliminé pour supprimer le risque de double-smoothing par bug de
     /// dispatch entre deux sources de vérité.
-    profile_map: Arc<std::collections::BTreeMap<String, crate::config::GeneralizeProfile>>,
+    profile_map: Arc<BTreeMap<String, crate::config::GeneralizeProfile>>,
+    /// Sous-ensemble de `profile_map` sans les couches `topology: true`.
+    /// Utilisé pour la passe VW par tuile : les couches topology ont déjà leur
+    /// `additional_geometries` remplie par la passe globale Phase 1.5 — les
+    /// recalculer par tuile produirait des résultats incohérents aux croisées
+    /// de tuiles.
+    non_topo_profile_map: Arc<BTreeMap<String, crate::config::GeneralizeProfile>>,
     /// Tech-spec #2 Task 10: cached max `n` across all profiles. `None` when
     /// no profile declares any level n > 0 (no extra OGR geom fields needed).
     max_data_level: Option<u8>,
     /// Pre-built spatial filter geometries, keyed by source index.
     spatial_filter_geometries: Arc<std::collections::HashMap<usize, reader::SpatialFilterGeometry>>,
+    /// Features topology pré-simplifiées globalement (Phase 1.5).
+    /// Chaque feature contient sa géométrie BDTOPO complète (non clippée) ainsi
+    /// que ses `additional_geometries` (niveaux VW) calculées sur l'ensemble
+    /// du département — garantit la cohérence aux croisées de tuiles.
+    topo_presimplified: Arc<Vec<Feature>>,
+    /// Noms des couches déclarées `topology: true` dans le catalogue de profils.
+    topo_layer_names: Arc<HashSet<String>>,
+}
+
+/// Vérifie si la bounding box d'une feature intersecte la bounding box d'une tuile.
+///
+/// Utilisé pour filtrer les features pré-simplifiées (Phase 1.5) aux seules
+/// features qui contribuent à la tuile courante, sans appel GDAL.
+fn topo_feature_intersects_tile(feature: &Feature, tile: &TileBounds) -> bool {
+    if feature.geometry.is_empty() {
+        return false;
+    }
+    let (min_x, min_y, max_x, max_y) = feature.geometry.iter().fold(
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+        |(mnx, mny, mxx, mxy), &(x, y)| {
+            (mnx.min(x), mny.min(y), mxx.max(x), mxy.max(y))
+        },
+    );
+    !(max_x < tile.min_lon || min_x > tile.max_lon || max_y < tile.min_lat || min_y > tile.max_lat)
 }
 
 /// Process a single tile autonomously (thread-safe).
@@ -279,7 +310,7 @@ fn process_single_tile(
     //    from source BDTOPO attributes BEFORE rules replace them.
     let mut tile_rules_stats = RuleStats::default();
     let mut road_id_counter = route_params::RoadIdCounter::new();
-    let features = if let Some(ref rules_file) = ctx.rules {
+    let mut features = if let Some(ref rules_file) = ctx.rules {
         let mut transformed = Vec::with_capacity(features.len());
         for (fid, mut feature) in features.into_iter().enumerate() {
             let layer_name = feature.source_layer.clone().unwrap_or_default();
@@ -336,6 +367,25 @@ fn process_single_tile(
     } else {
         features
     };
+
+    // 2b. Substitution des couches topology par les versions pré-simplifiées globales.
+    // Les features topology lues depuis GDAL (règles déjà appliquées ci-dessus) sont
+    // remplacées par les features de Phase 1.5 : géométrie BDTOPO complète + niveaux
+    // VW calculés sur l'ensemble du département. Le clip (étape 3) propagera ensuite
+    // ces additional_geometries à travers la découpe par tuile via tiler.rs.
+    if !ctx.topo_presimplified.is_empty() {
+        features.retain(|f| {
+            f.source_layer
+                .as_deref()
+                .map(|l| !ctx.topo_layer_names.contains(l))
+                .unwrap_or(true)
+        });
+        for pre_feat in ctx.topo_presimplified.iter() {
+            if topo_feature_intersects_tile(pre_feat, tile_bounds) {
+                features.push(pre_feat.clone());
+            }
+        }
+    }
 
     if features.is_empty() {
         return Ok(TileOutcome::Skipped { existing: false });
@@ -403,10 +453,12 @@ fn process_single_tile(
     // Tech-spec #2 Task 10 + M6 : source de vérité UNIQUE = `profile_map`.
     // L'inline `generalize:` a déjà été converti en profils mono-niveau à
     // `load_config`.
-    if !ctx.profile_map.is_empty() {
+    // Les couches topology: true sont exclues ici (non_topo_profile_map) car
+    // leurs additional_geometries ont déjà été calculées globalement en Phase 1.5.
+    if !ctx.non_topo_profile_map.is_empty() {
         let gen_count = generalize_features_with_profiles(
             &mut clipped_features,
-            &ctx.profile_map,
+            &ctx.non_topo_profile_map,
             ctx.config.overview_levels.as_ref(),
         );
         tracing::debug!(
@@ -421,9 +473,24 @@ fn process_single_tile(
     // qu'au niveau 0 (feature_visible_at_level vérifie geometries.contains_key(level)).
     // Cas typiques : TRONCON_DE_VOIE_FERREE (EndLevel=4), FRANCE_GR (EndLevel=4),
     // CIMETIERE (EndLevel=2), ZONE_D_ACTIVITE_OU_D_INTERET (EndLevel=2).
+    //
+    // Pour les couches topology: true, on complète aussi les trous éventuels dus
+    // à un clip multi-fragment (clip_level_coords_to_bbox → None pour ce niveau).
     for feature in clipped_features.iter_mut() {
         let Some(layer_name) = feature.source_layer.as_deref() else { continue };
-        if ctx.profile_map.contains_key(layer_name) { continue }
+        if ctx.profile_map.contains_key(layer_name) {
+            // Couche avec profil : on ne touche pas aux niveaux non-topology.
+            // Pour les couches topology, combler les trous éventuels jusqu'au
+            // max déclaré dans le profil.
+            if ctx.topo_layer_names.contains(layer_name) {
+                if let Some(profile) = ctx.profile_map.get(layer_name) {
+                    if let Some(max_n) = profile.max_level_index() {
+                        fill_level_gaps(feature, max_n);
+                    }
+                }
+            }
+            continue;
+        }
         let end_level = feature.attributes.get("EndLevel")
             .and_then(|s| s.parse::<u8>().ok())
             .unwrap_or(0);
@@ -857,6 +924,133 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         );
     }
 
+    // ========================================================================
+    // Phase 1.5: Pré-simplification topologique globale
+    //
+    // Les couches `topology: true` (ex: COMMUNE) ne peuvent pas être
+    // simplifiées VW tuile par tuile : une commune qui chevauche plusieurs
+    // tuiles serait simplifiée différemment dans chaque tuile → trous visibles
+    // à la croisée de 4 tuiles (fond jaune entre communes grises).
+    //
+    // Fix : lire TOUTES les features de ces couches sans filtre spatial,
+    // appliquer VW une seule fois sur l'ensemble (collect_shared_vertices voit
+    // toutes les frontières partagées), puis stocker les additional_geometries
+    // résultantes. clip_feature_to_tile (tiler.rs) propagera ces niveaux
+    // pré-calculés à travers la découpe → fragments cohérents dans toutes les
+    // tuiles adjacentes.
+    // ========================================================================
+    let topo_layer_names: HashSet<String> = profile_map
+        .iter()
+        .filter(|(_, p)| p.topology)
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    let non_topo_profile_map: Arc<BTreeMap<String, crate::config::GeneralizeProfile>> = Arc::new(
+        profile_map
+            .iter()
+            .filter(|(_, p)| !p.topology)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+    );
+
+    let topo_presimplified: Arc<Vec<Feature>> = if topo_layer_names.is_empty() {
+        Arc::new(Vec::new())
+    } else {
+        info!(
+            layers = ?topo_layer_names.iter().collect::<Vec<_>>(),
+            "Phase 1.5: pré-simplification topologique globale"
+        );
+        // Lire toutes les features (filtre spatial = globe entier → aucun filtre).
+        let global_tb = TileBounds {
+            col: 0, row: 0,
+            min_lon: global_extent.min_x - 1.0,
+            min_lat: global_extent.min_y - 1.0,
+            max_lon: global_extent.max_x + 1.0,
+            max_lat: global_extent.max_y + 1.0,
+        };
+        let (mut all_features, _, _) = SourceReader::read_features_for_tile(
+            config,
+            &global_tb,
+            &*spatial_filter_geometries,
+        )
+        .context("Phase 1.5: lecture globale des couches topologiques")?;
+
+        // Garder uniquement les couches topology.
+        all_features.retain(|f| {
+            f.source_layer
+                .as_deref()
+                .map(|l| topo_layer_names.contains(l))
+                .unwrap_or(false)
+        });
+
+        // Snapshot pré-règles si overview_levels configuré.
+        if config.overview_levels.is_some() {
+            for f in all_features.iter_mut() {
+                f.source_attributes = Some(f.attributes.clone());
+            }
+        }
+
+        // Appliquer les règles (Type, EndLevel, Label nécessaires pour l'écriture).
+        if let Some(ref rules_file) = rules {
+            let mut transformed = Vec::with_capacity(all_features.len());
+            let mut dummy_road_id = route_params::RoadIdCounter::new();
+            for mut feature in all_features.into_iter() {
+                let layer_name = feature.source_layer.clone().unwrap_or_default();
+                let routing_attrs = if route_params::is_routable_layer(&layer_name) {
+                    Some(route_params::compute_route_attrs(
+                        &feature.attributes,
+                        &mut dummy_road_id,
+                    ))
+                } else {
+                    None
+                };
+                match rules::find_ruleset(rules_file, &layer_name) {
+                    None => {
+                        if let Some(r) = routing_attrs {
+                            feature.attributes.extend(r);
+                        }
+                        transformed.push(feature);
+                    }
+                    Some(ruleset) => {
+                        match rules::evaluate_feature(ruleset, &feature.attributes) {
+                            Ok(Some(mut new_attrs)) => {
+                                if let Some(r) = routing_attrs {
+                                    new_attrs.extend(r);
+                                }
+                                feature.attributes = new_attrs;
+                                transformed.push(feature);
+                            }
+                            Ok(None) | Err(_) => {} // feature ignorée
+                        }
+                    }
+                }
+            }
+            all_features = transformed;
+        }
+
+        // Profile map réduit aux seules couches topology.
+        let topo_profile_map: BTreeMap<String, crate::config::GeneralizeProfile> = profile_map
+            .iter()
+            .filter(|(_, p)| p.topology)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        // VW global : collect_shared_vertices voit toutes les communes ensemble.
+        let n = generalize_features_with_profiles(
+            &mut all_features,
+            &topo_profile_map,
+            config.overview_levels.as_ref(),
+        );
+        info!(
+            features = all_features.len(),
+            generalized = n,
+            "Phase 1.5: pré-simplification topologique terminée"
+        );
+        Arc::new(all_features)
+    };
+
+    let topo_layer_names = Arc::new(topo_layer_names);
+
     let ctx = TileContext {
         config,
         rules: rules.map(Arc::new),
@@ -868,8 +1062,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         field_mapping_path: config.output.field_mapping_path.as_deref(),
         header_config: config.header.as_ref(),
         profile_map,
+        non_topo_profile_map,
         max_data_level,
         spatial_filter_geometries: spatial_filter_geometries.clone(),
+        topo_presimplified,
+        topo_layer_names,
     };
 
     // Inform user when no header section is configured

@@ -488,10 +488,27 @@ pub fn clip_feature_to_tile(
 
     let mut result = Vec::with_capacity(all_coords.len());
     for coords in all_coords {
+        // Propagate pre-simplified additional_geometries (set by the global topology
+        // pre-pass) through tile clipping. Without this, VW-simplified levels computed
+        // on the full commune geometry before tiling would be discarded here and
+        // replaced by per-tile VW → inconsistent simplification at tile corners.
+        let clipped_additional: std::collections::BTreeMap<u8, Vec<(f64, f64)>> =
+            if feature.additional_geometries.is_empty() {
+                std::collections::BTreeMap::new()
+            } else {
+                feature
+                    .additional_geometries
+                    .iter()
+                    .filter_map(|(level, add_coords)| {
+                        clip_level_coords_to_bbox(add_coords, feature.geometry_type, tile_bbox)
+                            .map(|c| (*level, c))
+                    })
+                    .collect()
+            };
         result.push(Feature {
             geometry_type: feature.geometry_type,
             geometry: coords,
-            additional_geometries: std::collections::BTreeMap::new(),
+            additional_geometries: clipped_additional,
             attributes: feature.attributes.clone(),
             source_attributes: feature.source_attributes.clone(),
             source_layer: feature.source_layer.clone(),
@@ -506,6 +523,61 @@ pub fn clip_feature_to_tile(
     );
 
     Ok(result)
+}
+
+/// Clip a single coordinate set to a tile bounding box.
+///
+/// Returns `Some(coords)` if the intersection produces exactly one fragment, `None`
+/// otherwise (empty result, or multi-fragment due to a non-convex tile boundary).
+/// Used to propagate pre-simplified `additional_geometries` through tile clipping so
+/// that topology-layer features (e.g. COMMUNE) keep their globally-computed VW levels
+/// after being split across tiles.
+fn clip_level_coords_to_bbox(
+    coords: &[(f64, f64)],
+    geom_type: GeometryType,
+    tile_bbox: &Geometry,
+) -> Option<Vec<(f64, f64)>> {
+    let min_pts: usize = match geom_type {
+        GeometryType::Polygon => 3,
+        GeometryType::LineString => 2,
+        GeometryType::Point => return None,
+    };
+    if coords.len() < min_pts {
+        return None;
+    }
+    let pts: Vec<String> = coords.iter().map(|(x, y)| format!("{} {}", x, y)).collect();
+    let wkt = match geom_type {
+        GeometryType::Polygon => {
+            let first = coords[0];
+            let last = *coords.last().unwrap();
+            let ring = if (first.0 - last.0).abs() < 1e-9 && (first.1 - last.1).abs() < 1e-9 {
+                pts.join(", ")
+            } else {
+                format!("{}, {} {}", pts.join(", "), first.0, first.1)
+            };
+            format!("POLYGON(({}))", ring)
+        }
+        GeometryType::LineString => format!("LINESTRING({})", pts.join(", ")),
+        GeometryType::Point => unreachable!(),
+    };
+    let wkt_lower = wkt.to_lowercase();
+    if wkt_lower.contains("nan") || wkt_lower.contains("inf") {
+        return None;
+    }
+    let geom = Geometry::from_wkt(&wkt).ok()?;
+    let clipped = geom.intersection(tile_bbox)?;
+    if clipped.is_empty() {
+        return None;
+    }
+    let all_coords = gdal_geometry_to_multi_coords(&clipped).ok()?;
+    // Only accept single-fragment results; multi-fragment means the VW-simplified
+    // geometry re-entered the tile in a non-convex way — the caller will fall back
+    // to fill_level_gaps using the nearest available level.
+    if all_coords.len() == 1 {
+        all_coords.into_iter().next()
+    } else {
+        None
+    }
 }
 
 /// Handle invalid geometry based on error mode (returns Vec).

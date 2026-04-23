@@ -269,18 +269,30 @@ pub fn fill_level_gaps(feature: &mut Feature, max_n: u8) {
     }
 }
 
+/// Arrondit une coordonnée à la grille 1e-6° (≈ 11 cm à 45°N).
+///
+/// Utilisé pour la détection de vertices partagés afin de tolérer la dérive
+/// floating-point introduite par GDAL/GEOS lors du clipping de tuile, ainsi que
+/// les légères imprecisions des exports Shapefile BDTOPO (frontières nominalement
+/// partagées mais non bit-exactes). La précision 1e-6° est plus fine que la
+/// résolution Garmin 24-bit (≈ 2.4 m) et sans effet visible sur le rendu.
+#[inline]
+fn snap_coord(v: f64) -> f64 {
+    (v * 1_000_000.0).round() / 1_000_000.0
+}
+
 /// Collecte les vertices partagés entre features d'une même couche (topologie intra-cellule).
 ///
-/// Retourne un `HashSet` de coordonnées encodées bit-exact `(x.to_bits(), y.to_bits())`
-/// présentes dans au moins deux features distinctes. La comparaison bit-exacte est
-/// justifiée par le fait que les frontières partagées proviennent du même shapefile
-/// BDTOPO → coordonnées identiques bit-à-bit.
+/// Retourne un `HashSet` de coordonnées snappées `(snap(x).to_bits(), snap(y).to_bits())`
+/// présentes dans au moins deux features distinctes. Le snap à 1e-6° tolère la dérive
+/// GEOS et les différences sub-millimétriques des exports Shapefile BDTOPO — sans quoi
+/// la comparaison bit-exacte manquerait les vertices nominalement partagés.
 pub fn collect_shared_vertices(features: &[&Feature]) -> HashSet<(u64, u64)> {
     let mut counts: HashMap<(u64, u64), usize> = HashMap::new();
     for feature in features {
         let mut seen: HashSet<(u64, u64)> = HashSet::new();
         for &(x, y) in &feature.geometry {
-            let key = (x.to_bits(), y.to_bits());
+            let key = (snap_coord(x).to_bits(), snap_coord(y).to_bits());
             if seen.insert(key) {
                 *counts.entry(key).or_insert(0) += 1;
             }
@@ -291,9 +303,11 @@ pub fn collect_shared_vertices(features: &[&Feature]) -> HashSet<(u64, u64)> {
 
 /// Applique VW avec ancrage topologique sur l'anneau extérieur d'un polygone.
 ///
-/// Les vertices partagés avec d'autres features (encodés dans `anchors`) sont
-/// injectés dans les indices retenus par VW avant reconstruction, garantissant
-/// que les frontières communes sont identiques dans les features voisines.
+/// Les vertices partagés avec d'autres features (encodés dans `anchors` sous forme
+/// de clés snappées via [`snap_coord`]) sont injectés dans les indices retenus par
+/// VW avant reconstruction, garantissant que les frontières communes sont identiques
+/// dans les features voisines. La lookup dans `anchors` utilise le même snap que
+/// [`collect_shared_vertices`] pour tolérer la dérive floating-point GEOS.
 fn apply_level_to_polygon_topo(
     raw: &[(f64, f64)],
     lvl: &LevelSpec,
@@ -309,7 +323,7 @@ fn apply_level_to_polygon_topo(
         let vw_indices = ring.simplify_vw_idx(&tolerance);
         let mut must_keep: BTreeSet<usize> = vw_indices.into_iter().collect();
         for (i, coord) in ring.0.iter().enumerate() {
-            if anchors.contains(&(coord.x.to_bits(), coord.y.to_bits())) {
+            if anchors.contains(&(snap_coord(coord.x).to_bits(), snap_coord(coord.y).to_bits())) {
                 must_keep.insert(i);
             }
         }
@@ -325,6 +339,8 @@ fn apply_level_to_polygon_topo(
 }
 
 /// Applique VW avec ancrage topologique sur une linestring.
+///
+/// Voir [`apply_level_to_polygon_topo`] — même contrat sur `anchors` (clés snappées).
 fn apply_level_to_line_topo(
     raw: &[(f64, f64)],
     lvl: &LevelSpec,
@@ -340,7 +356,7 @@ fn apply_level_to_line_topo(
         let vw_indices = line.simplify_vw_idx(&tolerance);
         let mut must_keep: BTreeSet<usize> = vw_indices.into_iter().collect();
         for (i, coord) in line.0.iter().enumerate() {
-            if anchors.contains(&(coord.x.to_bits(), coord.y.to_bits())) {
+            if anchors.contains(&(snap_coord(coord.x).to_bits(), snap_coord(coord.y).to_bits())) {
                 must_keep.insert(i);
             }
         }
@@ -1256,6 +1272,34 @@ levels:
     }
 
     // =================================================================
+    // snap_coord — unité
+    // =================================================================
+
+    #[test]
+    fn test_snap_coord_exact_values_unchanged() {
+        assert_eq!(snap_coord(1.0), 1.0, "entier exact inchangé");
+        assert_eq!(snap_coord(0.5), 0.5, "demi-entier exact inchangé");
+        assert_eq!(snap_coord(-1.0), -1.0, "négatif exact inchangé");
+        assert_eq!(snap_coord(0.0), 0.0, "zéro inchangé");
+    }
+
+    #[test]
+    fn test_snap_coord_small_offset_rounds_to_grid() {
+        // 1e-7 < demi-case (5e-7) → snappe vers 1.0
+        assert_eq!(snap_coord(1.0000001), 1.0, "dérive 1e-7 vers 1.0");
+        // 3e-7 < 5e-7 → snappe vers 1.0
+        assert_eq!(snap_coord(1.0000003), 1.0, "dérive 3e-7 vers 1.0");
+    }
+
+    #[test]
+    fn test_snap_coord_large_offset_stays_in_different_cell() {
+        // 2e-6 > demi-case → snappe vers 1.000002, pas 1.0
+        let snapped = snap_coord(1.000002);
+        assert_ne!(snapped, 1.0, "dérive 2e-6 reste dans sa propre case");
+        assert!((snapped - 1.000002).abs() < 1e-9, "snappe vers 1.000002");
+    }
+
+    // =================================================================
     // T5f/T5g — collect_shared_vertices
     // =================================================================
 
@@ -1287,6 +1331,52 @@ levels:
         );
         let anchors = collect_shared_vertices(&[&f1, &f2]);
         assert!(anchors.is_empty(), "aucun vertex partagé");
+    }
+
+    // T5g-bis — tolérance epsilon : vertices nominalement partagés mais non bit-exacts
+    // (simule la dérive GEOS/Shapefile BDTOPO < 5e-7°)
+    #[test]
+    fn test_collect_shared_vertices_epsilon_tolerance() {
+        // Frontière commune nominalement à x=1.0, mais avec dérive sub-µ° entre les deux communes.
+        let f1 = make_polygon_feature(
+            vec![(0.0, 0.0), (1.0000001, 0.0), (1.0000001, 1.0), (0.0, 1.0), (0.0, 0.0)],
+            "COMMUNE",
+        );
+        let f2 = make_polygon_feature(
+            vec![(1.0000002, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0000002, 1.0), (1.0000002, 0.0)],
+            "COMMUNE",
+        );
+        // Les deux paires de vertices diffèrent de 1e-7° < grille snap 1e-6° → reconnus comme partagés.
+        let anchors = collect_shared_vertices(&[&f1, &f2]);
+        assert_eq!(anchors.len(), 2, "2 vertices epsilon-partagés reconnus comme ancres");
+        // Les deux frontières snapent vers (1.0, 0.0) et (1.0, 1.0).
+        assert!(
+            anchors.contains(&(1.0_f64.to_bits(), 0.0_f64.to_bits())),
+            "ancre (1.0, 0.0) présente"
+        );
+        assert!(
+            anchors.contains(&(1.0_f64.to_bits(), 1.0_f64.to_bits())),
+            "ancre (1.0, 1.0) présente"
+        );
+    }
+
+    // T5g-ter — les vertices diffèrent de plus d'une case snap (> 5e-7°) → ne doivent PAS fusionner
+    #[test]
+    fn test_collect_shared_vertices_no_merge_above_threshold() {
+        // Différence de 2e-6° > demi-grille snap (5e-7°) → snapent vers des cases distinctes.
+        let f1 = make_polygon_feature(
+            vec![(0.0, 0.0), (1.000000, 0.0), (1.000000, 1.0), (0.0, 1.0), (0.0, 0.0)],
+            "COMMUNE",
+        );
+        let f2 = make_polygon_feature(
+            vec![(1.000002, 0.0), (2.0, 0.0), (2.0, 1.0), (1.000002, 1.0), (1.000002, 0.0)],
+            "COMMUNE",
+        );
+        let anchors = collect_shared_vertices(&[&f1, &f2]);
+        assert!(
+            anchors.is_empty(),
+            "vertices éloignés de 2e-6° ne doivent pas être traités comme partagés"
+        );
     }
 
     // =================================================================
