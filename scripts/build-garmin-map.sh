@@ -87,9 +87,6 @@ WITH_DEM=true
 # Tech-spec #2 : profils multi-Data
 DISABLE_PROFILES=false  # si true, passe --disable-profiles à mpforge (revalidation golden AC1)
 
-# Option B : overview map séparée (3L standard, opt-in)
-BUILD_OVERVIEW_B=false  # activé par --overview-b ; génère tuiles 3L + packaging combiné sans --levels
-
 # Tech-spec #2 : résolution driver GDAL ogr-polishmap.
 # Le binaire mpforge est compilé contre GDAL système (pas de statique embed)
 # et charge le driver ogr-polishmap dynamiquement. Si l'utilisateur a laissé
@@ -333,10 +330,6 @@ MPFORGE / IMGFORGE :
                             Utilisé pour regénérer le golden baseline
                             mono-Data (AC1). Accepte aussi l'env var
                             MPFORGE_PROFILES=off.
-    --overview-b            Option B overview map : génère une 2ème passe mpforge
-                            (3L, Level0=14/12/10) puis un packaging imgforge combiné
-                            sans --levels → gmapsupp-overview-b.img.
-                            Les tuiles détail 7L sont inchangées.
     --gdal-driver-path PATH Override GDAL_DRIVER_PATH pour charger le driver
                             ogr-polishmap frais (tech-spec #2). Résolution
                             auto si vide :
@@ -431,7 +424,6 @@ parse_args() {
             --imgforge-jobs) IMGFORGE_JOBS="$2"; shift 2 ;;
             --skip-existing) SKIP_EXISTING=true; shift ;;
             --disable-profiles) DISABLE_PROFILES=true; shift ;;
-            --overview-b)       BUILD_OVERVIEW_B=true; shift ;;
             --gdal-driver-path) GDAL_DRIVER_PATH_OVERRIDE="$2"; shift 2 ;;
             --family-id)     FAMILY_ID="$2"; shift 2 ;;
             --product-id)    PRODUCT_ID="$2"; shift 2 ;;
@@ -494,25 +486,6 @@ parse_args() {
 # ---------------------------------------------------------------------------
 validate_params() {
     local errors=0
-
-    # --- --config + --overview-b : incompatible ---
-    # --config remplace la passe 1 (détail 7L). Avec --overview-b, la passe 1
-    # doit produire des tuiles dans mp/ (auto-résolu vers departement/sources.yaml).
-    # Passer un config overview-b comme passe 1 vide mp/ et fait échouer imgforge.
-    if [[ -n "$CONFIG_FILE" && "$BUILD_OVERVIEW_B" == true ]]; then
-        log_error "--config et --overview-b sont incompatibles."
-        log_error "  --overview-b ajoute une 2ème passe mpforge (config hardcodée : departement-overview-b/sources.yaml)"
-        log_error "  et attend que la passe 1 génère les tuiles détail dans mp/."
-        log_error "  Avec --config, la passe 1 utilise votre config à la place du scope departement/."
-        log_error ""
-        log_error "  Pour tester l'overview-b seul (mpforge uniquement) :"
-        log_error "    DATA_ROOT=... OUTPUT_DIR=... BASE_ID_OV=\$((BASE_ID+1000)) ZONES=... \\"
-        log_error "    mpforge build --config pipeline/configs/ign-bdtopo/departement-overview-b/sources.yaml"
-        log_error ""
-        log_error "  Pour le build complet avec overview :"
-        log_error "    ./scripts/build-garmin-map.sh --zones D038 --overview-b  (sans --config)"
-        exit 1
-    fi
 
     # --- zones : format DXXX (département) ou RXX (région) ---
     IFS=',' read -ra zone_array <<< "$ZONES"
@@ -1003,18 +976,6 @@ prepare_config() {
     export BASE_ID
     export ZONES
 
-    # BASE_ID_OV : IDs distincts pour les tuiles overview (évite les collisions dans mp-combined/)
-    if [[ "$BUILD_OVERVIEW_B" == true ]]; then
-        BASE_ID_OV=$(( BASE_ID + 1000 ))
-        if [[ "$BASE_ID_OV" -gt 9999 ]]; then
-            log_error "base-id : BASE_ID_OV=${BASE_ID_OV} dépasse 9999 (BASE_ID=${BASE_ID} + 1000)"
-            log_error "  → Utilisez --base-id avec une valeur ≤ 8999 pour activer --overview-b"
-            exit 1
-        fi
-        export BASE_ID_OV
-        log_info "Base ID overview-b : $BASE_ID_OV"
-    fi
-
     # Compter les .shp disponibles
     IFS=',' read -ra zone_array <<< "$ZONES"
     local shp_count=0
@@ -1035,8 +996,7 @@ prepare_config() {
 # Étape 1/2 — Lancement mpforge build
 # ---------------------------------------------------------------------------
 run_mpforge() {
-    local _total_steps=2; [[ "$BUILD_OVERVIEW_B" == true ]] && _total_steps=4
-    log_step "Étape 1/${_total_steps} — mpforge build"
+    log_step "Étape 1/2 — mpforge build"
 
     mkdir -p "${_OUTPUT_DIR}/mp"
 
@@ -1107,176 +1067,10 @@ run_mpforge() {
 }
 
 # ---------------------------------------------------------------------------
-# Étape 2/3 (opt-in) — Passe overview B : tuiles 3L standard
-# ---------------------------------------------------------------------------
-run_mpforge_overview_b() {
-    [[ "$BUILD_OVERVIEW_B" == true ]] || return 0
-
-    log_step "Étape 2/4 — mpforge overview B (3L : Level0=14/12/10)"
-
-    local ov_config="pipeline/configs/ign-bdtopo/departement-overview-b/sources.yaml"
-    local ov_mp_dir="${_OUTPUT_DIR}/mp-overview"
-
-    mkdir -p "$ov_mp_dir"
-
-    # Nettoyage des .mp overview existants
-    if [[ "$SKIP_EXISTING" == false && "$DRY_RUN" == false ]]; then
-        local existing_ov
-        existing_ov=$(find "$ov_mp_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
-        if [[ "$existing_ov" -gt 0 ]]; then
-            log_info "Nettoyage de $existing_ov tuile(s) overview existante(s)"
-            rm -f "${ov_mp_dir}"/*.mp
-        fi
-    fi
-
-    local -a cmd=(
-        "$_MPFORGE" build
-        --config "$ov_config"
-        --jobs "$MPFORGE_JOBS"
-    )
-
-    [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
-    [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
-
-    log_info "Commande : ${cmd[*]}"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        echo -e "  ${YELLOW}[DRY-RUN]${NC} ${cmd[*]}"
-        log_ok "Dry-run : commande mpforge overview-b affichée (non exécutée)"
-        return 0
-    fi
-
-    local exit_code=0
-    "${cmd[@]}" || exit_code=$?
-
-    if [[ "$exit_code" -ne 0 ]]; then
-        log_error "mpforge overview-b a échoué (exit code : $exit_code)"
-        exit "$exit_code"
-    fi
-
-    local ov_count
-    ov_count=$(find "$ov_mp_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
-    log_ok "mpforge overview-b terminé : $ov_count tuile(s) dans $ov_mp_dir"
-}
-
-# ---------------------------------------------------------------------------
-# Étape 3/3 (opt-in) — Packaging combiné détail + overview B sans --levels
-# ---------------------------------------------------------------------------
-run_imgforge_combined() {
-    [[ "$BUILD_OVERVIEW_B" == true ]] || return 0
-
-    log_step "Étape 4/4 — imgforge packaging combiné (sans --levels)"
-
-    local combined_dir="${_OUTPUT_DIR}/mp-combined"
-    # Retirer le suffixe -vYYYY.MM avant d'ajouter -OVB pour garder un nom lisible
-    local _fn_base="$FAMILY_NAME"
-    [[ "$FAMILY_NAME" =~ ^(.+)-v[0-9]{4}\.[0-9]{2}$ ]] && _fn_base="${BASH_REMATCH[1]}"
-    local ov_family_name="${_fn_base}-OVB"
-    if [[ "${#ov_family_name}" -gt 24 ]]; then
-        ov_family_name="${_fn_base:0:20}-OVB"
-        log_warn "family-name overview tronqué à 24 chars : '${ov_family_name}'"
-    fi
-    local ov_img="${FAMILY_NAME}-overview-b.img"
-
-    mkdir -p "$combined_dir" "${_OUTPUT_DIR}/img"
-
-    # Assembler mp-combined/ depuis mp/ et mp-overview/
-    local det_count ov_count
-    det_count=$(find "${_OUTPUT_DIR}/mp" -name "*.mp" -type f 2>/dev/null | wc -l)
-    ov_count=$(find "${_OUTPUT_DIR}/mp-overview" -name "*.mp" -type f 2>/dev/null | wc -l)
-
-    if [[ "$det_count" -eq 0 && "$DRY_RUN" == false ]]; then
-        log_error "Aucune tuile détail dans : ${_OUTPUT_DIR}/mp"
-        exit 1
-    fi
-
-    if [[ "$DRY_RUN" == false ]]; then
-        rm -f "${combined_dir}"/*.mp
-        [[ "$det_count" -gt 0 ]] && cp -n "${_OUTPUT_DIR}/mp/"*.mp "$combined_dir/"
-        [[ "$ov_count"  -gt 0 ]] && cp -n "${_OUTPUT_DIR}/mp-overview/"*.mp "$combined_dir/"
-        local combined_actual
-        combined_actual=$(find "$combined_dir" -name "*.mp" -type f 2>/dev/null | wc -l)
-        local expected=$(( det_count + ov_count ))
-        if [[ "$combined_actual" -ne "$expected" ]]; then
-            log_error "mp-combined/ : $combined_actual tuiles copiées, $expected attendues (collision de noms de fichiers ?)"
-            exit 1
-        fi
-        log_info "mp-combined/ : $det_count tuile(s) détail + $ov_count tuile(s) overview"
-
-        # AC7 : vérification unicité des MapID
-        # grep exit 1 si aucune ligne trouvée → || true évite que set -o pipefail
-        # ne tue le script dans le cas normal (pas de doublon).
-        local dupes
-        dupes=$(grep "^MapID=" "${combined_dir}"/*.mp 2>/dev/null || true)
-        dupes=$(echo "$dupes" | awk -F= '{print $2}' | sort | uniq -d | grep -c . || true)
-        if [[ "$dupes" -gt 0 ]]; then
-            log_error "$dupes MapID en doublon dans mp-combined/ (BASE_ID=${BASE_ID}, BASE_ID_OV=${BASE_ID_OV})"
-            log_error "  → Un doublon MapID produit un rendu indéfini sur firmware Garmin"
-            exit 1
-        fi
-    fi
-
-    local -a cmd=(
-        "$_IMGFORGE" build "$combined_dir"
-        --output "${_OUTPUT_DIR}/img/${ov_img}"
-        --jobs "$IMGFORGE_JOBS"
-        --family-id "$FAMILY_ID"
-        --product-id "$PRODUCT_ID"
-        --family-name "$ov_family_name"
-        --series-name "$SERIES_NAME"
-        --code-page "$CODE_PAGE"
-        --lower-case
-        --copyright-message "$COPYRIGHT"
-        # Sans --levels : chaque .mp conserve ses propres Levels/Level0..N
-    )
-
-    if [[ "$WITH_ROUTE" == true ]]; then
-        cmd+=(--route)
-    else
-        cmd+=(--no-route)
-    fi
-    [[ -n "$TYP_FILE" ]] && cmd+=(--typ-file "$TYP_FILE")
-    cmd+=(--packaging "$PACKAGING")
-
-    [[ -n "$REDUCE_POINT_DENSITY" ]] && cmd+=(--reduce-point-density "$REDUCE_POINT_DENSITY")
-    [[ -n "$SIMPLIFY_POLYGONS" ]]    && cmd+=(--simplify-polygons "$SIMPLIFY_POLYGONS")
-    [[ -n "$MIN_SIZE_POLYGON" ]]     && cmd+=(--min-size-polygon "$MIN_SIZE_POLYGON")
-    [[ "$MERGE_LINES" == true ]]     && cmd+=(--merge-lines)
-
-    [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
-    [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
-
-    log_info "Commande : ${cmd[*]}"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        echo -e "  ${YELLOW}[DRY-RUN]${NC} ${cmd[*]}"
-        log_ok "Dry-run : commande imgforge combined affichée (non exécutée)"
-        return 0
-    fi
-
-    local exit_code=0
-    "${cmd[@]}" || exit_code=$?
-
-    if [[ "$exit_code" -ne 0 ]]; then
-        log_error "imgforge combined a échoué (exit code : $exit_code)"
-        exit "$exit_code"
-    fi
-
-    if [[ ! -f "${_OUTPUT_DIR}/img/${ov_img}" ]]; then
-        log_error "${ov_img} non produit dans : ${_OUTPUT_DIR}/img/"
-        exit 1
-    fi
-
-    log_ok "${ov_img} produit : ${_OUTPUT_DIR}/img/${ov_img}"
-}
-
-# ---------------------------------------------------------------------------
 # Étape 2/2 — Lancement imgforge build
 # ---------------------------------------------------------------------------
 run_imgforge() {
-    local _step_n=2; [[ "$BUILD_OVERVIEW_B" == true ]] && _step_n=3
-    local _total_steps=2; [[ "$BUILD_OVERVIEW_B" == true ]] && _total_steps=4
-    log_step "Étape ${_step_n}/${_total_steps} — imgforge build"
+    log_step "Étape 2/2 — imgforge build"
 
     local mp_dir="${_OUTPUT_DIR}/mp"
     mkdir -p "${_OUTPUT_DIR}/img"
@@ -1943,9 +1737,7 @@ main() {
     check_prerequisites
     prepare_config
     run_mpforge
-    run_mpforge_overview_b
     run_imgforge
-    run_imgforge_combined
     show_summary
 
     if [[ "$PUBLISH" == true ]]; then

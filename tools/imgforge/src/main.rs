@@ -81,20 +81,6 @@ fn main() -> Result<()> {
 
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            // Détection dynamique du split détail / overview.
-            // bits >= 16 → niveaux de détail ; bits < 16 → niveaux overview.
-            // Si detail_level_count == 0 (tuile purement overview, ex: Option B 3L bits 14/12/10),
-            // aucun truncate : mp.header.levels est passé intact à build_subfiles.
-            let detail_level_count =
-                imgforge::img::overview_features::compute_detail_level_count(
-                    &mp.header.levels,
-                );
-            if detail_level_count > 0 {
-                // Tuile hybride (ex: 10L overview-demo) ou détail pur (7L standard) :
-                // exclure les paliers overview du TRE pour éviter le crash firmware Alpha 100.
-                mp.header.levels.truncate(detail_level_count as usize);
-            }
-
             // Build DEM if --dem provided
             let dem_config = dem.as_ref().map(|paths| {
                 imgforge::dem::DemConfig {
@@ -213,37 +199,6 @@ fn main() -> Result<()> {
                     route, net, no_route, copyright_clone.as_deref(),
                 );
 
-                // Détection dynamique du split détail / overview.
-                // bits >= 16 → niveaux de détail (portés par la tuile GMP).
-                // bits < 16  → niveaux overview (portés exclusivement par l'overview tile).
-                // Respecte la config déclarative YAML (overview_levels.header_extension).
-                //
-                // Cas tuile purement overview (Option B, ex: [14,12,10]) :
-                //   detail_level_count == 0 → nb_overview = 0, pas de truncate.
-                //   mp.header.levels passé intact à build_subfiles.
-                let detail_level_count =
-                    imgforge::img::overview_features::compute_detail_level_count(
-                        &mp.header.levels,
-                    );
-                let nb_overview = if detail_level_count == 0 {
-                    0u8
-                } else {
-                    (mp.header.levels.len().min(u8::MAX as usize) as u8)
-                        .saturating_sub(detail_level_count)
-                };
-
-                let overview_features =
-                    imgforge::img::overview_features::extract_overview_features(
-                        &mp, detail_level_count, nb_overview,
-                    );
-
-                // Tronquer uniquement si la tuile contient des niveaux overview à exclure
-                // (tuile hybride 10L ou détail pur 7L avec paliers overview parasites).
-                // Tuile purement overview (detail_level_count == 0) : inchangée.
-                if detail_level_count > 0 && nb_overview > 0 {
-                    mp.header.levels.truncate(detail_level_count as usize);
-                }
-
                 let mut tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
 
@@ -256,24 +211,21 @@ fn main() -> Result<()> {
                 }
 
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
-                Ok((tile, overview_features, counts, path.display().to_string()))
+                Ok((tile, counts, path.display().to_string()))
             }).collect();
 
             // Handle keep-going: collect successes, log failures
             use imgforge::img::assembler::TileSubfiles;
-            use imgforge::img::overview_features::OverviewFeature;
             let mut tile_subfiles = Vec::with_capacity(results.len());
-            let mut all_overview_features: Vec<OverviewFeature> = Vec::new();
             let mut errors = 0usize;
 
             for result in results {
                 match result {
-                    Ok((tile, ov_feats, (pts, lines, polys), _path)) => {
+                    Ok((tile, (pts, lines, polys), _path)) => {
                         report.total_points += pts;
                         report.total_polylines += lines;
                         report.total_polygons += polys;
                         report.tiles_compiled += 1;
-                        all_overview_features.extend(ov_feats);
                         tile_subfiles.push(TileSubfiles {
                             map_number: tile.map_number,
                             description: tile.description,
@@ -386,7 +338,7 @@ fn main() -> Result<()> {
                 tdb.build()
             };
 
-            // Overview map (parité SUD Alpha 100) — kill-switch IMGFORGE_NO_OVERVIEW=1 pour fallback
+            // Overview map (parité SUD Alpha 100) — kill-switch IMGFORGE_NO_OVERVIEW=1 pour désactiver
             let no_overview = std::env::var("IMGFORGE_NO_OVERVIEW")
                 .map(|v| !matches!(v.as_str(), "" | "0" | "false" | "FALSE" | "no" | "NO"))
                 .unwrap_or(false);
@@ -395,7 +347,7 @@ fn main() -> Result<()> {
             } else {
                 let overview_id = imgforge::img::assembler::compute_overview_map_id(fid);
                 Some(imgforge::img::overview_map::build_overview_map(
-                    &tile_subfiles, &all_overview_features, overview_id, effective_codepage,
+                    &tile_subfiles, overview_id, effective_codepage,
                 ))
             };
 

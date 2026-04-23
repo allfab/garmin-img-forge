@@ -47,8 +47,8 @@ fn main() {
 
     let fid: u16 = 1100;
     let overview_id: u32 = (fid as u32) * 10000 + 1855; // 11001855
-    // &[] = fallback bounding-box Phase 1 (aucune feature overview disponible ici)
-    let ov = build_overview_map(&tiles, &[], overview_id, 1252);
+    // Phase 1 bounding-box uniquement (overview_features.rs supprimé)
+    let ov = build_overview_map(&tiles, overview_id, 1252);
 
     // CARGO_MANIFEST_DIR = .../tools/imgforge ; remonter 2× pour atteindre repo-root.
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
