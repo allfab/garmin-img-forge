@@ -28,6 +28,11 @@
 #
 # BATIMENT : volontairement ABSENT du catalogue. Les bâtiments doivent rester
 # intacts (Data0= seul, géométrie brute du shapefile). cf. AC12.
+#
+# NOTE ARCHITECTURALE : imgforge n'applique plus de DP automatique aux polygones
+# (suppression du fallback auto_epsilon dans poly_epsilon). La simplification des
+# polygones est entièrement déléguée à mpforge via ces profils. Les polylignes
+# conservent l'auto-DP imgforge (pas de contrainte topologique entre features).
 
 profiles:
   TRONCON_HYDROGRAPHIQUE:
@@ -140,3 +145,16 @@ profiles:
       - { n: 4, simplify: 0.00020 }
       - { n: 5, simplify: 0.00035 }
       - { n: 6, simplify: 0.00055 }
+
+  COMMUNE:
+    # Pas de simplification : COMMUNE sert de fond de plan uniforme (tuilage parfait BDTOPO).
+    # DP indépendant par polygone casserait la topologie des frontières partagées → trous/
+    # superpositions visibles. Géométrie brute identique Data0..Data6.
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }

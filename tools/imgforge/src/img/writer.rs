@@ -664,10 +664,16 @@ fn filter_features_for_level(
         mp.header.reduce_point_density.or(auto_epsilon)
     };
 
-    // Determine DP epsilon for polygons (simplify_polygons per-resolution or fallback to reduce_point_density)
+    // Determine DP epsilon for polygons.
+    // N'utilise PAS auto_epsilon : les polygones ont des contraintes topologiques
+    // (frontières partagées entre communes, forêts adjacentes). Un DP indépendant
+    // par polygone avec epsilon = (1<<shift)*2.6 (≈1600m au niveau 6) casse la
+    // topologie → trous/superpositions visibles entre communes adjacentes.
+    // La simplification des polygones est gérée par mpforge (profils generalize-profiles.yaml)
+    // qui connaît les couches et peut choisir des tolérances appropriées.
+    // imgforge n'applique DP sur polygones que si explicitement configuré dans l'en-tête MP.
     let poly_epsilon = resolve_polygon_epsilon(&mp.header, level)
-        .or(mp.header.reduce_point_density)
-        .or(auto_epsilon);
+        .or(mp.header.reduce_point_density);
 
     // Sémantique mkgmap r4924 (PolishMapDataSource : lineStringMap par level,
     // setResolution(elem, level) calculé pour chaque bucket) : une polyline est
