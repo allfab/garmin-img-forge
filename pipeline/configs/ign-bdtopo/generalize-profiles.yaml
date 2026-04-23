@@ -147,14 +147,17 @@ profiles:
       - { n: 6, simplify: 0.00055 }
 
   COMMUNE:
-    # Pas de simplification : COMMUNE sert de fond de plan uniforme (tuilage parfait BDTOPO).
-    # DP indépendant par polygone casserait la topologie des frontières partagées → trous/
-    # superpositions visibles. Géométrie brute identique Data0..Data6.
+    # topology: true — frontières entre communes partagent des vertices bit-exacts
+    # (même shapefile BDTOPO). VW topologique intra-cellule garantit l'absence de
+    # trous/chevauchements aux niveaux de zoom larges.
+    # Data0-Data2 : géométrie brute (rendu détail, topologie BDTOPO parfaite).
+    # Data3-Data6 : VW avec ancrage des frontières partagées.
+    topology: true
     levels:
       - { n: 0 }
       - { n: 1 }
       - { n: 2 }
-      - { n: 3 }
-      - { n: 4 }
-      - { n: 5 }
-      - { n: 6 }
+      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 4, simplify_vw: 0.00040 }
+      - { n: 5, simplify_vw: 0.00080 }
+      - { n: 6, simplify_vw: 0.00150 }

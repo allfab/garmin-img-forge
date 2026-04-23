@@ -7,8 +7,8 @@
 use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec, OverviewLevels};
 use crate::pipeline::promotion;
 use crate::pipeline::reader::{Feature, GeometryType};
-use geo::{ChaikinSmoothing, LineString, Polygon, Simplify};
-use std::collections::{BTreeMap, HashMap};
+use geo::{ChaikinSmoothing, LineString, Polygon, Simplify, SimplifyVw, SimplifyVwIdx, SimplifyVwPreserve};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use tracing::warn;
 
 /// Apply generalization (smooth + simplify) to a feature in-place.
@@ -130,6 +130,8 @@ fn apply_level_to_line(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f64, 
     }
     if let Some(tolerance) = cfg.simplify {
         line = line.simplify(&tolerance);
+    } else if let Some(tolerance) = lvl.simplify_vw {
+        line = line.simplify_vw_preserve(&tolerance);
     }
     if line.0.len() < 2 {
         return None;
@@ -151,6 +153,8 @@ fn apply_level_to_polygon(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f6
     }
     if let Some(tolerance) = cfg.simplify {
         polygon = polygon.simplify(&tolerance);
+    } else if let Some(tolerance) = lvl.simplify_vw {
+        polygon = polygon.simplify_vw(&tolerance);
     }
     let exterior = polygon.exterior();
     if exterior.0.len() < 4 {
@@ -176,12 +180,40 @@ pub fn generalize_features_with_profiles(
     if profile_map.is_empty() {
         return 0;
     }
+
+    // Passe 1 (immutable) : collecter les ancres pour les couches topology: true.
+    let topology_anchors: HashMap<String, HashSet<(u64, u64)>> = {
+        let mut by_layer: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, f) in features.iter().enumerate() {
+            let Some(layer) = f.source_layer.as_deref() else { continue };
+            if profile_map.get(layer).map(|p| p.topology).unwrap_or(false) {
+                by_layer.entry(layer.to_string()).or_default().push(i);
+            }
+        }
+        by_layer
+            .into_iter()
+            .map(|(layer, idxs)| {
+                let refs: Vec<&Feature> = idxs.iter().map(|&i| &features[i]).collect();
+                (layer, collect_shared_vertices(&refs))
+            })
+            .collect()
+    };
+
+    let empty_anchors: HashSet<(u64, u64)> = HashSet::new();
+
+    // Passe 2 (mutable) : application des profils.
     let mut count = 0;
     for feature in features.iter_mut() {
         let Some(layer_name) = feature.source_layer.as_deref() else { continue; };
         let layer_name = layer_name.to_string();
         if let Some(profile) = profile_map.get(&layer_name) {
-            if apply_profile(feature, profile) > 0 {
+            let generated = if profile.topology {
+                let anchors = topology_anchors.get(&layer_name).unwrap_or(&empty_anchors);
+                apply_profile_with_topology(feature, profile, anchors)
+            } else {
+                apply_profile(feature, profile)
+            };
+            if generated > 0 {
                 // F1 fix : le max de remplissage est borné à la branche `when`
                 // effectivement résolue pour cette feature (pas au max global
                 // du profil). Sinon une feature qui match une branche courte
@@ -235,6 +267,138 @@ pub fn fill_level_gaps(feature: &mut Feature, max_n: u8) {
             feature.additional_geometries.insert(n, last_coords.clone());
         }
     }
+}
+
+/// Collecte les vertices partagés entre features d'une même couche (topologie intra-cellule).
+///
+/// Retourne un `HashSet` de coordonnées encodées bit-exact `(x.to_bits(), y.to_bits())`
+/// présentes dans au moins deux features distinctes. La comparaison bit-exacte est
+/// justifiée par le fait que les frontières partagées proviennent du même shapefile
+/// BDTOPO → coordonnées identiques bit-à-bit.
+pub fn collect_shared_vertices(features: &[&Feature]) -> HashSet<(u64, u64)> {
+    let mut counts: HashMap<(u64, u64), usize> = HashMap::new();
+    for feature in features {
+        let mut seen: HashSet<(u64, u64)> = HashSet::new();
+        for &(x, y) in &feature.geometry {
+            let key = (x.to_bits(), y.to_bits());
+            if seen.insert(key) {
+                *counts.entry(key).or_insert(0) += 1;
+            }
+        }
+    }
+    counts.into_iter().filter(|&(_, c)| c >= 2).map(|(k, _)| k).collect()
+}
+
+/// Applique VW avec ancrage topologique sur l'anneau extérieur d'un polygone.
+///
+/// Les vertices partagés avec d'autres features (encodés dans `anchors`) sont
+/// injectés dans les indices retenus par VW avant reconstruction, garantissant
+/// que les frontières communes sont identiques dans les features voisines.
+fn apply_level_to_polygon_topo(
+    raw: &[(f64, f64)],
+    lvl: &LevelSpec,
+    anchors: &HashSet<(u64, u64)>,
+) -> Option<Vec<(f64, f64)>> {
+    if raw.len() < 4 {
+        return None;
+    }
+    let coords: Vec<geo::Coord<f64>> =
+        raw.iter().map(|(x, y)| geo::Coord { x: *x, y: *y }).collect();
+    let ring = LineString::new(coords);
+    if let Some(tolerance) = lvl.simplify_vw {
+        let vw_indices = ring.simplify_vw_idx(&tolerance);
+        let mut must_keep: BTreeSet<usize> = vw_indices.into_iter().collect();
+        for (i, coord) in ring.0.iter().enumerate() {
+            if anchors.contains(&(coord.x.to_bits(), coord.y.to_bits())) {
+                must_keep.insert(i);
+            }
+        }
+        let result: Vec<(f64, f64)> =
+            must_keep.iter().map(|&i| (ring.0[i].x, ring.0[i].y)).collect();
+        if result.len() < 4 {
+            return None;
+        }
+        Some(result)
+    } else {
+        Some(raw.to_vec())
+    }
+}
+
+/// Applique VW avec ancrage topologique sur une linestring.
+fn apply_level_to_line_topo(
+    raw: &[(f64, f64)],
+    lvl: &LevelSpec,
+    anchors: &HashSet<(u64, u64)>,
+) -> Option<Vec<(f64, f64)>> {
+    if raw.len() < 2 {
+        return None;
+    }
+    let coords: Vec<geo::Coord<f64>> =
+        raw.iter().map(|(x, y)| geo::Coord { x: *x, y: *y }).collect();
+    let line = LineString::new(coords);
+    if let Some(tolerance) = lvl.simplify_vw {
+        let vw_indices = line.simplify_vw_idx(&tolerance);
+        let mut must_keep: BTreeSet<usize> = vw_indices.into_iter().collect();
+        for (i, coord) in line.0.iter().enumerate() {
+            if anchors.contains(&(coord.x.to_bits(), coord.y.to_bits())) {
+                must_keep.insert(i);
+            }
+        }
+        let result: Vec<(f64, f64)> =
+            must_keep.iter().map(|&i| (line.0[i].x, line.0[i].y)).collect();
+        if result.len() < 2 {
+            return None;
+        }
+        Some(result)
+    } else {
+        Some(raw.to_vec())
+    }
+}
+
+/// Miroir de [`apply_profile`] routant vers les variantes topologiques.
+///
+/// `anchors` contient les vertices partagés avec d'autres features de la même
+/// couche, collectés par [`collect_shared_vertices`] lors de la passe 1 de
+/// [`generalize_features_with_profiles`].
+pub fn apply_profile_with_topology(
+    feature: &mut Feature,
+    profile: &GeneralizeProfile,
+    anchors: &HashSet<(u64, u64)>,
+) -> usize {
+    if matches!(feature.geometry_type, GeometryType::Point) {
+        return 0;
+    }
+    let Some(levels) = resolve_levels(profile, feature) else {
+        return 0;
+    };
+
+    let raw = feature.geometry.clone();
+    let mut generated = 0;
+
+    for lvl in levels {
+        let derived = match feature.geometry_type {
+            GeometryType::LineString => apply_level_to_line_topo(&raw, lvl, anchors),
+            GeometryType::Polygon => apply_level_to_polygon_topo(&raw, lvl, anchors),
+            GeometryType::Point => None,
+        };
+        match derived {
+            Some(coords) => {
+                feature.set_level(lvl.n, coords);
+                generated += 1;
+            }
+            None => {
+                warn!(
+                    source_layer = feature.source_layer.as_deref().unwrap_or(""),
+                    n = lvl.n,
+                    raw_points = raw.len(),
+                    simplify_vw = ?lvl.simplify_vw,
+                    "topology level produced degenerate geometry (< min vertices after anchored simplify); \
+                     bucket skipped"
+                );
+            }
+        }
+    }
+    generated
 }
 
 /// Apply generalization to all features that have a matching layer config.
@@ -985,6 +1149,213 @@ levels:
             f.additional_geometries.contains_key(&9),
             "when: dispatch doit utiliser source_attributes — n=9 doit être généré"
         );
+    }
+
+    // =================================================================
+    // T5a/T5b — Algorithme VW standard (per-feature)
+    // =================================================================
+
+    #[test]
+    fn test_simplify_vw_polygon_reduces_vertices() {
+        let mut feature = make_polygon_feature(square_coords(), "COMMUNE");
+        let smooth_config = GeneralizeConfig {
+            smooth: Some("chaikin".into()),
+            iterations: 3,
+            simplify: None,
+        };
+        generalize_feature(&mut feature, &smooth_config);
+        let raw_len = feature.geometry.len();
+        let profile = profile_from_yaml("levels:\n  - { n: 0, simplify_vw: 0.05 }\n");
+        apply_profile(&mut feature, &profile);
+        assert!(feature.geometry.len() < raw_len, "VW doit réduire le nombre de vertices");
+        assert!(feature.geometry.len() >= 4, "polygone reste valide");
+    }
+
+    #[test]
+    fn test_simplify_vw_linestring_reduces_vertices() {
+        // Zigzag avec aire triangle ≈5e-7 << epsilon=0.05 : VW simplifie massivement.
+        let zigzag: Vec<(f64, f64)> =
+            (0..30).map(|i| (i as f64 * 0.001, if i % 2 == 0 { 0.0 } else { 0.001 })).collect();
+        let raw_len = zigzag.len();
+        let mut feature = make_linestring_feature(zigzag, "HYDRO");
+        let profile = profile_from_yaml("levels:\n  - { n: 0, simplify_vw: 0.05 }\n");
+        apply_profile(&mut feature, &profile);
+        assert!(feature.geometry.len() < raw_len, "VW doit réduire le nombre de vertices");
+        assert!(feature.geometry.len() >= 2, "linestring reste valide");
+    }
+
+    // =================================================================
+    // T5c/T5d/T5e — Validation config
+    // =================================================================
+
+    #[test]
+    fn test_simplify_vw_out_of_range_detail_level() {
+        use crate::config::LevelSpec;
+        // n=3 (palier détail) : MAX_PROFILE_SIMPLIFY_VW_DETAIL = 0.005. 0.006 doit être rejeté.
+        let lvl = LevelSpec {
+            n: 3,
+            smooth: None,
+            iterations: 1,
+            simplify: None,
+            simplify_vw: Some(0.006),
+        };
+        let result = lvl.validate("test");
+        assert!(result.is_err(), "simplify_vw=0.006 pour n=3 doit échouer la validation");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("simplify_vw"), "msg: {msg}");
+    }
+
+    #[test]
+    fn test_simplify_dp_and_vw_mutually_exclusive() {
+        use crate::config::LevelSpec;
+        let lvl = LevelSpec {
+            n: 0,
+            smooth: None,
+            iterations: 1,
+            simplify: Some(0.0001),
+            simplify_vw: Some(0.0001),
+        };
+        let result = lvl.validate("test");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("mutuellement exclusifs"), "msg: {msg}");
+    }
+
+    #[test]
+    fn test_topology_with_smooth_fails_validation() {
+        use crate::config::{GeneralizeProfile, LevelSpec};
+        let profile = GeneralizeProfile {
+            topology: true,
+            levels: vec![LevelSpec {
+                n: 0,
+                smooth: Some("chaikin".into()),
+                iterations: 1,
+                simplify: None,
+                simplify_vw: Some(0.0002),
+            }],
+            when: vec![],
+        };
+        assert!(profile.validate("test").is_err());
+    }
+
+    #[test]
+    fn test_topology_with_dp_fails_validation() {
+        use crate::config::{GeneralizeProfile, LevelSpec};
+        let profile = GeneralizeProfile {
+            topology: true,
+            levels: vec![LevelSpec {
+                n: 0,
+                smooth: None,
+                iterations: 1,
+                simplify: Some(0.0002),
+                simplify_vw: None,
+            }],
+            when: vec![],
+        };
+        assert!(profile.validate("test").is_err());
+    }
+
+    // =================================================================
+    // T5f/T5g — collect_shared_vertices
+    // =================================================================
+
+    #[test]
+    fn test_collect_shared_vertices_two_adjacent_polygons() {
+        let f1 = make_polygon_feature(
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+            "COMMUNE",
+        );
+        let f2 = make_polygon_feature(
+            vec![(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+            "COMMUNE",
+        );
+        let anchors = collect_shared_vertices(&[&f1, &f2]);
+        assert!(anchors.contains(&(1.0_f64.to_bits(), 0.0_f64.to_bits())));
+        assert!(anchors.contains(&(1.0_f64.to_bits(), 1.0_f64.to_bits())));
+        assert_eq!(anchors.len(), 2, "exactement 2 vertices partagés");
+    }
+
+    #[test]
+    fn test_collect_shared_vertices_no_sharing() {
+        let f1 = make_polygon_feature(
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+            "COMMUNE",
+        );
+        let f2 = make_polygon_feature(
+            vec![(2.0, 0.0), (3.0, 0.0), (3.0, 1.0), (2.0, 1.0), (2.0, 0.0)],
+            "COMMUNE",
+        );
+        let anchors = collect_shared_vertices(&[&f1, &f2]);
+        assert!(anchors.is_empty(), "aucun vertex partagé");
+    }
+
+    // =================================================================
+    // T5h — apply_level_to_polygon_topo préserve les ancres
+    // =================================================================
+
+    #[test]
+    fn test_apply_level_to_polygon_topo_preserves_anchor() {
+        // Polygon avec un vertex collinéaire (0.5, 0.0) que VW supprimerait sans ancrage
+        let raw = vec![
+            (0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0),
+        ];
+        let mut anchors = HashSet::new();
+        anchors.insert((0.5_f64.to_bits(), 0.0_f64.to_bits()));
+        use crate::config::LevelSpec;
+        // epsilon=0.25 : supprime (0.5,0) [area=0] mais conserve les angles du carré [area=0.5>0.25]
+        let lvl = LevelSpec {
+            n: 3,
+            smooth: None,
+            iterations: 1,
+            simplify: None,
+            simplify_vw: Some(0.25),
+        };
+        let result = apply_level_to_polygon_topo(&raw, &lvl, &anchors);
+        assert!(result.is_some(), "résultat non-dégénéré");
+        let coords = result.unwrap();
+        let has_anchor = coords
+            .iter()
+            .any(|&(x, y)| x.to_bits() == 0.5_f64.to_bits() && y.to_bits() == 0.0_f64.to_bits());
+        assert!(has_anchor, "vertex ancré (0.5, 0.0) doit être préservé");
+    }
+
+    // =================================================================
+    // T5i — topologie batch : frontières partagées bit-identiques
+    // =================================================================
+
+    #[test]
+    fn test_topology_mode_shared_border_identical_after_simplification() {
+        // Deux rectangles adjacents partageant un bord vertical à x=1.0.
+        // (1.0, 0.5) est collinéaire → VW le supprimerait en mode normal.
+        let f1 = make_polygon_feature(
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 0.5), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+            "COMMUNE",
+        );
+        let f2 = make_polygon_feature(
+            vec![(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0), (1.0, 0.5), (1.0, 0.0)],
+            "COMMUNE",
+        );
+        let mut features = vec![f1, f2];
+        let mut map = BTreeMap::new();
+        map.insert(
+            "COMMUNE".to_string(),
+            profile_from_yaml(
+                "topology: true\nlevels:\n  - { n: 0 }\n  - { n: 1, simplify_vw: 0.1 }\n",
+            ),
+        );
+        generalize_features_with_profiles(&mut features, &map, None);
+
+        let f1_n1 = features[0].additional_geometries.get(&1).expect("f1 n=1 présent");
+        let f2_n1 = features[1].additional_geometries.get(&1).expect("f2 n=1 présent");
+
+        let has_mid_f1 = f1_n1.iter().any(|&(x, y)| {
+            x.to_bits() == 1.0_f64.to_bits() && y.to_bits() == 0.5_f64.to_bits()
+        });
+        let has_mid_f2 = f2_n1.iter().any(|&(x, y)| {
+            x.to_bits() == 1.0_f64.to_bits() && y.to_bits() == 0.5_f64.to_bits()
+        });
+        assert!(has_mid_f1, "f1 n=1 doit contenir le vertex partagé (1.0, 0.5)");
+        assert!(has_mid_f2, "f2 n=1 doit contenir le vertex partagé (1.0, 0.5)");
     }
 
     #[test]

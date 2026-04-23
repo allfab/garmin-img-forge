@@ -189,6 +189,8 @@ pub struct LevelSpec {
     pub iterations: usize,
     #[serde(default)]
     pub simplify: Option<f64>,
+    #[serde(default)]
+    pub simplify_vw: Option<f64>,
 }
 
 /// Tech-spec #2 Task 6: conditional dispatch by feature attribute.
@@ -216,18 +218,27 @@ pub struct GeneralizeProfile {
     pub levels: Vec<LevelSpec>,
     #[serde(default)]
     pub when: Vec<WhenClause>,
+    #[serde(default)]
+    pub topology: bool,
 }
 
 /// Upper bound on `LevelSpec.iterations` (Chaikin 5× ≈ 32× vertices).
 const MAX_PROFILE_ITERATIONS: usize = 5;
-/// Upper bound on `LevelSpec.simplify` pour les paliers DÉTAIL (`n ≤ 6`,
+/// Upper bound on `LevelSpec.simplify` (DP) pour les paliers DÉTAIL (`n ≤ 6`,
 /// ≈110 m). Anti-destruction : une tolérance au-dessus détruit visuellement
 /// la géométrie à ces échelles.
 const MAX_PROFILE_SIMPLIFY_DETAIL: f64 = 0.001;
-/// Upper bound on `LevelSpec.simplify` pour les paliers OVERVIEW (`n ≥ 7`,
+/// Upper bound on `LevelSpec.simplify` (DP) pour les paliers OVERVIEW (`n ≥ 7`,
 /// ≈1.1 km). Plus permissif parce qu'à ces échelles les features sont vues
 /// de très loin et la simplification très agressive reste lisible.
 const MAX_PROFILE_SIMPLIFY_OVERVIEW: f64 = 0.01;
+/// Upper bound on `LevelSpec.simplify_vw` (VW) pour les paliers DÉTAIL (`n ≤ 6`).
+/// VW utilise un critère d'aire (deg²) et non une distance perpendiculaire (deg).
+/// Borne plus permissive que DP : 0.005 deg² correspond à un triangle d'environ
+/// ~0.1° × 0.1° — visuellement acceptable aux zooms larges Garmin (Data3-Data6).
+const MAX_PROFILE_SIMPLIFY_VW_DETAIL: f64 = 0.005;
+/// Upper bound on `LevelSpec.simplify_vw` (VW) pour les paliers OVERVIEW (`n ≥ 7`).
+const MAX_PROFILE_SIMPLIFY_VW_OVERVIEW: f64 = 0.05;
 
 impl LevelSpec {
     /// Tech-spec #2 Task 6: per-level range validation (F15 adversarial
@@ -248,6 +259,11 @@ impl LevelSpec {
                 MAX_PROFILE_ITERATIONS
             );
         }
+        if self.simplify.is_some() && self.simplify_vw.is_some() {
+            anyhow::bail!(
+                "{context}: simplify et simplify_vw sont mutuellement exclusifs dans un même LevelSpec"
+            );
+        }
         if let Some(s) = self.simplify {
             let max = if self.n >= 7 {
                 MAX_PROFILE_SIMPLIFY_OVERVIEW
@@ -257,6 +273,21 @@ impl LevelSpec {
             if !(s.is_finite() && (0.0..=max).contains(&s)) {
                 anyhow::bail!(
                     "{context}: simplify={} out of range [0.0, {}] for n={}",
+                    s,
+                    max,
+                    self.n
+                );
+            }
+        }
+        if let Some(s) = self.simplify_vw {
+            let max = if self.n >= 7 {
+                MAX_PROFILE_SIMPLIFY_VW_OVERVIEW
+            } else {
+                MAX_PROFILE_SIMPLIFY_VW_DETAIL
+            };
+            if !(s.is_finite() && (0.0..=max).contains(&s)) {
+                anyhow::bail!(
+                    "{context}: simplify_vw={} out of range [0.0, {}] for n={}",
                     s,
                     max,
                     self.n
@@ -281,6 +312,26 @@ impl GeneralizeProfile {
             }
             for (i, lvl) in w.levels.iter().enumerate() {
                 lvl.validate(&format!("{context}.when[{wi}].levels[{i}]"))?;
+            }
+        }
+        if self.topology {
+            let all_levels = self
+                .levels
+                .iter()
+                .chain(self.when.iter().flat_map(|w| w.levels.iter()));
+            for lvl in all_levels {
+                if lvl.smooth.is_some() {
+                    anyhow::bail!(
+                        "{context}: topology: true incompatible avec smooth \
+                         (Chaikin invalide les ancres bit-exactes)"
+                    );
+                }
+                if lvl.simplify.is_some() {
+                    anyhow::bail!(
+                        "{context}: topology: true requiert simplify_vw, pas simplify \
+                         (SimplifyDpIdx absent de geo 0.28)"
+                    );
+                }
             }
         }
         Ok(())
@@ -321,8 +372,10 @@ impl From<GeneralizeConfig> for GeneralizeProfile {
                 smooth: c.smooth,
                 iterations: c.iterations,
                 simplify: c.simplify,
+                simplify_vw: None,
             }],
             when: vec![],
+            topology: false,
         }
     }
 }
