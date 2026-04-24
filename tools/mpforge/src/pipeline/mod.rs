@@ -1160,21 +1160,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Story 11.1 — Task 3: Sequential counter for filename patterns (atomic for thread-safety).
     let seq_counter = Arc::new(AtomicUsize::new(0));
 
-    // Story 11.1 — Code review M1: Warn about non-deterministic {seq} in parallel mode
+    // Ces messages sont informatifs : le comportement est attendu pour une configuration valide.
+    // Niveau INFO pour n'apparaître qu'avec -v (pas en production verbose=0).
     if args.jobs > 1 && config.output.filename_pattern.contains("{seq}") {
-        warn!(
+        info!(
             jobs = args.jobs,
             "Le pattern {{seq}} produit des noms non-déterministes en mode parallèle. \
              Utilisez {{col}}_{{row}} pour des résultats reproductibles."
         );
     }
 
-    // Warn about non-deterministic tile IDs in parallel mode with base_id
     if args.jobs > 1 && config.output.base_id.is_some() {
-        warn!(
+        info!(
             jobs = args.jobs,
-            "base_id auto-generates tile IDs using seq counter, which is non-deterministic \
-             in parallel mode. Tile IDs will vary between runs."
+            "base_id génère les IDs de tuiles via un compteur séquentiel non-déterministe \
+             en mode parallèle — les IDs peuvent varier entre deux exécutions."
         );
     }
 

@@ -15,7 +15,7 @@ use tracing::{debug, error, info, instrument};
 /// side effects of validity checks are suppressed. Invalid geometries are handled
 /// explicitly by the caller; surfacing these messages as log warnings produces noise
 /// for every VW-simplified polygon that needs repair.
-pub fn is_valid_quiet(geom: &Geometry) -> bool {
+pub(crate) fn is_valid_quiet(geom: &Geometry) -> bool {
     unsafe { gdal_sys::CPLPushErrorHandler(Some(gdal_sys::CPLQuietErrorHandler)) };
     let result = geom.is_valid();
     unsafe { gdal_sys::CPLPopErrorHandler() };

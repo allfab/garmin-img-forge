@@ -270,7 +270,17 @@ Le rapport contient les statistiques de l'export :
 
 ### Verbosité progressive
 
+| Flag | Niveau | Ce qui apparaît |
+|------|--------|-----------------|
+| _(aucun)_ | WARN | Barre de progression + erreurs uniquement |
+| `-v` | INFO | Étapes principales, messages parallélisation |
+| `-vv` | DEBUG | Logs GDAL, réparations géométriques (désactive la barre de progression) |
+| `-vvv` | TRACE | Verbosité maximale (développement) |
+
 ```bash
+# Production — barre de progression uniquement
+mpforge build --config configs/france-bdtopo.yaml
+
 # INFO : étapes principales
 mpforge build --config configs/france-bdtopo.yaml -v
 
@@ -280,6 +290,16 @@ mpforge build --config configs/france-bdtopo.yaml -vv
 # TRACE : verbosité maximale (développement uniquement)
 mpforge build --config configs/france-bdtopo.yaml -vvv
 ```
+
+!!! info "Filtrage `RUST_LOG`"
+    Les messages GDAL/GEOS sont émis sous le target `gdal`, les messages mpforge sous `mpforge`. Cela permet un filtrage fin sans `-vvv` complet :
+    ```bash
+    # Silencer GDAL, garder mpforge en DEBUG
+    RUST_LOG=mpforge=debug,gdal=warn mpforge build --config config.yaml -vv
+    ```
+
+!!! note "Messages informatifs en mode parallèle"
+    Avec `--jobs N` (N > 1) et `base_id` configuré, mpforge émet **à `-v` seulement** un message INFO signalant que les IDs de tuiles varient entre deux exécutions (compteur séquentiel non-déterministe). Ce comportement est attendu. Pour des IDs stables, utilisez `{col}_{row}` dans `filename_pattern` et omettez `base_id`.
 
 ## Parallélisation
 

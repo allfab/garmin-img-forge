@@ -793,12 +793,26 @@ mpforge validate --config config.yaml --report validation.json
 
 | Flag | Niveau | Utilisation |
 |------|--------|-------------|
-| _(aucun)_ | WARN | Production (barre de progression) |
-| `-v` | INFO | Monitoring (étapes principales) |
-| `-vv` | DEBUG | Troubleshooting (logs GDAL détaillés) |
-| `-vvv` | TRACE | Développement (verbosité maximale) |
+| _(aucun)_ | WARN | Production — barre de progression, erreurs seulement |
+| `-v` | INFO | Monitoring — étapes principales, messages informatifs parallélisation |
+| `-vv` | DEBUG | Troubleshooting — logs GDAL détaillés, réparations géométriques |
+| `-vvv` | TRACE | Développement — verbosité maximale |
 
 **Note** : La barre de progression est désactivée en mode `-vv` et `-vvv` pour éviter la pollution des logs.
+
+**Filtrage ciblé via `RUST_LOG`** : les messages GDAL/GEOS sont émis sous le target `gdal`, les messages mpforge sous `mpforge`. Exemples :
+
+```bash
+# Silencer GDAL, garder les logs mpforge en DEBUG
+RUST_LOG=mpforge=debug,gdal=warn mpforge build --config config.yaml -vv
+
+# Voir uniquement les logs du writer (sanitisation CP1252)
+RUST_LOG=mpforge::pipeline::writer=debug mpforge build --config config.yaml -vv
+```
+
+**Messages informatifs en mode parallèle** (`-v` requis) :
+
+En mode `--jobs N` (N > 1) avec `base_id` configuré, mpforge émet un message INFO signalant que les IDs de tuiles sont générés via un compteur séquentiel non-déterministe entre deux exécutions. Ce comportement est attendu : pour des IDs stables, préférez `{col}_{row}` dans `filename_pattern` et omettez `base_id`.
 
 ### Parallélisation
 

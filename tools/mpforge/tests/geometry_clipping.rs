@@ -623,12 +623,17 @@ fn test_clip_level_coords_self_intersecting_additional_geometry_handled_graceful
     assert!(result.is_ok(), "Self-intersecting additional geometry must not cause an error");
     let clipped_vec = result.unwrap();
     assert!(!clipped_vec.is_empty(), "Primary geometry must still be clipped");
-    // Level 1 is expected to be absent (bow-tie → MultiPolygon after repair, filtered out).
-    // fill_level_gaps will handle the gap from the pipeline side.
+    // The key property: no panic and primary geometry intact.
+    // Level 1 outcome is GEOS-version dependent:
+    // - Some GEOS versions treat the bow-tie as valid (kept as-is, level 1 present)
+    // - Others return a MultiPolygon from make_valid (filtered, level 1 absent)
+    // Either way, if present, the geometry must have ≥3 points.
     let clipped = &clipped_vec[0];
-    assert!(
-        !clipped.additional_geometries.contains_key(&1)
-            || clipped.additional_geometries[&1].len() >= 3,
-        "Level 1 must either be absent or contain a valid polygon"
-    );
+    if let Some(coords) = clipped.additional_geometries.get(&1) {
+        assert!(
+            coords.len() >= 3,
+            "Level 1, when present, must contain a valid polygon (≥3 points); got {}",
+            coords.len()
+        );
+    }
 }
