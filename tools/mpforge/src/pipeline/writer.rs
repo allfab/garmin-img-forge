@@ -469,6 +469,11 @@ impl MpWriter {
                     stats.point_count += 1;
                 }
                 GeometryType::LineString => {
+                    // Features dégénérées issues du clipping GDAL aux bords de
+                    // tuile (1 point) : skip silencieux, ne sont pas des erreurs AC17.
+                    if feature.geometry.len() < 2 {
+                        continue;
+                    }
                     let written = Self::write_linestring_feature(
                         &mut polyline_layer,
                         feature,
@@ -569,7 +574,6 @@ impl MpWriter {
         multi_geom_max: Option<u8>,
     ) -> Result<bool> {
         if feature.geometry.len() < 2 {
-            warn!("Skipping POLYLINE feature with less than 2 points");
             return Ok(false);
         }
 

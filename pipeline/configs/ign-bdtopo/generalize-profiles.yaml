@@ -56,55 +56,60 @@ profiles:
       - { n: 6, simplify: 0.00028 }
 
   TRONCON_DE_ROUTE:
+    # topology: true — vertices partagés aux nœuds d'intersection ancrés par VW
+    # topologique (même contrat que COMMUNE). Seul simplify_vw autorisé avec
+    # topology: true. Valeurs conservatrices : partir petit, ajuster au besoin.
+    # Data0 strict présent dans chaque branche when (contrainte routage F4).
+    topology: true
     when:
       - field: CL_ADMIN
         values: [Autoroute, Nationale]
         levels:
-          - { n: 0, simplify: 0.00001 }
-          - { n: 1, simplify: 0.00002 }
-          - { n: 2, simplify: 0.00002 }
-          - { n: 3, simplify: 0.00003 }
-          - { n: 4, simplify: 0.00005 }
-          - { n: 5, simplify: 0.00008 }
-          - { n: 6, simplify: 0.00013 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000004 }
+          - { n: 3, simplify_vw: 0.000008 }
+          - { n: 4, simplify_vw: 0.000015 }
+          - { n: 5, simplify_vw: 0.000030 }
+          - { n: 6, simplify_vw: 0.000080 }
       - field: CL_ADMIN
         values: [Départementale]
         levels:
-          - { n: 0, simplify: 0.00003 }
-          - { n: 1, simplify: 0.00003 }
-          - { n: 2, simplify: 0.00004 }
-          - { n: 3, simplify: 0.00006 }
-          - { n: 4, simplify: 0.00007 }
-          - { n: 5, simplify: 0.00010 }
-          - { n: 6, simplify: 0.00014 }
+          - { n: 0, simplify_vw: 0.000003 }
+          - { n: 1, simplify_vw: 0.000006 }
+          - { n: 2, simplify_vw: 0.000010 }
+          - { n: 3, simplify_vw: 0.000020 }
+          - { n: 4, simplify_vw: 0.000040 }
+          - { n: 5, simplify_vw: 0.000080 }
+          - { n: 6, simplify_vw: 0.000200 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
-          - { n: 0, simplify: 0.00005 }
-          - { n: 1, simplify: 0.00006 }
-          - { n: 2, simplify: 0.00007 }
-          - { n: 3, simplify: 0.00009 }
-          - { n: 4, simplify: 0.00011 }
-          - { n: 5, simplify: 0.00015 }
-          - { n: 6, simplify: 0.00020 }
+          - { n: 0, simplify_vw: 0.000005 }
+          - { n: 1, simplify_vw: 0.000010 }
+          - { n: 2, simplify_vw: 0.000018 }
+          - { n: 3, simplify_vw: 0.000035 }
+          - { n: 4, simplify_vw: 0.000070 }
+          - { n: 5, simplify_vw: 0.000130 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
-          - { n: 0, simplify: 0.00010 }
-          - { n: 1, simplify: 0.00012 }
-          - { n: 2, simplify: 0.00014 }
-          - { n: 3, simplify: 0.00017 }
-          - { n: 4, simplify: 0.00023 }
-          - { n: 5, simplify: 0.00030 }
-          - { n: 6, simplify: 0.00040 }
+          - { n: 0, simplify_vw: 0.000010 }
+          - { n: 1, simplify_vw: 0.000020 }
+          - { n: 2, simplify_vw: 0.000035 }
+          - { n: 3, simplify_vw: 0.000070 }
+          - { n: 4, simplify_vw: 0.000130 }
+          - { n: 5, simplify_vw: 0.000250 }
+          - { n: 6, simplify_vw: 0.000550 }
     levels:
-      - { n: 0, simplify: 0.00005 }
-      - { n: 1, simplify: 0.00006 }
-      - { n: 2, simplify: 0.00007 }
-      - { n: 3, simplify: 0.00009 }
-      - { n: 4, simplify: 0.00011 }
-      - { n: 5, simplify: 0.00015 }
-      - { n: 6, simplify: 0.00020 }
+      - { n: 0, simplify_vw: 0.000005 }
+      - { n: 1, simplify_vw: 0.000010 }
+      - { n: 2, simplify_vw: 0.000018 }
+      - { n: 3, simplify_vw: 0.000035 }
+      - { n: 4, simplify_vw: 0.000070 }
+      - { n: 5, simplify_vw: 0.000130 }
+      - { n: 6, simplify_vw: 0.000300 }
 
   COURBE:
     levels:
@@ -149,14 +154,12 @@ profiles:
   COMMUNE:
     # topology: true — frontières entre communes partagent des vertices bit-exacts
     # (même shapefile BDTOPO). VW topologique intra-cellule garantit l'absence de
-    # trous/chevauchements aux niveaux de zoom larges.
-    # Data0-Data2 : géométrie brute (rendu détail, topologie BDTOPO parfaite).
-    # Data3-Data6 : VW avec ancrage des frontières partagées.
+    # trous/chevauchements à tous les niveaux de zoom.
     topology: true
     levels:
-      - { n: 0 }
-      - { n: 1 }
-      - { n: 2 }
+      - { n: 0, simplify_vw: 0.00003 }
+      - { n: 1, simplify_vw: 0.00007 }
+      - { n: 2, simplify_vw: 0.00013 }
       - { n: 3, simplify_vw: 0.00020 }
       - { n: 4, simplify_vw: 0.00040 }
       - { n: 5, simplify_vw: 0.00080 }

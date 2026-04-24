@@ -206,6 +206,14 @@ pub fn generalize_features_with_profiles(
     for feature in features.iter_mut() {
         let Some(layer_name) = feature.source_layer.as_deref() else { continue; };
         let layer_name = layer_name.to_string();
+        // Features dégénérées en entrée (GDAL clipping aux bords de tuile) :
+        // une LineString à 1 point est intrinsèquement invalide — skip silencieux
+        // avant tout traitement pour éviter le warning AC17 du writer.
+        if matches!(feature.geometry_type, GeometryType::LineString)
+            && feature.geometry.len() < 2
+        {
+            continue;
+        }
         if let Some(profile) = profile_map.get(&layer_name) {
             let generated = if profile.topology {
                 let anchors = topology_anchors.get(&layer_name).unwrap_or(&empty_anchors);
