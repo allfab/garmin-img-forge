@@ -4,6 +4,7 @@ use crate::config::HeaderConfig;
 use crate::pipeline::reader::{Feature, GeometryType};
 use anyhow::{anyhow, Context, Result};
 use gdal::cpl::CslStringList;
+use unicode_normalization::UnicodeNormalization;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
 use gdal::{Dataset, DriverManager, Metadata};
 use serde::Deserialize;
@@ -30,6 +31,100 @@ pub fn validate_field_mapping(path: &Path) -> Result<usize> {
         .with_context(|| format!("Failed to parse field mapping YAML: {}", path.display()))?;
 
     Ok(mapping_config.field_mapping.len())
+}
+
+/// Retourne `true` si `c` a une représentation dans Windows-1252.
+fn is_cp1252(c: char) -> bool {
+    let cp = c as u32;
+    cp <= 0x7F
+        || (cp >= 0xA0 && cp <= 0xFF)
+        || matches!(
+            c,
+            '\u{20AC}' // €
+            | '\u{201A}' // ‚
+            | '\u{0192}' // ƒ
+            | '\u{201E}' // „
+            | '\u{2026}' // …
+            | '\u{2020}' // †
+            | '\u{2021}' // ‡
+            | '\u{02C6}' // ˆ
+            | '\u{2030}' // ‰
+            | '\u{0160}' // Š
+            | '\u{2039}' // ‹
+            | '\u{0152}' // Œ
+            | '\u{017D}' // Ž
+            | '\u{2018}' // '
+            | '\u{2019}' // '
+            | '\u{201C}' // "
+            | '\u{201D}' // "
+            | '\u{2022}' // •
+            | '\u{2013}' // –
+            | '\u{2014}' // —
+            | '\u{02DC}' // ˜
+            | '\u{2122}' // ™
+            | '\u{0161}' // š
+            | '\u{203A}' // ›
+            | '\u{0153}' // œ
+            | '\u{017E}' // ž
+            | '\u{0178}' // Ÿ
+        )
+}
+
+/// Table manuelle pour les caractères hors-CP1252 non décomposables par NFD.
+/// Couvre les cas rencontrés dans les toponymes BDTOPO outre-mer et régionaux.
+fn cp1252_fallback(c: char) -> Option<char> {
+    match c {
+        'ŋ' => Some('n'), // Kanak (Nouvelle-Calédonie)
+        'Ŋ' => Some('N'),
+        'ı' => Some('i'), // i sans point (turc, rare)
+        'ħ' => Some('h'),
+        'Ħ' => Some('H'),
+        'ŧ' => Some('t'),
+        'Ŧ' => Some('T'),
+        'ŀ' | 'ł' => Some('l'),
+        'Ŀ' | 'Ł' => Some('L'),
+        'đ' => Some('d'),
+        'Đ' => Some('D'),
+        _ => None,
+    }
+}
+
+/// Convertit une chaîne UTF-8 en une chaîne dont tous les caractères
+/// sont représentables en CP1252, sans avertissement GDAL PolishMap.
+///
+/// Stratégie (caractère par caractère) :
+/// 1. Si le caractère est déjà CP1252 → conservé tel quel (é, È, ç… inchangés).
+/// 2. Sinon NFD sur ce seul caractère → on garde le premier non-combining-mark,
+///    s'il est CP1252 (ex. ā → a, Ō → O pour les macrons polynésiens).
+/// 3. Table de repli manuelle pour les non-décomposables (ŋ → n, ł → l…).
+/// 4. Fallback '?' pour tout caractère restant hors-CP1252.
+pub fn sanitize_for_cp1252(s: &str) -> String {
+    use std::iter::once;
+
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if is_cp1252(c) {
+            out.push(c);
+            continue;
+        }
+        // NFD de ce seul caractère : prend la première lettre de base
+        // (premier char qui n'est pas un combining diacritical mark).
+        let base = once(c)
+            .nfd()
+            .find(|&ch| !('\u{0300}'..='\u{036F}').contains(&ch));
+        if let Some(b) = base {
+            if is_cp1252(b) {
+                out.push(b);
+                continue;
+            }
+        }
+        if let Some(fb) = cp1252_fallback(c) {
+            out.push(fb);
+        } else {
+            out.push('?');
+        }
+    }
+    out
 }
 
 /// Statistics for export operations.
@@ -821,8 +916,20 @@ impl MpWriter {
 
             // Find field index by name (using target_key)
             if let Ok(field_idx) = layer_defn.field_index(target_key) {
-                // Set field using index
-                if let Err(e) = ogr_feature.set_field_string(field_idx, value) {
+                // Sanitise vers CP1252 avant écriture pour éviter le warning GDAL
+                // "couldn't be converted correctly from UTF-8 to CP1252".
+                // NFD + strip combining marks couvre les macrons polynésiens (ā→a) ;
+                // la table de repli gère ŋ, ł, etc.
+                let sanitized = sanitize_for_cp1252(value);
+                if sanitized != *value {
+                    tracing::debug!(
+                        source_field = source_key,
+                        original = value,
+                        sanitized = %sanitized,
+                        "Label sanitized for CP1252"
+                    );
+                }
+                if let Err(e) = ogr_feature.set_field_string(field_idx, &sanitized) {
                     // Field set failed - log warning and continue (graceful degradation)
                     warn!(
                         source_field = source_key,
@@ -928,5 +1035,27 @@ mod tests {
             source.contains("out of range"),
             "guard message for index out of range must be present"
         );
+    }
+
+    #[test]
+    fn test_sanitize_for_cp1252() {
+        // ASCII et latin courant : inchangés
+        assert_eq!(sanitize_for_cp1252("Rue de l'Église"), "Rue de l'Église");
+        assert_eq!(sanitize_for_cp1252("éàùçôî"), "éàùçôî");
+        // Œ/œ sont dans CP1252 (0x8C/0x9C) : inchangés
+        assert_eq!(sanitize_for_cp1252("Œuvre"), "Œuvre");
+
+        // Macrons polynésiens : NFD + strip combining → lettre de base
+        assert_eq!(sanitize_for_cp1252("Fā'a'ā"), "Fa'a'a");
+        assert_eq!(sanitize_for_cp1252("Tūpou"), "Tupou");
+        assert_eq!(sanitize_for_cp1252("Pōmare"), "Pomare");
+
+        // Table de repli manuelle
+        assert_eq!(sanitize_for_cp1252("ŋ"), "n"); // kanak
+        // Ł → L (fallback), ó est CP1252 (U+00F3) → conservé, ź → z (NFD strip)
+        assert_eq!(sanitize_for_cp1252("Łódź"), "Lódz");
+
+        // Caractère hors-CP1252 sans repli → '?'
+        assert_eq!(sanitize_for_cp1252("\u{1F600}"), "?"); // emoji
     }
 }
