@@ -361,7 +361,12 @@ MAPNAME.GMP
 └── DEM section  (si DEM)
 ```
 
-L'option `--packaging gmp` d'imgforge génère ce format. Il réduit le nombre d'entrées FAT (de 6 à 1 par tuile) et améliore les temps de chargement sur les firmware NT modernes.
+L'option `--packaging gmp` d'imgforge génère ce format. Il réduit le nombre d'entrées FAT (de 6 à 1 par tuile) et améliore théoriquement les temps de chargement sur les firmware NT modernes.
+
+!!! warning "Support expérimental"
+    Le mode `--packaging gmp` est **non fonctionnel sur firmware Alpha 100** : la carte n'est pas
+    reconnue dans la liste des produits cartographiques et peut rendre les autres cartes SD
+    invisibles. Utiliser `--packaging legacy` (défaut) en production.
 
 ---
 

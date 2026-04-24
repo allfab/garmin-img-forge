@@ -125,7 +125,7 @@ Options de rendu supplémentaires :
 | `--order-by-decreasing-area` | Trier les polygones par aire décroissante | false |
 | `--lower-case` | Autoriser les minuscules dans les labels (force Format 9/10) | false |
 | `--merge-lines` | Fusionne les polylignes adjacentes de même type et label | false |
-| `--packaging <MODE>` | Format d'emballage des sous-fichiers : `legacy` (6 FAT files par tuile) ou `gmp` (1 `.GMP` par tuile) | `legacy` |
+| `--packaging <MODE>` | Format d'emballage des sous-fichiers : `legacy` (6 FAT files par tuile) ou `gmp` (1 `.GMP` par tuile, **expérimental**) | `legacy` |
 
 #### Fusion de polylignes (`--merge-lines`)
 
@@ -140,12 +140,14 @@ imgforge build tiles/ --merge-lines
 
 #### Format d'emballage (`--packaging`)
 
-Le format Garmin NT moderne regroupe les sous-fichiers d'une tuile dans un seul fichier `.GMP` au lieu de 6 fichiers FAT séparés. Le comportement `legacy` est conservé par défaut pour assurer la compatibilité :
-
 | Mode | Fichiers générés par tuile | Compatibilité |
 |------|--------------------------|---------------|
-| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin |
-| `gmp` | Un seul `.GMP` | Garmin NT (firmware récent) |
+| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin — **seul mode validé en production** |
+| `gmp` | Un seul `.GMP` | ⚠ **Expérimental** — non fonctionnel sur Alpha 100 |
+
+!!! warning "GMP non fonctionnel en production"
+    Le mode `gmp` n'est pas reconnu par le firmware Alpha 100 et peut rendre
+    les autres cartes de la carte SD invisibles. Utiliser `legacy` en production.
 
 ## Encodage des labels
 
