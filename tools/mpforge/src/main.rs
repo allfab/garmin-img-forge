@@ -6,9 +6,28 @@ use mpforge::{
     config, pipeline,
     report::CheckStatus,
 };
+use std::ffi::CStr;
 use std::process::ExitCode;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
+
+/// Handler GDAL/GEOS : route les messages C vers tracing avec target="gdal".
+/// Permet de distinguer dans les logs les avertissements GDAL (ex: clipping
+/// aux bords de tuile) des messages mpforge natifs.
+unsafe extern "C" fn gdal_error_handler(
+    err_class: gdal_sys::CPLErr::Type,
+    _err_num: gdal_sys::CPLErrorNum,
+    msg: *const std::ffi::c_char,
+) {
+    let msg = unsafe { CStr::from_ptr(msg) }.to_string_lossy();
+    match err_class {
+        gdal_sys::CPLErr::CE_Warning => tracing::warn!(target: "gdal", "{}", msg),
+        gdal_sys::CPLErr::CE_Failure | gdal_sys::CPLErr::CE_Fatal => {
+            tracing::error!(target: "gdal", "{}", msg)
+        }
+        _ => tracing::debug!(target: "gdal", "{}", msg),
+    }
+}
 
 /// Setup tracing subscriber based on verbosity level.
 fn setup_tracing(verbose: u8) {
@@ -21,12 +40,16 @@ fn setup_tracing(verbose: u8) {
 
     let subscriber = FmtSubscriber::builder()
         .with_max_level(level)
-        .with_target(false)
+        .with_target(true)
         .finish();
 
     if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("Warning: Failed to set tracing subscriber: {}", e);
     }
+
+    // Route les messages GDAL/GEOS dans tracing (target="gdal") pour les
+    // distinguer des logs mpforge natifs dans la sortie.
+    unsafe { gdal_sys::CPLSetErrorHandler(Some(gdal_error_handler)) };
 }
 
 fn main() -> ExitCode {
