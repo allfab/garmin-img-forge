@@ -2,6 +2,26 @@
 
 > Scripts pour transformer les données IGN BD TOPO en carte Garmin (`gmapsupp.img`)
 
+## Organisation
+
+```
+scripts/
+├── download-bdtopo.sh        ← pipeline production (interface publique)
+├── build-garmin-map.sh       ← pipeline production (interface publique)
+├── check_environment.sh      ← validation des prérequis (interface publique)
+├── generate-typ-reference.py ← génération doc styles TYP (interface publique)
+├── README.md
+│
+├── typ/                      ← build et test des fichiers TYP
+├── release/                  ← publication de versions (release-tool, retag)
+├── ops/                      ← opérations infrastructure (prune S3)
+├── dev/                      ← tests et validation développement
+│
+├── debug/                    ← inspection bas niveau IMG (usage ponctuel)
+├── ci/                       ← golden tests tech-spec
+├── common/, gpkg/, postgis/, shapefile/  ← exports SIG utilitaires
+```
+
 ## Vue d'ensemble
 
 ```
