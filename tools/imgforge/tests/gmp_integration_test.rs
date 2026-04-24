@@ -95,12 +95,14 @@ fn legacy_packaging_unchanged() {
 /// - la présence des magics TRE/RGN/LBL aux positions pointées par le header GMP
 /// - que les offsets internes TRE/RGN/LBL ont été augmentés par leur position dans le GMP
 ///   (et non laissés à leur valeur standalone)
+/// - pour TRE : l'extension NT (188→309) est appliquée avant la relocalisation GMP
 #[test]
 fn gmp_v2_roundtrip_offsets_are_gmp_absolute() {
     use imgforge::img::tre::{TreWriter, TRE_HEADER_LEN};
     use imgforge::img::rgn::{RgnWriter, RGN_HEADER_LEN};
     use imgforge::img::lbl::{LblWriter, LBL_HEADER_LEN};
     use imgforge::img::labelenc::LabelEncoding;
+    use imgforge::img::gmp::NT_TRE_HLEN;
 
     // Construire des blobs réels avec des offsets connus
     let mut tre_writer = TreWriter::new();
@@ -173,11 +175,14 @@ fn gmp_v2_roundtrip_offsets_are_gmp_absolute() {
     assert_eq!(gmp_tre_start, 0xF0, "TRE doit commencer à 0xF0 dans le GMP");
 
     // === Vérification relocalisation TRE ===
+    // L'extension NT (hlen 188→309) est appliquée AVANT la relocalisation GMP.
+    // map_levels_offset = standalone (188) + NT ext (121) + gmp_tre_start (240) = 549.
+    let nt_ext = (NT_TRE_HLEN - TRE_HEADER_LEN as usize) as u32;
     let tre_in_gmp = &gmp[gmp_tre_start as usize..];
     assert_eq!(&tre_in_gmp[2..12], b"GARMIN TRE", "magic TRE intact après relocalisation");
     let relocated_ml = u32::from_le_bytes(tre_in_gmp[33..37].try_into().unwrap());
-    assert_eq!(relocated_ml, standalone_tre_ml + gmp_tre_start,
-        "TRE map_levels_offset doit être GMP-absolu");
+    assert_eq!(relocated_ml, standalone_tre_ml + nt_ext + gmp_tre_start,
+        "TRE map_levels_offset doit être GMP-absolu (standalone + NT ext + GMP base)");
 
     // === Vérification relocalisation RGN ===
     let rgn_in_gmp = &gmp[gmp_rgn_start as usize..];
@@ -195,9 +200,10 @@ fn gmp_v2_roundtrip_offsets_are_gmp_absolute() {
 
     // === Intégrité du payload : corps des blobs intact après relocalisation ===
     // La relocalisation ne touche que les champs offset dans les headers (< hlen) ;
-    // les octets au-delà du header doivent être byte-identiques au standalone.
+    // les octets au-delà du header étendu (NT_TRE_HLEN) doivent être byte-identiques.
+    // Note : les 121 bytes d'extension (TRE_HEADER_LEN..NT_TRE_HLEN) sont des zéros.
     assert_eq!(
-        &gmp[gmp_tre_start as usize + TRE_HEADER_LEN as usize..gmp_rgn_start as usize],
+        &gmp[gmp_tre_start as usize + NT_TRE_HLEN..gmp_rgn_start as usize],
         &tre_blob[TRE_HEADER_LEN as usize..],
         "corps TRE intact après relocalisation"
     );
