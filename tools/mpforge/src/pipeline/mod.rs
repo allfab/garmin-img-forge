@@ -4,7 +4,6 @@
 
 pub mod geometry_smoother;
 pub mod geometry_validator;
-pub mod promotion;
 pub mod reader;
 pub mod route_params;
 pub mod tile_naming;
@@ -273,7 +272,7 @@ fn process_single_tile(
     }
 
     // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
-    let (mut features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
+    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
         Ok(result) => result,
         Err(e) => {
             if ctx.error_mode == ErrorMode::FailFast {
@@ -293,16 +292,6 @@ fn process_single_tile(
 
     if features.is_empty() {
         return Ok(TileOutcome::Skipped { existing: false });
-    }
-
-    // Snapshot pré-règles : conserve les attributs BDTOPO source pour que
-    // apply_promotion et resolve_levels puissent dispatcher post-règles.
-    // Déclenché seulement quand overview_levels est configuré pour ne pas
-    // pénaliser les builds production 7L standards.
-    if ctx.config.overview_levels.is_some() {
-        for feature in features.iter_mut() {
-            feature.source_attributes = Some(feature.attributes.clone());
-        }
     }
 
     // 2. Apply rules engine (Arc<RulesFile> is read-only, thread-safe)
@@ -438,17 +427,6 @@ fn process_single_tile(
     }
     drop(features);
 
-    // 3b-pre. Tech-spec overview wide-zoom : appliquer la promotion overview
-    // AVANT le smoother, pour que `fill_level_gaps` comble jusqu'au palier
-    // overview cible après `apply_profile`. Noop si `overview_levels` absent.
-    if let Some(ref overview) = ctx.config.overview_levels {
-        for feature in clipped_features.iter_mut() {
-            if let Some(layer) = feature.source_layer.clone() {
-                promotion::apply_promotion(feature, &layer, overview);
-            }
-        }
-    }
-
     // 3b. Apply geometry generalization (smoothing + simplification) per-layer.
     // Tech-spec #2 Task 10 + M6 : source de vérité UNIQUE = `profile_map`.
     // L'inline `generalize:` a déjà été converti en profils mono-niveau à
@@ -459,7 +437,6 @@ fn process_single_tile(
         let gen_count = generalize_features_with_profiles(
             &mut clipped_features,
             &ctx.non_topo_profile_map,
-            ctx.config.overview_levels.as_ref(),
         );
         tracing::debug!(
             tile_id = %tile_id,
@@ -947,28 +924,12 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // le pipeline — les inline `generalize:` sont convertis via
     // `From<GeneralizeConfig>` dans `build_profile_map`.
     let profile_map = Arc::new(config.resolved_profile_map.clone());
-    // F4 fix : `max_data_level` agrège le max(n) de tous les profils ET le
-    // max(promote_to) des règles overview — sinon le writer n'alloue pas les
-    // OGRGeomFieldDefn pour Data7/8/9 quand la promotion force un niveau
-    // au-delà du max déclaré par les profils.
-    let profile_max = profile_map
-        .values()
-        .filter_map(|p| p.max_level_index())
-        .max()
-        .unwrap_or(0);
-    let promote_max = config
-        .overview_levels
-        .as_ref()
-        .map(|ov| {
-            ov.promotion
-                .values()
-                .flat_map(|rules| rules.iter().map(|r| r.promote_to))
-                .max()
-                .unwrap_or(0)
-        })
-        .unwrap_or(0);
     let max_data_level: Option<u8> = {
-        let k = profile_max.max(promote_max);
+        let k = profile_map
+            .values()
+            .filter_map(|p| p.max_level_index())
+            .max()
+            .unwrap_or(0);
         if k > 0 { Some(k) } else { None }
     };
     if !profile_map.is_empty() {
@@ -1054,13 +1015,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                 .unwrap_or(false)
         });
 
-        // Snapshot pré-règles si overview_levels configuré.
-        if config.overview_levels.is_some() {
-            for f in all_features.iter_mut() {
-                f.source_attributes = Some(f.attributes.clone());
-            }
-        }
-
         // Appliquer les règles (Type, EndLevel, Label nécessaires pour l'écriture).
         if let Some(ref rules_file) = rules {
             let mut transformed = Vec::with_capacity(all_features.len());
@@ -1110,7 +1064,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         let n = generalize_features_with_profiles(
             &mut all_features,
             &topo_profile_map,
-            config.overview_levels.as_ref(),
         );
         info!(
             features = all_features.len(),

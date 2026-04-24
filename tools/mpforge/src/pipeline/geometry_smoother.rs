@@ -4,8 +4,7 @@
 //! simplification to feature geometries. Configured per-layer via
 //! the `generalize` directive in source YAML configuration.
 
-use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec, OverviewLevels};
-use crate::pipeline::promotion;
+use crate::config::{GeneralizeConfig, GeneralizeProfile, LevelSpec};
 use crate::pipeline::reader::{Feature, GeometryType};
 use geo::{ChaikinSmoothing, LineString, Polygon, Simplify, SimplifyVw, SimplifyVwIdx, SimplifyVwPreserve};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -31,8 +30,7 @@ fn resolve_levels<'a>(
     profile: &'a GeneralizeProfile,
     feature: &Feature,
 ) -> Option<&'a [LevelSpec]> {
-    // Dispatch sur les attributs BDTOPO source (pré-règles) quand disponibles.
-    let attrs = feature.source_attributes.as_ref().unwrap_or(&feature.attributes);
+    let attrs = &feature.attributes;
     for clause in &profile.when {
         if let Some(val) = attrs.get(&clause.field) {
             if clause.values.iter().any(|v| v == val) {
@@ -175,7 +173,6 @@ fn apply_level_to_polygon(raw: &[(f64, f64)], lvl: &LevelSpec) -> Option<Vec<(f6
 pub fn generalize_features_with_profiles(
     features: &mut [Feature],
     profile_map: &BTreeMap<String, GeneralizeProfile>,
-    overview: Option<&OverviewLevels>,
 ) -> usize {
     if profile_map.is_empty() {
         return 0;
@@ -232,17 +229,8 @@ pub fn generalize_features_with_profiles(
                     .map(|ls| ls.iter().map(|l| l.n).max().unwrap_or(0))
                     .unwrap_or(0);
 
-                // F4 fix : la promotion overview force le remplissage jusqu'au
-                // palier cible MÊME si la branche ne déclare pas ce n. Les
-                // paliers manquants sont clonés par `fill_level_gaps` depuis
-                // le dernier palier effectivement produit — contrat Alpha 100.
-                let promote_n = overview
-                    .and_then(|ov| promotion::resolve_promotion(feature, &layer_name, ov))
-                    .unwrap_or(0);
-
-                let upper = branch_max.max(promote_n);
-                if upper > 0 {
-                    fill_level_gaps(feature, upper);
+                if branch_max > 0 {
+                    fill_level_gaps(feature, branch_max);
                 }
                 count += 1;
             }
@@ -551,7 +539,6 @@ mod tests {
             geometry: coords,
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
-            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -562,7 +549,6 @@ mod tests {
             geometry: coords,
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
-            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -573,7 +559,6 @@ mod tests {
             geometry: vec![coord],
             additional_geometries: BTreeMap::new(),
             attributes: HashMap::new(),
-            source_attributes: None,
             source_layer: Some(layer.to_string()),
         }
     }
@@ -933,7 +918,7 @@ levels:
                 "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
             ),
         );
-        let count = generalize_features_with_profiles(&mut features, &map, None);
+        let count = generalize_features_with_profiles(&mut features, &map);
         assert_eq!(count, 1);
         assert!(features[0].additional_geometries.contains_key(&2));
         assert!(features[1].additional_geometries.is_empty());
@@ -953,7 +938,7 @@ levels:
                 "levels:\n  - { n: 0, simplify: 0.0001 }\n  - { n: 2, simplify: 0.0005 }\n",
             ),
         );
-        generalize_features_with_profiles(&mut features, &map, None);
+        generalize_features_with_profiles(&mut features, &map);
         let f = &features[0];
         assert!(
             f.additional_geometries.contains_key(&1),
@@ -993,57 +978,13 @@ levels:
                  - { n: 6, simplify: 0.0009 }\n",
             ),
         );
-        generalize_features_with_profiles(&mut features, &map, None);
+        generalize_features_with_profiles(&mut features, &map);
         let f = &features[0];
         // Branch_max = 6 même si n=6 dégénère → pad contiguïté 1..=6.
         for n in 1u8..=6 {
             assert!(
                 f.additional_geometries.contains_key(&n),
                 "n={n} must be present for Alpha 100 contiguity even if intermediate levels degenerate"
-            );
-        }
-    }
-
-    #[test]
-    fn test_overview_promotion_pads_up_to_promote_to_even_without_lvlspec() {
-        // F4 régression : promotion overview force le padding jusqu'à
-        // promote_to même si le profil ne déclare pas ce n dans la branche
-        // résolue. fill_level_gaps clone depuis le dernier palier produit.
-        use crate::config::{OverviewLevels, PromotionRule};
-        let mut features = vec![make_linestring_feature(
-            (0..10).map(|i| (i as f64 * 0.001, 0.0)).collect(),
-            "TRONCON_DE_ROUTE",
-        )];
-        features[0]
-            .attributes
-            .insert("CL_ADMIN".to_string(), "Autoroute".to_string());
-        let mut map = BTreeMap::new();
-        map.insert(
-            "TRONCON_DE_ROUTE".to_string(),
-            // Profil DELIBEREMENT SANS n=9 — le promote_to:9 doit quand même
-            // produire Data9 par clonage (F4 fix).
-            profile_from_yaml("levels:\n  - { n: 0, simplify: 0.00001 }\n"),
-        );
-        let mut promotion_rules = BTreeMap::new();
-        let mut match_map = BTreeMap::new();
-        match_map.insert("CL_ADMIN".to_string(), vec!["Autoroute".to_string()]);
-        promotion_rules.insert(
-            "TRONCON_DE_ROUTE".to_string(),
-            vec![PromotionRule {
-                match_: match_map,
-                promote_to: 9,
-            }],
-        );
-        let ov = OverviewLevels {
-            header_extension: vec![14, 12, 10],
-            promotion: promotion_rules,
-        };
-        generalize_features_with_profiles(&mut features, &map, Some(&ov));
-        let f = &features[0];
-        for n in 1u8..=9 {
-            assert!(
-                f.additional_geometries.contains_key(&n),
-                "n={n} must be filled up to promote_to=9 via cloning (F4)"
             );
         }
     }
@@ -1067,7 +1008,7 @@ levels:
                 "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 9, simplify: 0.005 }\n",
             ),
         );
-        generalize_features_with_profiles(&mut features, &map, None);
+        generalize_features_with_profiles(&mut features, &map);
         let f = &features[0];
         // n=0 dans geometry, n=1..=9 dans additional_geometries (10 paliers
         // au total, tous clonés à partir du précédent pour combler les trous).
@@ -1143,37 +1084,6 @@ levels:
         assert!(!feature.additional_geometries.contains_key(&3));
     }
 
-    #[test]
-    fn test_resolve_levels_uses_source_attributes() {
-        // Cas clé du fix source_attributes : CL_ADMIN absent de attributes (post-règles)
-        // mais présent dans source_attributes (pré-règles) → la branche when: doit matcher.
-        let profile = profile_from_yaml(r#"
-when:
-  - field: CL_ADMIN
-    values: [Autoroute]
-    levels:
-      - { n: 0, simplify: 0.00001 }
-      - { n: 9, simplify: 0.005 }
-levels:
-  - { n: 0, simplify: 0.00005 }
-"#);
-        let coords: Vec<(f64, f64)> = (0..15).map(|i| (i as f64 * 0.001, 0.0)).collect();
-        let mut f = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
-        // Simule l'état post-règles : CL_ADMIN absent de attributes
-        f.attributes.insert("Type".to_string(), "0x01".to_string());
-        f.attributes.insert("EndLevel".to_string(), "9".to_string());
-        // Mais présent dans source_attributes (snapshot pré-règles)
-        f.source_attributes = Some({
-            let mut m = HashMap::new();
-            m.insert("CL_ADMIN".to_string(), "Autoroute".to_string());
-            m
-        });
-        apply_profile(&mut f, &profile);
-        assert!(
-            f.additional_geometries.contains_key(&9),
-            "when: dispatch doit utiliser source_attributes — n=9 doit être généré"
-        );
-    }
 
     // =================================================================
     // T5a/T5b — Algorithme VW standard (per-feature)
@@ -1441,7 +1351,7 @@ levels:
                 "topology: true\nlevels:\n  - { n: 0 }\n  - { n: 1, simplify_vw: 0.1 }\n",
             ),
         );
-        generalize_features_with_profiles(&mut features, &map, None);
+        generalize_features_with_profiles(&mut features, &map);
 
         let f1_n1 = features[0].additional_geometries.get(&1).expect("f1 n=1 présent");
         let f2_n1 = features[1].additional_geometries.get(&1).expect("f2 n=1 présent");

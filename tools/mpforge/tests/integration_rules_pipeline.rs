@@ -41,7 +41,6 @@ fn make_feature(
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),
-        source_attributes: None,
         source_layer: Some(layer.to_string()),
     }
 }
@@ -276,7 +275,6 @@ fn test_feature_source_layer_field() {
         geometry: vec![(0.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
     assert!(feature_no_layer.source_layer.is_none());

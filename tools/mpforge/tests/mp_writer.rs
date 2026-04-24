@@ -25,7 +25,6 @@ fn create_poi_feature(label: &str, type_code: &str) -> Feature {
         geometry: vec![(2.3522, 48.8566)], // Paris coordinates
         additional_geometries: std::collections::BTreeMap::new(),
         attributes,
-        source_attributes: None,
         source_layer: None,
     }
 }
@@ -41,7 +40,6 @@ fn create_polyline_feature(label: &str, type_code: &str) -> Feature {
         geometry: vec![(2.3522, 48.8566), (2.3532, 48.8576)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes,
-        source_attributes: None,
         source_layer: None,
     }
 }
@@ -63,7 +61,6 @@ fn create_polygon_feature(label: &str, type_code: &str) -> Feature {
         ],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes,
-        source_attributes: None,
         source_layer: None,
     }
 }
@@ -188,7 +185,6 @@ fn test_write_features_preserves_attributes() {
         geometry: vec![(2.3522, 48.8566)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes,
-        source_attributes: None,
         source_layer: None,
     }];
 

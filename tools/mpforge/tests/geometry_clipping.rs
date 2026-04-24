@@ -295,7 +295,6 @@ fn test_invalid_geometry_continue_mode() {
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -336,7 +335,6 @@ fn test_invalid_geometry_failfast_mode() {
         geometry: vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -371,7 +369,6 @@ fn test_degenerate_linestring_skipped() {
         geometry: vec![(0.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -417,7 +414,6 @@ fn test_clip_preserves_all_attributes() {
         geometry: vec![(-0.5, 0.5), (1.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: attributes.clone(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -494,7 +490,6 @@ fn test_point_feature_attributes_preserved() {
         geometry: vec![(0.5, 0.5)],
         additional_geometries: std::collections::BTreeMap::new(),
         attributes: attributes.clone(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -549,7 +544,6 @@ fn test_clip_level_coords_concave_polygon_additional_geometry_preserved() {
         geometry: vec![(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)],
         additional_geometries: additional,
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
 
@@ -608,7 +602,6 @@ fn test_clip_level_coords_self_intersecting_additional_geometry_handled_graceful
         geometry: vec![(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)],
         additional_geometries: additional,
         attributes: HashMap::new(),
-        source_attributes: None,
         source_layer: None,
     };
 

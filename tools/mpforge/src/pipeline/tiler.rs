@@ -510,7 +510,6 @@ pub fn clip_feature_to_tile(
             geometry: coords,
             additional_geometries: clipped_additional,
             attributes: feature.attributes.clone(),
-            source_attributes: feature.source_attributes.clone(),
             source_layer: feature.source_layer.clone(),
         });
     }

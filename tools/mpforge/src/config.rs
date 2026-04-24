@@ -67,12 +67,6 @@ pub struct Config {
     #[serde(skip, default)]
     #[doc(hidden)]
     pub resolved_profile_map: BTreeMap<String, GeneralizeProfile>,
-    /// Tech-spec overview wide-zoom : opt-in strict pour étendre le header
-    /// Polish Map au-delà de 7 niveaux (ajout de `Data7/8/9` pour l'overview
-    /// map de `imgforge` Phase 2). Absence du champ = sortie `.mp`
-    /// byte-identique aux scopes 7L existants.
-    #[serde(default)]
-    pub overview_levels: Option<OverviewLevels>,
 }
 
 impl Config {
@@ -224,21 +218,15 @@ pub struct GeneralizeProfile {
 
 /// Upper bound on `LevelSpec.iterations` (Chaikin 5× ≈ 32× vertices).
 const MAX_PROFILE_ITERATIONS: usize = 5;
-/// Upper bound on `LevelSpec.simplify` (DP) pour les paliers DÉTAIL (`n ≤ 6`,
-/// ≈110 m). Anti-destruction : une tolérance au-dessus détruit visuellement
-/// la géométrie à ces échelles.
+/// Upper bound on `LevelSpec.simplify` (DP, ≈110 m à l'équateur).
+/// Anti-destruction : une tolérance supérieure détruit visuellement la géométrie
+/// aux échelles Garmin ciblées (Data0–Data6).
 const MAX_PROFILE_SIMPLIFY_DETAIL: f64 = 0.001;
-/// Upper bound on `LevelSpec.simplify` (DP) pour les paliers OVERVIEW (`n ≥ 7`,
-/// ≈1.1 km). Plus permissif parce qu'à ces échelles les features sont vues
-/// de très loin et la simplification très agressive reste lisible.
-const MAX_PROFILE_SIMPLIFY_OVERVIEW: f64 = 0.01;
-/// Upper bound on `LevelSpec.simplify_vw` (VW) pour les paliers DÉTAIL (`n ≤ 6`).
-/// VW utilise un critère d'aire (deg²) et non une distance perpendiculaire (deg).
-/// Borne plus permissive que DP : 0.005 deg² correspond à un triangle d'environ
-/// ~0.1° × 0.1° — visuellement acceptable aux zooms larges Garmin (Data3-Data6).
+/// Upper bound on `LevelSpec.simplify_vw` (VW, en deg²).
+/// VW utilise un critère d'aire et non une distance perpendiculaire comme DP :
+/// 0.005 deg² correspond à un triangle d'environ ~0.1° × 0.1°, acceptable
+/// jusqu'au zoom Data6 sans compromettre la topologie.
 const MAX_PROFILE_SIMPLIFY_VW_DETAIL: f64 = 0.005;
-/// Upper bound on `LevelSpec.simplify_vw` (VW) pour les paliers OVERVIEW (`n ≥ 7`).
-const MAX_PROFILE_SIMPLIFY_VW_OVERVIEW: f64 = 0.05;
 
 impl LevelSpec {
     /// Tech-spec #2 Task 6: per-level range validation (F15 adversarial
@@ -265,45 +253,32 @@ impl LevelSpec {
             );
         }
         if let Some(s) = self.simplify {
-            let max = if self.n >= 7 {
-                MAX_PROFILE_SIMPLIFY_OVERVIEW
-            } else {
-                MAX_PROFILE_SIMPLIFY_DETAIL
-            };
-            if !(s.is_finite() && (0.0..=max).contains(&s)) {
+            if !(s.is_finite() && (0.0..=MAX_PROFILE_SIMPLIFY_DETAIL).contains(&s)) {
                 anyhow::bail!(
                     "{context}: simplify={s} hors de [0.0, {max}] pour n={n}\n\
                      \x20 `simplify` est une tolérance Douglas-Peucker en degrés WGS84 \
                      (distance perpendiculaire, ≈{approx} m à l'équateur).\n\
-                     \x20 Plafond n≤6 : {dp_detail}° (≈{dp_detail_m} m) ; n≥7 : {dp_over}° (≈{dp_over_m} m).\n\
-                     \x20 Une valeur plus haute détruirait visuellement la géométrie aux zooms Garmin ciblés.",
+                     \x20 Plafond : {max}° (≈{max_m} m). \
+                     Une valeur plus haute détruirait visuellement la géométrie aux zooms Garmin ciblés.",
                     n = self.n,
+                    max = MAX_PROFILE_SIMPLIFY_DETAIL,
                     approx = (s * 111_320.0) as u64,
-                    dp_detail = MAX_PROFILE_SIMPLIFY_DETAIL,
-                    dp_detail_m = (MAX_PROFILE_SIMPLIFY_DETAIL * 111_320.0) as u64,
-                    dp_over = MAX_PROFILE_SIMPLIFY_OVERVIEW,
-                    dp_over_m = (MAX_PROFILE_SIMPLIFY_OVERVIEW * 111_320.0) as u64,
+                    max_m = (MAX_PROFILE_SIMPLIFY_DETAIL * 111_320.0) as u64,
                 );
             }
         }
         if let Some(s) = self.simplify_vw {
-            let max = if self.n >= 7 {
-                MAX_PROFILE_SIMPLIFY_VW_OVERVIEW
-            } else {
-                MAX_PROFILE_SIMPLIFY_VW_DETAIL
-            };
-            if !(s.is_finite() && (0.0..=max).contains(&s)) {
+            if !(s.is_finite() && (0.0..=MAX_PROFILE_SIMPLIFY_VW_DETAIL).contains(&s)) {
                 anyhow::bail!(
                     "{context}: simplify_vw={s} hors de [0.0, {max}] pour n={n}\n\
                      \x20 `simplify_vw` est une tolérance Visvalingam-Whyatt en degrés² \
                      (aire du triangle formé par trois sommets consécutifs).\n\
                      \x20 ⚠ L'unité est deg², PAS deg — comparer à `simplify` n'a pas de sens direct.\n\
-                     \x20 Plafond n≤6 : {vw_detail} deg² ; n≥7 : {vw_over} deg².\n\
-                     \x20 Valeurs typiques : 0.000001 (précis) → 0.001 (agressif) → au-delà \
+                     \x20 Plafond : {max} deg². \
+                     Valeurs typiques : 0.000001 (précis) → 0.001 (agressif) → au-delà \
                      la topologie est compromise aux intersections.",
                     n = self.n,
-                    vw_detail = MAX_PROFILE_SIMPLIFY_VW_DETAIL,
-                    vw_over = MAX_PROFILE_SIMPLIFY_VW_OVERVIEW,
+                    max = MAX_PROFILE_SIMPLIFY_VW_DETAIL,
                 );
             }
         }
@@ -391,43 +366,6 @@ impl From<GeneralizeConfig> for GeneralizeProfile {
             topology: false,
         }
     }
-}
-
-/// Tech-spec overview wide-zoom : opt-in d'extension du header Polish Map
-/// au-delà des 7 niveaux standard pour alimenter l'overview map embarquée de
-/// `imgforge`. Absent de `sources.yaml` → noop (compat descendante stricte).
-#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct OverviewLevels {
-    /// Paliers bits additionnels ajoutés après les 7 niveaux standards.
-    /// Exemple `[14, 12, 10]` ajoute `Level7=14`, `Level8=12`, `Level9=10`.
-    /// Doit être strictement décroissant et chaque valeur strictement
-    /// inférieure au dernier bits du header standard.
-    #[serde(default)]
-    pub header_extension: Vec<u8>,
-    /// Règles de promotion par `source_layer` : forcent certaines features
-    /// au-delà de leur `EndLevel` de règle métier jusqu'à un palier overview
-    /// explicite. Premier match gagne.
-    #[serde(default)]
-    pub promotion: BTreeMap<String, Vec<PromotionRule>>,
-}
-
-/// Tech-spec overview wide-zoom : règle de promotion feature → palier overview.
-///
-/// `match` est un AND sur tous les champs attributs ; pour chaque champ la
-/// feature est matchée si `feature.attributes[field]` figure dans la liste.
-/// Le préfixe `!` sur une valeur inverse le test (cf. convention
-/// `garmin-rules.yaml`).
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct PromotionRule {
-    /// Conditions de match par champ attribut (AND inter-champs).
-    #[serde(default, rename = "match")]
-    pub match_: BTreeMap<String, Vec<String>>,
-    /// Palier de destination (index `n`). Doit appartenir à la plage
-    /// overview (au-delà du dernier palier standard, bornée par le header
-    /// étendu).
-    pub promote_to: u8,
 }
 
 /// Configuration for spatial filtering using a reference geometry layer.
@@ -760,203 +698,6 @@ impl Config {
         }
 
         Ok(map)
-    }
-
-    /// Tech-spec overview wide-zoom (Task 2 structural + Task 3 extension) :
-    /// valide la structure de `overview_levels` et étend `header.levels`
-    /// (string Polish Map) + les champs `level7/8/9` pour que le writer émette
-    /// un header `Levels=10` cohérent. Appelé AVANT `build_profile_map` pour
-    /// que la validation AC18 (max(n)+1 ≤ header.levels) tolère les `n=7..9`
-    /// sans faux positif.
-    ///
-    /// Noop si `overview_levels` est `None` (compat descendante stricte).
-    pub fn prepare_overview_levels(&mut self) -> anyhow::Result<()> {
-        let Some(ov) = self.overview_levels.as_ref() else {
-            return Ok(());
-        };
-
-        // 1) header_extension non-vide.
-        if ov.header_extension.is_empty() {
-            anyhow::bail!(
-                "overview_levels.header_extension: doit être non-vide \
-                 (déclarez au moins un palier bits, ex. [14, 12, 10])"
-            );
-        }
-
-        // 2) Tous les bits ≥ 1.
-        for &b in &ov.header_extension {
-            if b == 0 {
-                anyhow::bail!(
-                    "overview_levels.header_extension: bits=0 invalide \
-                     (paliers Polish Map ∈ [1, 24])"
-                );
-            }
-        }
-
-        // 3) Strictement décroissant.
-        for pair in ov.header_extension.windows(2) {
-            if pair[0] <= pair[1] {
-                anyhow::bail!(
-                    "overview_levels.header_extension: ordre strictement décroissant requis \
-                     (bits plus petits = zoom overview plus large), got {:?}",
-                    ov.header_extension
-                );
-            }
-        }
-
-        // 4) Cohérent avec le header standard : chaque bits < bits minimal du
-        //    header existant (sinon le palier overview serait plus « détaillé »
-        //    que le dernier palier standard).
-        let header = self.header.as_ref().ok_or_else(|| {
-            anyhow::anyhow!(
-                "overview_levels requires `header:` section with explicit levels (none found)"
-            )
-        })?;
-        let standard_bits = collect_header_level_bits(header)?;
-        if standard_bits.is_empty() {
-            anyhow::bail!(
-                "overview_levels requires `header.levels` (and level0..levelN) \
-                 to be declared explicitly"
-            );
-        }
-        let last_bits = *standard_bits.last().unwrap();
-        if ov.header_extension[0] >= last_bits {
-            anyhow::bail!(
-                "overview_levels.header_extension: premier bits={} doit être < bits du dernier palier standard ({}) \
-                 (monotonicité décroissante globale)",
-                ov.header_extension[0], last_bits
-            );
-        }
-
-        // 5) Total ≤ 10 (limite Polish Map).
-        let total_levels = standard_bits.len() + ov.header_extension.len();
-        if total_levels > 10 {
-            anyhow::bail!(
-                "overview_levels: total_levels={} > 10 \
-                 (limite Polish Map : header standard {} paliers + {} extension)",
-                total_levels, standard_bits.len(), ov.header_extension.len()
-            );
-        }
-
-        // 6) Extension du header : met à jour `levels` (str) + level7/8/9.
-        let ext = ov.header_extension.clone();
-        let new_total = total_levels;
-        let header_mut = self.header.as_mut().expect("header presence checked above");
-        header_mut.levels = Some(new_total.to_string());
-        for (i, bits) in ext.iter().enumerate() {
-            let n = standard_bits.len() + i;
-            let slot = match n {
-                7 => &mut header_mut.level7,
-                8 => &mut header_mut.level8,
-                9 => &mut header_mut.level9,
-                _ => anyhow::bail!(
-                    "overview_levels: palier n={} hors des slots Level7/8/9 supportés",
-                    n
-                ),
-            };
-            *slot = Some(bits.to_string());
-        }
-
-        Ok(())
-    }
-
-    /// Tech-spec overview wide-zoom (Task 2 promotion cross-check) : valide
-    /// que chaque règle de promotion cite une couche connue dans le profile
-    /// map, que `promote_to` tombe bien dans la plage overview (au-delà du
-    /// dernier palier standard, sous la taille totale étendue), et que le
-    /// profil résolu déclare effectivement un `LevelSpec { n: promote_to }`.
-    ///
-    /// Noop si `overview_levels` est `None`.
-    pub fn validate_overview_promotion(
-        &self,
-        profile_map: &BTreeMap<String, GeneralizeProfile>,
-    ) -> anyhow::Result<()> {
-        let Some(ov) = self.overview_levels.as_ref() else {
-            return Ok(());
-        };
-        // `prepare_overview_levels` a déjà étendu `header.levels` — on utilise
-        // la taille étendue comme source de vérité pour la plage overview.
-        let header = self.header.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("overview_levels requires `header:` section")
-        })?;
-        let total_levels_str = header
-            .levels
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("overview_levels: header.levels must be set after prepare"))?;
-        let total_levels: u8 = total_levels_str
-            .parse()
-            .with_context(|| format!("overview_levels: cannot parse header.levels={total_levels_str:?}"))?;
-        // F5 fix : guard underflow si Config construit à la main sans passer
-        // par `prepare_overview_levels`.
-        let ext_len = ov.header_extension.len();
-        let standard_count: u8 = (total_levels as usize)
-            .checked_sub(ext_len)
-            .and_then(|v| u8::try_from(v).ok())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "overview_levels: header.levels={} < header_extension.len()={} \
-                     (prepare_overview_levels a-t-il été appelé ?)",
-                    total_levels, ext_len
-                )
-            })?;
-
-        for (layer, rules) in &ov.promotion {
-            if rules.is_empty() {
-                anyhow::bail!(
-                    "overview_levels.promotion.{layer}: liste de règles vide"
-                );
-            }
-            if !profile_map.contains_key(layer) {
-                anyhow::bail!(
-                    "overview_levels.promotion.{layer}: couche inconnue \
-                     (aucun profil déclaré dans generalize_profiles_path ni en inline)"
-                );
-            }
-            let profile = &profile_map[layer];
-            for (i, rule) in rules.iter().enumerate() {
-                // F8 fix : refuser match_ vide (matche tout par défaut, effet
-                // de bord silencieux qui promeut 100% des features).
-                if rule.match_.is_empty() {
-                    anyhow::bail!(
-                        "overview_levels.promotion.{layer}[{i}]: `match` vide interdit \
-                         (sinon toutes les features de '{layer}' seraient promues silencieusement)"
-                    );
-                }
-                // Et chaque liste de valeurs doit être non-vide.
-                for (field, values) in &rule.match_ {
-                    if values.is_empty() {
-                        anyhow::bail!(
-                            "overview_levels.promotion.{layer}[{i}].match.{field}: liste de valeurs vide"
-                        );
-                    }
-                }
-                let valid_range = standard_count..total_levels;
-                if !valid_range.contains(&rule.promote_to) {
-                    anyhow::bail!(
-                        "overview_levels.promotion.{layer}[{i}]: promote_to={} hors de la plage overview [{}..{})",
-                        rule.promote_to, standard_count, total_levels
-                    );
-                }
-                // F3+F4 fix : on n'exige plus que le profil déclare un
-                // LevelSpec à `n=promote_to` — `fill_level_gaps` clone le
-                // dernier palier disponible pour combler jusqu'au palier
-                // promu (contrat Alpha 100 contiguïté). On loggue quand même
-                // un warning informatif pour signaler qu'aucune branche du
-                // profil n'affine la géométrie à ce niveau (les `DataN=`
-                // émis seront des clones de n=branch_max, pas des niveaux
-                // réellement simplifiés).
-                if !profile_declares_level(profile, rule.promote_to) {
-                    warn!(
-                        layer = %layer,
-                        promote_to = rule.promote_to,
-                        "overview_levels.promotion: aucun LevelSpec n={} déclaré dans le profil — \
-                         les buckets overview seront clonés du dernier palier disponible",
-                        rule.promote_to
-                    );
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Build a map of layer_name → GeneralizeConfig for all inputs that have generalization configured.
@@ -1305,52 +1046,6 @@ fn expand_env_vars(content: &str) -> String {
         .into_owned()
 }
 
-/// Tech-spec overview wide-zoom : collecte les `bits` des paliers standards
-/// déclarés dans `header.level0..level9` (contigus depuis 0). S'arrête au
-/// premier trou. Utilisé par `prepare_overview_levels` pour calculer le
-/// `last_bits` standard et l'offset `n` des paliers overview à ajouter.
-fn collect_header_level_bits(header: &HeaderConfig) -> anyhow::Result<Vec<u8>> {
-    let slots: [&Option<String>; 10] = [
-        &header.level0,
-        &header.level1,
-        &header.level2,
-        &header.level3,
-        &header.level4,
-        &header.level5,
-        &header.level6,
-        &header.level7,
-        &header.level8,
-        &header.level9,
-    ];
-    let mut bits = Vec::new();
-    for slot in slots {
-        match slot {
-            Some(s) => {
-                let b: u8 = s.parse().with_context(|| {
-                    format!("invalid header level bits '{s}' (expected integer)")
-                })?;
-                bits.push(b);
-            }
-            None => break,
-        }
-    }
-    Ok(bits)
-}
-
-/// Tech-spec overview wide-zoom : vérifie qu'au moins une branche du profil
-/// (default OU `when`) déclare `n=target`. Les branches qui ne déclarent pas
-/// ce palier n'émettront simplement pas le DataN correspondant — cohérent
-/// avec le rôle de `apply_profile` (par-feature) et le comportement attendu
-/// par les AC (p.ex. Communale s'arrête à Data6 même si Autoroute monte à
-/// Data9 dans le même profil).
-fn profile_declares_level(profile: &GeneralizeProfile, target: u8) -> bool {
-    profile.levels.iter().any(|l| l.n == target)
-        || profile
-            .when
-            .iter()
-            .any(|w| w.levels.iter().any(|l| l.n == target))
-}
-
 /// Load and parse configuration from YAML file.
 pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     let path = path.as_ref();
@@ -1394,13 +1089,6 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
         .validate()
         .with_context(|| format!("Config validation failed for: {}", path.display()))?;
 
-    // Tech-spec overview wide-zoom (Tasks 2+3) : structural check de
-    // `overview_levels` + extension du `header.levels` AVANT `build_profile_map`
-    // pour que la validation AC18 tolère les n=7..9 promus.
-    config
-        .prepare_overview_levels()
-        .with_context(|| format!("overview_levels validation failed for: {}", path.display()))?;
-
     // Tech-spec #2 Task 7: resolve external generalize profiles (if any) and
     // merge with inline entries. Fails fast on conflicts, invalid bounds, or
     // routable-layer violations (F4). Stored on the Config for downstream use.
@@ -1408,14 +1096,6 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     config.resolved_profile_map = config.build_profile_map(base_dir).with_context(|| {
         format!("generalize profile resolution failed for: {}", path.display())
     })?;
-
-    // Tech-spec overview wide-zoom (Task 2 cross-check) : après résolution du
-    // profile_map, valider que chaque règle de promotion cite une couche +
-    // un `n` effectivement déclarés par les profils.
-    let resolved_map = config.resolved_profile_map.clone();
-    config
-        .validate_overview_promotion(&resolved_map)
-        .with_context(|| format!("overview_levels promotion validation failed for: {}", path.display()))?;
 
     // Log source type for each input
     for input in &config.inputs {
@@ -1840,92 +1520,41 @@ pub fn run_validate(
         }
     }
 
-    // Steps 9+10 : même séquence que load_config — overview prepare AVANT profile_map
-    // (pour que l'AC18 dans build_profile_map voie le header.levels étendu si overview actif),
-    // puis validate_overview_promotion qui a besoin du profile_map résolu.
-
-    // Step 9a: prepare_overview_levels (mute header.levels si overview_levels présent)
-    let has_overview = config.overview_levels.is_some();
-    let overview_prepare_ok = match config.prepare_overview_levels() {
-        Ok(()) if !has_overview => {
-            checks.push(ValidationCheck {
-                name: "overview_levels".to_string(),
-                status: CheckStatus::Skipped,
-                details: "Not configured".to_string(),
-            });
-            true
-        }
-        Ok(()) => true,
-        Err(e) => {
-            let err_msg = format!("overview_levels error: {:#}", e);
-            checks.push(ValidationCheck {
-                name: "overview_levels".to_string(),
-                status: CheckStatus::Fail,
-                details: err_msg.clone(),
-            });
-            errors.push(err_msg);
-            false
-        }
-    };
-
-    // Step 9b: Profile catalog (charge+valide generalize_profiles_path + inline profiles).
+    // Step 9: Profile catalog (charge+valide generalize_profiles_path + inline profiles).
     // Vérifie les bornes DP/VW, le guard F4 routing (n:0 obligatoire pour couches routables),
     // et le guard AC18 (max(n) de tous les profils < header.levels).
-    let base_dir = std::path::Path::new(config_path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-    let profile_map_result = config.build_profile_map(base_dir);
-    match &profile_map_result {
-        Ok(profile_map) => {
-            let profile_count = profile_map.len();
-            let level_count: usize = profile_map
-                .values()
-                .map(|p| {
-                    p.levels.len()
-                        + p.when.iter().map(|w| w.levels.len()).sum::<usize>()
-                })
-                .sum();
-            checks.push(ValidationCheck {
-                name: "profile_catalog".to_string(),
-                status: CheckStatus::Pass,
-                details: format!(
-                    "{} profil(s) chargé(s), {} niveau(x) au total \
-                     (routing guard F4 ✓, AC18 max(n) ✓)",
-                    profile_count, level_count
-                ),
-            });
-        }
-        Err(e) => {
-            let err_msg = format!("profile_catalog error: {:#}", e);
-            checks.push(ValidationCheck {
-                name: "profile_catalog".to_string(),
-                status: CheckStatus::Fail,
-                details: err_msg.clone(),
-            });
-            errors.push(err_msg);
-        }
-    }
-
-    // Step 9c: validate_overview_promotion (nécessite le profile_map résolu)
-    if has_overview && overview_prepare_ok {
-        if let Ok(ref profile_map) = profile_map_result {
-            match config.validate_overview_promotion(profile_map) {
-                Ok(()) => {
-                    checks.push(ValidationCheck {
-                        name: "overview_levels".to_string(),
-                        status: CheckStatus::Pass,
-                        details: "structure et règles de promotion valides".to_string(),
-                    });
-                }
-                Err(e) => {
-                    let err_msg = format!("overview_levels promotion error: {:#}", e);
-                    checks.push(ValidationCheck {
-                        name: "overview_levels".to_string(),
-                        status: CheckStatus::Fail,
-                        details: err_msg.clone(),
-                    });
-                    errors.push(err_msg);
-                }
+    {
+        let base_dir = std::path::Path::new(config_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        match config.build_profile_map(base_dir) {
+            Ok(profile_map) => {
+                let profile_count = profile_map.len();
+                let level_count: usize = profile_map
+                    .values()
+                    .map(|p| {
+                        p.levels.len()
+                            + p.when.iter().map(|w| w.levels.len()).sum::<usize>()
+                    })
+                    .sum();
+                checks.push(ValidationCheck {
+                    name: "profile_catalog".to_string(),
+                    status: CheckStatus::Pass,
+                    details: format!(
+                        "{} profil(s) chargé(s), {} niveau(x) au total \
+                         (routing guard F4 ✓, AC18 max(n) ✓)",
+                        profile_count, level_count
+                    ),
+                });
+            }
+            Err(e) => {
+                let err_msg = format!("profile_catalog error: {:#}", e);
+                checks.push(ValidationCheck {
+                    name: "profile_catalog".to_string(),
+                    status: CheckStatus::Fail,
+                    details: err_msg.clone(),
+                });
+                errors.push(err_msg);
             }
         }
     }
@@ -2239,7 +1868,6 @@ output:
             default_dedup_by_field: None,
             generalize_profiles_path: None,
             resolved_profile_map: Default::default(),
-            overview_levels: None,
         };
         let result = config.validate();
         assert!(result.is_err());
@@ -3274,8 +2902,8 @@ output:
         assert!(passed.len() >= 3, "Expected at least 3 passed checks, got {}", passed.len());
 
         let skipped: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Skipped).collect();
-        // overview_levels s'ajoute aux 5 précédents ; profile_catalog retourne Pass (carte vide OK)
-        assert_eq!(skipped.len(), 6, "Expected 6 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize, overview_levels)");
+        // profile_catalog retourne Pass (carte vide OK) — 5 skipped : rules, field_mapping, header_template, spatial_filter, generalize
+        assert_eq!(skipped.len(), 5, "Expected 5 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize)");
     }
 
     #[test]
@@ -3634,21 +3262,6 @@ levels:
         let p = parse_profile("levels:\n  - { n: 0, simplify: 0.01 }\n");
         let err = p.validate("test").unwrap_err().to_string();
         assert!(err.contains("simplify=0.01"), "error: {err}");
-    }
-
-    #[test]
-    fn test_profile_validates_simplify_bound_overview() {
-        // n=7 (palier overview) tolère jusqu'à 0.01 ; 0.05 dépasse.
-        let p = parse_profile("levels:\n  - { n: 7, simplify: 0.05 }\n");
-        let err = p.validate("test").unwrap_err().to_string();
-        assert!(err.contains("simplify=0.05"), "error: {err}");
-    }
-
-    #[test]
-    fn test_profile_validates_simplify_allowed_overview() {
-        // n=9 avec simplify=0.005 (valeur tech-spec) doit passer.
-        let p = parse_profile("levels:\n  - { n: 9, simplify: 0.005 }\n");
-        assert!(p.validate("test").is_ok());
     }
 
     #[test]

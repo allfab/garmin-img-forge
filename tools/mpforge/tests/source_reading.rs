@@ -294,7 +294,6 @@ fn test_read_multiple_sources() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
-        overview_levels: None,
     };
 
     let (features, _rtree, _unsupported, _multi_geom) =
@@ -407,7 +406,6 @@ fn test_read_all_sources_continue_mode() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
-        overview_levels: None,
     };
 
     // Should succeed and return features from valid sources only
@@ -490,7 +488,6 @@ fn test_read_all_sources_fail_fast_mode() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
-        overview_levels: None,
     };
 
     // Should fail immediately on first error
@@ -638,7 +635,6 @@ fn test_multi_source_with_multi_layer_geopackage() {
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),
-        overview_levels: None,
     };
 
     let (features, _rtree, _unsupported, _multi_geom) =
