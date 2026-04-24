@@ -516,3 +516,119 @@ fn test_point_feature_attributes_preserved() {
     // Geometry unchanged for points
     assert_eq!(clipped.geometry, feature.geometry);
 }
+
+#[test]
+fn test_clip_level_coords_concave_polygon_additional_geometry_preserved() {
+    // Verifies that additional_geometries with a concave but geometrically valid
+    // polygon are preserved through tile clipping. This is the normal fast path:
+    // intersection() succeeds directly without repair.
+    use mpforge::config::ErrorMode;
+    use mpforge::pipeline::reader::{Feature, GeometryType};
+    use mpforge::pipeline::tiler::clip_feature_to_tile;
+    use std::collections::BTreeMap;
+    use std::collections::HashMap;
+
+    let tile = create_test_tile(); // [0,0] → [1,1]
+    let tile_bbox = tile.to_gdal_polygon().unwrap();
+
+    // Concave polygon entirely inside the tile.
+    let concave: Vec<(f64, f64)> = vec![
+        (0.1, 0.1),
+        (0.9, 0.1),
+        (0.9, 0.9),
+        (0.5, 0.6),
+        (0.1, 0.9),
+        (0.1, 0.1),
+    ];
+
+    let mut additional = BTreeMap::new();
+    additional.insert(1u8, concave);
+
+    let feature = Feature {
+        geometry_type: GeometryType::Polygon,
+        geometry: vec![(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)],
+        additional_geometries: additional,
+        attributes: HashMap::new(),
+        source_attributes: None,
+        source_layer: None,
+    };
+
+    let result = clip_feature_to_tile(
+        &feature,
+        &tile_bbox,
+        ErrorMode::Continue,
+        &mut ValidationStats::default(),
+    );
+
+    assert!(result.is_ok(), "clip_feature_to_tile should not error");
+    let clipped_vec = result.unwrap();
+    assert!(!clipped_vec.is_empty(), "Feature should survive clipping");
+    let clipped = &clipped_vec[0];
+    assert!(
+        clipped.additional_geometries.contains_key(&1),
+        "Level 1 should be preserved for valid concave polygon; keys: {:?}",
+        clipped.additional_geometries.keys().collect::<Vec<_>>()
+    );
+    // Clipped coordinates must be non-empty and geometrically sensible.
+    let coords = &clipped.additional_geometries[&1];
+    assert!(!coords.is_empty(), "Clipped additional geometry must have coordinates");
+    assert!(coords.len() >= 3, "Clipped polygon must have at least 3 points");
+}
+
+#[test]
+fn test_clip_level_coords_self_intersecting_additional_geometry_handled_gracefully() {
+    // Verifies that additional_geometries with a truly self-intersecting (bow-tie)
+    // polygon do not panic. A bow-tie repairs to MultiPolygon which clip_level_coords_to_bbox
+    // filters out (multi-fragment rule), so the level is absent — fill_level_gaps then
+    // clones the nearest valid level. This is the correct graceful-degradation path.
+    use mpforge::config::ErrorMode;
+    use mpforge::pipeline::reader::{Feature, GeometryType};
+    use mpforge::pipeline::tiler::clip_feature_to_tile;
+    use std::collections::BTreeMap;
+    use std::collections::HashMap;
+
+    let tile = create_test_tile(); // [0,0] → [1,1]
+    let tile_bbox = tile.to_gdal_polygon().unwrap();
+
+    // True bow-tie: edges (0.2,0.2)→(0.8,0.8) and (0.8,0.2)→(0.2,0.8) cross at (0.5,0.5).
+    // GEOS considers this invalid; make_valid produces two triangles (MultiPolygon).
+    let bow_tie: Vec<(f64, f64)> = vec![
+        (0.2, 0.2),
+        (0.8, 0.8),
+        (0.8, 0.2),
+        (0.2, 0.8),
+        (0.2, 0.2),
+    ];
+
+    let mut additional = BTreeMap::new();
+    additional.insert(1u8, bow_tie);
+
+    let feature = Feature {
+        geometry_type: GeometryType::Polygon,
+        geometry: vec![(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)],
+        additional_geometries: additional,
+        attributes: HashMap::new(),
+        source_attributes: None,
+        source_layer: None,
+    };
+
+    let result = clip_feature_to_tile(
+        &feature,
+        &tile_bbox,
+        ErrorMode::Continue,
+        &mut ValidationStats::default(),
+    );
+
+    // Must not panic or error — irrecoverable additional_geometries are silently dropped.
+    assert!(result.is_ok(), "Self-intersecting additional geometry must not cause an error");
+    let clipped_vec = result.unwrap();
+    assert!(!clipped_vec.is_empty(), "Primary geometry must still be clipped");
+    // Level 1 is expected to be absent (bow-tie → MultiPolygon after repair, filtered out).
+    // fill_level_gaps will handle the gap from the pipeline side.
+    let clipped = &clipped_vec[0];
+    assert!(
+        !clipped.additional_geometries.contains_key(&1)
+            || clipped.additional_geometries[&1].len() >= 3,
+        "Level 1 must either be absent or contain a valid polygon"
+    );
+}

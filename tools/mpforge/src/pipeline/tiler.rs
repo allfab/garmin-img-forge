@@ -1,7 +1,7 @@
 //! Spatial tiling and grid management.
 
 use crate::config::{ErrorMode, FilterConfig, GridConfig};
-use crate::pipeline::geometry_validator::{validate_and_repair, ValidationResult, ValidationStats};
+use crate::pipeline::geometry_validator::{try_repair, validate_and_repair, ValidationResult, ValidationStats};
 use crate::pipeline::reader::{Feature, GeometryType, RTreeIndex};
 use gdal::spatial_ref::SpatialRef;
 use gdal::vector::Geometry;
@@ -525,13 +525,30 @@ pub fn clip_feature_to_tile(
     Ok(result)
 }
 
+/// Calls `geom.is_valid()` with GDAL's quiet error handler active so that GEOS
+/// diagnostic messages ("Too few points", "Self-intersection", …) emitted as CE_Warning
+/// side effects of the validity check are suppressed. The caller handles invalid
+/// geometries explicitly via `try_repair`; surfacing these messages as log warnings
+/// would produce noise for every VW-simplified polygon that needs repair.
+fn is_valid_quiet(geom: &Geometry) -> bool {
+    unsafe { gdal_sys::CPLPushErrorHandler(Some(gdal_sys::CPLQuietErrorHandler)) };
+    let result = geom.is_valid();
+    unsafe { gdal_sys::CPLPopErrorHandler() };
+    result
+}
+
 /// Clip a single coordinate set to a tile bounding box.
 ///
 /// Returns `Some(coords)` if the intersection produces exactly one fragment, `None`
-/// otherwise (empty result, or multi-fragment due to a non-convex tile boundary).
+/// otherwise (empty result, multi-fragment, or irrecoverable geometry).
 /// Used to propagate pre-simplified `additional_geometries` through tile clipping so
 /// that topology-layer features (e.g. COMMUNE) keep their globally-computed VW levels
 /// after being split across tiles.
+///
+/// Invalid geometries (e.g. slight self-intersections from VW simplification) are
+/// repaired via `try_repair` before calling `intersection`. Validity is checked with
+/// `is_valid_quiet` to suppress GDAL CE_Warning messages from GEOS; repairs are logged
+/// at `debug` level and can be enabled with `RUST_LOG=mpforge::pipeline::tiler=debug`.
 fn clip_level_coords_to_bbox(
     coords: &[(f64, f64)],
     geom_type: GeometryType,
@@ -564,7 +581,18 @@ fn clip_level_coords_to_bbox(
     if wkt_lower.contains("nan") || wkt_lower.contains("inf") {
         return None;
     }
-    let geom = Geometry::from_wkt(&wkt).ok()?;
+    let raw_geom = Geometry::from_wkt(&wkt).ok()?;
+    let geom = if !is_valid_quiet(&raw_geom) {
+        match try_repair(&raw_geom) {
+            Some((repaired, strategy)) => {
+                debug!(?strategy, "Repaired invalid additional_geometry before tile clip");
+                repaired
+            }
+            None => return None,
+        }
+    } else {
+        raw_geom
+    };
     let clipped = geom.intersection(tile_bbox)?;
     if clipped.is_empty() {
         return None;
