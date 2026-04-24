@@ -70,17 +70,6 @@ impl GmpWriter {
             tre[67..71].copy_from_slice(&0x000A0401u32.to_le_bytes());
         }
 
-        // Patch magic @134-135 : 0x0607 (mkgmap/imgforge legacy) → 0x1007 (Garmin NT GMP).
-        // Topo France V6 Pro : 0x1007 constant sur toutes les tuiles GMP (3 tuiles vérifiées).
-        // mkgmap hardcode 0x0607. L'Alpha 100 utilise probablement ce champ pour identifier
-        // le format NT et refuser d'ajouter la carte au catalogue si absent.
-        if tre.len() >= 136 {
-            let cur = u16::from_le_bytes(tre[134..136].try_into().unwrap());
-            if cur == 0x0607 {
-                tre[134..136].copy_from_slice(&0x1007u16.to_le_bytes());
-            }
-        }
-
         // Extension du header TRE à NT_TRE_HLEN (309) octets.
         // Les NT_TRE_HLEN - hlen octets étendus sont à zéro (sections absentes).
         // Les champs offset pointant dans le body sont décalés du même padding.
