@@ -298,6 +298,27 @@ imgforge build tiles/ --no-route
 
 Par défaut, imgforge auto-détecte : si des routes avec `RouteParam` sont présentes, le routing complet est activé.
 
+## Format d'emballage (`--packaging`)
+
+Par défaut, imgforge génère 6 fichiers FAT séparés par tuile (`TRE`, `RGN`, `LBL`, `NET`, `NOD`, `DEM`) — c'est le mode `legacy`, compatible avec tous les firmware Garmin.
+
+Le mode `gmp` regroupe ces sous-fichiers dans un seul `.GMP` par tuile (format Garmin NT) :
+
+```bash
+# Mode legacy (défaut — compatible tous GPS)
+imgforge build tiles/ --packaging legacy
+
+# Mode GMP (Garmin NT — firmware récent uniquement)
+imgforge build tiles/ --packaging gmp
+```
+
+| Mode | Fichiers par tuile | Compatibilité |
+|------|-------------------|---------------|
+| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin |
+| `gmp` | Un seul `.GMP` | Garmin NT (firmware récent) |
+
+Le script `build-garmin-map.sh` expose ce flag via `--packaging MODE`.
+
 ## Vérification du résultat
 
 ```bash

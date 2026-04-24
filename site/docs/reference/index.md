@@ -62,4 +62,28 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](versioning-binaires.md)
 
+-   **Format Garmin IMG**
+
+    ---
+
+    Architecture pédagogique du format binaire Garmin IMG : FAT, sous-fichiers TRE/RGN/LBL/NET/NOD/DEM, encodage delta, subdivision, et chaîne Polish Map → IMG.
+
+    [:octicons-arrow-right-24: Consulter](format-garmin-img.md)
+
+-   **Profils de généralisation**
+
+    ---
+
+    Référence du catalogue `generalize-profiles.yaml` : structure YAML, algorithmes Douglas-Peucker / Visvalingam-Whyatt, dispatch conditionnel, profils BDTOPO de production.
+
+    [:octicons-arrow-right-24: Consulter](generalize-profiles.md)
+
+-   **Logs mpforge**
+
+    ---
+
+    Guide de lecture des messages de logs mpforge : niveaux de verbosité, phases du pipeline, avertissements courants, filtrage RUST\_LOG, rapport JSON.
+
+    [:octicons-arrow-right-24: Consulter](logs-mpforge.md)
+
 </div>

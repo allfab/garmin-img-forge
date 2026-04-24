@@ -70,7 +70,10 @@ Accueil = "index.md"
   { "Convention --base-id" = "reference/base-id-convention.md" },
   { "Styles TYP" = "reference/styles-typ.md" },
   { "Styles OpenTopo" = "reference/styles-opentopo.md" },
-  { "Versioning des binaires" = "reference/versioning-binaires.md" }
+  { "Versioning des binaires" = "reference/versioning-binaires.md" },
+  { "Format Garmin IMG" = "reference/format-garmin-img.md" },
+  { "Profils de généralisation" = "reference/generalize-profiles.md" },
+  { "Logs mpforge" = "reference/logs-mpforge.md" }
 ]
 
 [[nav]]

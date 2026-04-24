@@ -24,7 +24,14 @@ Mon objectif : un **compilateur Garmin IMG natif en Rust**, sans dépendance, ca
 | **TYP** | Symbologie personnalisée (couleurs, motifs, icônes) |
 | **TDB** | Métadonnées de la carte |
 
-## Deux modes d'utilisation
+## Commandes disponibles
+
+| Commande | Description |
+|----------|-------------|
+| `imgforge compile` | Compile un seul fichier `.mp` en `.img` |
+| `imgforge build` | Assemble plusieurs tuiles `.mp` en un `gmapsupp.img` complet |
+| `imgforge typ compile` | Compile un fichier TYP texte (`.txt`) en binaire (`.typ`) |
+| `imgforge typ decompile` | Décompile un fichier TYP binaire (`.typ`) en texte (`.txt`) |
 
 ### `compile` : une tuile
 
@@ -37,7 +44,8 @@ imgforge compile tile_0_0.mp \
     --output ma_carte.img \
     --description "BDTOPO Réunion" \
     --latin1 \
-    --reduce-point-density 5.0
+    --reduce-point-density 5.0 \
+    --merge-lines
 ```
 
 ### `build` : carte complète (gmapsupp)
@@ -60,9 +68,11 @@ imgforge build tiles/ \
     --levels "24,20,16" \
     --reduce-point-density 3.0 \
     --min-size-polygon 8 \
+    --merge-lines \
     --typ-file bdtopo.typ \
     --dem ./srtm_hgt/ \
-    --keep-going
+    --keep-going \
+    --packaging legacy
 ```
 
 La commande `build` est le coeur du pipeline de production. Elle :
@@ -88,6 +98,7 @@ La commande `build` accepte des options pour identifier la carte dans les logici
 | `--country-abbr <TEXT>` | Abréviation pays (ex: `FRA`) | - |
 | `--region-name <TEXT>` | Nom de la région | - |
 | `--region-abbr <TEXT>` | Abréviation région | - |
+| `--mapname <NAME>` | Identifiant numérique 8 chiffres de la carte | - |
 | `--product-version <N>` | Version (100 = v1.00) | 100 |
 | `--copyright-message <TEXT>` | Copyright intégré dans TRE et TDB | - |
 
@@ -113,6 +124,28 @@ Options de rendu supplémentaires :
 | `--draw-priority <N>` | Priorité d'affichage (overlay) | 25 |
 | `--order-by-decreasing-area` | Trier les polygones par aire décroissante | false |
 | `--lower-case` | Autoriser les minuscules dans les labels (force Format 9/10) | false |
+| `--merge-lines` | Fusionne les polylignes adjacentes de même type et label | false |
+| `--packaging <MODE>` | Format d'emballage des sous-fichiers : `legacy` (6 FAT files par tuile) ou `gmp` (1 `.GMP` par tuile) | `legacy` |
+
+#### Fusion de polylignes (`--merge-lines`)
+
+L'option `--merge-lines` fusionne automatiquement les polylignes adjacentes partageant le même type Garmin et le même label. Sur les gros scopes (quadrants, France entière), elle divise par 2 à 3 le nombre de polylignes et réduit significativement la taille du fichier IMG :
+
+```bash
+imgforge build tiles/ --merge-lines
+```
+
+!!! tip "Quand l'utiliser ?"
+    Pour un département seul, les valeurs par défaut suffisent. Pour un quadrant (≥ 20 départements), activez `--merge-lines` : la taille IMG baisse de 15-25 % et imgforge tient en RAM avec moins de workers.
+
+#### Format d'emballage (`--packaging`)
+
+Le format Garmin NT moderne regroupe les sous-fichiers d'une tuile dans un seul fichier `.GMP` au lieu de 6 fichiers FAT séparés. Le comportement `legacy` est conservé par défaut pour assurer la compatibilité :
+
+| Mode | Fichiers générés par tuile | Compatibilité |
+|------|--------------------------|---------------|
+| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin |
+| `gmp` | Un seul `.GMP` | Garmin NT (firmware récent) |
 
 ## Encodage des labels
 
@@ -262,6 +295,45 @@ imgforge build tiles/ --jobs 8 --keep-going
 ```
 
 Les tuiles en erreur sont journalisées (warning) mais n'empêchent pas la génération des autres tuiles.
+
+## Gestion des fichiers TYP
+
+La commande `imgforge typ` permet de convertir les fichiers TYP entre leur forme texte (lisible et éditable) et leur forme binaire (chargée par le GPS).
+
+### Compiler un TYP texte → binaire
+
+```bash
+# Depuis un fichier texte UTF-8 ou CP1252 (auto-détection du BOM)
+imgforge typ compile mon-style.txt
+
+# Spécifier l'encodage explicitement (CP1252 — sortie TYPViewer)
+imgforge typ compile mon-style.txt --encoding cp1252
+
+# Choisir le fichier de sortie
+imgforge typ compile mon-style.txt --output mon-style.typ
+```
+
+### Décompiler un TYP binaire → texte
+
+```bash
+# Sortie UTF-8 par défaut (avec BOM)
+imgforge typ decompile bdtopo.typ
+
+# Sortie CP1252 pour réimport dans TYPViewer
+imgforge typ decompile bdtopo.typ --encoding cp1252 --output bdtopo.txt
+```
+
+### Options
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--encoding <ENC>` | Encodage : `utf8`, `cp1252`, `auto` | `auto` (lecture) / `utf8` (écriture) |
+| `--output <FILE>` | Fichier de sortie | Extension swappée (`.txt` ↔ `.typ`) |
+
+!!! warning "Encodage CP1252 et fichiers TYPViewer"
+    Les fichiers produits par TYPViewer v4.6.5 sont encodés en **Windows-1252 (CP1252)**. Utilisez `--encoding cp1252` lors de la compilation de ces fichiers, ou laissez la détection automatique (`auto`) gérer le BOM UTF-8.
+
+    Voir [Encodage du fichier TYP](../reference/styles-typ.md) pour les détails.
 
 ## Installation
 

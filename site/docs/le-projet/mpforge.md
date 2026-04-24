@@ -73,6 +73,8 @@ mpforge build --config <fichier.yaml> [options]
 | Option | Description | Défaut |
 |--------|-------------|--------|
 | `--config <path>` | Fichier de configuration YAML (obligatoire) | - |
+| `--input <path>` | Surcharge le chemin d'entrée défini dans la config | - |
+| `--output <path>` | Surcharge le répertoire de sortie défini dans la config | - |
 | `--jobs <N>` | Nombre de threads parallèles | `1` |
 | `--report <path>` | Exporte un rapport JSON d'exécution | - |
 | `--skip-existing` | Reprend un export interrompu en sautant les tuiles déjà générées | `false` |
@@ -80,6 +82,9 @@ mpforge build --config <fichier.yaml> [options]
 | `--disable-profiles` | Bypasse le catalogue externe `generalize_profiles_path` (les `generalize:` inline restent actifs). Accepte aussi l'env var `MPFORGE_PROFILES=off`. Voir [Profils multi-niveaux](#profils-multi-niveaux) | `false` |
 | `--fail-fast` | Arrêt immédiat à la première erreur | `false` |
 | `-v` / `-vv` / `-vvv` | Verbosité progressive (INFO / DEBUG / TRACE) | - |
+
+!!! info "Lire les logs mpforge"
+    Guide complet des messages de logs, niveaux de verbosité, filtrage `RUST_LOG` et format du rapport JSON : [Logs mpforge](../reference/logs-mpforge.md).
 
 Exemples :
 
@@ -198,7 +203,7 @@ Le champ `skipped_additional_geom` compte les features qui ont été droppées p
 
 Sémantique de `n` : index dans `MpHeader.levels` (0 = le plus détaillé, émis en `Data0=`). Le driver `ogr-polishmap` sérialise chaque bucket sur une ligne `Data<n>=` distincte.
 
-Voir [Étape 2 — Configuration](../le-pipeline/etape-2-configuration.md#généralisation-de-géométrie) pour le schéma complet du catalogue et les exemples.
+Voir [Étape 2 — Configuration](../le-pipeline/etape-2-configuration.md#généralisation-de-géométrie) pour le schéma complet du catalogue et les exemples. La référence détaillée du catalogue est disponible dans [Profils de généralisation](../reference/generalize-profiles.md).
 
 **Contraintes fail-fast** au `load_config` :
 
