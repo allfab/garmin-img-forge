@@ -57,6 +57,14 @@ impl GmpWriter {
 
         // Clones mutables pour la relocalisation des offsets internes
         let mut tre = self.tre.clone();
+
+        // Patch format_marker @67 : les firmwares NT (Alpha 100) rejettent le marker
+        // legacy 0x00110301 dans un contexte GMP. Le marker NT 0x000A0401 correspond
+        // aux tuiles GMP de Topo France V6 Pro, validé sur Alpha 100.
+        if tre.len() >= 71 {
+            tre[67..71].copy_from_slice(&0x000A0401u32.to_le_bytes());
+        }
+
         let mut rgn = self.rgn.clone();
         let mut lbl = self.lbl.clone();
         let mut net = self.net.clone();
