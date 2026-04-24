@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 /// Maximum number of errors to display in console summary.
@@ -745,6 +745,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     let start_time = Instant::now();
 
+    let phase_1a_start = Instant::now();
+    let spinner_1a: Option<ProgressBar> = if args.verbose < 2 {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan}  {msg}")
+                .expect("valid spinner style"),
+        );
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Phase 1a : Construction des filtres spatiaux…");
+        Some(pb)
+    } else {
+        None
+    };
+
     // ========================================================================
     // Phase 1a: Pre-build spatial filter geometries (union + buffer)
     // Must run BEFORE extent scan so we can clamp source extents to the
@@ -783,6 +798,33 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             "Spatial filter geometries pre-built"
         );
     }
+
+    if let Some(pb) = spinner_1a {
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("  ✓  {msg}")
+                .expect("valid style"),
+        );
+        pb.finish_with_message(format!(
+            "Filtres spatiaux construits ({:.1}s)",
+            phase_1a_start.elapsed().as_secs_f64()
+        ));
+    }
+
+    let phase_1b_start = Instant::now();
+    let spinner_1b: Option<ProgressBar> = if args.verbose < 2 {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan}  {msg}")
+                .expect("valid spinner style"),
+        );
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Phase 1b : Analyse des extents sources…");
+        Some(pb)
+    } else {
+        None
+    };
 
     // ========================================================================
     // Phase 1b: Scan extents (no feature loading) and generate grid
@@ -837,6 +879,20 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     info!(tiles_count = tiles.len(), "Grid generated");
+
+    if let Some(pb) = spinner_1b {
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("  ✓  {msg}")
+                .expect("valid style"),
+        );
+        pb.finish_with_message(format!(
+            "Sources analysées — {} couches, {} tuiles ({:.1}s)",
+            global_extent.layer_count,
+            tiles.len(),
+            phase_1b_start.elapsed().as_secs_f64()
+        ));
+    }
 
     let spatial_filter_geometries = Arc::new(spatial_filter_geometries);
 
@@ -953,6 +1009,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             .collect(),
     );
 
+    let phase_15_start = Instant::now();
+    let spinner_15: Option<ProgressBar> = if !topo_layer_names.is_empty() && args.verbose < 2 {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan}  {msg}")
+                .expect("valid spinner style"),
+        );
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Phase 1.5 : Pré-simplification topologique…");
+        Some(pb)
+    } else {
+        None
+    };
+
     let topo_presimplified: Arc<Vec<Feature>> = if topo_layer_names.is_empty() {
         Arc::new(Vec::new())
     } else {
@@ -1050,6 +1121,18 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     };
 
     let topo_layer_names = Arc::new(topo_layer_names);
+
+    if let Some(pb) = spinner_15 {
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("  ✓  {msg}")
+                .expect("valid style"),
+        );
+        pb.finish_with_message(format!(
+            "Pré-simplification topologique terminée ({:.1}s)",
+            phase_15_start.elapsed().as_secs_f64()
+        ));
+    }
 
     let ctx = TileContext {
         config,
