@@ -86,8 +86,8 @@ offset B      ┌─────────────────────
               └─────────────────────────────────────┘
 ```
 
-!!! note "Chiffrement XOR"
-    Tous les octets du fichier (sauf l'en-tête et certains champs critiques) sont XORés avec un octet de clé (`xorbyte`). Dans les fichiers Garmin modernes, la clé est souvent `0x00` (pas de chiffrement réel). imgforge et mkgmap écrivent toujours avec `xorbyte = 0x00`.
+!!! note "XOR byte — obfuscation, pas du chiffrement"
+    Tous les octets du conteneur sont XORés avec l'`xorbyte` (octet 0 du fichier) à la lecture/écriture. La clé étant **stockée dans le fichier lui-même**, l'opération est trivialement réversible — c'est de l'obfuscation, pas du chiffrement. Les maps communautaires (imgforge, mkgmap) écrivent toujours `xorbyte = 0x00`. Les maps commerciales Garmin utilisent parfois une valeur non nulle, mais sans apporter de sécurité réelle à ce niveau.
 
 ---
 
@@ -99,9 +99,29 @@ Chaque sous-fichier (TRE, RGN, LBL, NET, NOD, DEM) commence par un **en-tête co
 Octets 0-1   header_length  (u16 LE)  — longueur totale de cet en-tête spécifique
 Octets 2-11  type           (10 bytes) — identifiant ASCII du sous-fichier ("GARMIN TRE", "GARMIN RGN"...)
 Octet  12    unknown        (0x01)
-Octet  13    lock_flag      (0x00 = déverrouillé)
+Octet  13    lock_flag      (0x00 = déverrouillé, 0x01 = verrouillé — Garmin Lock)
 Octets 14-20 creation_date  (7 bytes)  — année(u16) + mois + jour + heure + min + sec
 ```
+
+### Le `lock_flag` et le système Garmin Lock
+
+C'est ici que réside la **vraie protection DRM** des cartes commerciales Garmin (City Navigator, TOPO France...), distincte du XOR byte du conteneur.
+
+Quand `lock_flag = 0x01`, le firmware Garmin exige un **code de déverrouillage** lié à l'identifiant matériel de l'appareil (`unit ID`). La carte est achetée pour un appareil précis — au démarrage, le firmware vérifie le couple `(Family ID de la carte, unit ID du GPS)` avant d'autoriser l'affichage. Sans code valide, la carte apparaît dans les menus mais reste invisible à l'écran. C'est ce que MapInstall et myGarmin gèrent lors de l'achat de cartes payantes.
+
+```
+                    ┌─────────────────┐
+Achat carte Garmin →│  Serveur Garmin │→ unlock code = f(Family ID, unit ID)
+                    └─────────────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │  GPS (unit ID=X)  │
+                    │  lock_flag = 0x01 │
+                    │  Vérifie le code  │→ ✓ affichage autorisé
+                    └───────────────────┘
+```
+
+**Pour nos cartes (imgforge) :** `lock_flag = 0x00` dans tous les sous-fichiers — déverrouillées par définition, cohérent avec la nature libre des données IGN BDTOPO.
 
 ---
 
