@@ -10,6 +10,18 @@ use gdal::cpl::CslStringList;
 use gdal::vector::{Geometry, OGRwkbGeometryType};
 use tracing::{debug, error, info, instrument};
 
+/// Calls `geom.is_valid()` with GDAL's quiet error handler active so that GEOS
+/// diagnostic messages ("Too few points", "Self-intersection", …) emitted as CE_Warning
+/// side effects of validity checks are suppressed. Invalid geometries are handled
+/// explicitly by the caller; surfacing these messages as log warnings produces noise
+/// for every VW-simplified polygon that needs repair.
+pub fn is_valid_quiet(geom: &Geometry) -> bool {
+    unsafe { gdal_sys::CPLPushErrorHandler(Some(gdal_sys::CPLQuietErrorHandler)) };
+    let result = geom.is_valid();
+    unsafe { gdal_sys::CPLPopErrorHandler() };
+    result
+}
+
 /// Strategy used to repair an invalid geometry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepairStrategy {
@@ -170,7 +182,7 @@ pub fn validate_and_repair(feature: &Feature, stats: &mut ValidationStats) -> Va
     };
 
     // Step 3: Check topology
-    if geom.is_valid() {
+    if is_valid_quiet(&geom) {
         stats.valid_count += 1;
         return ValidationResult::Valid(geom);
     }

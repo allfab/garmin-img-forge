@@ -1,7 +1,7 @@
 //! Spatial tiling and grid management.
 
 use crate::config::{ErrorMode, FilterConfig, GridConfig};
-use crate::pipeline::geometry_validator::{try_repair, validate_and_repair, ValidationResult, ValidationStats};
+use crate::pipeline::geometry_validator::{is_valid_quiet, try_repair, validate_and_repair, ValidationResult, ValidationStats};
 use crate::pipeline::reader::{Feature, GeometryType, RTreeIndex};
 use gdal::spatial_ref::SpatialRef;
 use gdal::vector::Geometry;
@@ -523,18 +523,6 @@ pub fn clip_feature_to_tile(
     );
 
     Ok(result)
-}
-
-/// Calls `geom.is_valid()` with GDAL's quiet error handler active so that GEOS
-/// diagnostic messages ("Too few points", "Self-intersection", …) emitted as CE_Warning
-/// side effects of the validity check are suppressed. The caller handles invalid
-/// geometries explicitly via `try_repair`; surfacing these messages as log warnings
-/// would produce noise for every VW-simplified polygon that needs repair.
-fn is_valid_quiet(geom: &Geometry) -> bool {
-    unsafe { gdal_sys::CPLPushErrorHandler(Some(gdal_sys::CPLQuietErrorHandler)) };
-    let result = geom.is_valid();
-    unsafe { gdal_sys::CPLPopErrorHandler() };
-    result
 }
 
 /// Clip a single coordinate set to a tile bounding box.
