@@ -993,6 +993,27 @@ prepare_config() {
 }
 
 # ---------------------------------------------------------------------------
+# Pré-vol — Validation de la configuration mpforge
+# ---------------------------------------------------------------------------
+run_validate_config() {
+    log_step "Pré-vol — mpforge validate"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} $_MPFORGE validate --config $CONFIG_FILE"
+        log_ok "Dry-run : validation affichée (non exécutée)"
+        return 0
+    fi
+
+    if ! "$_MPFORGE" validate --config "$CONFIG_FILE"; then
+        log_error "La configuration est invalide — build interrompu."
+        log_error "Corrigez les erreurs ci-dessus avant de relancer."
+        exit 1
+    fi
+
+    log_ok "Configuration valide"
+}
+
+# ---------------------------------------------------------------------------
 # Étape 1/2 — Lancement mpforge build
 # ---------------------------------------------------------------------------
 run_mpforge() {
@@ -1736,6 +1757,7 @@ main() {
     validate_base_id
     check_prerequisites
     prepare_config
+    run_validate_config
     run_mpforge
     run_imgforge
     show_summary

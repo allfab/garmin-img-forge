@@ -272,10 +272,17 @@ impl LevelSpec {
             };
             if !(s.is_finite() && (0.0..=max).contains(&s)) {
                 anyhow::bail!(
-                    "{context}: simplify={} out of range [0.0, {}] for n={}",
-                    s,
-                    max,
-                    self.n
+                    "{context}: simplify={s} hors de [0.0, {max}] pour n={n}\n\
+                     \x20 `simplify` est une tolérance Douglas-Peucker en degrés WGS84 \
+                     (distance perpendiculaire, ≈{approx} m à l'équateur).\n\
+                     \x20 Plafond n≤6 : {dp_detail}° (≈{dp_detail_m} m) ; n≥7 : {dp_over}° (≈{dp_over_m} m).\n\
+                     \x20 Une valeur plus haute détruirait visuellement la géométrie aux zooms Garmin ciblés.",
+                    n = self.n,
+                    approx = (s * 111_320.0) as u64,
+                    dp_detail = MAX_PROFILE_SIMPLIFY_DETAIL,
+                    dp_detail_m = (MAX_PROFILE_SIMPLIFY_DETAIL * 111_320.0) as u64,
+                    dp_over = MAX_PROFILE_SIMPLIFY_OVERVIEW,
+                    dp_over_m = (MAX_PROFILE_SIMPLIFY_OVERVIEW * 111_320.0) as u64,
                 );
             }
         }
@@ -287,10 +294,16 @@ impl LevelSpec {
             };
             if !(s.is_finite() && (0.0..=max).contains(&s)) {
                 anyhow::bail!(
-                    "{context}: simplify_vw={} out of range [0.0, {}] for n={}",
-                    s,
-                    max,
-                    self.n
+                    "{context}: simplify_vw={s} hors de [0.0, {max}] pour n={n}\n\
+                     \x20 `simplify_vw` est une tolérance Visvalingam-Whyatt en degrés² \
+                     (aire du triangle formé par trois sommets consécutifs).\n\
+                     \x20 ⚠ L'unité est deg², PAS deg — comparer à `simplify` n'a pas de sens direct.\n\
+                     \x20 Plafond n≤6 : {vw_detail} deg² ; n≥7 : {vw_over} deg².\n\
+                     \x20 Valeurs typiques : 0.000001 (précis) → 0.001 (agressif) → au-delà \
+                     la topologie est compromise aux intersections.",
+                    n = self.n,
+                    vw_detail = MAX_PROFILE_SIMPLIFY_VW_DETAIL,
+                    vw_over = MAX_PROFILE_SIMPLIFY_VW_OVERVIEW,
                 );
             }
         }
@@ -1827,6 +1840,96 @@ pub fn run_validate(
         }
     }
 
+    // Steps 9+10 : même séquence que load_config — overview prepare AVANT profile_map
+    // (pour que l'AC18 dans build_profile_map voie le header.levels étendu si overview actif),
+    // puis validate_overview_promotion qui a besoin du profile_map résolu.
+
+    // Step 9a: prepare_overview_levels (mute header.levels si overview_levels présent)
+    let has_overview = config.overview_levels.is_some();
+    let overview_prepare_ok = match config.prepare_overview_levels() {
+        Ok(()) if !has_overview => {
+            checks.push(ValidationCheck {
+                name: "overview_levels".to_string(),
+                status: CheckStatus::Skipped,
+                details: "Not configured".to_string(),
+            });
+            true
+        }
+        Ok(()) => true,
+        Err(e) => {
+            let err_msg = format!("overview_levels error: {:#}", e);
+            checks.push(ValidationCheck {
+                name: "overview_levels".to_string(),
+                status: CheckStatus::Fail,
+                details: err_msg.clone(),
+            });
+            errors.push(err_msg);
+            false
+        }
+    };
+
+    // Step 9b: Profile catalog (charge+valide generalize_profiles_path + inline profiles).
+    // Vérifie les bornes DP/VW, le guard F4 routing (n:0 obligatoire pour couches routables),
+    // et le guard AC18 (max(n) de tous les profils < header.levels).
+    let base_dir = std::path::Path::new(config_path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let profile_map_result = config.build_profile_map(base_dir);
+    match &profile_map_result {
+        Ok(profile_map) => {
+            let profile_count = profile_map.len();
+            let level_count: usize = profile_map
+                .values()
+                .map(|p| {
+                    p.levels.len()
+                        + p.when.iter().map(|w| w.levels.len()).sum::<usize>()
+                })
+                .sum();
+            checks.push(ValidationCheck {
+                name: "profile_catalog".to_string(),
+                status: CheckStatus::Pass,
+                details: format!(
+                    "{} profil(s) chargé(s), {} niveau(x) au total \
+                     (routing guard F4 ✓, AC18 max(n) ✓)",
+                    profile_count, level_count
+                ),
+            });
+        }
+        Err(e) => {
+            let err_msg = format!("profile_catalog error: {:#}", e);
+            checks.push(ValidationCheck {
+                name: "profile_catalog".to_string(),
+                status: CheckStatus::Fail,
+                details: err_msg.clone(),
+            });
+            errors.push(err_msg);
+        }
+    }
+
+    // Step 9c: validate_overview_promotion (nécessite le profile_map résolu)
+    if has_overview && overview_prepare_ok {
+        if let Ok(ref profile_map) = profile_map_result {
+            match config.validate_overview_promotion(profile_map) {
+                Ok(()) => {
+                    checks.push(ValidationCheck {
+                        name: "overview_levels".to_string(),
+                        status: CheckStatus::Pass,
+                        details: "structure et règles de promotion valides".to_string(),
+                    });
+                }
+                Err(e) => {
+                    let err_msg = format!("overview_levels promotion error: {:#}", e);
+                    checks.push(ValidationCheck {
+                        name: "overview_levels".to_string(),
+                        status: CheckStatus::Fail,
+                        details: err_msg.clone(),
+                    });
+                    errors.push(err_msg);
+                }
+            }
+        }
+    }
+
     // Build summary
     let status = if errors.is_empty() {
         ValidationStatus::Valid
@@ -3171,7 +3274,8 @@ output:
         assert!(passed.len() >= 3, "Expected at least 3 passed checks, got {}", passed.len());
 
         let skipped: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Skipped).collect();
-        assert_eq!(skipped.len(), 5, "Expected 5 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize)");
+        // overview_levels s'ajoute aux 5 précédents ; profile_catalog retourne Pass (carte vide OK)
+        assert_eq!(skipped.len(), 6, "Expected 6 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize, overview_levels)");
     }
 
     #[test]
