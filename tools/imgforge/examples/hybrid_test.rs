@@ -31,6 +31,7 @@ fn main() {
         codepage: 1252,
         typ_basename: None,
         packaging: Default::default(),
+        gmp_override: None,
     };
     let typ = fs::read(format!("{base}/typ.bin")).expect("read typ.bin");
     let gmapsupp = build_gmapsupp_with_meta_and_typ(&tiles, "TEST-HYBRID", &meta, Some(&typ)).unwrap();

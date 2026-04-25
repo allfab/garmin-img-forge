@@ -37,6 +37,7 @@ fn default_meta(fid: u16) -> GmapsuppMeta {
         codepage: 1252,
         typ_basename: None,
         packaging: Packaging::Legacy,
+        gmp_override: None,
     }
 }
 

@@ -25,6 +25,7 @@ fn main() {
         codepage: 1252,
         typ_basename: None,
         packaging: Default::default(),
+        gmp_override: None,
     };
     
     let gmapsupp = build_gmapsupp_with_meta_and_typ(

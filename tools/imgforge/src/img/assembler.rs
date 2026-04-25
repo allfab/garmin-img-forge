@@ -43,6 +43,9 @@ pub struct GmapsuppMeta {
     pub typ_basename: Option<String>,
     /// Packaging mode pour les sous-sections de tuile (Legacy = 6 FAT files / Gmp = 1 `.GMP`).
     pub packaging: Packaging,
+    /// Override GMP : si Some, ce fichier est utilisé tel quel au lieu de GmpWriter.
+    /// Usage : test empirique GC1 (substitution `.GMP` officiel).
+    pub gmp_override: Option<std::path::PathBuf>,
 }
 
 impl Default for GmapsuppMeta {
@@ -56,6 +59,7 @@ impl Default for GmapsuppMeta {
             codepage: 0,
             typ_basename: None,
             packaging: Packaging::Legacy,
+            gmp_override: None,
         }
     }
 }
@@ -144,14 +148,18 @@ pub fn build_gmapsupp_with_overview(
                 }
             }
             Packaging::Gmp => {
-                let gmp_bytes = GmpWriter::new(
-                    tile.tre.clone(),
-                    tile.rgn.clone(),
-                    tile.lbl.clone(),
-                    tile.net.clone(),
-                    tile.nod.clone(),
-                    tile.dem.clone(),
-                ).write();
+                let gmp_bytes = if let Some(ref path) = meta.gmp_override {
+                    std::fs::read(path).unwrap_or_else(|e| panic!("--gmp-override: {e}"))
+                } else {
+                    GmpWriter::new(
+                        tile.tre.clone(),
+                        tile.rgn.clone(),
+                        tile.lbl.clone(),
+                        tile.net.clone(),
+                        tile.nod.clone(),
+                        tile.dem.clone(),
+                    ).write()
+                };
                 fs.add_file(&name, "GMP", gmp_bytes);
             }
         }
@@ -444,6 +452,7 @@ mod tests {
             codepage: 0,
             typ_basename: None,
             packaging: Packaging::Legacy,
+            gmp_override: None,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, Some(&fake_typ));
         assert!(result.is_ok());
@@ -498,6 +507,7 @@ mod tests {
             codepage: 1252,
             typ_basename: None,
             packaging: Packaging::Legacy,
+            gmp_override: None,
         };
         let result = build_gmapsupp_with_meta_and_typ(&[tile], "Test", &meta, None);
         assert!(result.is_ok());

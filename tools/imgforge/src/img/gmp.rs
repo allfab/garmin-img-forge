@@ -8,15 +8,8 @@ use super::common_header::{now_secs, unix_to_calendar};
 
 pub const GMP_HEADER_LEN: u16 = 0x3D; // 61 bytes
 
-/// Longueur du header TRE étendu (format NT Topo France V6 Pro).
-/// Les firmwares NT Alpha 100 rejettent hlen < 309 dans un contexte GMP.
-/// 309 - TRE_HEADER_LEN (188) = 121 octets zéro insérés dans le header.
-pub const NT_TRE_HLEN: usize = 309;
-
 /// Copyright block exactly as emitted by Garmin TopoFrance v6 Pro (2021-05).
 /// Deux C-strings NUL-terminées concaténées ; 179 bytes au total (0xB3).
-/// C'est une donnée de format (équivalent magic number) — requise pour byte-exact
-/// match avec les samples officiels et probablement attendue par certains firmwares.
 pub const GMP_COPYRIGHT: &[u8] = b"Copyright Garmin Ltd. or its subsidiaries.  All rights reserved.\x00Copying is expressly prohibited and may result in criminal charges and/or civil action being brought against you.\x00";
 
 /// GmpWriter — emballe les 6 Vec<u8> sous-sections dans un blob .GMP.
@@ -62,35 +55,9 @@ impl GmpWriter {
 
         // Clones mutables pour la relocalisation des offsets internes
         let mut tre = self.tre.clone();
-
-        // Patch format_marker @67 : les firmwares NT (Alpha 100) rejettent le marker
-        // legacy 0x00110301 dans un contexte GMP. Le marker NT 0x000A0401 correspond
-        // aux tuiles GMP de Topo France V6 Pro, validé sur Alpha 100.
-        if tre.len() >= 71 {
-            tre[67..71].copy_from_slice(&0x000A0401u32.to_le_bytes());
-        }
-
-        // Extension du header TRE à NT_TRE_HLEN (309) octets.
-        // Les NT_TRE_HLEN - hlen octets étendus sont à zéro (sections absentes).
-        // Les champs offset pointant dans le body sont décalés du même padding.
-        let current_hlen = u16::from_le_bytes(tre[0..2].try_into().unwrap()) as usize;
-        if current_hlen < NT_TRE_HLEN && tre.len() >= current_hlen {
-            let padding = (NT_TRE_HLEN - current_hlen) as u32;
-            // Mettre à jour les champs offset du body (positions connues dans le TRE header)
-            for &pos in &[33usize, 41, 49, 74, 88, 102, 124, 138] {
-                if pos + 4 <= tre.len() {
-                    let v = u32::from_le_bytes(tre[pos..pos+4].try_into().unwrap());
-                    if v != 0 && v >= current_hlen as u32 {
-                        tre[pos..pos+4].copy_from_slice(&(v + padding).to_le_bytes());
-                    }
-                }
-            }
-            // Mettre à jour hlen
-            tre[0..2].copy_from_slice(&(NT_TRE_HLEN as u16).to_le_bytes());
-            let body = tre.split_off(current_hlen);
-            tre.resize(NT_TRE_HLEN, 0);
-            tre.extend(body);
-        }
+        // Le TRE est conservé avec son hlen standard (188 B, format_marker 0x00110301).
+        // Extension NT (hlen=309) non appliquée : les section descriptors 0xD0..0x134 à
+        // zéro empêchent le firmware Alpha 100 d'enregistrer la tuile (validé GC5 2026-04-25).
 
         let mut rgn = self.rgn.clone();
         let mut lbl = self.lbl.clone();
@@ -238,7 +205,15 @@ fn relocate_nod(blob: &mut Vec<u8>, delta: u32) {
 
 /// Relocalise le header DEM (hlen = 41) + les section-headers dans le body.
 /// Main header : sections_offset @33.
-/// Section headers (60 B chacun) : desc_offset @20 et data_offset2 @24 dans chaque.
+/// Section headers (60 B chacun) — layout complet :
+///   [0]  unknown   [1]  zoom_level
+///   [2-5]  points_per_lat (u32)   [6-9]   points_per_lon (u32)
+///   [10-13] non_std_height-1 (u32) [14-17] non_std_width-1 (u32)
+///   [18-19] flags (u16)
+///   [20-23] tiles_lon-1 (u32)     [24-27] tiles_lat-1 (u32)
+///   [28-29] record_desc (u16)     [30-31] tile_desc_size (u16)
+///   [32-35] data_offset (u32) ← descripteurs de tuiles   ← à relocater
+///   [36-39] data_offset2 (u32) ← bitstream data          ← à relocater
 fn relocate_dem(blob: &mut Vec<u8>, delta: u32) {
     if blob.len() < 41 { return; }
     // Lire zoom_count et sections_offset AVANT de patcher
@@ -251,8 +226,8 @@ fn relocate_dem(blob: &mut Vec<u8>, delta: u32) {
     // Patcher chaque section header (60 B) dans la zone body
     for i in 0..zoom_count {
         let base = sections_offset + i * 60;
-        add_u32_offset(blob, base + 20, delta); // desc_offset (tile descriptor table)
-        add_u32_offset(blob, base + 24, delta); // data_offset2 (bitstream data)
+        add_u32_offset(blob, base + 32, delta); // data_offset  (tile descriptor table)
+        add_u32_offset(blob, base + 36, delta); // data_offset2 (bitstream data)
     }
 }
 
@@ -336,18 +311,16 @@ mod tests {
         assert_eq!(net_off, 0);
         assert_eq!(nod_off, 0);
         assert_eq!(dem_off, 0);
-        // TRE est étendu de TRE_HEADER_LEN (188) → NT_TRE_HLEN (309) = +121 bytes
-        use crate::img::tre::TRE_HEADER_LEN;
-        let nt_ext = super::NT_TRE_HLEN - TRE_HEADER_LEN as usize;
-        assert_eq!(gmp.len(), 0x3D + 0xB3 + total_blobs + nt_ext);
+        // TRE non étendu (hlen=188 conservé, pas d'extension NT).
+        assert_eq!(gmp.len(), 0x3D + 0xB3 + total_blobs);
     }
 
     /// Vérifie que les offsets internes du header TRE sont correctement relocalisés
     /// vers des positions absolues dans le GMP.
     ///
     /// TreWriter standalone écrit map_levels_offset = TRE_HEADER_LEN (188).
-    /// GmpWriter applique d'abord l'extension NT (+121 bytes) : map_levels_offset → 309.
-    /// Puis relocalisation GMP-absolue (+0xF0=240) : 309 + 240 = 549.
+    /// GmpWriter ne modifie pas hlen (pas d'extension NT), relocalise seulement :
+    /// map_levels_offset → TRE_HEADER_LEN (188) + gmp_tre_start (0xF0=240) = 428.
     #[test]
     fn gmp_v2_tre_header_offsets_relocated() {
         use crate::img::tre::TRE_HEADER_LEN;
@@ -356,7 +329,6 @@ mod tests {
         let rgn_blob = RgnWriter::new().build();
         let lbl_blob = LblWriter::new(LabelEncoding::Format6).build();
 
-        // Offset map_levels tel qu'écrit par TreWriter standalone (hlen=188, pas de copyright blob)
         let original_ml_offset = u32::from_le_bytes(tre_blob[33..37].try_into().unwrap());
         assert_eq!(original_ml_offset, TRE_HEADER_LEN as u32,
             "TreWriter sans copyright blob : map_levels_offset doit être TRE_HEADER_LEN");
@@ -365,18 +337,14 @@ mod tests {
             tre_blob.clone(), rgn_blob, lbl_blob, None, None, None,
         ).with_date(2026, 4, 24, 0, 0, 0).write();
 
-        // TRE commence à 0xF0 dans le GMP
         let gmp_tre_start = u32::from_le_bytes([gmp[0x19], gmp[0x1A], gmp[0x1B], gmp[0x1C]]);
         assert_eq!(gmp_tre_start, 0xF0);
 
-        // map_levels_offset = original + extension NT + relocalisation GMP
-        let nt_ext = (super::NT_TRE_HLEN - TRE_HEADER_LEN as usize) as u32;
         let tre_in_gmp = &gmp[gmp_tre_start as usize..];
         let relocated_ml_offset = u32::from_le_bytes(tre_in_gmp[33..37].try_into().unwrap());
-        assert_eq!(relocated_ml_offset, original_ml_offset + nt_ext + gmp_tre_start,
-            "map_levels_offset doit être relocalisé vers GMP-absolu (NT ext + GMP base)");
+        assert_eq!(relocated_ml_offset, original_ml_offset + gmp_tre_start,
+            "map_levels_offset doit être relocalisé vers GMP-absolu (GMP base seul, pas d'ext NT)");
 
-        // La magic GARMIN TRE doit être intacte
         assert_eq!(&tre_in_gmp[2..12], b"GARMIN TRE");
     }
 
@@ -399,11 +367,7 @@ mod tests {
         let gmp = GmpWriter::new(tre_blob.clone(), rgn_blob.clone(), lbl_blob, None, None, None)
             .with_date(2026, 4, 24, 0, 0, 0).write();
 
-        // TRE est étendu de +121 bytes (NT extension) avant d'être placé dans le GMP
-        use crate::img::tre::TRE_HEADER_LEN;
-        let nt_ext = (super::NT_TRE_HLEN - TRE_HEADER_LEN as usize) as u32;
-        let gmp_tre_start = 0xF0u32;
-        let gmp_rgn_start = gmp_tre_start + tre_blob.len() as u32 + nt_ext;
+        let gmp_rgn_start = 0xF0u32 + tre_blob.len() as u32;
 
         let rgn_in_gmp = &gmp[gmp_rgn_start as usize..];
         let relocated = u32::from_le_bytes(rgn_in_gmp[21..25].try_into().unwrap());
@@ -428,9 +392,7 @@ mod tests {
         let gmp = GmpWriter::new(tre_blob.clone(), rgn_blob.clone(), lbl_blob.clone(), None, None, None)
             .with_date(2026, 4, 24, 0, 0, 0).write();
 
-        use crate::img::tre::TRE_HEADER_LEN;
-        let nt_ext = (super::NT_TRE_HLEN - TRE_HEADER_LEN as usize) as u32;
-        let gmp_lbl_start = 0xF0u32 + tre_blob.len() as u32 + nt_ext + rgn_blob.len() as u32;
+        let gmp_lbl_start = 0xF0u32 + tre_blob.len() as u32 + rgn_blob.len() as u32;
 
         let lbl_in_gmp = &gmp[gmp_lbl_start as usize..];
         let relocated = u32::from_le_bytes(lbl_in_gmp[21..25].try_into().unwrap());
@@ -453,9 +415,7 @@ mod tests {
         let gmp = GmpWriter::new(tre_blob.clone(), rgn_blob.clone(), lbl_blob, None, None, None)
             .with_date(2026, 4, 24, 0, 0, 0).write();
 
-        use crate::img::tre::TRE_HEADER_LEN;
-        let nt_ext = (super::NT_TRE_HLEN - TRE_HEADER_LEN as usize) as u32;
-        let gmp_rgn_start = (0xF0u32 + tre_blob.len() as u32 + nt_ext) as usize;
+        let gmp_rgn_start = (0xF0u32 + tre_blob.len() as u32) as usize;
         let ext_areas_in_gmp = u32::from_le_bytes(
             gmp[gmp_rgn_start + 29..gmp_rgn_start + 33].try_into().unwrap()
         );

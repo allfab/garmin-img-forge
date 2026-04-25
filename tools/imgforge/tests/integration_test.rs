@@ -669,6 +669,7 @@ fn test_gmapsupp_mps_contains_product_and_map_blocks() {
         codepage: 1252,
         typ_basename: None,
         packaging: Default::default(),
+        gmp_override: None,
     };
 
     let gmapsupp = build_gmapsupp_with_meta(&tiles, "Test", &meta).unwrap();

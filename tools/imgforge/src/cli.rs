@@ -20,8 +20,6 @@ pub enum PackagingArg {
     /// 6 fichiers FAT par tuile (TRE/RGN/LBL/NET/NOD/DEM) — comportement historique.
     Legacy,
     /// 1 fichier FAT `.GMP` par tuile (format Garmin NT consolidé).
-    /// ⚠ EXPÉRIMENTAL — non fonctionnel sur firmware Alpha 100 ; peut rendre
-    /// les autres cartes SD invisibles. Ne pas utiliser en production.
     Gmp,
 }
 
@@ -334,10 +332,14 @@ pub enum Commands {
         dem_source_srs: Option<String>,
 
         /// Packaging des sous-sections de tuile : `legacy` (6 FAT files) ou `gmp` (1 `.GMP`).
-        /// Défaut : `legacy` (seul mode validé sur device). `gmp` est expérimental
-        /// et non fonctionnel sur firmware Alpha 100.
+        /// Défaut : `legacy`.
         #[arg(long, value_enum, default_value = "legacy")]
         packaging: PackagingArg,
+
+        /// Override GMP : injecte ce fichier `.GMP` officiel à la place du GmpWriter.
+        /// Requiert `--packaging gmp`. Usage : test empirique GC1 (substitution GMP officiel).
+        #[arg(long, value_name = "FILE", requires = "packaging")]
+        gmp_override: Option<PathBuf>,
     },
 
     /// Compile/décompile un fichier TYP Garmin (texte ↔ binaire).

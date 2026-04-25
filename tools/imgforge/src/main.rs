@@ -131,7 +131,7 @@ fn main() -> Result<()> {
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going, typ_file,
-            dem, dem_dists, dem_interpolation, dem_source_srs, packaging,
+            dem, dem_dists, dem_interpolation, dem_source_srs, packaging, gmp_override,
         } => {
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
@@ -278,6 +278,7 @@ fn main() -> Result<()> {
                     p.file_stem().and_then(|s| s.to_str()).unwrap_or("00000001").to_string()
                 }),
                 packaging: packaging.into(),
+                gmp_override,
             };
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
