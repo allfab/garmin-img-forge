@@ -11,6 +11,10 @@ pipeline/output/tiles/*.mp
 pipeline/output/img/
 pipeline/output/*.img
 pipeline/output/*.json
+pipeline/output/**/*.json
+pipeline/output/**/*.mp
+pipeline/output/**/*.img
+pipeline/output/**/*.tdb
 !pipeline/output/.gitkeep
 !pipeline/output/tiles/.gitkeep
 *.mp
