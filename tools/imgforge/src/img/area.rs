@@ -68,6 +68,16 @@ impl Area {
             && other.max_lon <= self.max_lon
     }
 
+    /// Smallest bbox containing both `self` and `other`.
+    pub fn union(&self, other: &Area) -> Area {
+        Area::new(
+            self.min_lat.min(other.min_lat),
+            self.min_lon.min(other.min_lon),
+            self.max_lat.max(other.max_lat),
+            self.max_lon.max(other.max_lon),
+        )
+    }
+
     pub fn intersects(&self, other: &Area) -> bool {
         self.min_lat <= other.max_lat
             && self.max_lat >= other.min_lat
@@ -204,6 +214,37 @@ mod tests {
         let a = Area::new(0, 0, 1000, 1000);
         let parts = a.split(2, 2, 0).unwrap();
         assert_eq!(parts.len(), 4);
+    }
+
+    #[test]
+    fn test_union_disjoint() {
+        let a = Area::new(0, 0, 100, 100);
+        let b = Area::new(200, 200, 300, 300);
+        let u = a.union(&b);
+        assert_eq!(u.min_lat(), 0);
+        assert_eq!(u.min_lon(), 0);
+        assert_eq!(u.max_lat(), 300);
+        assert_eq!(u.max_lon(), 300);
+    }
+
+    #[test]
+    fn test_union_full_bounds_smaller_than_cell() {
+        // Reproduit le bug pan : full_bounds (features filtrées) plus petit que cell.
+        // L'union doit garder la cell pour que le subdiv couvre toute la zone.
+        let cell = Area::new(0, 0, 1000, 1000);
+        let full_bounds_filtered = Area::new(400, 400, 600, 600);
+        let u = cell.union(&full_bounds_filtered);
+        assert_eq!(u, cell);
+    }
+
+    #[test]
+    fn test_union_full_bounds_overflowing_cell() {
+        // Cas mkgmap : large object autorisé à déborder de la cell.
+        // L'union doit englober le débordement.
+        let cell = Area::new(0, 0, 1000, 1000);
+        let overflow = Area::new(-100, -100, 1100, 1100);
+        let u = cell.union(&overflow);
+        assert_eq!(u, overflow);
     }
 
     #[test]

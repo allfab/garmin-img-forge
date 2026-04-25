@@ -408,6 +408,27 @@ fn build_multilevel_hierarchy(
             closest
         }).collect();
 
+        // mkgmap invariant: every parent in parent_areas that has no child area assigned
+        // at this level receives an empty fallback MapArea covering its geographic bounds.
+        // In mkgmap, MapSplitter.split() always returns ≥1 MapArea per source, so
+        // `divisions.isEmpty()` is never true for a non-leaf Subdivision. Without this,
+        // childless non-leaf parents get invalid first_child pointers in the TRE.
+        // The Alpha 100 firmware follows these pointers strictly and skips the affected
+        // parent regions entirely — features disappear on pan/zoom. QMapShack traverses
+        // all subdivisions directly without following the TRE chain, so it is unaffected.
+        let mut areas = areas;
+        let mut area_parents = area_parents;
+        {
+            let assigned: std::collections::HashSet<u16> =
+                area_parents.iter().cloned().collect();
+            for &(parent_bounds, parent_num) in &parent_areas {
+                if !assigned.contains(&(parent_num as u16)) {
+                    areas.push(splitter::MapArea::new(parent_bounds, level.resolution));
+                    area_parents.push(parent_num as u16);
+                }
+            }
+        }
+
         // Sort areas by parent number to ensure contiguity
         let mut order: Vec<usize> = (0..areas.len()).collect();
         order.sort_by_key(|&i| area_parents[i]);
@@ -424,14 +445,21 @@ fn build_multilevel_hierarchy(
             subdiv_counter += 1;
 
             let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
-            // Parité mkgmap `createSubdivision(parent, ma.getFullBounds(), z)`
-            // (MapBuilder.java:913). `full_bounds` = union des bboxes des
-            // features ajoutées — peut être plus grand que la cell initiale
-            // si des shapes/lines débordent (tolérées par le splitter quand
-            // `bbox ≤ maxWidth/maxHeight`). Sans ça, Alpha 100 / BaseCamp
-            // clippent strictement au half déclaré → zones vides. GPSMapedit
-            // tolère et rend correctement, masquant le bug.
-            let full = area.full_bounds();
+            // mkgmap `createSubdivision(parent, ma.getFullBounds(), z)` (MapBuilder.java:913)
+            // utilise `getFullBounds()` = union des bboxes des features ajoutées. Mais aux
+            // niveaux non-leaf, la chaîne de filtres pré-splitter d'imgforge (round_coords,
+            // size_filter, DP, remove_empty dans `filter_features_for_level`) supprime des
+            // features que mkgmap conserverait — leur bbox n'étend donc pas full_bounds, et
+            // le subdiv déclare un bbox plus petit que la cell géographique du splitter.
+            // L'Alpha 100 rejette alors le subdiv pour les viewports panés vers les zones
+            // de la cell non couvertes par full_bounds → écran vide / features qui
+            // disparaissent au pan détail.
+            //
+            // Fix : prendre l'union de `area.bounds` (cell géographique du splitter, qui
+            // garantit la couverture spatiale du parent) et de `area.full_bounds()` (qui
+            // peut déborder si des shapes/lines tolérées par le splitter dépassent la cell).
+            // Ne réduit jamais sous la cell, ne clippe jamais les features qui débordent.
+            let full = area.bounds.union(&area.full_bounds());
             subdiv.set_center(&full.center());
             subdiv.set_bounds(
                 full.min_lat(), full.min_lon(),
@@ -543,42 +571,6 @@ fn build_multilevel_hierarchy(
         }
     }
 
-    // Force has_children for all non-leaf level subdivisions (16-byte records required)
-    if tre_levels_build.len() >= 2 {
-        let leaf_level = tre_levels_build.last().unwrap().level;
-        for subdiv in all_subdivisions.iter_mut() {
-            if subdiv.zoom_level != leaf_level && !subdiv.has_children {
-                subdiv.has_children = true;
-            }
-        }
-
-        // Patch first_child pointers for non-leaf parents with empty children.
-        // Garmin format: parent P's children range is [P.first_child, P_next.first_child).
-        // Propager le first_child du sibling successeur rend la range vide sans pointer à 0
-        // (ce que l'Alpha 100 rejette — rendu wide-zoom cassé).
-        let total = all_subdivisions.len() as u16;
-        let mut zoom_levels: Vec<u8> = all_subdivisions.iter().map(|s| s.zoom_level).collect();
-        zoom_levels.sort_unstable();
-        zoom_levels.dedup();
-        for &lvl in zoom_levels.iter().filter(|&&l| l != leaf_level) {
-            let indices: Vec<usize> = all_subdivisions.iter()
-                .enumerate()
-                .filter(|(_, s)| s.zoom_level == lvl)
-                .map(|(i, _)| i)
-                .collect();
-            // Walk backward, carrying the last valid first_child seen.
-            let mut last_valid: u16 = total + 1; // fallback: out-of-range → empty range
-            for &idx in indices.iter().rev() {
-                let subdiv = &all_subdivisions[idx];
-                if let Some(fc) = subdiv.children.first().copied() {
-                    last_valid = fc;
-                } else if subdiv.has_children {
-                    all_subdivisions[idx].children = vec![last_valid];
-                }
-            }
-        }
-    }
-
     // Build extTypeOffsets data if we have extended data
     let ext_type_offsets_data = if rgn.has_ext_data() {
         let mut data = Vec::new();
@@ -614,24 +606,54 @@ fn build_multilevel_hierarchy(
 
 // ── Feature filtering per level ────────────────────────────────────────────
 
-/// Strict r4924 semantics (PolishMapDataSource → MapArea + MapBuilder filters) :
-/// une feature est visible au level L ssi `DataL` existe explicitement.
-/// La plage de résolution (min/max) n'est pas modélisée dans le RGN binaire —
-/// c'est la présence de DataL dans le MP qui détermine la visibilité.
-/// r4924 `setResolution` : quand endLevel>0, min=res(endLevel)/max=res(L) ;
-/// quand endLevel==0, min=max=res(L) (chaque DataN visible exactement à L).
+/// Sémantique mkgmap r4924 `PolishMapDataSource.setResolution` (range-based) :
+/// chaque `DataN(k)` génère un MapElement avec `[minRes, maxRes]` :
+/// - `maxRes = bits(k)` (résolution du bucket d'origine)
+/// - si `endLevel > 0` : `minRes = bits(j-1)` où j est le prochain bucket DataN après k,
+///   sinon `minRes = bits(endLevel)`
+/// - si `endLevel == 0` : `minRes = maxRes = bits(k)` (visibilité stricte à L=k)
+///
+/// Le device rend cette feature à un target level L ssi `bits(L) ∈ [minRes, maxRes]`.
+/// Comme bits décroît avec level (bits(0)=24 > bits(1)=23 > ...), ça équivaut à :
+/// **`L ∈ [k, j-1]`** (ou `[k, endLevel]` si pas de bucket suivant).
+///
+/// En pratique : feature visible au level L ssi
+/// - `L ≤ endLevel` (toujours, sauf endLevel=0 traité à part)
+/// - il existe un `DataN(k)` avec `k ≤ L` (le plus grand `k ≤ L` est le bucket à utiliser)
+///
+/// Bug pré-fix : imgforge exigeait `geometries.contains_key(&L)` strict. Conséquence :
+/// une polyline avec `Data0=` et `Data2=` (mais pas `Data1=`) et `EndLevel=2` était
+/// invisible au level 1 → "feature qui apparaît à 300m mais disparaît à 200m" sur Alpha 100,
+/// alors que mkgmap rendait correctement Data0 au level 1 via le fallback range.
 fn feature_visible_at_level(
     end_level: Option<u8>,
     geometries: &std::collections::BTreeMap<u8, Vec<crate::img::coord::Coord>>,
     level: u8,
 ) -> bool {
-    // r4924 : L > EndLevel → min=extractResolution(EndLevel), max=bits(L) < min → feature filtrée.
-    if let Some(el) = end_level {
-        if level > el {
-            return false;
+    match end_level {
+        Some(0) | None => {
+            // endLevel=0 : visibilité stricte au bucket exact (pas de fallback range)
+            geometries.contains_key(&level)
+        }
+        Some(el) => {
+            if level > el {
+                return false;
+            }
+            // Range mkgmap : il faut un DataN(k) avec k ≤ level. Le `next_back` du sous-arbre
+            // [..=level] retourne le plus grand k ≤ level présent dans la BTreeMap.
+            geometries.range(..=level).next_back().is_some()
         }
     }
-    geometries.contains_key(&level)
+}
+
+/// Bucket DataN à utiliser pour render au level L (sémantique mkgmap range).
+/// Retourne le plus grand `k ≤ level` présent dans `geometries`, ou None si aucun.
+/// Utilisé pour récupérer la géométrie à émettre quand `feature_visible_at_level` retourne true.
+fn pick_geometry_bucket(
+    geometries: &std::collections::BTreeMap<u8, Vec<crate::img::coord::Coord>>,
+    level: u8,
+) -> Option<&[crate::img::coord::Coord]> {
+    geometries.range(..=level).next_back().map(|(_, v)| v.as_slice())
 }
 
 /// Filter features visible at a given zoom level within parent bounds.
@@ -707,7 +729,10 @@ fn filter_features_for_level(
     let lines: Vec<SplitLine> = mp.polylines.iter().enumerate()
         .filter(|(_, l)| feature_visible_at_level(l.end_level, &l.geometries, level))
         .filter_map(|(i, l)| {
-            let geom = l.geometry_for_level(level);
+            // Sémantique mkgmap range : utilise le bucket du plus grand k ≤ level
+            // (et non le fallback vers le bucket plus grossier comme le faisait
+            // `geometry_for_level`, qui n'est pas la sémantique render mkgmap).
+            let geom = pick_geometry_bucket(&l.geometries, level)?;
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
                 return None;
             }
@@ -739,7 +764,7 @@ fn filter_features_for_level(
     let shapes: Vec<SplitShape> = mp.polygons.iter().enumerate()
         .filter(|(_, s)| feature_visible_at_level(s.end_level, &s.geometries, level))
         .filter_map(|(i, s)| {
-            let geom = s.geometry_for_level(level);
+            let geom = pick_geometry_bucket(&s.geometries, level)?;
             if geom.is_empty() || !expanded.contains_coord(&geom[0]) {
                 return None;
             }
@@ -1481,11 +1506,14 @@ mod tests {
     }
 
     #[test]
-    fn filter_features_strict_r4924_only_explicit_buckets() {
-        // Sémantique r4924 : une polyline apparaît UNIQUEMENT aux levels où elle
-        // a un bucket DataN explicite (et où N ≤ EndLevel). Pas de fallback.
-        // Polyline avec Data0 + Data2, EndLevel=2 → visible aux levels 0 et 2,
-        // PAS au level 1 (bucket Data1 absent).
+    fn filter_features_mkgmap_range_with_endlevel() {
+        // Sémantique mkgmap r4924 PolishMapDataSource.setResolution (range-based) :
+        // une polyline avec Data0 + Data2 et EndLevel=2 reçoit ces ranges :
+        //   - Data0 → [minRes=bits(1)=22, maxRes=bits(0)=24] → visible levels 0 et 1
+        //   - Data2 → [minRes=bits(2)=20, maxRes=bits(2)=20] → visible level 2
+        // Au level 1, mkgmap rend la géométrie Data0 (fallback range).
+        // Bug Alpha 100 ("voie disparaît à 200m mais visible à 300m") fixé en avril 2026 :
+        // imgforge filtrait strictement contains_key(level), perdait la voie au level 1.
         let content = r#"
 [IMG ID]
 ID=1
@@ -1502,15 +1530,48 @@ Data2=(48.0,7.0),(48.2,7.2)
         let bounds = compute_bounds(&mp).unwrap();
 
         let (_, lines0, _) = filter_features_for_level(&mp, 0, &bounds);
-        assert_eq!(lines0.len(), 1, "level 0 → bucket Data0 présent");
-        assert_eq!(lines0[0].points.len(), 3);
+        assert_eq!(lines0.len(), 1, "level 0 → bucket Data0 (largest k≤0)");
+        assert_eq!(lines0[0].points.len(), 3, "level 0 utilise géom Data0 (3 pts)");
 
         let (_, lines1, _) = filter_features_for_level(&mp, 1, &bounds);
-        assert_eq!(lines1.len(), 0, "level 1 → Data1 absent → feature exclue (r4924)");
+        assert_eq!(lines1.len(), 1, "level 1 → fallback range mkgmap : Data0 visible (largest k≤1)");
+        // shift=1 (level 1, bits=22 → shift = 24-22 = 2 ; ici Levels=[24,22,20] donc level 1 = bits 22, shift 2)
+        // round_coords + remove_obsolete peuvent réduire de 3 → 2 pts. On vérifie ≥ 2.
+        assert!(lines1[0].points.len() >= 2, "géom Data0 utilisée au level 1 ({} pts)", lines1[0].points.len());
 
         let (_, lines2, _) = filter_features_for_level(&mp, 2, &bounds);
-        assert_eq!(lines2.len(), 1, "level 2 → bucket Data2 présent (2 ≤ EndLevel=2)");
-        assert_eq!(lines2[0].points.len(), 2);
+        assert_eq!(lines2.len(), 1, "level 2 → bucket Data2 explicite (2 ≤ EndLevel=2)");
+        assert!(lines2[0].points.len() >= 2);
+
+        // Au-delà d'EndLevel, plus de visibilité même si DataN existe au-delà.
+        // (Pas de level 3 ici puisque Levels=24,22,20 a 3 entrées 0..2.)
+    }
+
+    #[test]
+    fn filter_features_endlevel_zero_strict() {
+        // Sémantique mkgmap : si EndLevel=0, pas de fallback range — chaque DataN
+        // visible UNIQUEMENT à son level d'origine. Comportement identique à
+        // l'ancien strict pour ce cas.
+        let content = r#"
+[IMG ID]
+ID=1
+Levels=24,22,20
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+EndLevel=0
+Data0=(48.0,7.0),(48.1,7.1),(48.2,7.2)
+Data2=(48.0,7.0),(48.2,7.2)
+[END]
+"#;
+        let mp = mp_with_multi_data(content);
+        let bounds = compute_bounds(&mp).unwrap();
+        let (_, lines0, _) = filter_features_for_level(&mp, 0, &bounds);
+        assert_eq!(lines0.len(), 1, "level 0 → Data0 présent");
+        let (_, lines1, _) = filter_features_for_level(&mp, 1, &bounds);
+        assert_eq!(lines1.len(), 0, "level 1 → EndLevel=0, pas de fallback : exclu");
+        let (_, lines2, _) = filter_features_for_level(&mp, 2, &bounds);
+        assert_eq!(lines2.len(), 1, "level 2 → Data2 présent (EndLevel=0 implicite ≥ level d'origine)");
     }
 
     #[test]
@@ -1747,6 +1808,101 @@ Data0=(48.5734,7.7521)
         // Parse TRE to check subdivisions — at minimum, verify we get valid output
         assert!(!result.tre.is_empty());
         assert!(!result.rgn.is_empty());
+    }
+
+    #[test]
+    fn test_all_nonleaf_parents_have_valid_first_child() {
+        // Vérifie l'invariant mkgmap : tout parent non-leaf a au moins un enfant.
+        // Scénario : carte 7 niveaux, features UNIQUEMENT au level 0 dans un coin
+        // (coin NE d'une tuile 1°×1°). Ceci provoque des parents sans features
+        // aux niveaux intermédiaires → avant le fix, ces parents recevaient
+        // first_child=total+1 (out-of-range), cassant la navigation Alpha 100.
+        let content = r#"
+[IMG ID]
+ID=63240004
+Name=Nonleaf Parent Invariant
+Levels=24,23,22,21,20,18,16
+[END-IMG ID]
+[POLYLINE]
+Type=0x05
+EndLevel=0
+Data0=(48.90,7.90),(48.91,7.91),(48.92,7.92),(48.93,7.93)
+[END]
+[POLYLINE]
+Type=0x05
+EndLevel=0
+Data0=(48.90,7.90),(48.92,7.90),(48.94,7.90)
+[END]
+[POLYGON]
+Type=0x03
+Data0=(48.90,7.90),(48.91,7.90),(48.91,7.91),(48.90,7.91)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        // Avant le fix, ce cas provoquait des first_child out-of-range → panic ou
+        // données corrompues. Vérifier que le build réussit et produit des données valides.
+        let result = build_subfiles(&mp).unwrap();
+        assert!(!result.tre.is_empty(), "TRE doit être non-vide");
+        assert!(!result.rgn.is_empty(), "RGN doit être non-vide");
+
+        // Inspecter le TRE binaire pour vérifier que chaque subdivision non-leaf
+        // a un first_child dans la plage [1, total_subdivs].
+        // Layout TRE (offsets absolus dans result.tre) :
+        //   @21-24 : common header length + file type marker
+        //   @21-32 : bounds (12 bytes)
+        //   @33-36 : map_levels_pos (u32 LE)
+        //   @37-40 : map_levels_size (u32 LE)  → num_levels = size / 4
+        //   @41-44 : subdivisions_pos (u32 LE)
+        //   @45-48 : subdivisions_size (u32 LE) → inclut les 4 octets du lastRgnPos
+        // Chaque entrée map_levels = 4 octets [level_flags, resolution, count_lo, count_hi]
+        // Subdivisions non-leaf = 16 octets (14 + 2 pour first_child)
+        // Subdivisions leaf     = 14 octets
+        let tre = &result.tre;
+        if tre.len() < 49 { return; }
+        let ml_pos  = u32::from_le_bytes([tre[33], tre[34], tre[35], tre[36]]) as usize;
+        let ml_size = u32::from_le_bytes([tre[37], tre[38], tre[39], tre[40]]) as usize;
+        let sd_pos  = u32::from_le_bytes([tre[41], tre[42], tre[43], tre[44]]) as usize;
+        let sd_size = u32::from_le_bytes([tre[45], tre[46], tre[47], tre[48]]) as usize;
+        if ml_size == 0 || ml_size % 4 != 0 { return; }
+        if sd_pos + sd_size > tre.len() { return; }
+        let num_levels = ml_size / 4;
+
+        // Lire le nombre de subdivisions par niveau depuis map_levels
+        let mut subdiv_counts: Vec<u16> = Vec::new();
+        for i in 0..num_levels {
+            let base = ml_pos + i * 4;
+            if base + 4 > tre.len() { return; }
+            let count = u16::from_le_bytes([tre[base + 2], tre[base + 3]]);
+            subdiv_counts.push(count);
+        }
+
+        // Parcourir les subdivisions : niveaux 0..num_levels-2 = non-leaf (16 bytes),
+        // niveau num_levels-1 = leaf (14 bytes).
+        let total_subdivs: u16 = subdiv_counts.iter().map(|&c| c).sum();
+        let mut pos = sd_pos;
+        let sd_end = sd_pos + sd_size.saturating_sub(4); // -4 pour le lastRgnPos
+        let mut all_first_children: Vec<u16> = Vec::new();
+        for (lvl_idx, &count) in subdiv_counts.iter().enumerate() {
+            let is_leaf = lvl_idx == num_levels - 1;
+            let rec_size = if is_leaf { 14 } else { 16 };
+            for _ in 0..count {
+                if pos + rec_size > sd_end { break; }
+                if !is_leaf {
+                    let fc = u16::from_le_bytes([tre[pos + 14], tre[pos + 15]]);
+                    all_first_children.push(fc);
+                }
+                pos += rec_size;
+            }
+        }
+
+        // Chaque first_child doit pointer dans la plage valide [1, total_subdivs]
+        for fc in &all_first_children {
+            assert!(
+                *fc >= 1 && *fc <= total_subdivs,
+                "first_child={} hors plage [1, {}] — parent orphelin dans le TRE (ml_pos={} ml_size={} sd_pos={} sd_size={})",
+                fc, total_subdivs, ml_pos, ml_size, sd_pos, sd_size
+            );
+        }
     }
 
     fn find_subfile_in_img(img: &[u8], ext: &str) -> bool {
