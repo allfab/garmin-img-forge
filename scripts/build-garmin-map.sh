@@ -1117,6 +1117,7 @@ run_imgforge() {
     local -a cmd=(
         "$_IMGFORGE" build "$mp_dir"
         --output "${_OUTPUT_DIR}/img/${_IMG_FILENAME}"
+        --report "$_IMGFORGE_REPORT_FILE"
         --jobs "$IMGFORGE_JOBS"
         --family-id "$FAMILY_ID"
         --product-id "$PRODUCT_ID"

@@ -1330,7 +1330,7 @@ fn pre_compute_routing(
         }
         RoutingMode::Route | RoutingMode::NetOnly => {
             if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
-                tracing::warn!("--route/--net specified but no RoadID found in .mp data");
+                tracing::info!("--route/--net specified but no RoadID found in .mp data — Routing inactif dans cette tuile : aucun tronçon routable (RoadID inexistant)");
                 return (None, None, None);
             }
         }

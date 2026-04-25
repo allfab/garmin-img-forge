@@ -184,6 +184,10 @@ pub enum Commands {
         /// Source SRS for ASC files (e.g. EPSG:2154 for Lambert 93)
         #[arg(long, value_name = "SRS")]
         dem_source_srs: Option<String>,
+
+        /// Write JSON build report to FILE
+        #[arg(long, value_name = "FILE")]
+        report: Option<String>,
     },
 
     /// Build multi-tile gmapsupp.img from a directory of .mp files
@@ -340,6 +344,10 @@ pub enum Commands {
         /// Requiert `--packaging gmp`. Usage : test empirique GC1 (substitution GMP officiel).
         #[arg(long, value_name = "FILE", requires = "packaging")]
         gmp_override: Option<PathBuf>,
+
+        /// Write JSON build report to FILE
+        #[arg(long, value_name = "FILE")]
+        report: Option<String>,
     },
 
     /// Compile/décompile un fichier TYP Garmin (texte ↔ binaire).

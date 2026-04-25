@@ -343,6 +343,7 @@ imgforge build [OPTIONS] <INPUT>
 | `-o, --output <FILE>` | Fichier `gmapsupp.img` de sortie | `gmapsupp.img` |
 | `-j, --jobs <N>` | Nombre de threads parallèles | `1` |
 | `--keep-going` | Continuer si une tuile échoue (log warning, ignorer la tuile) | `false` |
+| `--report <FILE>` | Écrire le rapport JSON de compilation dans FILE | - |
 
 #### Identité carte Garmin
 
@@ -369,12 +370,22 @@ Plus toutes les [options communes](#options-communes-compile-et-build) ci-dessus
 
 ### Niveaux de verbosité
 
-| Flag | Niveau | Utilisation |
-|------|--------|-------------|
-| _(aucun)_ | WARN | Production |
-| `-v` | INFO | Monitoring (étapes principales) |
-| `-vv` | DEBUG | Troubleshooting (détails encodage) |
-| `-vvv` | TRACE | Développement (verbosité maximale) |
+| Flag | Niveau activé | Utilisation |
+|------|---------------|-------------|
+| _(aucun)_ | `WARN` + `ERROR` | Production — barre de progression + résumé console uniquement |
+| `-v` | + `INFO` | Monitoring — tuile par tuile, messages routing |
+| `-vv` | + `DEBUG` | Troubleshooting — détails encodage, barre de progression désactivée |
+| `-vvv` | + `TRACE` | Développement — verbosité maximale |
+
+En production (sans `-v`), imgforge affiche uniquement la barre de progression pendant la compilation et un résumé structuré en fin d'exécution. Les messages de niveau INFO (ex : routing désactivé, tuile compilée) n'apparaissent qu'avec `-v`.
+
+### Rapport JSON (`--report`)
+
+| Option | Description | Défaut |
+|--------|-------------|--------|
+| `--report <FILE>` | Écrire le rapport JSON de compilation dans FILE | - (pas de rapport) |
+
+Disponible sur les commandes `compile` et `build`. Utile pour l'intégration CI/CD ou le suivi des métriques de build.
 
 ### Parallélisation
 
@@ -416,20 +427,37 @@ imgforge build tiles/ --levels "24,18"
 
 ## Rapport JSON
 
-La sortie standard d'imgforge est un rapport JSON structuré :
+Avec `--report <FILE>`, imgforge écrit un fichier JSON structuré exploitable en CI/CD. La sortie console (stdout) affiche un résumé lisible.
+
+```bash
+imgforge build tiles/ --output gmapsupp.img --jobs 8 --report build-report.json
+```
 
 ```json
 {
-  "tiles_compiled": 42,
-  "total_points": 15234,
-  "total_polylines": 8721,
-  "total_polygons": 3456,
-  "errors": [],
-  "duration_ms": 2340,
+  "tiles_compiled": 55,
+  "tiles_failed": 0,
+  "total_points": 182340,
+  "total_polylines": 94710,
+  "total_polygons": 31820,
+  "duration_ms": 8420,
+  "duration_seconds": 8.42,
   "output_file": "gmapsupp.img",
-  "output_size_bytes": 52428800
+  "img_size_bytes": 52428800
 }
 ```
+
+| Champ | Description |
+|-------|-------------|
+| `tiles_compiled` | Tuiles compilées avec succès |
+| `tiles_failed` | Tuiles en erreur (non-zero → problème) |
+| `total_points` | Total POI compilés (toutes tuiles) |
+| `total_polylines` | Total polylignes compilées |
+| `total_polygons` | Total polygones compilés |
+| `duration_ms` | Durée d'exécution en millisecondes |
+| `duration_seconds` | Durée d'exécution en secondes (flottant) |
+| `output_file` | Chemin du fichier IMG produit |
+| `img_size_bytes` | Taille du fichier IMG en octets |
 
 ### Intégration CI/CD
 
@@ -440,8 +468,9 @@ La sortie standard d'imgforge est un rapport JSON structuré :
 # Étape 1 : Générer les tuiles .mp
 mpforge build --config bdtopo.yaml --jobs 8
 
-# Étape 2 : Compiler en gmapsupp.img
+# Étape 2 : Compiler en gmapsupp.img avec rapport JSON
 imgforge build tiles/ --output gmapsupp.img --jobs 8 \
+  --report build-report.json \
   --family-name "BDTOPO France" \
   --series-name "IGN BDTOPO 2026" \
   --latin1 \
@@ -451,8 +480,10 @@ imgforge build tiles/ --output gmapsupp.img --jobs 8 \
   --dem ./srtm_hgt/ \
   --keep-going
 
-# Vérifier le résultat
-echo "Compilation terminée"
+# Lire les métriques depuis le rapport
+TILES=$(jq '.tiles_compiled' build-report.json)
+FAILED=$(jq '.tiles_failed' build-report.json)
+echo "Compilation : ${TILES} tuile(s), ${FAILED} échec(s)"
 ls -lh gmapsupp.img
 ```
 

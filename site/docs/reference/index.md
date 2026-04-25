@@ -86,4 +86,12 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](logs-mpforge.md)
 
+-   **Logs imgforge**
+
+    ---
+
+    Guide de lecture des messages de logs imgforge : niveaux de verbosité, barre de progression, résumé console, avertissements courants, rapport JSON.
+
+    [:octicons-arrow-right-24: Consulter](logs-imgforge.md)
+
 </div>

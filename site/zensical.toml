@@ -73,7 +73,8 @@ Accueil = "index.md"
   { "Versioning des binaires" = "reference/versioning-binaires.md" },
   { "Format Garmin IMG" = "reference/format-garmin-img.md" },
   { "Profils de généralisation" = "reference/generalize-profiles.md" },
-  { "Logs mpforge" = "reference/logs-mpforge.md" }
+  { "Logs mpforge" = "reference/logs-mpforge.md" },
+  { "Logs imgforge" = "reference/logs-imgforge.md" }
 ]
 
 [[nav]]

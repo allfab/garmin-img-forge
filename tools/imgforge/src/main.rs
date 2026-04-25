@@ -1,14 +1,33 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 use anyhow::{Context, Result};
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
+use indicatif::{ProgressBar, ProgressStyle};
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 use imgforge::cli::{Cli, Commands, TypAction};
 use imgforge::dem;
 use imgforge::img::writer;
 use imgforge::parser;
 use imgforge::report::BuildReport;
+
+fn setup_tracing(verbose: u8) {
+    let level = match verbose {
+        0 => Level::WARN,
+        1 => Level::INFO,
+        2 => Level::DEBUG,
+        _ => Level::TRACE,
+    };
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .with_target(true)
+        .finish();
+    if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
+        eprintln!("Warning: Failed to set tracing subscriber: {}", e);
+    }
+}
 
 /// Read .mp file with UTF-8 first, Latin-1 (ISO-8859-1) fallback for BDTOPO accents
 fn read_mp_file(path: impl AsRef<Path>) -> Result<String> {
@@ -17,7 +36,6 @@ fn read_mp_file(path: impl AsRef<Path>) -> Result<String> {
     match String::from_utf8(bytes.clone()) {
         Ok(s) => Ok(s),
         Err(_) => {
-            // CP1252 fallback for BDTOPO/French map data
             tracing::debug!("File is not UTF-8, using CP1252 fallback: {}", path.as_ref().display());
             Ok(bytes.iter().map(|&b| imgforge::img::labelenc::format9::cp1252_to_unicode(b)).collect())
         }
@@ -35,17 +53,8 @@ fn read_typ_file(path: impl AsRef<Path>) -> Result<Vec<u8>> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    // Setup tracing
-    let filter = match cli.verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
-    };
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::new(filter))
-        .init();
+    let verbose = cli.verbose;
+    setup_tracing(verbose);
 
     match cli.command {
         Commands::Compile {
@@ -55,9 +64,10 @@ fn main() -> Result<()> {
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             route, net, no_route, copyright_message, typ_file,
             dem, dem_dists, dem_interpolation, dem_source_srs,
+            report,
         } => {
             let start = Instant::now();
-            let mut report = BuildReport::new();
+            let mut build_report = BuildReport::new();
 
             let content = read_mp_file(&input)
                 .with_context(|| format!("Failed to read {}", input))?;
@@ -65,7 +75,6 @@ fn main() -> Result<()> {
             let mut mp = parser::parse_mp(&content)
                 .with_context(|| format!("Failed to parse {}", input))?;
 
-            // Apply CLI overrides
             apply_tile_overrides(
                 &mut mp, description.as_deref(),
                 code_page, unicode, latin1, lower_case,
@@ -75,13 +84,12 @@ fn main() -> Result<()> {
                 route, net, no_route, copyright_message.as_deref(),
             );
 
-            report.total_points = mp.points.len();
-            report.total_polylines = mp.polylines.len();
-            report.total_polygons = mp.polygons.len();
+            build_report.total_points = mp.points.len();
+            build_report.total_polylines = mp.polylines.len();
+            build_report.total_polygons = mp.polygons.len();
 
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            // Build DEM if --dem provided
             let dem_config = dem.as_ref().map(|paths| {
                 imgforge::dem::DemConfig {
                     paths: paths.clone(),
@@ -94,7 +102,6 @@ fn main() -> Result<()> {
             let mut result = writer::build_subfiles(&mp)
                 .with_context(|| "Failed to build subfiles")?;
 
-            // Add DEM subfile if configured
             if let Some(ref config) = dem_config {
                 match build_dem_subfile(&mp, config) {
                     Ok(dem_data) => { result.dem = Some(dem_data); }
@@ -115,12 +122,20 @@ fn main() -> Result<()> {
             std::fs::write(&out_path, &img_data)
                 .with_context(|| format!("Failed to write {}", out_path))?;
 
-            report.tiles_compiled = 1;
-            report.output_file = out_path.clone();
-            report.output_size_bytes = img_data.len() as u64;
-            report.set_duration(start.elapsed());
+            build_report.tiles_compiled = 1;
+            build_report.output_file = out_path.clone();
+            build_report.img_size_bytes = img_data.len() as u64;
+            build_report.set_duration(start.elapsed());
 
-            println!("{}", report.to_json());
+            if let Some(ref report_path) = report {
+                if let Err(e) = build_report.write_json_report(report_path) {
+                    tracing::warn!(path = %report_path, error = %e, "Failed to write JSON report");
+                } else {
+                    tracing::info!(path = %report_path, "JSON report written");
+                }
+            }
+
+            build_report.print_console_summary();
         }
 
         Commands::Build {
@@ -132,6 +147,7 @@ fn main() -> Result<()> {
             mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going, typ_file,
             dem, dem_dists, dem_interpolation, dem_source_srs, packaging, gmp_override,
+            report,
         } => {
             if let Some(j) = jobs {
                 rayon::ThreadPoolBuilder::new()
@@ -140,7 +156,7 @@ fn main() -> Result<()> {
                     .ok();
             }
             let start = Instant::now();
-            let mut report = BuildReport::new();
+            let mut build_report = BuildReport::new();
 
             let input_path = Path::new(&input);
             let mp_files: Vec<_> = std::fs::read_dir(input_path)
@@ -153,7 +169,13 @@ fn main() -> Result<()> {
                 anyhow::bail!("No .mp files found in {}", input);
             }
 
-            // Build DEM config if --dem provided
+            tracing::info!(
+                count = mp_files.len(),
+                directory = %input,
+                "Compilation de {} tuile(s) .mp",
+                mp_files.len()
+            );
+
             let dem_config = dem.as_ref().map(|paths| {
                 dem::DemConfig {
                     paths: paths.clone(),
@@ -163,7 +185,6 @@ fn main() -> Result<()> {
                 }
             });
 
-            // Pre-load DEM grids once, share via Arc (F6 fix)
             let shared_dem = dem_config.as_ref().map(|config| {
                 match dem::load_elevation_sources(&config.paths, config.source_srs.as_deref()) {
                     Ok(grids) => Some(std::sync::Arc::new(grids)),
@@ -174,12 +195,28 @@ fn main() -> Result<()> {
                 }
             }).flatten();
 
-            // Clone CLI values for parallel closure
             let levels_clone = levels.clone();
             let simplify_clone = simplify_polygons.clone();
             let copyright_clone = copyright_message.clone();
             let dem_config_clone = dem_config.clone();
             let shared_dem_clone = shared_dem.clone();
+
+            // Progress bar (désactivée en mode debug verbose >= 2)
+            let progress: Option<Arc<ProgressBar>> = if verbose < 2 {
+                let pb = ProgressBar::new(mp_files.len() as u64);
+                pb.set_style(
+                    ProgressStyle::default_bar()
+                        .template("[{bar:40.cyan/blue}] {pos}/{len} tuiles ({percent}%) — ETA : {eta}")
+                        .expect("valid progress bar template")
+                        .progress_chars("█▉▊▋▌▍▎▏  "),
+                );
+                Some(Arc::new(pb))
+            } else {
+                tracing::info!("Barre de progression désactivée (verbose >= 2)");
+                None
+            };
+
+            let progress_clone = progress.clone();
 
             use rayon::prelude::*;
 
@@ -202,7 +239,6 @@ fn main() -> Result<()> {
                 let mut tile = writer::build_subfiles(&mp)
                     .with_context(|| format!("Failed to build {}", path.display()))?;
 
-                // Add DEM subfile using pre-loaded grids
                 if let (Some(ref config), Some(ref grids)) = (&dem_config_clone, &shared_dem_clone) {
                     match build_dem_subfile_with_grids(&mp, config, grids) {
                         Ok(dem_data) => { tile.dem = Some(dem_data); }
@@ -211,10 +247,27 @@ fn main() -> Result<()> {
                 }
 
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
+
+                if let Some(ref pb) = progress_clone {
+                    pb.inc(1);
+                }
+
+                tracing::info!(
+                    tile = %path.file_name().unwrap_or_default().to_string_lossy(),
+                    points = counts.0,
+                    polylines = counts.1,
+                    polygons = counts.2,
+                    "Tuile compilée"
+                );
+
                 Ok((tile, counts, path.display().to_string()))
             }).collect();
 
-            // Handle keep-going: collect successes, log failures
+            // Finaliser la barre de progression
+            if let Some(ref pb) = progress {
+                pb.finish_and_clear();
+            }
+
             use imgforge::img::assembler::TileSubfiles;
             let mut tile_subfiles = Vec::with_capacity(results.len());
             let mut errors = 0usize;
@@ -222,10 +275,10 @@ fn main() -> Result<()> {
             for result in results {
                 match result {
                     Ok((tile, (pts, lines, polys), _path)) => {
-                        report.total_points += pts;
-                        report.total_polylines += lines;
-                        report.total_polygons += polys;
-                        report.tiles_compiled += 1;
+                        build_report.total_points += pts;
+                        build_report.total_polylines += lines;
+                        build_report.total_polygons += polys;
+                        build_report.tiles_compiled += 1;
                         tile_subfiles.push(TileSubfiles {
                             map_number: tile.map_number,
                             description: tile.description,
@@ -239,7 +292,7 @@ fn main() -> Result<()> {
                     }
                     Err(e) => {
                         if keep_going {
-                            eprintln!("WARNING: {:#}", e);
+                            tracing::warn!("{:#}", e);
                             errors += 1;
                         } else {
                             return Err(e);
@@ -248,12 +301,19 @@ fn main() -> Result<()> {
                 }
             }
 
+            build_report.tiles_failed = errors;
+
             if tile_subfiles.is_empty() {
                 anyhow::bail!("All tiles failed to compile");
             }
 
             if errors > 0 {
-                eprintln!("{} tiles compiled, {} errors", tile_subfiles.len(), errors);
+                tracing::warn!(
+                    compiled = tile_subfiles.len(),
+                    failed = errors,
+                    "Compilation partielle : {} tuile(s) en échec",
+                    errors
+                );
             }
 
             let fid = family_id.unwrap_or(1);
@@ -262,7 +322,6 @@ fn main() -> Result<()> {
                 .or(family_name.as_deref())
                 .unwrap_or("Map");
 
-            // Effective codepage: CLI flags > .mp default
             let effective_codepage = if unicode { 65001 }
                 else if latin1 { 1252 }
                 else { code_page.unwrap_or(0) };
@@ -282,7 +341,6 @@ fn main() -> Result<()> {
             };
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            // Build TDB data — needed both as companion file and embedded in gmapsupp
             let tdb_data = {
                 use imgforge::img::tdb::{TdbWriter, TdbTile};
                 let overview_map_id = imgforge::img::assembler::compute_overview_map_id(fid);
@@ -294,11 +352,8 @@ fn main() -> Result<()> {
                 if let Some(ref an) = area_name { tdb.area_name = an.clone(); }
                 if let Some(ref cm) = copyright_message { tdb.copyright = cm.clone(); }
                 if let Some(pv) = product_version { tdb.product_version = pv; }
-                // country_name, country_abbr, region_name, region_abbr: parsed from CLI
-                // but not yet serialized into TDB format (reserved for future use)
                 let _ = (&country_name, &country_abbr, &region_name, &region_abbr);
 
-                // Enable profile/elevation display if any tile has DEM data
                 if tile_subfiles.iter().any(|t| t.dem.is_some()) {
                     tdb.enable_profile = true;
                 }
@@ -307,7 +362,6 @@ fn main() -> Result<()> {
                     let map_num: u32 = tile.map_number.parse().unwrap_or(0);
                     let (north, east, south, west) = imgforge::img::common_header::read_tre_bounds(&tile.tre);
 
-                    // Build subfile list with sizes (IMG subfile naming convention)
                     let img_name = |ext: &str| format!("I{:08}.{}", map_num, ext);
                     let mut subfiles = vec![
                         (img_name("TRE"), tile.tre.len() as u32),
@@ -339,7 +393,6 @@ fn main() -> Result<()> {
                 tdb.build()
             };
 
-            // Overview map (parité SUD Alpha 100) — kill-switch IMGFORGE_NO_OVERVIEW=1 pour désactiver
             let no_overview = std::env::var("IMGFORGE_NO_OVERVIEW")
                 .map(|v| !matches!(v.as_str(), "" | "0" | "false" | "FALSE" | "no" | "NO"))
                 .unwrap_or(false);
@@ -352,25 +405,31 @@ fn main() -> Result<()> {
                 ))
             };
 
-            // Build gmapsupp with overview map embedded
             let gmapsupp = imgforge::img::assembler::build_gmapsupp_with_overview(
                 &tile_subfiles, map_desc, &gmapsupp_meta,
                 typ_data.as_deref(), overview.as_ref(),
             )?;
             std::fs::write(&output, &gmapsupp)?;
 
-            // Also write TDB as companion file (for desktop software like BaseCamp)
             {
                 let tdb_path = Path::new(&output).with_extension("tdb");
                 std::fs::write(&tdb_path, &tdb_data)
                     .with_context(|| format!("Failed to write {}", tdb_path.display()))?;
             }
 
-            report.output_file = output;
-            report.output_size_bytes = gmapsupp.len() as u64;
-            report.set_duration(start.elapsed());
+            build_report.output_file = output;
+            build_report.img_size_bytes = gmapsupp.len() as u64;
+            build_report.set_duration(start.elapsed());
 
-            println!("{}", report.to_json());
+            if let Some(ref report_path) = report {
+                if let Err(e) = build_report.write_json_report(report_path) {
+                    tracing::warn!(path = %report_path, error = %e, "Failed to write JSON report");
+                } else {
+                    tracing::info!(path = %report_path, "JSON report written");
+                }
+            }
+
+            build_report.print_console_summary();
         }
 
         Commands::Typ { action } => match action {
@@ -410,7 +469,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Swap l'extension d'un chemin (`foo.txt` -> `foo.typ`).
 fn swap_ext(path: &str, new_ext: &str) -> String {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
@@ -422,7 +480,6 @@ fn swap_ext(path: &str, new_ext: &str) -> String {
     }
 }
 
-/// Apply tile-level CLI overrides to a parsed MpFile
 fn apply_tile_overrides(
     mp: &mut imgforge::parser::mp_types::MpFile,
     description: Option<&str>,
@@ -440,13 +497,11 @@ fn apply_tile_overrides(
         mp.header.name = desc.to_string();
     }
 
-    // Encoding overrides
     if unicode { mp.header.codepage = 65001; }
     else if latin1 { mp.header.codepage = 1252; }
     else if let Some(cp) = code_page { mp.header.codepage = cp; }
     mp.header.lower_case = lower_case;
 
-    // Rendering overrides
     if transparent { mp.header.transparent = true; }
     if let Some(dp) = draw_priority { mp.header.draw_priority = dp; }
     if let Some(lvl) = levels {
@@ -456,13 +511,11 @@ fn apply_tile_overrides(
     }
     mp.header.order_by_decreasing_area = order_by_decreasing_area;
 
-    // Geometry overrides
     mp.header.reduce_point_density = reduce_point_density;
     mp.header.simplify_polygons = simplify_polygons.map(|s| s.to_string());
     mp.header.min_size_polygon = min_size_polygon;
     mp.header.merge_lines = merge_lines;
 
-    // Routing overrides
     if no_route {
         mp.header.routing_mode = RoutingMode::Disabled;
     } else if net {
@@ -471,13 +524,11 @@ fn apply_tile_overrides(
         mp.header.routing_mode = RoutingMode::Route;
     }
 
-    // Copyright override
     if let Some(cm) = copyright_message {
         mp.header.copyright = cm.to_string();
     }
 }
 
-/// Build DEM subfile from DEM config and map bounds (loads grids from disk)
 fn build_dem_subfile(
     mp: &imgforge::parser::mp_types::MpFile,
     config: &dem::DemConfig,
@@ -486,7 +537,6 @@ fn build_dem_subfile(
     build_dem_subfile_with_grids(mp, config, &grids)
 }
 
-/// Build DEM subfile using pre-loaded grids (for parallel builds — F6 fix)
 fn build_dem_subfile_with_grids(
     mp: &imgforge::parser::mp_types::MpFile,
     config: &dem::DemConfig,
@@ -509,7 +559,6 @@ fn build_dem_subfile_with_grids(
     Ok(writer.build())
 }
 
-/// Compute WGS84 bounds from mp file features
 fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds {
     let mut min_lat = f64::INFINITY;
     let mut max_lat = f64::NEG_INFINITY;
@@ -540,7 +589,6 @@ fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds 
     }
 
     if min_lat > max_lat {
-        // No features — use a default 1-degree box
         min_lat = 45.0;
         max_lat = 46.0;
         min_lon = 5.0;
@@ -555,7 +603,6 @@ fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds 
     }
 }
 
-/// Parse levels string: "24,22,20" or "0:24,1:22,2:20"
 fn parse_levels(s: &str) -> Option<Vec<u8>> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.is_empty() { return None; }
