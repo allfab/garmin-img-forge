@@ -363,21 +363,19 @@ impl MapArea {
         let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
         let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: chaque polyline va ENTIÈRE dans la cell de son premier point.
-        // Les segments de routes/rivières/contours sont courts (< cell size) →
-        // ils restent dans leur cell. Les bounds de subdivision étant area.bounds
-        // (non-chevauchantes), la navigation Alpha 100 trouve exactement UNE
-        // subdivision candidate par viewport, ce qui évite le bug de navigation
-        // causé par full_bounds() qui gonflait les bounds à la taille de la tuile.
+        // ── Lines: chaque polyline va ENTIÈRE dans la cell de son centre de bbox
+        // (parité mkgmap MapLine.getLocation() = midpoint du bbox, pas first point).
+        // Les bounds de subdivision étant area.bounds (non-chevauchantes), la
+        // navigation Alpha 100 trouve exactement UNE subdivision candidate.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
             }
             let line_bbox = Area::from_coords(&line.points);
-            let first = &line.points[0];
+            let mid_lat = (line_bbox.min_lat() as i64 + line_bbox.max_lat() as i64) / 2;
+            let mid_lon = (line_bbox.min_lon() as i64 + line_bbox.max_lon() as i64) / 2;
             let target = pick_area(
-                first.longitude() as i64,
-                first.latitude() as i64,
+                mid_lon, mid_lat,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
@@ -404,10 +402,10 @@ impl MapArea {
                 continue;
             }
             let shape_bbox = Area::from_coords(&shape.points);
-            let first = &shape.points[0];
+            let mid_lat = (shape_bbox.min_lat() as i64 + shape_bbox.max_lat() as i64) / 2;
+            let mid_lon = (shape_bbox.min_lon() as i64 + shape_bbox.max_lon() as i64) / 2;
             let target = pick_area(
-                first.longitude() as i64,
-                first.latitude() as i64,
+                mid_lon, mid_lat,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 

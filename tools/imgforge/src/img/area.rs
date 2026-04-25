@@ -60,6 +60,14 @@ impl Area {
             && lon_hp <= (self.max_lon << DELTA_SHIFT)
     }
 
+    /// Right-exclusive containment for parent assignment: boundary points go to the
+    /// next (right/top) parent, avoiding double-containment at cell boundaries.
+    /// The tile's max boundary is handled by the fallback in the caller.
+    pub fn contains_coord_right_excl(&self, lat: i32, lon: i32) -> bool {
+        lat >= self.min_lat && lat < self.max_lat
+            && lon >= self.min_lon && lon < self.max_lon
+    }
+
     /// Contains other area entirely
     pub fn contains_area(&self, other: &Area) -> bool {
         other.min_lat >= self.min_lat

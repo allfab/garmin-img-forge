@@ -71,20 +71,18 @@ impl Subdivision {
         self.center_lon = align_to_shift(coord.longitude(), shift);
     }
 
-    /// Set bounds from an Area, stored as shifted half-width/half-height
-    /// mkgmap convention: width = distance from center to edge (half-extent), not full extent.
-    /// Garmin devices interpret width/height as half-extent from center.
-    pub fn set_bounds(&mut self, min_lat: i32, min_lon: i32, _max_lat: i32, _max_lon: i32) {
-        let shift = 24 - self.resolution as i32;
+    /// Set bounds from an Area, stored as shifted half-width/half-height.
+    /// Uses max(center-min, max-center) so a quantized center that drifts from
+    /// the true midpoint never leaves the north/east edge uncovered.
+    pub fn set_bounds(&mut self, min_lat: i32, min_lon: i32, max_lat: i32, max_lon: i32) {
+        let shift = (24 - self.resolution as i32).max(0);
         let mask = if shift > 0 { (1i32 << shift) - 1 } else { 0 };
-        // mkgmap: w = 2*(center - min), then encode as ((w+1)/2 + mask) >> shift
-        // This gives the half-extent from center, in shifted units, rounded up.
-        let full_w = 2 * (self.center_lon - min_lon);
-        let full_h = 2 * (self.center_lat - min_lat);
-        let w = (((full_w + 1) / 2 + mask) >> shift) as u16;
-        let h = (((full_h + 1) / 2 + mask) >> shift) as u16;
-        self.width = if w == 0 { 1 } else { w };
-        self.height = if h == 0 { 1 } else { h };
+        let w_west  = (self.center_lon - min_lon + mask) >> shift;
+        let w_east  = (max_lon - self.center_lon + mask) >> shift;
+        let h_south = (self.center_lat - min_lat + mask) >> shift;
+        let h_north = (max_lat - self.center_lat + mask) >> shift;
+        self.width  = (w_west.max(w_east).max(1)) as u16;
+        self.height = (h_south.max(h_north).max(1)) as u16;
     }
 
     /// Round a latitude to local shifted coords — mkgmap Subdivision.roundLatToLocalShifted

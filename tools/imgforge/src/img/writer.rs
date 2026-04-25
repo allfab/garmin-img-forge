@@ -341,100 +341,113 @@ fn build_multilevel_hierarchy(
     ext_offsets.push((0, 0, 0, 0, 0, 0));
 
     // ── Process each level from most zoomed-out to most detailed ──
-    // Each level filters features from the FULL map bounds (not parent subdivision bounds).
-    // This ensures complete spatial coverage: even if a coarser level has sparse features,
-    // finer levels still include all their features. Parent→child links are assigned
-    // by spatial containment of each subdivision's center within parent areas.
+    // Hierarchical split (parité mkgmap MapSplitter): for each parent subdivision,
+    // features whose bbox-midpoint falls within that parent's bounds are split
+    // WITHIN those bounds. This guarantees every child cell is fully contained in
+    // its parent's geographic extent → no cross-boundary straddling → firmware
+    // top-down navigation always reaches the correct leaf.
     let process_levels = if num_levels > 1 { num_levels - 1 } else { num_levels };
     for level_idx in (0..process_levels).rev() {
         let level = &levels[level_idx];
         let level_num = level_idx as u8;
         let shift = (24i32 - level.resolution as i32).max(0);
 
-        // Filter ALL features for this level from FULL map bounds
-        let (split_points, split_lines, split_shapes) =
+        // Pre-compute all features for this level (from full tile bounds)
+        let (all_points, all_lines, all_shapes) =
             filter_features_for_level(mp, level_num, bounds);
 
-        // mkgmap always creates at least one subdivision per declared level,
-        // even if no features pass the EndLevel filter. This ensures the full
-        // multi-level hierarchy is preserved — some Garmin firmware (Alpha 100)
-        // may require all declared levels to be present.
-        let has_features = !split_points.is_empty() || !split_lines.is_empty() || !split_shapes.is_empty();
+        // ── Hierarchical split: one split per parent ──
+        // Assign each feature to exactly one parent by midpoint (right-exclusive).
+        // Features at exact tile-max boundary fall through to nearest-parent fallback.
+        let mut areas: Vec<splitter::MapArea> = Vec::new();
+        let mut area_parents: Vec<u16> = Vec::new();
 
-        let areas = if has_features {
-            let result = splitter::split_features(
-                *bounds, level.resolution,
-                split_points, split_lines, split_shapes,
-            );
-            if result.is_empty() {
-                // Splitter returned nothing — create one empty subdivision covering full bounds
-                vec![splitter::MapArea::new(*bounds, level.resolution)]
-            } else {
-                result
-            }
-        } else {
-            // No features at this level — create one empty subdivision (mkgmap convention)
-            vec![splitter::MapArea::new(*bounds, level.resolution)]
-        };
-
-        // Determine parent for each area, then sort by parent to guarantee
-        // contiguous child subdivision numbers per parent (Garmin format requirement:
-        // children are encoded as "first child number" + contiguous range).
-        //
-        // Si center n'est contenu par aucun parent (déborde à cause de
-        // largeObjectArea ou overflow_split à un bounds différent du parent),
-        // on rabat sur le parent géographiquement le PLUS PROCHE (distance
-        // du centre au bbox). Sans ce fallback, `parent=1 (topdiv)` laissait
-        // des subdivs orphelines — Alpha 100 navigue le TRE depuis topdiv
-        // via `next_level_subdiv` et ignore les subdivs non rattachées à
-        // un parent du niveau précédent → écran vide en wide-zoom.
-        let area_parents: Vec<u16> = areas.iter().map(|area| {
-            let center = area.bounds.center();
-            if let Some((_, n)) = parent_areas.iter().find(|(pa, _)| pa.contains_coord(&center)) {
-                return *n as u16;
-            }
-            // Fallback : distance² (lat, lon) du centre à chaque bbox parent
-            let (c_lat, c_lon) = (center.latitude() as i64, center.longitude() as i64);
-            let closest = parent_areas.iter()
-                .map(|(pa, n)| {
-                    let dx = c_lon.max(pa.min_lon() as i64).min(pa.max_lon() as i64) - c_lon;
-                    let dy = c_lat.max(pa.min_lat() as i64).min(pa.max_lat() as i64) - c_lat;
-                    let d2 = dx*dx + dy*dy;
-                    (d2, *n as u16)
-                })
-                .min_by_key(|(d2, _)| *d2)
-                .map(|(_, n)| n)
-                .unwrap_or(1);
-            closest
+        // Pre-compute midpoints and parent assignments for all features
+        let pt_parents: Vec<Option<u16>> = all_points.iter().map(|p| {
+            assign_to_parent(
+                p.location.latitude(), p.location.longitude(),
+                &parent_areas,
+            )
         }).collect();
 
-        // mkgmap invariant: every parent in parent_areas that has no child area assigned
-        // at this level receives an empty fallback MapArea covering its geographic bounds.
-        // In mkgmap, MapSplitter.split() always returns ≥1 MapArea per source, so
-        // `divisions.isEmpty()` is never true for a non-leaf Subdivision. Without this,
-        // childless non-leaf parents get invalid first_child pointers in the TRE.
-        // The Alpha 100 firmware follows these pointers strictly and skips the affected
-        // parent regions entirely — features disappear on pan/zoom. QMapShack traverses
-        // all subdivisions directly without following the TRE chain, so it is unaffected.
-        let mut areas = areas;
-        let mut area_parents = area_parents;
-        {
-            let assigned: std::collections::HashSet<u16> =
-                area_parents.iter().cloned().collect();
-            for &(parent_bounds, parent_num) in &parent_areas {
-                if !assigned.contains(&(parent_num as u16)) {
-                    areas.push(splitter::MapArea::new(parent_bounds, level.resolution));
-                    area_parents.push(parent_num as u16);
+        let ln_parents: Vec<Option<u16>> = all_lines.iter().map(|l| {
+            let bbox = Area::from_coords(&l.points);
+            let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
+            let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
+            assign_to_parent(mid_lat, mid_lon, &parent_areas)
+        }).collect();
+
+        let sh_parents: Vec<Option<u16>> = all_shapes.iter().map(|s| {
+            let bbox = Area::from_coords(&s.points);
+            let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
+            let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
+            assign_to_parent(mid_lat, mid_lon, &parent_areas)
+        }).collect();
+
+        for &(parent_bounds, parent_num) in &parent_areas {
+            let pnum16 = parent_num as u16;
+
+            let parent_pts: Vec<splitter::SplitPoint> = all_points.iter().enumerate()
+                .filter(|(i, _)| pt_parents[*i] == Some(pnum16))
+                .map(|(_, p)| p.clone())
+                .collect();
+
+            let parent_lines: Vec<splitter::SplitLine> = all_lines.iter().enumerate()
+                .filter(|(i, _)| ln_parents[*i] == Some(pnum16))
+                .map(|(_, l)| l.clone())
+                .collect();
+
+            let parent_shapes: Vec<splitter::SplitShape> = all_shapes.iter().enumerate()
+                .filter(|(i, _)| sh_parents[*i] == Some(pnum16))
+                .map(|(_, s)| s.clone())
+                .collect();
+
+            let has_features = !parent_pts.is_empty()
+                || !parent_lines.is_empty()
+                || !parent_shapes.is_empty();
+
+            let sub_areas = if has_features {
+                let result = splitter::split_features(
+                    parent_bounds, level.resolution,
+                    parent_pts, parent_lines, parent_shapes,
+                );
+                if result.is_empty() {
+                    vec![splitter::MapArea::new(parent_bounds, level.resolution)]
+                } else {
+                    result
+                }
+            } else {
+                // mkgmap invariant: every non-leaf parent gets at least one child
+                vec![splitter::MapArea::new(parent_bounds, level.resolution)]
+            };
+
+            for sa in sub_areas {
+                areas.push(sa);
+                area_parents.push(pnum16);
+            }
+        }
+
+        // Fallback: features with None parent (exact tile-max boundary) go to nearest
+        if let Some(&(_, last_pnum)) = parent_areas.last() {
+            let last_pnum16 = last_pnum as u16;
+            let fallback_pos = area_parents.iter().rposition(|&p| p == last_pnum16);
+            if let Some(pos) = fallback_pos {
+                for (i, p) in all_points.iter().enumerate() {
+                    if pt_parents[i].is_none() { areas[pos].add_point(p.clone()); }
+                }
+                for (i, l) in all_lines.iter().enumerate() {
+                    if ln_parents[i].is_none() { areas[pos].add_line(l.clone()); }
+                }
+                for (i, s) in all_shapes.iter().enumerate() {
+                    if sh_parents[i].is_none() { areas[pos].add_shape(s.clone()); }
                 }
             }
         }
 
-        // Sort areas by parent number to ensure contiguity
-        let mut order: Vec<usize> = (0..areas.len()).collect();
-        order.sort_by_key(|&i| area_parents[i]);
-
-        let sorted_areas: Vec<&MapArea> = order.iter().map(|&i| &areas[i]).collect();
-        let sorted_parents: Vec<u16> = order.iter().map(|&i| area_parents[i]).collect();
+        // Areas are already in parent-order (built per parent) — no re-sort needed.
+        // Contiguity guaranteed by construction.
+        let sorted_areas: Vec<&splitter::MapArea> = areas.iter().collect();
+        let sorted_parents: Vec<u16> = area_parents.clone();
 
         let mut next_parent_areas: Vec<(Area, u32)> = Vec::new();
         let first_child_num = subdiv_counter;
@@ -1143,6 +1156,25 @@ fn encode_subdivision_rgn(
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
+
+/// Assign a feature midpoint to the first parent whose bounds contain it
+/// (right-exclusive: boundary points go to the next parent).
+/// Returns None if no parent contains the point (tile-max edge case).
+fn assign_to_parent(lat: i32, lon: i32, parent_areas: &[(Area, u32)]) -> Option<u16> {
+    // Right-exclusive: use < for max bounds to avoid double-containment at boundaries
+    if let Some(&(_, n)) = parent_areas.iter()
+        .find(|(pa, _)| pa.contains_coord_right_excl(lat, lon))
+    {
+        return Some(n as u16);
+    }
+    // Inclusive fallback: catches features at the tile's max_lat or max_lon
+    if let Some(&(_, n)) = parent_areas.iter()
+        .find(|(pa, _)| pa.contains_coord(&super::coord::Coord::new(lat, lon)))
+    {
+        return Some(n as u16);
+    }
+    None
+}
 
 /// Split a Polish Map type code (< 0x10000) into Garmin type byte and subtype byte.
 /// - type_code < 0x100: type = type_code, subtype = 0
