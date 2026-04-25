@@ -363,11 +363,12 @@ impl MapArea {
         let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
         let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: parité mkgmap MapArea.java:310-324 — une polyline va ENTIÈRE
-        // dans une seule sub-area (celle de son centre via pickArea). Si son bbox
-        // dépasse la taille de la cell ET ne tient pas dans la cell cible, elle
-        // obtient son propre "largeObjectArea" dédié (feature entière, pas clippée).
-        // Pas de clipping par cellule : duplication des bytes RGN à éviter.
+        // ── Lines: chaque polyline va ENTIÈRE dans la cell de son premier point.
+        // Les segments de routes/rivières/contours sont courts (< cell size) →
+        // ils restent dans leur cell. Les bounds de subdivision étant area.bounds
+        // (non-chevauchantes), la navigation Alpha 100 trouve exactement UNE
+        // subdivision candidate par viewport, ce qui évite le bug de navigation
+        // causé par full_bounds() qui gonflait les bounds à la taille de la tuile.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
@@ -380,8 +381,8 @@ impl MapArea {
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            // Large object (mkgmap) : si la polyline dépasse la cell ET ne tient
-            // pas dans la cell cible → subdiv dédié contenant la polyline entière.
+            // Large object : si le bbox dépasse la cell ET ne tient pas dans la
+            // cell cible → subdiv dédié (bounds = line_bbox).
             let exceeds_cell = line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h;
             let fits_target = sub_areas[target].bounds.contains_area(&line_bbox);
             if exceeds_cell && !fits_target {
@@ -391,7 +392,6 @@ impl MapArea {
                 continue;
             }
 
-            // Sinon : ajout entier dans la cell cible (même si elle déborde un peu).
             sub_areas[target].add_line(line.clone());
         }
 
@@ -844,10 +844,10 @@ mod tests {
 
     #[test]
     fn test_split_line_entire_in_single_cell_or_dedicated() {
-        // Parité mkgmap MapArea.java:310-324 — une polyline qui traverse
-        // plusieurs cells reste ENTIÈRE dans la cell de son centre (ou subdiv
-        // dédié si elle dépasse la taille max de cell). PAS de clipping qui
-        // dupliquerait la géométrie dans plusieurs sub-areas voisines.
+        // Une polyline qui traverse plusieurs cells reste ENTIÈRE dans la cell
+        // de son premier point (ou subdiv dédié si elle dépasse max_cell_size).
+        // Les bounds de subdivision = area.bounds (non-chevauchants) garantissent
+        // qu'exactement 1 subdivision couvre chaque viewport.
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
@@ -867,11 +867,9 @@ mod tests {
     #[test]
     fn test_split_large_line_gets_dedicated_area() {
         // Une polyline dont le bbox dépasse max_cell_w/h ET qui ne tient pas
-        // dans la cell de son centre → subdiv dédié (mkgmap largeObjectArea).
+        // dans la cell de son premier point → subdiv dédié (largeObjectArea).
         let bounds = Area::new(0, 0, (LARGE_OBJECT_DIM * 8) as i32, (LARGE_OBJECT_DIM * 8) as i32);
         let mut area = MapArea::new(bounds, 24);
-        // Ligne qui traverse presque toute la zone → trop grande pour tenir
-        // dans un seul quart.
         area.add_line(SplitLine {
             mp_index: 0,
             points: vec![
