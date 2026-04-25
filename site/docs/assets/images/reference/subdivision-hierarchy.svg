@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 520" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12">
+  <defs>
+    <marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4ade80"/>
+    </marker>
+  </defs>
+
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">Hiérarchie des subdivisions TRE</text>
+  <text x="380" y="46" text-anchor="middle" font-size="12" fill="#64748b">Chaque niveau de zoom est divisé en subdivisions contenant les éléments géographiques.</text>
+
+  <!-- Niveau 3 (le moins détaillé) -->
+  <rect x="40" y="65" width="60" height="22" rx="3" fill="#94a3b8" stroke="#64748b"/>
+  <text x="70" y="80" text-anchor="middle" fill="white" font-weight="600" font-size="11">Niveau 3</text>
+  <text x="40" y="104" font-size="11" fill="#64748b">(plus petit nb de bits — vue large)</text>
+
+  <rect x="130" y="65" width="100" height="60" rx="4" fill="#dcfce7" stroke="#4ade80" stroke-width="2"/>
+  <text x="180" y="90" text-anchor="middle" font-weight="600" fill="#166534">Subdiv. 1</text>
+  <text x="180" y="108" text-anchor="middle" font-size="11" fill="#15803d">Tuile entière</text>
+
+  <!-- Niveau 2 -->
+  <rect x="40" y="155" width="60" height="22" rx="3" fill="#60a5fa" stroke="#3b82f6"/>
+  <text x="70" y="170" text-anchor="middle" fill="white" font-weight="600" font-size="11">Niveau 2</text>
+
+  <rect x="130" y="145" width="100" height="50" rx="4" fill="#bfdbfe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="180" y="168" text-anchor="middle" font-weight="600" fill="#1e40af">Subdiv. 2</text>
+  <text x="180" y="184" text-anchor="middle" font-size="11" fill="#1d4ed8">Moitié ouest</text>
+
+  <rect x="250" y="145" width="100" height="50" rx="4" fill="#bfdbfe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="300" y="168" text-anchor="middle" font-weight="600" fill="#1e40af">Subdiv. 3</text>
+  <text x="300" y="184" text-anchor="middle" font-size="11" fill="#1d4ed8">Moitié est</text>
+
+  <!-- Niveau 1 -->
+  <rect x="40" y="240" width="60" height="22" rx="3" fill="#fb923c" stroke="#f97316"/>
+  <text x="70" y="255" text-anchor="middle" fill="white" font-weight="600" font-size="11">Niveau 1</text>
+
+  <rect x="130" y="230" width="100" height="50" rx="4" fill="#fed7aa" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="180" y="253" text-anchor="middle" font-weight="600" fill="#9a3412">Subdiv. 4</text>
+  <text x="180" y="269" text-anchor="middle" font-size="11" fill="#c2410c">(peu d'objets)</text>
+
+  <rect x="250" y="230" width="100" height="50" rx="4" fill="#fed7aa" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="300" y="253" text-anchor="middle" font-weight="600" fill="#9a3412">Subdiv. 5</text>
+  <text x="300" y="269" text-anchor="middle" font-size="10" fill="#c2410c">centre-est</text>
+
+  <rect x="370" y="230" width="100" height="50" rx="4" fill="#fed7aa" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="420" y="253" text-anchor="middle" font-weight="600" fill="#9a3412">Subdiv. 6</text>
+  <text x="420" y="269" text-anchor="middle" font-size="10" fill="#c2410c">dernier de 3</text>
+
+  <!-- Niveau 0 (le plus détaillé) -->
+  <rect x="40" y="330" width="60" height="22" rx="3" fill="#c084fc" stroke="#a855f7"/>
+  <text x="70" y="345" text-anchor="middle" fill="white" font-weight="600" font-size="11">Niveau 0</text>
+  <text x="40" y="370" font-size="11" fill="#64748b">(24 bits — détail max)</text>
+
+  <rect x="130" y="320" width="80" height="50" rx="4" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="170" y="343" text-anchor="middle" font-weight="600" fill="#7e22ce">Subdiv. 7</text>
+  <text x="170" y="359" text-anchor="middle" font-size="10" fill="#9333ea">Points/Routes</text>
+
+  <rect x="222" y="320" width="80" height="50" rx="4" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="262" y="343" text-anchor="middle" font-weight="600" fill="#7e22ce">Subdiv. 8</text>
+  <text x="262" y="359" text-anchor="middle" font-size="10" fill="#9333ea">Polylignes</text>
+
+  <rect x="314" y="320" width="80" height="50" rx="4" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="354" y="343" text-anchor="middle" font-weight="600" fill="#7e22ce">Subdiv. 9</text>
+  <text x="354" y="359" text-anchor="middle" font-size="10" fill="#9333ea">Polygones</text>
+
+  <rect x="406" y="320" width="80" height="50" rx="4" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="446" y="343" text-anchor="middle" font-weight="600" fill="#7e22ce">Subdiv. 10</text>
+  <text x="446" y="359" text-anchor="middle" font-size="10" fill="#9333ea">Dense</text>
+
+  <rect x="498" y="320" width="80" height="50" rx="4" fill="#e9d5ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="538" y="343" text-anchor="middle" font-weight="600" fill="#7e22ce">Subdiv. 11</text>
+  <text x="538" y="359" text-anchor="middle" font-size="10" fill="#9333ea">…</text>
+
+  <!-- Flèches pointeurs (subdiv → next level) -->
+  <!-- 1 → 2 -->
+  <line x1="180" y1="125" x2="180" y2="143" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a2)"/>
+  <!-- 2 → 4 -->
+  <line x1="180" y1="195" x2="180" y2="228" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a1)"/>
+  <!-- 3 → 5 -->
+  <line x1="300" y1="195" x2="300" y2="228" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a1)"/>
+  <!-- 5 → 8 -->
+  <line x1="300" y1="280" x2="262" y2="318" stroke="#fb923c" stroke-width="1.5" marker-end="url(#a1)"/>
+  <!-- 6 → 10 -->
+  <line x1="420" y1="280" x2="446" y2="318" stroke="#fb923c" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- Légende flag terminant -->
+  <rect x="590" y="65" width="150" height="110" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="665" y="84" text-anchor="middle" font-weight="600" fill="#374151">Légende</text>
+  <line x1="610" y1="100" x2="650" y2="100" stroke="#4ade80" stroke-width="2" marker-end="url(#a2)"/>
+  <text x="660" y="104" font-size="11" fill="#64748b">Pointeur next_level</text>
+  <rect x="610" y="120" width="16" height="16" fill="#dcfce7" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="632" y="132" font-size="11" fill="#64748b">Subdiv. normale</text>
+  <rect x="610" y="142" width="16" height="16" fill="#dcfce7" stroke="#ef4444" stroke-width="2"/>
+  <text x="632" y="154" font-size="11" fill="#64748b">Subdiv. terminante</text>
+  <text x="665" y="170" text-anchor="middle" font-size="10" fill="#64748b">(bit 15 du champ Width)</text>
+
+  <!-- Explication chaîne -->
+  <rect x="40" y="395" width="680" height="85" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="380" y="415" text-anchor="middle" font-weight="600" fill="#374151">Chaîne de subdivisions — mécanisme</text>
+  <text x="60" y="435" fill="#475569" font-size="11">• La subdiv. N pointe vers la première subdiv. du niveau inférieur (champ next_level_subdivision).</text>
+  <text x="60" y="452" fill="#475569" font-size="11">• Le firmware lit les subdivisions suivantes jusqu'à trouver le flag terminant (bit 15 de Width = 1).</text>
+  <text x="60" y="469" fill="#475569" font-size="11">• Le niveau 0 (le plus détaillé) n'a pas de next_level_subdivision — la structure fait 14 octets au lieu de 16.</text>
+
+  <!-- Résolution par niveau -->
+  <rect x="590" y="185" width="150" height="110" rx="4" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="665" y="204" text-anchor="middle" font-weight="600" fill="#1e40af" font-size="11">Résolution bits</text>
+  <text x="610" y="222" fill="#64748b" font-size="11">Niveau 0 : 24 bits (~2 m)</text>
+  <text x="610" y="238" fill="#64748b" font-size="11">Niveau 1 : 22 bits (~9 m)</text>
+  <text x="610" y="254" fill="#64748b" font-size="11">Niveau 2 : 20 bits (~37 m)</text>
+  <text x="610" y="270" fill="#64748b" font-size="11">Niveau 3 : 18 bits (~150 m)</text>
+  <text x="610" y="286" fill="#94a3b8" font-size="10">imgforge : header 7L</text>
+  <text x="610" y="299" fill="#94a3b8" font-size="10">24/23/22/21/20/18/16</text>
+</svg>

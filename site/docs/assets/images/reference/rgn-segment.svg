@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12">
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">Structure du sous-fichier RGN</text>
+  <text x="380" y="46" text-anchor="middle" font-size="12" fill="#64748b">Chaque segment correspond à une subdivision TRE. Les éléments sont groupés par type.</text>
+
+  <!-- Vue d'ensemble : segments par subdivision -->
+  <text x="380" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">Disposition des segments RGN (un par subdivision)</text>
+
+  <rect x="40" y="82" width="680" height="10" rx="2" fill="#e2e8f0"/>
+
+  <!-- Segments colorés -->
+  <rect x="40" y="95" width="100" height="36" rx="2" fill="#dcfce7" stroke="#4ade80"/>
+  <text x="90" y="118" text-anchor="middle" font-size="11" font-weight="600" fill="#166534">Subdiv. 1</text>
+
+  <rect x="142" y="82" width="160" height="50" rx="2" fill="#bfdbfe" stroke="#60a5fa"/>
+  <text x="222" y="112" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">Subdiv. 2</text>
+
+  <rect x="304" y="82" width="120" height="50" rx="2" fill="#e9d5ff" stroke="#c084fc"/>
+  <text x="364" y="112" text-anchor="middle" font-size="11" font-weight="600" fill="#7e22ce">Subdiv. 3</text>
+
+  <rect x="426" y="95" width="80" height="36" rx="2" fill="#fde68a" stroke="#f59e0b"/>
+  <text x="466" y="118" text-anchor="middle" font-size="11" font-weight="600" fill="#92400e">Subdiv. 4</text>
+
+  <text x="540" y="117" font-size="18" fill="#94a3b8">…</text>
+
+  <rect x="580" y="82" width="140" height="50" rx="2" fill="#fed7aa" stroke="#fb923c"/>
+  <text x="650" y="112" text-anchor="middle" font-size="11" font-weight="600" fill="#9a3412">Subdiv. N</text>
+
+  <!-- Zoom sur un segment -->
+  <text x="380" y="158" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">Détail d'un segment (ex. Subdiv. 2 — contient points, polylignes ET polygones)</text>
+
+  <!-- Pointeurs en début de segment -->
+  <rect x="40" y="168" width="60" height="30" rx="2" fill="#fef9c3" stroke="#fde047" stroke-width="1.5"/>
+  <text x="70" y="183" text-anchor="middle" font-size="10" fill="#854d0e">off. pts</text>
+  <text x="70" y="196" text-anchor="middle" font-size="10" fill="#854d0e">indexés</text>
+
+  <rect x="102" y="168" width="60" height="30" rx="2" fill="#fef9c3" stroke="#fde047" stroke-width="1.5"/>
+  <text x="132" y="183" text-anchor="middle" font-size="10" fill="#854d0e">off.</text>
+  <text x="132" y="196" text-anchor="middle" font-size="10" fill="#854d0e">polylgn.</text>
+
+  <rect x="164" y="168" width="60" height="30" rx="2" fill="#fef9c3" stroke="#fde047" stroke-width="1.5"/>
+  <text x="194" y="183" text-anchor="middle" font-size="10" fill="#854d0e">off.</text>
+  <text x="194" y="196" text-anchor="middle" font-size="10" fill="#854d0e">polygon.</text>
+
+  <text x="250" y="186" font-size="11" fill="#64748b" font-style="italic">← 2 octets chacun (offset depuis début du segment)</text>
+  <text x="250" y="200" font-size="11" fill="#64748b" font-style="italic">   Pas de pointeur pour les Points (premier groupe)</text>
+
+  <!-- Éléments dans le segment -->
+  <rect x="40" y="215" width="140" height="50" rx="2" fill="#dcfce7" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="110" y="235" text-anchor="middle" font-weight="600" fill="#166534">Points</text>
+  <text x="110" y="252" text-anchor="middle" font-size="10" fill="#15803d">Type (1 oct.) + sous-type</text>
+  <text x="110" y="263" text-anchor="middle" font-size="10" fill="#15803d">Δlat/Δlon + offset LBL</text>
+
+  <rect x="190" y="215" width="180" height="50" rx="2" fill="#eff6ff" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="280" y="235" text-anchor="middle" font-weight="600" fill="#1e40af">Points indexés (POI)</text>
+  <text x="280" y="252" text-anchor="middle" font-size="10" fill="#1d4ed8">Même structure + indexés</text>
+  <text x="280" y="263" text-anchor="middle" font-size="10" fill="#1d4ed8">pour la recherche GPS</text>
+
+  <rect x="380" y="215" width="170" height="50" rx="2" fill="#fef9c3" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="465" y="235" text-anchor="middle" font-weight="600" fill="#854d0e">Polylignes</text>
+  <text x="465" y="252" text-anchor="middle" font-size="10" fill="#92400e">poly_type + label_info</text>
+  <text x="465" y="263" text-anchor="middle" font-size="10" fill="#92400e">Δ1er pt + bitstream delta</text>
+
+  <rect x="560" y="215" width="160" height="50" rx="2" fill="#fce7f3" stroke="#f472b6" stroke-width="1.5"/>
+  <text x="640" y="235" text-anchor="middle" font-weight="600" fill="#9d174d">Polygones</text>
+  <text x="640" y="252" text-anchor="middle" font-size="10" fill="#be185d">Même structure que</text>
+  <text x="640" y="263" text-anchor="middle" font-size="10" fill="#be185d">polylignes (+ fill)</text>
+
+  <!-- Flèches depuis les pointeurs -->
+  <line x1="70" y1="199" x2="220" y2="214" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#ar)"/>
+  <line x1="132" y1="199" x2="440" y2="214" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#ar)"/>
+  <line x1="194" y1="199" x2="590" y2="214" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#ar)"/>
+
+  <!-- Structure d'une polyligne -->
+  <text x="380" y="292" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">Structure d'un enregistrement polyligne / polygone</text>
+
+  <rect x="40" y="305" width="680" height="28" rx="2" fill="#f8fafc" stroke="#e2e8f0"/>
+
+  <!-- Champs polyligne -->
+  <rect x="42" y="307" width="70" height="24" rx="1" fill="#fef9c3" stroke="#fde047"/>
+  <text x="77" y="323" text-anchor="middle" font-size="10" fill="#854d0e">poly_type</text>
+  <text x="77" y="334" text-anchor="middle" font-size="9" fill="#92400e">1 oct.</text>
+
+  <rect x="114" y="307" width="80" height="24" rx="1" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="154" y="323" text-anchor="middle" font-size="10" fill="#1e40af">label_info</text>
+  <text x="154" y="334" text-anchor="middle" font-size="9" fill="#1d4ed8">3 oct. (offset LBL)</text>
+
+  <rect x="196" y="307" width="70" height="24" rx="1" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="231" y="323" text-anchor="middle" font-size="10" fill="#166534">Δlongitude</text>
+  <text x="231" y="334" text-anchor="middle" font-size="9" fill="#15803d">2 oct. (1er pt)</text>
+
+  <rect x="268" y="307" width="70" height="24" rx="1" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="303" y="323" text-anchor="middle" font-size="10" fill="#166534">Δlatitude</text>
+  <text x="303" y="334" text-anchor="middle" font-size="9" fill="#15803d">2 oct. (1er pt)</text>
+
+  <rect x="340" y="307" width="80" height="24" rx="1" fill="#fef9c3" stroke="#fde047"/>
+  <text x="380" y="323" text-anchor="middle" font-size="10" fill="#854d0e">bitstream_len</text>
+  <text x="380" y="334" text-anchor="middle" font-size="9" fill="#92400e">1 ou 2 oct.</text>
+
+  <rect x="422" y="307" width="80" height="24" rx="1" fill="#fef9c3" stroke="#fde047"/>
+  <text x="462" y="323" text-anchor="middle" font-size="10" fill="#854d0e">bitstream_info</text>
+  <text x="462" y="334" text-anchor="middle" font-size="9" fill="#92400e">1 oct. (bits/coord)</text>
+
+  <rect x="504" y="307" width="214" height="24" rx="1" fill="#e9d5ff" stroke="#c084fc"/>
+  <text x="611" y="323" text-anchor="middle" font-size="10" fill="#7e22ce">Bitstream (coordonnées delta)</text>
+  <text x="611" y="334" text-anchor="middle" font-size="9" fill="#9333ea">bitstream_len octets</text>
+
+  <!-- Explication poly_type -->
+  <rect x="40" y="350" width="340" height="90" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="210" y="368" text-anchor="middle" font-weight="600" fill="#374151">poly_type (1 octet)</text>
+  <text x="60" y="386" fill="#475569" font-size="11">bits 0-6 : type de polyligne ou polygone</text>
+  <text x="60" y="402" fill="#475569" font-size="11">bit 6 : directionnel (rue à sens unique)</text>
+  <text x="60" y="418" fill="#475569" font-size="11">bit 7 : two_byte_len (bitstream &gt; 255 octets)</text>
+  <text x="60" y="432" fill="#94a3b8" font-size="10">Bit 23 label_info : label_in_net → pointeur vers NET</text>
+
+  <!-- Explication limite 250 pts -->
+  <rect x="390" y="350" width="330" height="90" rx="4" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="555" y="368" text-anchor="middle" font-weight="600" fill="#991b1b">Limite 250 points par segment</text>
+  <text x="410" y="386" fill="#dc2626" font-size="11">Le format RGN ne peut encoder que 250 points</text>
+  <text x="410" y="402" fill="#dc2626" font-size="11">par enregistrement polyligne/polygone.</text>
+  <text x="410" y="418" fill="#166534" font-size="11">✓ imgforge découpe automatiquement :</text>
+  <text x="410" y="432" fill="#166534" font-size="11">  polylignes (1 pt recouvrement) + Sutherland-Hodgman</text>
+</svg>

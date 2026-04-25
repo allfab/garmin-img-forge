@@ -1,12 +1,21 @@
 # Le format Garmin IMG — Architecture et fonctionnement
 
-Cette page explique de manière pédagogique l'architecture interne du format Garmin IMG — le format binaire dans lequel toutes les cartes Garmin sont stockées. Elle s'appuie sur les spécifications publiques (*imgformat-0.5* de Jan Wörner, *Garmin IMG Format*), les sources de mkgmap r4924, le décompilateur imgdecode-1.1, et le code source d'imgforge.
+Cette page explique de manière pédagogique l'architecture interne du format Garmin IMG — le format binaire dans lequel toutes les cartes Garmin sont stockées. Elle s'appuie sur les spécifications publiques (*imgformat-0.5* de John Mechalas, 2005), les sources de mkgmap r4924, le décompilateur imgdecode-1.1, et le code source d'imgforge.
+
+<div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
+  <a href="../../../assets/resources/garmin-img-format-reference-fr.pdf" class="md-button md-button--primary" download>
+    :material-file-pdf-box: Télécharger le document de référence PDF
+  </a>
+  <span style="font-size:.85em;color:var(--md-default-fg-color--light)">Version complète avec toutes les structures binaires, enrichie des découvertes du projet.</span>
+</div>
 
 ---
 
 ## Vue d'ensemble
 
 Un fichier `.img` Garmin n'est **pas** une image au sens habituel. C'est un **système de fichiers miniature** — proche d'une disquette DOS — qui contient plusieurs sous-fichiers encodés en little-endian. Chacun joue un rôle précis dans le rendu, le routage ou les métadonnées.
+
+![Structure d'un fichier gmapsupp.img](../assets/images/reference/img-overview.svg)
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'lineColor': '#90a4ae'}}}%%
@@ -52,74 +61,32 @@ graph TB
     style TYP fill:#607d8b,stroke:#37474f,color:#fff
 ```
 
----
-
-## Le conteneur FAT
-
-Le conteneur global (`gmapsupp.img`) utilise une organisation **FAT** (File Allocation Table) inspirée de MS-DOS. Il agit comme un mini-système de fichiers :
-
-- Un en-tête de 512 octets décrit la géométrie du "disque" (taille de bloc, secteurs, têtes)
-- Une table FAT liste tous les sous-fichiers avec leur nom, extension et offset
-- Les données sont organisées en **blocs** de taille fixe (typiquement 512 octets, codé `2^(E1+E2)`)
-
-```
-Offset 0x000  ┌─────────────────────────────────────┐
-              │  En-tête DSKIMG (512 octets)         │
-              │  - XOR byte (chiffrement)             │
-              │  - Taille de bloc (E1+E2)            │
-              │  - Description carte                 │
-              │  - Date de création                  │
-0x1BE         │  Table de partition (style MBR)      │
-              └─────────────────────────────────────┘
-0x200         ┌─────────────────────────────────────┐
-              │  Table FAT                           │
-              │  Entrée 1 : GARMIN\TDB  → offset A  │
-              │  Entrée 2 : 003012\TRE  → offset B  │
-              │  Entrée 3 : 003012\RGN  → offset C  │
-              │  ...                                 │
-              └─────────────────────────────────────┘
-offset A      ┌─────────────────────────────────────┐
-              │  Données TDB                         │
-              └─────────────────────────────────────┘
-offset B      ┌─────────────────────────────────────┐
-              │  Données TRE                         │
-              └─────────────────────────────────────┘
-```
-
 !!! note "XOR byte — obfuscation, pas du chiffrement"
     Tous les octets du conteneur sont XORés avec l'`xorbyte` (octet 0 du fichier) à la lecture/écriture. La clé étant **stockée dans le fichier lui-même**, l'opération est trivialement réversible — c'est de l'obfuscation, pas du chiffrement. Les maps communautaires (imgforge, mkgmap) écrivent toujours `xorbyte = 0x00`. Les maps commerciales Garmin utilisent parfois une valeur non nulle, mais sans apporter de sécurité réelle à ce niveau.
 
 ---
 
-## En-tête commun des sous-fichiers
+## En-tête DSKIMG
 
-Chaque sous-fichier (TRE, RGN, LBL, NET, NOD, DEM) commence par un **en-tête commun de 21 octets** identique — défini dans mkgmap `CommonHeader.java` et reproduit dans `imgforge/src/img/common_header.rs` :
+L'en-tête occupe les 512 premiers octets et décrit la géométrie du "disque" (taille de bloc, signatures, métadonnées de la carte). Sa structure rappelle volontairement un Master Boot Record DOS.
 
-```
-Octets 0-1   header_length  (u16 LE)  — longueur totale de cet en-tête spécifique
-Octets 2-11  type           (10 bytes) — identifiant ASCII du sous-fichier ("GARMIN TRE", "GARMIN RGN"...)
-Octet  12    unknown        (0x01)
-Octet  13    lock_flag      (0x00 = déverrouillé, 0x01 = verrouillé — Garmin Lock)
-Octets 14-20 creation_date  (7 bytes)  — année(u16) + mois + jour + heure + min + sec
-```
+![En-tête DSKIMG — structure binaire](../assets/images/reference/img-header.svg)
+
+La **taille de bloc** `2^(E1+E2)` est déterminante : elle définit la granularité de toutes les adresses dans la table FAT. imgforge utilise E1=9, E2=0 → blocs de 512 octets par défaut. Des blocs plus grands (1024, 2048 octets) permettent des fichiers IMG de plus grande capacité.
+
+---
+
+## Format des sous-fichiers
+
+Chaque sous-fichier (TRE, RGN, LBL, NET, NOD, DEM) commence par un **en-tête commun de 21 octets** identique — défini dans mkgmap `CommonHeader.java` et reproduit dans `imgforge/src/img/common_header.rs`.
+
+![Format d'un sous-fichier](../assets/images/reference/subfile-format.svg)
 
 ### Le `lock_flag` et le système Garmin Lock
 
 C'est ici que réside la **vraie protection DRM** des cartes commerciales Garmin (City Navigator, TOPO France...), distincte du XOR byte du conteneur.
 
-Quand `lock_flag = 0x01`, le firmware Garmin exige un **code de déverrouillage** lié à l'identifiant matériel de l'appareil (`unit ID`). La carte est achetée pour un appareil précis — au démarrage, le firmware vérifie le couple `(Family ID de la carte, unit ID du GPS)` avant d'autoriser l'affichage. Sans code valide, la carte apparaît dans les menus mais reste invisible à l'écran. C'est ce que MapInstall et myGarmin gèrent lors de l'achat de cartes payantes.
-
-```
-                    ┌─────────────────┐
-Achat carte Garmin →│  Serveur Garmin │→ unlock code = f(Family ID, unit ID)
-                    └─────────────────┘
-                              │
-                    ┌─────────▼─────────┐
-                    │  GPS (unit ID=X)  │
-                    │  lock_flag = 0x01 │
-                    │  Vérifie le code  │→ ✓ affichage autorisé
-                    └───────────────────┘
-```
+Quand `lock_flag = 0x80`, le firmware Garmin exige un **code de déverrouillage** lié à l'identifiant matériel de l'appareil (`unit ID`). La carte est achetée pour un appareil précis — au démarrage, le firmware vérifie le couple `(Family ID de la carte, unit ID du GPS)` avant d'autoriser l'affichage. Sans code valide, la carte apparaît dans les menus mais reste invisible à l'écran. C'est ce que MapInstall et myGarmin gèrent lors de l'achat de cartes payantes.
 
 **Pour nos cartes (imgforge) :** `lock_flag = 0x00` dans tous les sous-fichiers — déverrouillées par définition, cohérent avec la nature libre des données IGN BDTOPO.
 
@@ -142,31 +109,47 @@ Pour une carte à 24 bits de résolution (niveau le plus détaillé) :
 | Résolution (bits) | Précision approx. | Usage |
 |-------------------|-------------------|-------|
 | 24 | ~2 m | Zoom maximum, détail GPS |
+| 23 | ~5 m | Palier intermédiaire (header 7L) |
 | 22 | ~9 m | Zoom quartier |
+| 21 | ~19 m | Palier intermédiaire (header 7L) |
 | 20 | ~37 m | Zoom ville |
 | 18 | ~150 m | Zoom régional |
 | 16 | ~600 m | Zoom national |
 
-Les niveaux dans le header Polish Map (`level0: "24"`, `level1: "22"`...) correspondent directement à ces valeurs de bits.
+Les niveaux dans le header Polish Map (`level0: "24"`, `level1: "23"`...) correspondent directement à ces valeurs de bits. imgforge utilise le header 7 niveaux **24/23/22/21/20/18/16** pour tous les scopes de production.
 
 ---
 
 ## Subdivision : l'unité de base du rendu
 
-Le concept central du format IMG est la **subdivision** (subdivision RGN). C'est la cellule élémentaire du découpage spatial :
+Le concept central du format IMG est la **subdivision** (subdivision TRE/RGN). C'est la cellule élémentaire du découpage spatial — chaque tuile contient une hiérarchie de subdivisions imbriquées.
+
+![Hiérarchie des subdivisions TRE](../assets/images/reference/subdivision-hierarchy.svg)
 
 ```mermaid
 %%{init: {'theme': 'base'}}%%
 graph TD
     Carte["Carte entière\n(1 fichier TRE)"]
-    Carte --> SD0["Niveau 0 (24 bits)\nSubdivisions de ~1°×1°\nmax 256 pts/élément"]
+    Carte --> SD0["Niveau 0 (24 bits)\nSubdivisions de ~1°×1°\nmax 250 pts/élément"]
     Carte --> SD1["Niveau 1 (22 bits)\nSubdivisions de ~2°×2°"]
     Carte --> SD2["Niveau 2 (20 bits)\nSubdivisions plus grandes"]
     SD0 --> E1["Points (POI)\nPolylignes (routes)\nPolygones (forêts)"]
     SD1 --> E2["Points (villes)\nPolylignes simplifiées\nPolygones simplifiés"]
 ```
 
-Chaque subdivision est une zone rectangulaire (bounding box) contenant une liste d'éléments géographiques pour un niveau de zoom donné. Le firmware Garmin sélectionne les subdivisions visibles à l'écran et les affiche — c'est le moteur de rendu "tuilé interne".
+Chaque subdivision est une zone rectangulaire (bounding box + centre) contenant des pointeurs vers les éléments géographiques dans le RGN pour un niveau de zoom donné. Le firmware Garmin sélectionne les subdivisions visibles à l'écran et les affiche — c'est le moteur de rendu "tuilé interne".
+
+**Structure d'une subdivision** (16 octets pour les niveaux non-feuille, 14 pour le niveau 0) :
+
+| Champ | Taille | Description |
+|-------|--------|-------------|
+| `rgn_data_ptr` | 3 | Offset dans le fichier RGN |
+| `obj_types` | 1 | Masque de types présents (0x10=pts, 0x20=pts indexés, 0x40=polylignes, 0x80=polygones) |
+| `longitude_center` | 3 | Longitude du centre (unités Garmin) |
+| `latitude_center` | 3 | Latitude du centre |
+| `width` | 2 | Largeur + bit 15 = flag terminant de chaîne |
+| `height` | 2 | Hauteur (unités Garmin) |
+| `next_level_subdivision` | 2 | Index de la première subdiv. du niveau inférieur *(absent au niveau 0)* |
 
 ---
 
@@ -174,15 +157,13 @@ Chaque subdivision est une zone rectangulaire (bounding box) contenant une liste
 
 Le sous-fichier **TRE** (*Tree data*) est le cerveau d'une tuile. Il contient :
 
-1. **L'en-tête de la carte** — bounding box, niveaux de zoom, copyright, routing flag
+1. **L'en-tête de la carte** — bounding box, niveaux de zoom, routing flag
 2. **La table des subdivisions** — la liste de toutes les subdivisions avec leur bounding box et leurs offsets dans le RGN
-3. **L'index TRE** — un arbre spatial pour localiser rapidement les subdivisions visibles
-
-### Structure de l'en-tête TRE
+3. **Les sections overview** — pour les tuiles participant à une carte multi-tuiles
 
 ```
 En-tête commun (21 octets)
-  + header_length spécifique TRE
+  + header_length spécifique TRE (188 octets en mode standard)
 
 Bounding box de la tuile :
   max_lat  (24 bits, 3 octets)
@@ -193,19 +174,15 @@ Bounding box de la tuile :
 Niveaux de zoom :
   levels_count (1 octet)       — nombre de niveaux
   Level0_bits  (1 octet)       — résolution niveau 0 (ex: 24)
-  Level1_bits  (1 octet)       — résolution niveau 1 (ex: 22)
+  Level1_bits  (1 octet)       — résolution niveau 1 (ex: 23)
   ...
 
-Pointeurs vers la table de subdivisions :
-  subdivisions_offset (4 octets)
-  subdivisions_length (4 octets)
-
-Flags :
-  has_polylines (bit)
-  has_polygons  (bit)
-  has_points    (bit)
-  is_transparent (bit)
-  routing_flag  (bit)          — 0=aucun routing, 1=NET/NOD présents
+Pointeurs sections :
+  map_levels_offset / map_levels_size     (niveaux de zoom)
+  subdivisions_offset / subdivisions_size (liste des subdivisions)
+  polylines_defn_offset / ...             (définitions de types)
+  polygons_defn_offset / ...
+  points_defn_offset / ...
 ```
 
 ### Niveaux overview (TRE overview section)
@@ -221,7 +198,7 @@ Pour les tuiles qui participent à une carte multi-tuiles, le TRE contient aussi
 
 Le sous-fichier **RGN** (*Region data*) contient toutes les géométries encodées en delta variable-width.
 
-### Trois types d'éléments
+![Structure du sous-fichier RGN](../assets/images/reference/rgn-segment.svg)
 
 ```mermaid
 %%{init: {'theme': 'base'}}%%
@@ -231,22 +208,16 @@ flowchart LR
     RGN --> PGN["Polygones\nType (1-2 octets)\nDelta encoding\nLabel optionnel"]
 ```
 
-### Encodage delta (polylignes et polygones)
+### Encodage delta bitstream
 
 Les coordonnées ne sont **pas** stockées en valeurs absolues mais en **différences successives** (deltas). Cela réduit la taille des fichiers de 30 à 50 % :
 
-```
-Point 1 : lat=45.000, lon=5.000  (coordonnées absolues dans l'en-tête)
-Point 2 : Δlat=+12 unités, Δlon=+8 unités
-Point 3 : Δlat=-3 unités, Δlon=+15 unités
-...
-```
-
-Chaque delta est encodé en **variable-width** : les petits deltas utilisent 2 bits, les grands jusqu'à 16 bits. Le nombre de bits par delta est déterminé dynamiquement par la bounding box de la subdivision.
+![Encodage delta bitstream](../assets/images/reference/bitstream-encoding.svg)
 
 ### Limite de 250 points
 
 Le format RGN impose une limite de **250 points** par segment de polyligne/polygone. imgforge découpe automatiquement les features dépassant cette limite :
+
 - **Polylignes** : segmentées avec 1 point de recouvrement aux jointures
 - **Polygones** : découpés par clipping Sutherland-Hodgman récursif
 
@@ -266,7 +237,7 @@ Le sous-fichier **LBL** (*Label data*) contient tous les noms (rues, villes, POI
 
 Format 6 est le plus compact mais ne supporte que les caractères `A-Z`, `0-9` et l'espace. Pour les cartes françaises, **Format 9 avec CP1252** est recommandé : il couvre tous les accents français tout en restant compact.
 
-Les labels sont stockés bout-à-bout avec un octet `0x00` comme séparateur. Les polylignes et polygones référencent leur label par un **offset** dans cette section.
+Les labels sont stockés bout-à-bout avec un octet `0x00` comme séparateur. Les polylignes et polygones référencent leur label par un **offset** dans cette section (multiplié par le `label_multiplier` si > 0).
 
 ---
 
@@ -275,7 +246,7 @@ Les labels sont stockés bout-à-bout avec un octet `0x00` comme séparateur. Le
 Les sous-fichiers **NET** et **NOD** implémentent la topologie routière pour la navigation turn-by-turn.
 
 ```mermaid
-%%{init: {'theme': 'base'}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#4caf50', 'lineColor': '#90a4ae'}}}%%
 flowchart TD
     Routes["Features routables\n(TRONCON_DE_ROUTE\navec RouteParam)"]
     Routes --> NET["NET\n(Network data)\n\nTable des routes :\n- Type de route\n- Vitesse limite\n- Sens de circulation\n- Restrictions (sens unique, péage...)\n- Offset vers NOD"]
@@ -292,8 +263,6 @@ flowchart TD
 
 Le sous-fichier **DEM** stocke les données d'élévation utilisées pour l'ombrage du relief (hillshading) et les profils d'altitude sur le GPS.
 
-### Structure d'une tuile DEM
-
 ```
 En-tête DEM :
   bounding_box   (lat/lon min/max)
@@ -301,14 +270,20 @@ En-tête DEM :
   base_bits      (précision de base)
 
 Pour chaque niveau de zoom :
-  distance       (espacement entre points, en unités carte)
-  rows × cols    (grille d'élévation)
+  Section-header (60 octets) :
+    distance     (espacement entre points, en unités carte)
+    rows × cols  (dimensions de la grille)
+    data_offset  (offset +32 dans le section-header)
+    data_offset2 (offset +36)
   elevations[]   (delta-encodés, signés, en mètres)
 ```
 
 imgforge lit les fichiers **HGT** (SRTM NASA, format 1/3 arc-seconde) et **ASC** (ESRI ASCII Grid — BDAltiv2 IGN), les reprojette en WGS84 si nécessaire, et génère la grille DEM multi-résolution.
 
 Le paramètre `--dem-dists` contrôle l'espacement entre points d'élévation par niveau de zoom. Un espacement plus grand réduit la taille du fichier mais dégrade la précision du relief à faible zoom.
+
+!!! warning "Bug DEM dans le GmpWriter"
+    Les offsets `data_offset`/`data_offset2` dans les section-headers DEM sont à `+32` et `+36` — et **non** `+20` et `+24` comme codé initialement. L'erreur déclenchait une allocation mémoire de ~1290 descripteurs DEM au boot Alpha 100. Corrigé dans `relocate_dem`.
 
 ---
 
@@ -349,79 +324,23 @@ Section [Type0xNN E]  — définition d'un type POI
 
 ## GMP — Format Garmin NT consolidé
 
-Le format **GMP** (*Garmin Map Product*) est une variante moderne qui regroupe les sous-fichiers d'une tuile (`TRE+RGN+LBL`, et optionnellement `NET+NOD` si routing, `DEM` si altimétrie) dans un **unique fichier FAT** :
+Le format **GMP** (*Garmin Map Product*) est une variante moderne qui regroupe les sous-fichiers d'une tuile dans un **unique fichier FAT** — supprimant 83 % des entrées FAT pour une carte France entière.
 
-```
-MAPNAME.GMP
-├── TRE section
-├── RGN section
-├── LBL section
-├── NET section  (si routing)
-├── NOD section  (si routing)
-└── DEM section  (si DEM)
-```
+![Format GMP — Garmin Map Product](../assets/images/reference/gmp-format.svg)
 
-### Intérêt pour les devices Garmin NT
+### Écueils d'implémentation — firmware Alpha 100
 
-| Critère | Legacy (6 FAT) | GMP (1 FAT) |
-|---------|----------------|-------------|
-| Entrées FAT par tuile | Jusqu'à 6 | 1 |
-| Entrées FAT — France entière (~1 500 tuiles) | ~9 000 | ~1 500 |
-| Format cartes commerciales Garmin | Non | **Oui** (Topo France v6 Pro, Topo Active…) |
-| Boot firmware NT | Table FAT plus lourde à parser | Allégé — 83 % d'entrées en moins |
-| Compatibilité firmware | Tous | Firmware NT (Alpha 100, séries Edge, Monterra…) |
+L'implémentation du `GmpWriter` a nécessité 5 cycles de test hardware (GC1-GC5) pour identifier les contraintes non documentées du firmware Alpha 100 :
 
-Le `gmapsupp.img` Garmin est un système de fichiers FAT chargé en mémoire au démarrage du GPS. Sur les firmware NT modernes (Alpha 100 en particulier), la table FAT est intégralement parsée au boot — un nombre d'entrées élevé rallonge le démarrage et peut dépasser la RAM disponible sur les gros builds (voir [Bug FAT 4 095 entrées](../le-projet/reussites-ecueils.md#bug-1--lalpha-100-plante-au-boot-sur-les-gros-quadrants)). Le mode GMP adresse ce problème structurellement.
+| Écueil | Symptôme sur Alpha 100 | Cause | Fix retenu |
+|--------|----------------------|-------|-----------|
+| **Extension NT du TRE** (`hlen=309`) | Tuile invisible | Section descriptors TRE[0xD0..0x134] à zéro invalident l'enregistrement | Conserver `hlen=188` (TRE standard) à l'intérieur du GMP |
+| **`tre10_rec_size = 0`** | Crash firmware | `count = size / rec_size` avec `rec_size=0` → division par zéro | Inclus dans le fix `hlen=188` |
+| **`relocate_dem` — mauvaises positions** | GMP non reconnu avec DEM | `data_offset` à `+32/+36` mais code patchait `+20/+24` → firmware alloue ~1290 descripteurs | Corriger `base+20/24` → `base+32/36` dans `relocate_dem` |
 
 !!! success "Validé en production sur Alpha 100"
     `--packaging gmp` est fonctionnel en production depuis avril 2026, validé sur firmware Alpha 100
     avec un build IGN BD TOPO D038 complet (données altimétrie BDAltiv2 incluses).
-
-### Structure binaire du conteneur GMP
-
-```
-Offset  Taille  Champ
-0x00    2       hlen (= 0x3D = 61 bytes)
-0x02    10      magic "GARMIN GMP"
-0x0C    1       unknown (= 0x01)
-0x0D    1       locked (0 = libre)
-0x0E    7       date/heure (year u16, month, day, hour, min, sec)
-0x15    4       reserved (= 0)
-0x19    4       tre_offset  — offset GMP-absolu du blob TRE
-0x1D    4       rgn_offset  — offset GMP-absolu du blob RGN
-0x21    4       lbl_offset  — offset GMP-absolu du blob LBL
-0x25    4       net_offset  — 0 si absent
-0x29    4       nod_offset  — 0 si absent
-0x2D    4       dem_offset  — 0 si absent
-0x31    4       mar_offset  — 0 (MAR non utilisé)
-0x35    8       reserved
-[0x3D]  179     copyright Garmin (deux C-strings NUL-terminées)
-[0xF0]  …       TRE blob (relocialisé)
-…               RGN blob (relocialisé)
-…               LBL blob (relocialisé)
-…               NET blob (si présent)
-…               NOD blob (si présent)
-…               DEM blob (si présent)
-```
-
-Les offsets internes de chaque blob (ex. `map_levels_offset` dans TRE, `data_offset` dans RGN) sont **relocalisés** de leur valeur standalone vers des adresses GMP-absolues. Le TRE conserve son `hlen` standard de 188 bytes et son `format_marker = 0x00110301`.
-
-### Écueils d'implémentation — firmware Alpha 100
-
-L'implémentation du `GmpWriter` a nécessité 5 cycles de test hardware (GC1-GC5) pour identifier les contraintes non documentées du firmware Alpha 100. Voici les obstacles dans l'ordre de leur découverte :
-
-| Écueil | Symptôme sur Alpha 100 | Cause | Fix retenu |
-|--------|----------------------|-------|-----------|
-| **Extension NT du TRE** (`hlen=309`) | Tuile invisible dans les produits cartographiques | Les section descriptors TRE[0xD0..0x134] entièrement à zéro invalident l'enregistrement de la tuile | Conserver `hlen=188` (TRE standard) à l'intérieur du GMP — l'extension NT est inutile |
-| **`tre10_rec_size = 0`** | Crash firmware au chargement | `count = tre10_size / tre10_rec_size` avec `rec_size=0` → division par zéro | Inclus dans le fix `hlen=188` (champ supprimé avec l'extension NT) |
-| **`relocate_dem` — mauvaises positions** | Fichier GMP non reconnu (build production avec DEM) | Les section-headers DEM (60 bytes chacun) ont `data_offset` à +32 et `data_offset2` à +36, mais le code patchait +20 (`tiles_lon-1`) et +24 (`tiles_lat-1`). `tiles_lon-1` passait de 1 à ~1290 → firmware tente d'allouer une table de 1290 descripteurs DEM | Corriger les positions : `base+20/24` → `base+32/36` dans `relocate_dem` |
-
-!!! note "Pourquoi les tests n'ont pas détecté le bug DEM ?"
-    Les tests d'intégration GC5 utilisaient `dem: None` — la branche `relocate_dem` n'était
-    pas exercée. Le bug n'est apparu qu'en build production avec des données BDAltiv2 réelles.
-    Leçon : couvrir tous les sous-types optionnels (NET/NOD/DEM) dans les tests d'intégration.
-
-Détail complet de l'investigation : `docs/firmwares/Alpha_100_FR/jalon-6-gmp-crash-root-cause.md`.
 
 ---
 
@@ -479,18 +398,16 @@ flowchart TD
 | Sous-fichiers par tuile | ≤ 6 (`legacy`) ou 1 (`gmp`) | NET/NOD absents sans routing, DEM absent sans `--dem` |
 | Taille d'un label encodé | ~255 octets | Labels très longs tronqués |
 | Précision coordonnées | 24 bits (~2 m) | Suffisant pour la cartographie routière/outdoor |
-| Entrées FAT gmapsupp | Firmware-dépendant | Alpha 100 : plafond RAM au boot → préférer `cell_size` ≥ 0.30° (voir [Stratégie cell_size](../le-pipeline/etape-3-tuilage.md#stratégie-cell_size-par-scope)) |
+| Entrées FAT gmapsupp | Firmware-dépendant | Alpha 100 : plafond RAM au boot → préférer `cell_size` ≥ 0.30° ou mode GMP |
 
 ---
 
 ## Pour aller plus loin
 
-Les sources de référence utilisées pour cette page :
-
 | Ressource | Emplacement local | Contenu |
 |-----------|-------------------|---------|
-| Spécification imgformat-0.5 | `tmp/imgdecode-1.1/imgformat-0.5.pdf` | Structures des sous-fichiers TRE, RGN, LBL (Jan Wörner, 2005) |
-| Garmin IMG Format | `tmp/Garmin_IMG_Format.pdf` | Format complet (NET, NOD, DEM) |
-| imgdecode-1.1 | `tmp/imgdecode-1.1/` | Décompilateur C++ de référence (2005) |
+| Spécification imgformat-0.5 | `tmp/imgdecode-1.1/imgformat-0.5.pdf` | Structures TRE, RGN, LBL, NET (John Mechalas, 2005) |
+| imgdecode-1.1 | `tmp/imgdecode-1.1/` | Décompilateur C++ de référence |
 | mkgmap r4924 | `tmp/mkgmap/` | Implémentation Java de référence |
 | imgforge | `tools/imgforge/src/img/` | Implémentation Rust (ce projet) |
+| Document de référence PDF | `site/assets/resources/garmin-img-format-reference-fr.pdf` | Ce projet, version imprimable |

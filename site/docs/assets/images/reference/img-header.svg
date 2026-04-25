@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 520" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12">
+
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">En-tête DSKIMG — structure binaire</text>
+  <text x="380" y="46" text-anchor="middle" font-size="11" fill="#64748b">(446 premiers octets du fichier IMG)</text>
+
+  <!-- En-têtes colonnes -->
+  <rect x="40" y="58" width="100" height="22" fill="#334155" rx="2"/>
+  <text x="90" y="73" text-anchor="middle" fill="white" font-weight="600">Offset</text>
+  <rect x="142" y="58" width="420" height="22" fill="#334155" rx="2"/>
+  <text x="352" y="73" text-anchor="middle" fill="white" font-weight="600">Contenu</text>
+  <rect x="564" y="58" width="80" height="22" fill="#334155" rx="2"/>
+  <text x="604" y="73" text-anchor="middle" fill="white" font-weight="600">Taille</text>
+  <rect x="646" y="58" width="80" height="22" fill="#334155" rx="2"/>
+  <text x="686" y="73" text-anchor="middle" fill="white" font-weight="600">Notes</text>
+
+  <!-- Lignes du tableau -->
+  <!-- Row helper: y_start, offset, content, size, note, fill -->
+  <g>
+    <!-- 0x00 -->
+    <rect x="40" y="82" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="98" text-anchor="middle" fill="#475569" font-family="monospace">0x00</text>
+    <rect x="142" y="82" width="420" height="24" fill="#fef9c3" stroke="#e2e8f0"/>
+    <text x="352" y="98" text-anchor="middle" fill="#854d0e">XOR byte — tous les octets sont XORés avec cette valeur</text>
+    <rect x="564" y="82" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="98" text-anchor="middle" fill="#475569">1</text>
+    <rect x="646" y="82" width="80" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="686" y="98" text-anchor="middle" fill="#166534">0x00</text>
+
+    <!-- 0x01 -->
+    <rect x="40" y="107" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="123" text-anchor="middle" fill="#475569" font-family="monospace">0x01</text>
+    <rect x="142" y="107" width="420" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="352" y="123" text-anchor="middle" fill="#64748b">0x00 … (réservé)</text>
+    <rect x="564" y="107" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="123" text-anchor="middle" fill="#475569">9</text>
+    <rect x="646" y="107" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="123" text-anchor="middle" fill="#64748b">—</text>
+
+    <!-- 0x0A/0x0B -->
+    <rect x="40" y="132" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="148" text-anchor="middle" fill="#475569" font-family="monospace">0x0A–0x0B</text>
+    <rect x="142" y="132" width="420" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="352" y="148" text-anchor="middle" fill="#64748b">Date de mise à jour : mois (0-11), année (-1900)</text>
+    <rect x="564" y="132" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="148" text-anchor="middle" fill="#475569">2</text>
+    <rect x="646" y="132" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="148" text-anchor="middle" fill="#64748b">—</text>
+
+    <!-- 0x0F -->
+    <rect x="40" y="157" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="173" text-anchor="middle" fill="#475569" font-family="monospace">0x0F</text>
+    <rect x="142" y="157" width="420" height="24" fill="#fffbeb" stroke="#e2e8f0"/>
+    <text x="352" y="173" text-anchor="middle" fill="#92400e">Checksum — somme de tous les octets sauf celui-ci = 0 (mod 256)</text>
+    <rect x="564" y="157" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="173" text-anchor="middle" fill="#475569">1</text>
+    <rect x="646" y="157" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="173" text-anchor="middle" fill="#64748b">—</text>
+
+    <!-- 0x10 -->
+    <rect x="40" y="182" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="198" text-anchor="middle" fill="#475569" font-family="monospace">0x10</text>
+    <rect x="142" y="182" width="420" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="352" y="198" text-anchor="middle" fill="#1e40af">Signature "DSKIMG\0" (0x44 0x53 0x4b 0x49 0x4d 0x47 0x00)</text>
+    <rect x="564" y="182" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="198" text-anchor="middle" fill="#475569">7</text>
+    <rect x="646" y="182" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="198" text-anchor="middle" fill="#64748b">fixe</text>
+
+    <!-- 0x41 -->
+    <rect x="40" y="207" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="223" text-anchor="middle" fill="#475569" font-family="monospace">0x41</text>
+    <rect x="142" y="207" width="420" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="352" y="223" text-anchor="middle" fill="#1e40af">Identifiant "GARMIN\0" (0x47 0x41 0x52 0x4d 0x49 0x4e 0x00)</text>
+    <rect x="564" y="207" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="223" text-anchor="middle" fill="#475569">7</text>
+    <rect x="646" y="207" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="223" text-anchor="middle" fill="#64748b">fixe</text>
+
+    <!-- 0x49 -->
+    <rect x="40" y="232" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="248" text-anchor="middle" fill="#475569" font-family="monospace">0x49</text>
+    <rect x="142" y="232" width="420" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="352" y="248" text-anchor="middle" fill="#64748b">Description de la carte (20 octets, paddé 0x20)</text>
+    <rect x="564" y="232" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="248" text-anchor="middle" fill="#475569">20</text>
+    <rect x="646" y="232" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="248" text-anchor="middle" fill="#64748b">ASCII</text>
+
+    <!-- 0x39–0x3F -->
+    <rect x="40" y="257" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="273" text-anchor="middle" fill="#475569" font-family="monospace">0x39–0x3F</text>
+    <rect x="142" y="257" width="420" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="352" y="273" text-anchor="middle" fill="#166534">Date de création : année(u16), mois, jour, heure, min, sec</text>
+    <rect x="564" y="257" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="273" text-anchor="middle" fill="#475569">7</text>
+    <rect x="646" y="257" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="273" text-anchor="middle" fill="#64748b">—</text>
+
+    <!-- 0x61/0x62 -->
+    <rect x="40" y="282" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="298" text-anchor="middle" fill="#475569" font-family="monospace">0x61–0x62</text>
+    <rect x="142" y="282" width="420" height="24" fill="#fef9c3" stroke="#e2e8f0"/>
+    <text x="352" y="298" text-anchor="middle" fill="#854d0e">Exposants taille de bloc : E1 (0x61) et E2 (0x62) — taille = 2^(E1+E2)</text>
+    <rect x="564" y="282" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="298" text-anchor="middle" fill="#475569">1+1</text>
+    <rect x="646" y="282" width="80" height="24" fill="#fffbeb" stroke="#e2e8f0"/>
+    <text x="686" y="298" text-anchor="middle" fill="#92400e">E1=9</text>
+
+    <!-- 0x65 -->
+    <rect x="40" y="307" width="100" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="90" y="323" text-anchor="middle" fill="#475569" font-family="monospace">0x65</text>
+    <rect x="142" y="307" width="420" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="352" y="323" text-anchor="middle" fill="#64748b">Nom de la carte (suite, 31 octets, paddé 0x20, terminé \0)</text>
+    <rect x="564" y="307" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="604" y="323" text-anchor="middle" fill="#475569">31</text>
+    <rect x="646" y="307" width="80" height="24" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="686" y="323" text-anchor="middle" fill="#64748b">ASCII</text>
+
+    <!-- 0x1BE -->
+    <rect x="40" y="332" width="100" height="24" fill="#f1f5f9" stroke="#e2e8f0"/>
+    <text x="90" y="348" text-anchor="middle" fill="#475569" font-family="monospace">0x1BE</text>
+    <rect x="142" y="332" width="420" height="24" fill="#f1f5f9" stroke="#e2e8f0"/>
+    <text x="352" y="348" text-anchor="middle" fill="#64748b" font-style="italic">Table de partition style MBR (66 octets)</text>
+    <rect x="564" y="332" width="80" height="24" fill="#f1f5f9" stroke="#e2e8f0"/>
+    <text x="604" y="348" text-anchor="middle" fill="#475569">66</text>
+    <rect x="646" y="332" width="80" height="24" fill="#f1f5f9" stroke="#e2e8f0"/>
+    <text x="686" y="348" text-anchor="middle" fill="#64748b">MBR</text>
+
+    <!-- 0x1FE -->
+    <rect x="40" y="357" width="100" height="24" fill="#fef2f2" stroke="#e2e8f0"/>
+    <text x="90" y="373" text-anchor="middle" fill="#475569" font-family="monospace">0x1FE</text>
+    <rect x="142" y="357" width="420" height="24" fill="#fef2f2" stroke="#e2e8f0"/>
+    <text x="352" y="373" text-anchor="middle" fill="#991b1b">Magic MBR : 0x55 0xAA</text>
+    <rect x="564" y="357" width="80" height="24" fill="#fef2f2" stroke="#e2e8f0"/>
+    <text x="604" y="373" text-anchor="middle" fill="#475569">2</text>
+    <rect x="646" y="357" width="80" height="24" fill="#fef2f2" stroke="#e2e8f0"/>
+    <text x="686" y="373" text-anchor="middle" fill="#991b1b">fixe</text>
+
+    <!-- 0x40C -->
+    <rect x="40" y="382" width="100" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="90" y="398" text-anchor="middle" fill="#475569" font-family="monospace">0x40C</text>
+    <rect x="142" y="382" width="420" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="352" y="398" text-anchor="middle" fill="#166534">Offset absolu du premier sous-fichier → calcul de la longueur FAT</text>
+    <rect x="564" y="382" width="80" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="604" y="398" text-anchor="middle" fill="#475569">4</text>
+    <rect x="646" y="382" width="80" height="24" fill="#f0fdf4" stroke="#e2e8f0"/>
+    <text x="686" y="398" text-anchor="middle" fill="#166534">u32 LE</text>
+
+    <!-- 0x420 -->
+    <rect x="40" y="407" width="100" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="90" y="423" text-anchor="middle" fill="#475569" font-family="monospace">0x420</text>
+    <rect x="142" y="407" width="420" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="352" y="423" text-anchor="middle" fill="#1e40af">Séquences de blocs (480 × u16 = 960 octets) — 0x0000…N, 0xFFFF paddé</text>
+    <rect x="564" y="407" width="80" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="604" y="423" text-anchor="middle" fill="#475569">960</text>
+    <rect x="646" y="407" width="80" height="24" fill="#eff6ff" stroke="#e2e8f0"/>
+    <text x="686" y="423" text-anchor="middle" fill="#1e40af">u16 LE</text>
+  </g>
+
+  <!-- Légende -->
+  <rect x="40" y="445" width="16" height="14" fill="#fef9c3" stroke="#fde047"/>
+  <text x="62" y="456" font-size="11" fill="#64748b">Critique (XOR, taille de bloc)</text>
+  <rect x="220" y="445" width="16" height="14" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="242" y="456" font-size="11" fill="#64748b">Signatures fixes</text>
+  <rect x="380" y="445" width="16" height="14" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="402" y="456" font-size="11" fill="#64748b">Dates / offsets</text>
+  <rect x="520" y="445" width="16" height="14" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="542" y="456" font-size="11" fill="#64748b">Magic bytes</text>
+
+  <text x="380" y="490" text-anchor="middle" font-size="10" fill="#94a3b8">Taille de bloc = 2^(E1+E2) octets. E1 = 0x09 → taille min. 512 octets (1 secteur DOS).</text>
+  <text x="380" y="508" text-anchor="middle" font-size="10" fill="#94a3b8">Pour un bloc de 512 octets : E1=9, E2=0 → 2^9 = 512. imgforge utilise E1=9, E2=0 par défaut.</text>
+</svg>

@@ -1,12 +1,22 @@
 # Référence technique
 
-Cette section rassemble les spécifications techniques du projet : codes types Garmin, correspondances avec la BD TOPO IGN, architecture du format IMG et limites connues des formats.
+Cette section rassemble les spécifications techniques du projet : format binaire Garmin IMG, codes types, correspondances BD TOPO, styles, outils et observabilité.
 
 ---
 
+## Format & Architecture
+
 <div class="grid cards" markdown>
 
--   **Types Garmin**
+-   :material-layers-outline: **Format Garmin IMG**
+
+    ---
+
+    Architecture pédagogique du format binaire : FAT, sous-fichiers TRE / RGN / LBL / NET / NOD / DEM, encodage delta, subdivisions, GMP — enrichi des découvertes firmware Alpha 100.
+
+    [:octicons-arrow-right-24: Consulter](format-garmin-img.md)
+
+-   :material-code-tags: **Types Garmin**
 
     ---
 
@@ -14,63 +24,39 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](types-garmin.md)
 
--   **Correspondances BD TOPO**
+-   :material-alert-outline: **Limites des formats**
 
     ---
 
-    Table de transposition des couches BD TOPO IGN vers les types Garmin.
-
-    [:octicons-arrow-right-24: Consulter](correspondances-bdtopo.md)
-
--   **Niveaux de zoom et EndLevel**
-
-    ---
-
-    Comprendre la correspondance entre `EndLevel` (fichier .mp), `--levels` (imgforge) et les niveaux de zoom GPS.
-
-    [:octicons-arrow-right-24: Consulter](niveaux-et-zoom.md)
-
--   **Limites des formats**
-
-    ---
-
-    Contraintes techniques du format Polish Map et du format Garmin IMG.
+    Contraintes techniques du format Polish Map et du format Garmin IMG (points, niveaux, taille FAT…).
 
     [:octicons-arrow-right-24: Consulter](limites-formats.md)
 
--   **Styles TYP**
+</div>
+
+---
+
+## Données & Transformation
+
+<div class="grid cards" markdown>
+
+-   :material-swap-horizontal: **Correspondances BD TOPO**
 
     ---
 
-    Référence complète des styles TYP (POI, lignes, polygones) utilisés pour personnaliser le rendu des cartes Garmin.
+    Table de transposition des couches BD TOPO IGN vers les types Garmin, par source_layer.
 
-    [:octicons-arrow-right-24: Consulter](styles-typ.md)
+    [:octicons-arrow-right-24: Consulter](correspondances-bdtopo.md)
 
--   **Convention `--base-id`**
-
-    ---
-
-    Plages de `base-id` par couverture (départements, régions, quadrants, national) — évite les collisions INSEE/DOM-COM.
-
-    [:octicons-arrow-right-24: Consulter](base-id-convention.md)
-
--   **Versioning des binaires**
+-   :material-magnify-plus-outline: **Niveaux de zoom et EndLevel**
 
     ---
 
-    Comment `imgforge` et `mpforge` calculent leur version à la compilation : lecture de `--version`, convention de tags, workflow de release.
+    Correspondance entre `EndLevel` (fichier .mp), `--levels` (imgforge) et les niveaux de zoom GPS — header 7 niveaux `24/23/22/21/20/18/16`.
 
-    [:octicons-arrow-right-24: Consulter](versioning-binaires.md)
+    [:octicons-arrow-right-24: Consulter](niveaux-et-zoom.md)
 
--   **Format Garmin IMG**
-
-    ---
-
-    Architecture pédagogique du format binaire Garmin IMG : FAT, sous-fichiers TRE/RGN/LBL/NET/NOD/DEM, encodage delta, subdivision, et chaîne Polish Map → IMG.
-
-    [:octicons-arrow-right-24: Consulter](format-garmin-img.md)
-
--   **Profils de généralisation**
+-   :material-tune: **Profils de généralisation**
 
     ---
 
@@ -78,15 +64,71 @@ Cette section rassemble les spécifications techniques du projet : codes types G
 
     [:octicons-arrow-right-24: Consulter](generalize-profiles.md)
 
--   **Logs mpforge**
+</div>
+
+---
+
+## Outils & Configuration
+
+<div class="grid cards" markdown>
+
+-   :material-identifier: **Convention `--base-id`**
 
     ---
 
-    Guide de lecture des messages de logs mpforge : niveaux de verbosité, phases du pipeline, avertissements courants, filtrage RUST\_LOG, rapport JSON.
+    Plages de `base-id` par couverture (départements, régions, quadrants, national) — évite les collisions INSEE / DOM-COM.
+
+    [:octicons-arrow-right-24: Consulter](base-id-convention.md)
+
+-   :material-tag-outline: **Versioning des binaires**
+
+    ---
+
+    Comment `imgforge` et `mpforge` calculent leur version à la compilation : lecture de `--version`, convention de tags, workflow de release.
+
+    [:octicons-arrow-right-24: Consulter](versioning-binaires.md)
+
+</div>
+
+---
+
+## Styles visuels
+
+<div class="grid cards" markdown>
+
+-   :material-palette-outline: **Styles TYP**
+
+    ---
+
+    Référence complète des styles TYP (POI, lignes, polygones) utilisés pour personnaliser le rendu des cartes Garmin — généré depuis `I2023100.typ`.
+
+    [:octicons-arrow-right-24: Consulter](styles-typ.md)
+
+-   :material-image-outline: **Styles OpenTopo**
+
+    ---
+
+    Catalogue des styles OpenTopo (POI, lignes, polygones) — rendu alternatif pour les données OSM.
+
+    [:octicons-arrow-right-24: Consulter](styles-opentopo.md)
+
+</div>
+
+---
+
+## Observabilité
+
+<div class="grid cards" markdown>
+
+-   :material-console-line: **Logs mpforge**
+
+    ---
+
+    Guide de lecture des messages de logs mpforge : niveaux de verbosité, phases du pipeline, avertissements courants, filtrage `RUST_LOG`, rapport JSON.
 
     [:octicons-arrow-right-24: Consulter](logs-mpforge.md)
 
--   **Logs imgforge**
+-   :material-text-search: **Logs imgforge**
 
     ---
 

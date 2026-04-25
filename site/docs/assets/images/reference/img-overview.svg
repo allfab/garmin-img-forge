@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 500" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Titre -->
+  <text x="360" y="30" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">Structure d'un fichier gmapsupp.img</text>
+  <text x="360" y="50" text-anchor="middle" font-size="12" fill="#64748b">(système de fichiers FAT miniature, little-endian)</text>
+
+  <!-- Zone HEADER -->
+  <rect x="60" y="70" width="600" height="30" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="90" y="90" font-weight="600" fill="#475569">EN-TÊTE DSKIMG</text>
+  <text x="580" y="90" text-anchor="end" fill="#64748b">446 octets → signature "DSKIMG\0", XOR byte, taille de bloc (2^(E1+E2)), description carte</text>
+
+  <rect x="60" y="102" width="600" height="24" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="90" y="118" fill="#64748b" font-style="italic">Table de partition (style MBR, 66 octets) — 0x1BE→0x1FD, terminaison 0x55 0xAA</text>
+
+  <!-- Accolade HEADER -->
+  <line x1="48" y1="70" x2="48" y2="126" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="48" y1="70" x2="55" y2="70" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="48" y1="126" x2="55" y2="126" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="42" y="102" text-anchor="middle" font-size="11" font-weight="600" fill="#475569" transform="rotate(-90,42,102)">HEADER</text>
+
+  <!-- Séquences de blocs -->
+  <rect x="60" y="128" width="600" height="24" rx="4" fill="#fef9c3" stroke="#fde047" stroke-width="1.5"/>
+  <text x="90" y="144" fill="#854d0e">Séquences de blocs (0x420, 480 × u16) — numérotation des blocs physiques occupés par l'en-tête</text>
+
+  <!-- Zone FAT -->
+  <rect x="60" y="160" width="600" height="100" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="90" y="180" font-weight="600" fill="#1d4ed8">TABLE FAT</text>
+  <text x="90" y="198" fill="#3b82f6">Entrée 1 : flag=0x01 │ nom="I0012345" │ ext="TRE" │ taille=... │ blocs: [7,8,9,…,0xFFFF]</text>
+  <text x="90" y="216" fill="#3b82f6">Entrée 2 : flag=0x01 │ nom="I0012345" │ ext="RGN" │ taille=... │ blocs: [15,16,…,0xFFFF]</text>
+  <text x="90" y="234" fill="#3b82f6">Entrée N : flag=0x01 │ nom="I0012345" │ ext="LBL" │ taille=... │ blocs: [42,43,…,0xFFFF]</text>
+  <text x="90" y="252" fill="#93c5fd" font-style="italic">Dummy block (flag=0x00) — dernier bloc FAT de la séquence</text>
+
+  <!-- Accolade FAT -->
+  <line x1="48" y1="160" x2="48" y2="260" stroke="#93c5fd" stroke-width="1.5"/>
+  <line x1="48" y1="160" x2="55" y2="160" stroke="#93c5fd" stroke-width="1.5"/>
+  <line x1="48" y1="260" x2="55" y2="260" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="42" y="215" text-anchor="middle" font-size="11" font-weight="600" fill="#1d4ed8" transform="rotate(-90,42,215)">FAT</text>
+
+  <!-- Zone Sous-fichiers -->
+  <text x="360" y="285" text-anchor="middle" font-size="12" fill="#64748b" font-style="italic">↓ offset calculé depuis la table FAT ↓</text>
+
+  <!-- Sous-fichiers -->
+  <!-- TRE -->
+  <rect x="60" y="300" width="170" height="80" rx="4" fill="#dcfce7" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="145" y="325" text-anchor="middle" font-weight="700" fill="#166534">TRE</text>
+  <text x="145" y="345" text-anchor="middle" font-size="11" fill="#15803d">En-tête commun (21 oct.)</text>
+  <text x="145" y="360" text-anchor="middle" font-size="11" fill="#15803d">+ En-tête TRE spécifique</text>
+  <text x="145" y="375" text-anchor="middle" font-size="11" fill="#15803d">Niveaux / Subdivisions</text>
+
+  <!-- RGN -->
+  <rect x="240" y="300" width="170" height="80" rx="4" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="325" y="325" text-anchor="middle" font-weight="700" fill="#1e40af">RGN</text>
+  <text x="325" y="345" text-anchor="middle" font-size="11" fill="#1d4ed8">En-tête commun (21 oct.)</text>
+  <text x="325" y="360" text-anchor="middle" font-size="11" fill="#1d4ed8">Points / Polylignes</text>
+  <text x="325" y="375" text-anchor="middle" font-size="11" fill="#1d4ed8">Polygones (delta enc.)</text>
+
+  <!-- LBL -->
+  <rect x="420" y="300" width="170" height="80" rx="4" fill="#fff7ed" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="505" y="325" text-anchor="middle" font-weight="700" fill="#9a3412">LBL</text>
+  <text x="505" y="345" text-anchor="middle" font-size="11" fill="#c2410c">En-tête commun (21 oct.)</text>
+  <text x="505" y="360" text-anchor="middle" font-size="11" fill="#c2410c">Labels 6/8/10 bits</text>
+  <text x="505" y="375" text-anchor="middle" font-size="11" fill="#c2410c">POI, villes, codes postaux</text>
+
+  <!-- NET/NOD -->
+  <rect x="60" y="395" width="260" height="65" rx="4" fill="#f5f3ff" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="190" y="418" text-anchor="middle" font-weight="700" fill="#7e22ce">NET + NOD</text>
+  <text x="190" y="436" text-anchor="middle" font-size="11" fill="#9333ea">Réseau routier + graphe topologique</text>
+  <text x="190" y="452" text-anchor="middle" font-size="11" fill="#9333ea">(optionnel — uniquement si routing)</text>
+
+  <!-- DEM -->
+  <rect x="330" y="395" width="260" height="65" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="460" y="418" text-anchor="middle" font-weight="700" fill="#991b1b">DEM</text>
+  <text x="460" y="436" text-anchor="middle" font-size="11" fill="#dc2626">Altimétrie multi-résolution</text>
+  <text x="460" y="452" text-anchor="middle" font-size="11" fill="#dc2626">(optionnel — SRTM / BDAltiv2)</text>
+
+  <!-- Accolade DATA -->
+  <line x1="48" y1="300" x2="48" y2="460" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="48" y1="300" x2="55" y2="300" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="48" y1="460" x2="55" y2="460" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="42" y="385" text-anchor="middle" font-size="11" font-weight="600" fill="#475569" transform="rotate(-90,42,385)">SOUS-FICHIERS</text>
+
+  <!-- Note XOR -->
+  <rect x="60" y="470" width="600" height="22" rx="3" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="90" y="484" font-size="11" fill="#166534">⚠ Tous les octets sont XORés avec le byte 0 du fichier (xorbyte). imgforge écrit toujours xorbyte=0x00.</text>
+</svg>

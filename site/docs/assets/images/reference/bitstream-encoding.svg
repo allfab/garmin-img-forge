@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12">
+  <defs>
+    <marker id="arb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">Encodage delta bitstream des coordonnées</text>
+  <text x="380" y="46" text-anchor="middle" font-size="12" fill="#64748b">Compression sans perte utilisée pour les polylignes et polygones dans le RGN.</text>
+
+  <!-- Principe général -->
+  <rect x="40" y="60" width="680" height="70" rx="4" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="380" y="80" text-anchor="middle" font-weight="600" fill="#166534">Principe : coordonnées absolues → deltas successifs</text>
+  <text x="60" y="100" fill="#475569" font-size="12">Point 1 : lat=45.000°, lon=5.000°  (coordonnées absolues du 1er point, encodées dans le champ Δ)</text>
+  <text x="60" y="118" fill="#475569" font-size="12">Point 2 : Δlat = +12 unités,  Δlon = +8 unités   ← stocké dans le bitstream</text>
+  <text x="60" y="136" fill="#64748b" font-size="11">1 unité = 360 / 2^24 ≈ 0.0000214°  (≈ 2,4 m à l'équateur au niveau 24 bits)</text>
+
+  <!-- bitstream_info -->
+  <text x="380" y="164" text-anchor="middle" font-size="13" font-weight="600" fill="#374151">Calcul du nombre de bits par coordonnée (bitstream_info)</text>
+
+  <rect x="40" y="174" width="330" height="130" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="205" y="193" text-anchor="middle" font-weight="600" fill="#374151">bitstream_info (1 octet)</text>
+  <rect x="60" y="200" width="290" height="30" rx="2" fill="#fef9c3" stroke="#fde047"/>
+
+  <!-- Bits visuels -->
+  <g>
+    <rect x="62" y="202" width="36" height="26" rx="1" fill="#fb923c" stroke="#f97316"/>
+    <text x="80" y="220" text-anchor="middle" fill="white" font-size="10" font-weight="600">bits</text>
+    <text x="80" y="230" text-anchor="middle" fill="white" font-size="9">4-7</text>
+
+    <rect x="100" y="202" width="36" height="26" rx="1" fill="#60a5fa" stroke="#3b82f6"/>
+    <text x="118" y="220" text-anchor="middle" fill="white" font-size="10" font-weight="600">bits</text>
+    <text x="118" y="230" text-anchor="middle" fill="white" font-size="9">0-3</text>
+
+    <text x="152" y="218" fill="#64748b" font-size="11">bits 4-7 = base latitude</text>
+    <text x="152" y="232" fill="#64748b" font-size="11">bits 0-3 = base longitude</text>
+  </g>
+
+  <text x="60" y="258" fill="#475569" font-size="11">Nbre de bits par coord = 2 + base + (signe variable ? +1 : 0) + (extra_bit ? +1 : 0)</text>
+  <text x="60" y="274" fill="#475569" font-size="11">Si base &gt; 9 : ajouter (2×base − 9) au lieu de base.</text>
+  <text x="60" y="290" fill="#475569" font-size="11">Plage finale : 2 à 25 bits par coordonnée.</text>
+
+  <!-- Schéma lecture bits -->
+  <rect x="390" y="174" width="330" height="130" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="555" y="193" text-anchor="middle" font-weight="600" fill="#374151">Lecture du bitstream</text>
+
+  <!-- Octets -->
+  <g>
+    <rect x="410" y="204" width="80" height="28" rx="2" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="450" y="222" text-anchor="middle" fill="#1e40af" font-size="11">Octet 1</text>
+    <text x="450" y="233" text-anchor="middle" fill="#64748b" font-size="9">bit 7 → bit 0</text>
+
+    <rect x="500" y="204" width="80" height="28" rx="2" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="540" y="222" text-anchor="middle" fill="#1e40af" font-size="11">Octet 2</text>
+    <text x="540" y="233" text-anchor="middle" fill="#64748b" font-size="9">bit 7 → bit 0</text>
+
+    <rect x="590" y="204" width="80" height="28" rx="2" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="630" y="222" text-anchor="middle" fill="#1e40af" font-size="11">Octet 3</text>
+    <text x="630" y="233" text-anchor="middle" fill="#64748b" font-size="9">bit 7 → bit 0</text>
+  </g>
+  <!-- Flèche lecture LSB→MSB dans chaque octet -->
+  <path d="M490,246 Q510,256 490,266" stroke="#64748b" stroke-width="1" fill="none" marker-end="url(#arb)"/>
+  <path d="M580,246 Q600,256 580,266" stroke="#64748b" stroke-width="1" fill="none" marker-end="url(#arb)"/>
+
+  <text x="555" y="268" text-anchor="middle" fill="#64748b" font-size="11">Bits lus de droite à gauche (LSB→MSB)</text>
+  <text x="555" y="284" text-anchor="middle" fill="#64748b" font-size="11">dans chaque octet, octets de gauche à droite</text>
+
+  <text x="410" y="300" fill="#475569" font-size="11">Ordre dans chaque paire delta :</text>
+  <text x="410" y="314" fill="#475569" font-size="11">longitude d'abord, puis latitude.</text>
+
+  <!-- Bits spéciaux en tête -->
+  <text x="380" y="332" text-anchor="middle" font-size="13" font-weight="600" fill="#374151">Bits spéciaux en tête du bitstream</text>
+
+  <rect x="40" y="342" width="680" height="80" rx="4" fill="#fff7ed" stroke="#fed7aa"/>
+
+  <!-- bits spéciaux visuels -->
+  <rect x="60" y="355" width="36" height="26" rx="2" fill="#fb923c" stroke="#f97316"/>
+  <text x="78" y="370" text-anchor="middle" fill="white" font-size="10" font-weight="700">bit 0</text>
+  <text x="78" y="381" text-anchor="middle" fill="white" font-size="9">lon</text>
+
+  <rect x="100" y="355" width="36" height="26" rx="2" fill="#f59e0b" stroke="#d97706"/>
+  <text x="118" y="370" text-anchor="middle" fill="white" font-size="10" font-weight="700">bit 1</text>
+  <text x="118" y="381" text-anchor="middle" fill="white" font-size="9">lon</text>
+
+  <rect x="140" y="355" width="36" height="26" rx="2" fill="#4ade80" stroke="#22c55e"/>
+  <text x="158" y="370" text-anchor="middle" fill="white" font-size="10" font-weight="700">bit 2</text>
+  <text x="158" y="381" text-anchor="middle" fill="white" font-size="9">lat</text>
+
+  <rect x="180" y="355" width="36" height="26" rx="2" fill="#22c55e" stroke="#16a34a"/>
+  <text x="198" y="370" text-anchor="middle" fill="white" font-size="10" font-weight="700">bit 3</text>
+  <text x="198" y="381" text-anchor="middle" fill="white" font-size="9">lat</text>
+
+  <text x="240" y="363" fill="#64748b" font-size="11">bit 0 clair → signes longitude variables (bit 1 = signe)</text>
+  <text x="240" y="378" fill="#64748b" font-size="11">bit 0 mis   → même signe longitude (bit 1 = positif ou négatif)</text>
+  <text x="240" y="393" fill="#64748b" font-size="11">idem bits 2-3 pour latitude</text>
+  <text x="240" y="408" fill="#94a3b8" font-size="10">Puis : paires (Δlon, Δlat) en little-endian, N bits chacune</text>
+
+  <!-- Résumé avantages -->
+  <rect x="40" y="440" width="680" height="46" rx="4" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="380" y="458" text-anchor="middle" font-weight="600" fill="#1e40af">Gain de compression : 30 à 50 % par rapport au stockage absolu</text>
+  <text x="380" y="476" text-anchor="middle" font-size="11" fill="#64748b">Exemple : delta = 3 unités → 2 bits suffisent (vs 24 bits pour la coordonnée absolue) — ratio 12:1 pour les petits segments.</text>
+</svg>

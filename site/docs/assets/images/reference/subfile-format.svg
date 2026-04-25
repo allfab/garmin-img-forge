@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12">
+
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">Format d'un sous-fichier (TRE, RGN, LBL, NET, NOD, DEM)</text>
+
+  <!-- Colonne gauche : structure générique -->
+  <text x="190" y="58" text-anchor="middle" font-size="13" font-weight="600" fill="#374151">Structure générique</text>
+
+  <rect x="60" y="68" width="260" height="50" rx="4" fill="#dcfce7" stroke="#4ade80" stroke-width="2"/>
+  <text x="190" y="90" text-anchor="middle" font-weight="600" fill="#166534">En-tête commun — 21 octets</text>
+  <text x="190" y="107" text-anchor="middle" font-size="11" fill="#15803d">Identique pour tous les sous-fichiers</text>
+
+  <rect x="60" y="120" width="260" height="50" rx="4" fill="#eff6ff" stroke="#60a5fa" stroke-width="2"/>
+  <text x="190" y="142" text-anchor="middle" font-weight="600" fill="#1e40af">En-tête spécifique</text>
+  <text x="190" y="159" text-anchor="middle" font-size="11" fill="#1d4ed8">Variable selon le type (TRE, RGN, LBL…)</text>
+
+  <rect x="60" y="172" width="260" height="50" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="190" y="194" text-anchor="middle" font-weight="600" fill="#475569">Données</text>
+  <text x="190" y="211" text-anchor="middle" font-size="11" fill="#64748b">Géométries, labels, index…</text>
+
+  <!-- Colonne droite : en-tête commun détaillé -->
+  <text x="570" y="58" text-anchor="middle" font-size="13" font-weight="600" fill="#374151">En-tête commun (21 octets)</text>
+
+  <!-- Table -->
+  <rect x="390" y="68" width="90" height="22" fill="#334155" rx="2"/>
+  <text x="435" y="83" text-anchor="middle" fill="white" font-weight="600" font-size="11">Offset</text>
+  <rect x="482" y="68" width="200" height="22" fill="#334155" rx="2"/>
+  <text x="582" y="83" text-anchor="middle" fill="white" font-weight="600" font-size="11">Contenu</text>
+  <rect x="684" y="68" width="60" height="22" fill="#334155" rx="2"/>
+  <text x="714" y="83" text-anchor="middle" fill="white" font-weight="600" font-size="11">Taille</text>
+
+  <!-- Rows -->
+  <rect x="390" y="92" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="107" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x00</text>
+  <rect x="482" y="92" width="200" height="22" fill="#fef9c3" stroke="#e2e8f0"/>
+  <text x="582" y="107" text-anchor="middle" fill="#854d0e" font-size="11">header_length (u16 LE)</text>
+  <rect x="684" y="92" width="60" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="714" y="107" text-anchor="middle" fill="#475569" font-size="11">2</text>
+
+  <rect x="390" y="116" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="131" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x02</text>
+  <rect x="482" y="116" width="200" height="22" fill="#eff6ff" stroke="#e2e8f0"/>
+  <text x="582" y="131" text-anchor="middle" fill="#1e40af" font-size="11">"GARMIN TRE" / "GARMIN RGN"…</text>
+  <rect x="684" y="116" width="60" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="714" y="131" text-anchor="middle" fill="#475569" font-size="11">10</text>
+
+  <rect x="390" y="140" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="155" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x0C</text>
+  <rect x="482" y="140" width="200" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="582" y="155" text-anchor="middle" fill="#64748b" font-size="11">0x01 (inconnu)</text>
+  <rect x="684" y="140" width="60" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="714" y="155" text-anchor="middle" fill="#475569" font-size="11">1</text>
+
+  <rect x="390" y="164" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="179" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x0D</text>
+  <rect x="482" y="164" width="200" height="22" fill="#fef2f2" stroke="#e2e8f0"/>
+  <text x="582" y="179" text-anchor="middle" fill="#991b1b" font-size="11">lock_flag (0x00=libre, 0x80=DRM)</text>
+  <rect x="684" y="164" width="60" height="22" fill="#fef2f2" stroke="#e2e8f0"/>
+  <text x="714" y="179" text-anchor="middle" fill="#475569" font-size="11">1</text>
+
+  <rect x="390" y="188" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="203" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x0E</text>
+  <rect x="482" y="188" width="200" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="582" y="203" text-anchor="middle" fill="#166534" font-size="11">année création (u16 LE)</text>
+  <rect x="684" y="188" width="60" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="714" y="203" text-anchor="middle" fill="#475569" font-size="11">2</text>
+
+  <rect x="390" y="212" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="227" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x10</text>
+  <rect x="482" y="212" width="200" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="582" y="227" text-anchor="middle" fill="#166534" font-size="11">mois création (1 octet)</text>
+  <rect x="684" y="212" width="60" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="714" y="227" text-anchor="middle" fill="#475569" font-size="11">1</text>
+
+  <rect x="390" y="236" width="90" height="22" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="435" y="251" text-anchor="middle" fill="#475569" font-family="monospace" font-size="11">0x11–0x14</text>
+  <rect x="482" y="236" width="200" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="582" y="251" text-anchor="middle" fill="#166534" font-size="11">jour, heure, minute, seconde</text>
+  <rect x="684" y="236" width="60" height="22" fill="#f0fdf4" stroke="#e2e8f0"/>
+  <text x="714" y="251" text-anchor="middle" fill="#475569" font-size="11">4</text>
+
+  <!-- Flèche entre les deux colonnes -->
+  <line x1="322" y1="168" x2="388" y2="168" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <text x="355" y="162" text-anchor="middle" font-size="10" fill="#94a3b8">détail</text>
+
+  <!-- Note lock_flag -->
+  <rect x="60" y="240" width="260" height="75" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="190" y="260" text-anchor="middle" font-weight="600" fill="#991b1b" font-size="12">🔒 Garmin Lock (lock_flag = 0x80)</text>
+  <text x="190" y="278" text-anchor="middle" font-size="11" fill="#dc2626">Carte liée à un unit ID matériel.</text>
+  <text x="190" y="294" text-anchor="middle" font-size="11" fill="#dc2626">Firmware vérifie (Family ID, unit ID)</text>
+  <text x="190" y="310" text-anchor="middle" font-size="11" fill="#dc2626">avant d'autoriser le rendu.</text>
+
+  <!-- Note imgforge -->
+  <rect x="60" y="325" width="260" height="45" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="190" y="345" text-anchor="middle" font-weight="600" fill="#166534" font-size="12">✓ imgforge</text>
+  <text x="190" y="362" text-anchor="middle" font-size="11" fill="#166534">lock_flag = 0x00 dans tous les sous-fichiers</text>
+
+  <!-- Types de sous-fichiers -->
+  <rect x="390" y="275" width="354" height="150" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="567" y="296" text-anchor="middle" font-weight="600" fill="#374151">Types de sous-fichiers connus</text>
+
+  <text x="410" y="316" fill="#4ade80" font-weight="700">TRE</text>
+  <text x="450" y="316" fill="#64748b">Index spatial, niveaux de zoom, subdivisions</text>
+  <text x="410" y="334" fill="#60a5fa" font-weight="700">RGN</text>
+  <text x="450" y="334" fill="#64748b">Géométries (points, polylignes, polygones)</text>
+  <text x="410" y="352" fill="#fb923c" font-weight="700">LBL</text>
+  <text x="450" y="352" fill="#64748b">Labels, noms de rues, POI, codes postaux</text>
+  <text x="410" y="370" fill="#c084fc" font-weight="700">NET</text>
+  <text x="450" y="370" fill="#64748b">Réseau routier (intersections, sens…)</text>
+  <text x="410" y="388" fill="#c084fc" font-weight="700">NOD</text>
+  <text x="450" y="388" fill="#64748b">Graphe topologique (nœuds, restrictions)</text>
+  <text x="410" y="406" fill="#f87171" font-weight="700">DEM</text>
+  <text x="450" y="406" fill="#64748b">Altimétrie (grille multi-résolution)</text>
+
+  <text x="380" y="450" text-anchor="middle" font-size="11" fill="#94a3b8">GMP (Garmin NT) : regroupe TRE+RGN+LBL+NET+NOD+DEM dans un seul conteneur FAT.</text>
+</svg>
