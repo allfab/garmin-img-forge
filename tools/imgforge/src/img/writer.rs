@@ -445,25 +445,22 @@ fn build_multilevel_hierarchy(
             subdiv_counter += 1;
 
             let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
-            // mkgmap `createSubdivision(parent, ma.getFullBounds(), z)` (MapBuilder.java:913)
-            // utilise `getFullBounds()` = union des bboxes des features ajoutées. Mais aux
-            // niveaux non-leaf, la chaîne de filtres pré-splitter d'imgforge (round_coords,
-            // size_filter, DP, remove_empty dans `filter_features_for_level`) supprime des
-            // features que mkgmap conserverait — leur bbox n'étend donc pas full_bounds, et
-            // le subdiv déclare un bbox plus petit que la cell géographique du splitter.
-            // L'Alpha 100 rejette alors le subdiv pour les viewports panés vers les zones
-            // de la cell non couvertes par full_bounds → écran vide / features qui
-            // disparaissent au pan détail.
+            // Subdivision bounds = cell géographique du splitter (`area.bounds`).
+            // Les cells du splitter sont non-chevauchantes par construction → les
+            // subdivisions ne s'overlappent pas → l'Alpha 100 trouve toujours UNE
+            // subdivision unique pour tout viewport dans la tuile.
             //
-            // Fix : prendre l'union de `area.bounds` (cell géographique du splitter, qui
-            // garantit la couverture spatiale du parent) et de `area.full_bounds()` (qui
-            // peut déborder si des shapes/lines tolérées par le splitter dépassent la cell).
-            // Ne réduit jamais sous la cell, ne clippe jamais les features qui débordent.
-            let full = area.bounds.union(&area.full_bounds());
-            subdiv.set_center(&full.center());
+            // On n'utilise PAS `full_bounds()` (bbox des features) : les features
+            // linéaires (routes) ont souvent leur premier point dans la cell mais leurs
+            // points suivants à l'autre bout de la tuile. `full_bounds()` s'étend alors
+            // sur toute la tuile, et l'union cell ∪ full_bounds gonfle les bornes
+            // de façon arbitraire. L'Alpha 100 suit les first_child des parents
+            // aux bounds gonflés vers des children géographiquement hors-viewport →
+            // écran vide au zoom détail.
+            subdiv.set_center(&area.bounds.center());
             subdiv.set_bounds(
-                full.min_lat(), full.min_lon(),
-                full.max_lat(), full.max_lon(),
+                area.bounds.min_lat(), area.bounds.min_lon(),
+                area.bounds.max_lat(), area.bounds.max_lon(),
             );
             subdiv.parent = parent_num;
             // is_last marks the last child in each parent's group, NOT the last at the level.
