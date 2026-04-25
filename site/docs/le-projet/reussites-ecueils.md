@@ -114,6 +114,16 @@ Le fix Bug 2 a débloqué la qualité géométrique, mais avec `usize::MAX` de p
 
 Commits de référence : [`e6fce3f`](https://github.com/allfab/garmin-img-forge/commit/e6fce3f) (cell_size), [`7cef948`](https://github.com/allfab/garmin-img-forge/commit/7cef948) (splitter max_depth), [`7e4a8f2`](https://github.com/allfab/garmin-img-forge/commit/7e4a8f2) (`--skip-existing` publish-only).
 
+### Le packaging GMP (format Garmin NT consolidé) — avril 2026
+
+Toutes les cartes Garmin commerciales modernes (Topo France v6 Pro, Topo Active…) utilisent le format **GMP** : au lieu de 6 fichiers FAT séparés par tuile (`TRE/RGN/LBL/NET/NOD/DEM`), un seul fichier `.GMP` les encapsule tous. Sur un build France entière (~1 500 tuiles), cela représente ~9 000 entrées FAT en mode `legacy` contre ~1 500 en mode `gmp` — une réduction de 83 %.
+
+L'implémentation du `GmpWriter` a été plus complexe que prévu. Le format du conteneur lui-même est relativement simple (header 61 bytes + copyright 179 bytes + blobs concatenés avec relocalisation des offsets), mais le firmware Alpha 100 impose des contraintes sur le **contenu interne** du TRE embarqué dans le GMP — contraintes que les cartes commerciales Garmin satisfont implicitement, et qui ne sont documentées nulle part.
+
+La validation a demandé **5 cycles de test hardware** (GC1-GC5) et un bug de relocalisation DEM découvert uniquement sur build production avec données d'altimétrie réelles. La root cause finale : un TRE avec extension NT (`hlen=309`) et sections vides à l'intérieur d'un GMP est rejeté par le firmware Alpha 100 — le TRE standard (`hlen=188`) fonctionne parfaitement.
+
+**Résultat** : `--packaging gmp` est fonctionnel en production depuis le 25 avril 2026, validé sur Alpha 100 avec les données IGN BD TOPO D038 (routing + altimétrie BDAltiv2).
+
 ---
 
 ## Écueils et difficultés
@@ -142,6 +152,28 @@ Le passage UTF-8 (données sources) vers CP1252 (format Polish Map par défaut) 
 ### La taille des données BD TOPO
 
 ~40 Go de données vectorielles pour la moitié sud de la France, c'est massif. Les premiers prototypes de mpforge prenaient des heures. L'ajout de la parallélisation (rayon), de l'indexation spatiale (R-tree) et de l'option `--skip-existing` a été nécessaire pour rendre le pipeline viable en production.
+
+### L'implémentation du conteneur GMP — contraintes firmware non documentées
+
+Implémentation de `GmpWriter` pour produire le format GMP Garmin NT. Le conteneur lui-même n'est pas difficile à implémenter (spec partiellement disponible dans `tmp/gimgtools/garmin_struct.h`). La difficulté venait entièrement des **contraintes firmware Alpha 100** sur le contenu interne, révélées par tests hardware itératifs.
+
+**Obstacle 1 — L'extension NT du TRE (`hlen=309`)**
+
+Les cartes Garmin officielles ont un TRE avec `hlen=309` à l'intérieur du GMP, et leurs 121 bytes d'extension NT contiennent des données valides. Notre TRE produisait ces 121 bytes tous à zéro (sections absentes). Le firmware Alpha 100 a des comportements différents selon la valeur de `hlen` :
+
+- `hlen=309` + `tre10_rec_size=0` → **crash** (division par zéro : `count = size / rec_size`)
+- `hlen=309` + `tre10_rec_size=1` + reste à zéro → **tuile invisible** (sections NT vides invalident l'enregistrement)
+- `hlen=188` (TRE standard) → ✅ **tuile visible et fonctionnelle**
+
+Cinq cycles de test hardware ont été nécessaires pour converger sur cette conclusion : le firmware Alpha 100 préfère un TRE standard à l'intérieur d'un GMP plutôt qu'un TRE NT avec des sections vides. La substitution d'un GMP officiel Garmin (GC1) a d'abord permis de confirmer que le format du conteneur était correct — le problème venait du contenu du TRE produit par `GmpWriter`.
+
+**Obstacle 2 — La relocalisation DEM (`relocate_dem`)**
+
+Les offsets internes des blobs standalone doivent être relocalisés en GMP-absolus. Pour le DEM, chaque section-header de 60 bytes contient deux champs à patcher (`data_offset` à +32 et `data_offset2` à +36). La première implémentation patchait les mauvaises positions (+20 et +24, soit `tiles_lon-1` et `tiles_lat-1`).
+
+Ce bug est resté invisible pendant toute la phase de tests synthétiques, car les tests d'intégration utilisaient `dem: None`. Il n'est apparu qu'en build production avec des données BDAltiv2 réelles : `tiles_lon-1` passait de 1 à ~1290, le firmware tentait d'allouer une table de 1290 descripteurs DEM et rejetait le fichier.
+
+**Leçon** : pour tout format binaire avec des sections optionnelles, les tests d'intégration doivent couvrir tous les sous-types — y compris NET, NOD et DEM. Un test avec `dem: None` ne valide pas `relocate_dem`.
 
 ---
 

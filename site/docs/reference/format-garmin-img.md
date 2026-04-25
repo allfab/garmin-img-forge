@@ -361,12 +361,67 @@ MAPNAME.GMP
 └── DEM section  (si DEM)
 ```
 
-L'option `--packaging gmp` d'imgforge génère ce format. Il réduit le nombre d'entrées FAT (de 6 à 1 par tuile) et améliore théoriquement les temps de chargement sur les firmware NT modernes.
+### Intérêt pour les devices Garmin NT
 
-!!! warning "Support expérimental"
-    Le mode `--packaging gmp` est **non fonctionnel sur firmware Alpha 100** : la carte n'est pas
-    reconnue dans la liste des produits cartographiques et peut rendre les autres cartes SD
-    invisibles. Utiliser `--packaging legacy` (défaut) en production.
+| Critère | Legacy (6 FAT) | GMP (1 FAT) |
+|---------|----------------|-------------|
+| Entrées FAT par tuile | Jusqu'à 6 | 1 |
+| Entrées FAT — France entière (~1 500 tuiles) | ~9 000 | ~1 500 |
+| Format cartes commerciales Garmin | Non | **Oui** (Topo France v6 Pro, Topo Active…) |
+| Boot firmware NT | Table FAT plus lourde à parser | Allégé — 83 % d'entrées en moins |
+| Compatibilité firmware | Tous | Firmware NT (Alpha 100, séries Edge, Monterra…) |
+
+Le `gmapsupp.img` Garmin est un système de fichiers FAT chargé en mémoire au démarrage du GPS. Sur les firmware NT modernes (Alpha 100 en particulier), la table FAT est intégralement parsée au boot — un nombre d'entrées élevé rallonge le démarrage et peut dépasser la RAM disponible sur les gros builds (voir [Bug FAT 4 095 entrées](../le-projet/reussites-ecueils.md#bug-1--lalpha-100-plante-au-boot-sur-les-gros-quadrants)). Le mode GMP adresse ce problème structurellement.
+
+!!! success "Validé en production sur Alpha 100"
+    `--packaging gmp` est fonctionnel en production depuis avril 2026, validé sur firmware Alpha 100
+    avec un build IGN BD TOPO D038 complet (données altimétrie BDAltiv2 incluses).
+
+### Structure binaire du conteneur GMP
+
+```
+Offset  Taille  Champ
+0x00    2       hlen (= 0x3D = 61 bytes)
+0x02    10      magic "GARMIN GMP"
+0x0C    1       unknown (= 0x01)
+0x0D    1       locked (0 = libre)
+0x0E    7       date/heure (year u16, month, day, hour, min, sec)
+0x15    4       reserved (= 0)
+0x19    4       tre_offset  — offset GMP-absolu du blob TRE
+0x1D    4       rgn_offset  — offset GMP-absolu du blob RGN
+0x21    4       lbl_offset  — offset GMP-absolu du blob LBL
+0x25    4       net_offset  — 0 si absent
+0x29    4       nod_offset  — 0 si absent
+0x2D    4       dem_offset  — 0 si absent
+0x31    4       mar_offset  — 0 (MAR non utilisé)
+0x35    8       reserved
+[0x3D]  179     copyright Garmin (deux C-strings NUL-terminées)
+[0xF0]  …       TRE blob (relocialisé)
+…               RGN blob (relocialisé)
+…               LBL blob (relocialisé)
+…               NET blob (si présent)
+…               NOD blob (si présent)
+…               DEM blob (si présent)
+```
+
+Les offsets internes de chaque blob (ex. `map_levels_offset` dans TRE, `data_offset` dans RGN) sont **relocalisés** de leur valeur standalone vers des adresses GMP-absolues. Le TRE conserve son `hlen` standard de 188 bytes et son `format_marker = 0x00110301`.
+
+### Écueils d'implémentation — firmware Alpha 100
+
+L'implémentation du `GmpWriter` a nécessité 5 cycles de test hardware (GC1-GC5) pour identifier les contraintes non documentées du firmware Alpha 100. Voici les obstacles dans l'ordre de leur découverte :
+
+| Écueil | Symptôme sur Alpha 100 | Cause | Fix retenu |
+|--------|----------------------|-------|-----------|
+| **Extension NT du TRE** (`hlen=309`) | Tuile invisible dans les produits cartographiques | Les section descriptors TRE[0xD0..0x134] entièrement à zéro invalident l'enregistrement de la tuile | Conserver `hlen=188` (TRE standard) à l'intérieur du GMP — l'extension NT est inutile |
+| **`tre10_rec_size = 0`** | Crash firmware au chargement | `count = tre10_size / tre10_rec_size` avec `rec_size=0` → division par zéro | Inclus dans le fix `hlen=188` (champ supprimé avec l'extension NT) |
+| **`relocate_dem` — mauvaises positions** | Fichier GMP non reconnu (build production avec DEM) | Les section-headers DEM (60 bytes chacun) ont `data_offset` à +32 et `data_offset2` à +36, mais le code patchait +20 (`tiles_lon-1`) et +24 (`tiles_lat-1`). `tiles_lon-1` passait de 1 à ~1290 → firmware tente d'allouer une table de 1290 descripteurs DEM | Corriger les positions : `base+20/24` → `base+32/36` dans `relocate_dem` |
+
+!!! note "Pourquoi les tests n'ont pas détecté le bug DEM ?"
+    Les tests d'intégration GC5 utilisaient `dem: None` — la branche `relocate_dem` n'était
+    pas exercée. Le bug n'est apparu qu'en build production avec des données BDAltiv2 réelles.
+    Leçon : couvrir tous les sous-types optionnels (NET/NOD/DEM) dans les tests d'intégration.
+
+Détail complet de l'investigation : `docs/firmwares/Alpha_100_FR/jalon-6-gmp-crash-root-cause.md`.
 
 ---
 

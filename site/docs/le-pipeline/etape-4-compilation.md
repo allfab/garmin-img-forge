@@ -303,18 +303,19 @@ Par défaut, imgforge auto-détecte : si des routes avec `RouteParam` sont prés
 Par défaut, imgforge génère 6 fichiers FAT séparés par tuile (`TRE`, `RGN`, `LBL`, `NET`, `NOD`, `DEM`) — c'est le mode `legacy`, compatible avec tous les firmware Garmin.
 
 ```bash
-# Mode legacy (défaut — seul mode validé en production)
+# Mode legacy (défaut)
 imgforge build tiles/ --packaging legacy
+
+# Mode GMP — 1 fichier .GMP par tuile (format Garmin NT consolidé)
+imgforge build tiles/ --packaging gmp
 ```
 
 | Mode | Fichiers par tuile | Compatibilité |
 |------|-------------------|---------------|
-| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin — **seul mode validé** |
-| `gmp` | Un seul `.GMP` | ⚠ **Expérimental** — non fonctionnel sur Alpha 100 |
+| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin |
+| `gmp` | Un seul `.GMP` (format Garmin NT consolidé) | Firmware NT — validé sur Alpha 100 |
 
-!!! warning "GMP non fonctionnel en production"
-    Le mode `--packaging gmp` n'est pas reconnu par le firmware Alpha 100 et peut
-    rendre les autres cartes de la carte SD invisibles. Ne pas utiliser en production.
+Le mode `gmp` réduit significativement le nombre d'entrées FAT dans le `gmapsupp.img` (6 → 1 par tuile), ce qui allège le boot sur les firmware NT modernes et correspond au format des cartes Garmin commerciales (Topo France v6 Pro, Topo Active…). Voir [Format IMG — GMP](../../reference/format-garmin-img.md#gmp--format-garmin-nt-consolid) pour les détails techniques et les écueils d'implémentation.
 
 Le script `build-garmin-map.sh` expose ce flag via `--packaging MODE`.
 

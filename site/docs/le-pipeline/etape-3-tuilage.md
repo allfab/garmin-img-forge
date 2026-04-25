@@ -86,7 +86,7 @@ Ces options propagent les flags imgforge correspondants ; elles ne changent rien
 | `--simplify-polygons SPEC` | Épsilon DP par résolution pour les polygones (exemple : `"24:12,18:10,16:8"`) | — |
 | `--min-size-polygon N` | Filtre les polygones < N unités carte (référence mkgmap : `8`) | — |
 | `--merge-lines` | Fusionne les polylignes adjacentes (même type + label). Activé par défaut dans mkgmap — **à activer dès qu'on génère un quadrant ou une moitié**, divise par 2-3 le nombre de polylignes et réduit le pic mémoire imgforge. | — |
-| `--packaging MODE` | Format d'emballage : `legacy` (6 FAT, **seul mode validé**) ou `gmp` (1 `.GMP`, expérimental — non fonctionnel sur Alpha 100). Voir [imgforge — Format d'emballage](../le-projet/imgforge.md#format-demballage---packaging). | `legacy` |
+| `--packaging MODE` | Format d'emballage : `legacy` (6 FAT par tuile) ou `gmp` (1 `.GMP` par tuile, format Garmin NT — validé sur Alpha 100). Voir [imgforge — Format d'emballage](../le-projet/imgforge.md#format-demballage---packaging). | `legacy` |
 
 !!! tip "Quand activer ces options"
     Pour un département, les valeurs par défaut d'imgforge suffisent.

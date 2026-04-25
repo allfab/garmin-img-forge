@@ -125,7 +125,7 @@ Options de rendu supplémentaires :
 | `--order-by-decreasing-area` | Trier les polygones par aire décroissante | false |
 | `--lower-case` | Autoriser les minuscules dans les labels (force Format 9/10) | false |
 | `--merge-lines` | Fusionne les polylignes adjacentes de même type et label | false |
-| `--packaging <MODE>` | Format d'emballage des sous-fichiers : `legacy` (6 FAT files par tuile) ou `gmp` (1 `.GMP` par tuile, **expérimental**) | `legacy` |
+| `--packaging <MODE>` | Format d'emballage des sous-fichiers : `legacy` (6 FAT files par tuile) ou `gmp` (1 `.GMP` par tuile) | `legacy` |
 
 #### Fusion de polylignes (`--merge-lines`)
 
@@ -142,12 +142,10 @@ imgforge build tiles/ --merge-lines
 
 | Mode | Fichiers générés par tuile | Compatibilité |
 |------|--------------------------|---------------|
-| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin — **seul mode validé en production** |
-| `gmp` | Un seul `.GMP` | ⚠ **Expérimental** — non fonctionnel sur Alpha 100 |
+| `legacy` | Jusqu'à 6 fichiers FAT : `TRE` + `RGN` + `LBL` + (optionnel) `NET` + `NOD` + `DEM` | Tous firmware Garmin |
+| `gmp` | Un seul `.GMP` (format Garmin NT consolidé) | Firmware NT — validé sur Alpha 100 |
 
-!!! warning "GMP non fonctionnel en production"
-    Le mode `gmp` n'est pas reconnu par le firmware Alpha 100 et peut rendre
-    les autres cartes de la carte SD invisibles. Utiliser `legacy` en production.
+Le mode `gmp` réduit le nombre d'entrées FAT de 6 à 1 par tuile, ce qui allège le parsing du répertoire au démarrage sur les firmware NT modernes. Sur un build France entière (~1 500 tuiles), cela représente ~9 000 entrées FAT en `legacy` contre ~1 500 en `gmp`. Voir [GMP — Format Garmin NT consolidé](../reference/format-garmin-img.md#gmp--format-garmin-nt-consolid) pour les détails techniques.
 
 ## Encodage des labels
 
