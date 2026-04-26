@@ -8,47 +8,47 @@ grid:
 
 inputs:
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/PARCELLE_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/BATIMENT_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/SECTION_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONFLUV_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONROUTE_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/LIEUDIT_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/ZONCOMMUNI_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TLINE_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TPOINT_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/NUMVOIE_id.gpkg"
-    source_srs: "EPSG:4326"
+    source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
 
 output:
