@@ -1366,10 +1366,11 @@ pub fn run_validate(
                 errors.push(err_msg);
             }
         } else {
+            // Section header présente mais pas de fichier template : valeurs directes.
             checks.push(ValidationCheck {
                 name: "header_template".to_string(),
-                status: CheckStatus::Skipped,
-                details: "No template configured".to_string(),
+                status: CheckStatus::Pass,
+                details: "Header configured (direct values, no template file)".to_string(),
             });
         }
     } else {
@@ -1469,9 +1470,38 @@ pub fn run_validate(
         }
     }
 
-    // Step 7: Generalize configs (optional, per-input)
+    // Step 7: Generalize configs (optional)
+    // Deux sources possibles : catalogue externe (generalize_profiles_path) et/ou
+    // directives inline par-input (input.generalize).
     {
         let mut gen_details: Vec<String> = Vec::new();
+
+        // Catalogue externe — source principale en production.
+        if let Some(ref path) = config.generalize_profiles_path {
+            let profile_count = config.resolved_profile_map.len();
+            let level_count: usize = config
+                .resolved_profile_map
+                .values()
+                .map(|p| p.levels.len())
+                .sum();
+            if path.exists() {
+                gen_details.push(format!(
+                    "catalog: {} ({} profil(s), {} niveau(x))",
+                    path.display(),
+                    profile_count,
+                    level_count
+                ));
+            } else {
+                let err_msg = format!(
+                    "generalize_profiles_path not found: {}",
+                    path.display()
+                );
+                errors.push(err_msg.clone());
+                gen_details.push(err_msg);
+            }
+        }
+
+        // Directives inline par-input.
         for (i, input) in config.inputs.iter().enumerate() {
             if let Some(ref gen) = input.generalize {
                 let mut parts = Vec::new();
@@ -1485,6 +1515,7 @@ pub fn run_validate(
                 gen_details.push(format!("input #{}: {}", i, parts.join(", ")));
             }
         }
+
         if gen_details.is_empty() {
             checks.push(ValidationCheck {
                 name: "generalize".to_string(),
@@ -1492,10 +1523,11 @@ pub fn run_validate(
                 details: "Not configured".to_string(),
             });
         } else {
+            let all_ok = !errors.iter().any(|e| e.contains("generalize_profiles_path"));
             checks.push(ValidationCheck {
                 name: "generalize".to_string(),
-                status: CheckStatus::Pass,
-                details: gen_details.join("; "),
+                status: if all_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+                details: gen_details.join("\n"),
             });
         }
     }
