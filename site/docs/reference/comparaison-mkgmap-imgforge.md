@@ -324,8 +324,52 @@ Les deux premières recommandations (YAML uniquement) sont réalisables immédia
 
 Le gain total estimé des 5 candidats combinés est de l'ordre de **12-21 % du RGN total** (1 053 284 → ~830-925 KB) — en supposant une indépendance approximative des effets. L'effet principal de mkgmap au niveau visuel (lissage géométrique aux zooms larges) vient surtout de `RoundCoordsFilter` + DP scalé, pas du nombre de features.
 
-!!! info "Anomalie DataN mkgmap — piste ouverte"
-    Une anomalie dans la façon dont mkgmap concatène les DataN et utilise `maxResolution` reste à investiguer (note mémoire `project_mkgmap_anomaly_concat_datan`). Elle pourrait expliquer partiellement pourquoi mkgmap a 95 subdivisions à n=5 vs 4 pour imgforge, au-delà du seul EndLevel filtering.
+!!! success "Anomalie DataN mkgmap — résolue"
+    La différence 95 subdivisions (mkgmap) vs 4 (imgforge) à n=5 n'est **pas** due à une promotion de features au-delà de leur EndLevel. Les deux outils incluent exactement les mêmes 4 795 features à n=5 (celles avec `EndLevel=6`). L'écart vient de la granularité du splitter spatial — voir §7.
+
+---
+
+## §7 — Sélection des features par niveau : imgforge est-il correct ?
+
+### Hypothèse initiale
+
+La différence de 95 subdivisions (mkgmap) vs 4 (imgforge) à n=5, avec un écart de bytes de 15,8×, avait soulevé la question : mkgmap inclut-il des features à n=5 qu'imgforge exclurait à tort ? L'hypothèse était que mkgmap lirait les sections `DataN` de manière cumulative (`minResolution = min(résolution de tous les DataN lus)`) et promourait ainsi des features vers des niveaux dépassant leur `EndLevel`.
+
+### Vérification — mpforge n'émet jamais DataN au-delà de EndLevel
+
+La distribution du MP de production (`BDTOPO-001-004.mp`, 124 863 features) est parfaitement propre :
+
+| EndLevel | max DataN | Features |
+|---|---|---|
+| 0 | 0 | 99 728 |
+| 2 | 2 | 7 810 |
+| 4 | 4 | 4 854 |
+| 6 | 6 | 4 795 |
+
+mpforge n'émet jamais `DataN` au-delà de `EndLevel`. L'hypothèse d'une promotion par lecture cumulative ne peut donc pas se produire : mkgmap ne voit pas de `Data5=` pour une feature avec `EndLevel=4`.
+
+### Vérification — même features à n=5
+
+Selon la logique `feature_visible_at_level` d'imgforge (`writer.rs`) :
+
+- Feature visible à n=5 si `EndLevel ≥ 5` ET il existe `DataN(k ≤ 5)`
+- Résultat sur le MP : **4 795 features** (exactement celles avec `EndLevel=6`)
+
+mkgmap applique la même règle via son gate `l.getMinResolution() <= res` (`MapBuilder.java` L929), où `minResolution` est dérivé de `EndLevel`. Les deux outils incluent les mêmes features à n=5.
+
+### Explication de l'écart de bytes
+
+La différence 129 713 bytes (mkgmap) vs 8 200 bytes (imgforge) à n=5 pour les mêmes 4 795 features vient de **deux facteurs combinés** :
+
+1. **Granularité du splitter** : mkgmap crée 95 petites subdivisions (~50 features/subdiv) là où imgforge crée 4 grandes subdivisions (~1 200 features/subdiv). Chaque subdivision porte un overhead de structure fixe dans la RGN — 95 × overhead >> 4 × overhead.
+
+2. **Chaîne de filtres** : les 4 795 features passent par `RoundCoordsFilter` + `DouglasPeuckerFilter` (erreur 166 unités ≈ 356 m à n=5) dans mkgmap, réduisant chaque polyligne à quelques points. Dans imgforge, la simplification à n=5 dépend du profil YAML (14 m pour les routes communales, absent pour les features hors profil).
+
+### Conclusion
+
+L'implémentation imgforge est **correcte et sémantiquement fidèle** à mkgmap sur la sélection des features. La différence de taille à n=5 est intégralement expliquée par la granularité du splitter (plus d'overhead de structure côté mkgmap) et l'absence des filtres `RoundCoords` + `SizeFilter` côté imgforge.
+
+La granularité fine de mkgmap (petites subdivisions) peut offrir un avantage côté firmware Garmin (moins de données à charger par requête), mais c'est une optimisation de splitter distincte du sujet de cette page.
 
 ---
 
