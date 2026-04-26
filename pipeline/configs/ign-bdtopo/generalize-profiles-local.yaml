@@ -24,8 +24,8 @@
 profiles:
   TRONCON_HYDROGRAPHIQUE:
     levels:
-      - { n: 0, simplify: 0.00005 }
-      - { n: 1, simplify: 0.00006 }
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
       - { n: 2, simplify: 0.00008 }
       - { n: 3, simplify: 0.00010 }
       - { n: 4, simplify: 0.00030 }
@@ -56,55 +56,55 @@ profiles:
           - { n: 0, simplify_vw: 0.000001 }
           - { n: 1, simplify_vw: 0.000002 }
           - { n: 2, simplify_vw: 0.000003 }
-          - { n: 3, simplify_vw: 0.000005 }
+          - { n: 3, simplify_vw: 0.000004 }
           - { n: 4, simplify_vw: 0.000060 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Départementale]
         levels:
-          - { n: 0, simplify_vw: 0.000002 }
-          - { n: 1, simplify_vw: 0.000003 }
-          - { n: 2, simplify_vw: 0.000005 }
-          - { n: 3, simplify_vw: 0.000010 }
-          - { n: 4, simplify_vw: 0.000200 }
-          - { n: 5, simplify_vw: 0.000300 }
-          - { n: 6, simplify_vw: 0.000800 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
-          - { n: 0, simplify_vw: 0.000003 }
-          - { n: 1, simplify_vw: 0.000005 }
-          - { n: 2, simplify_vw: 0.000010 }
-          - { n: 3, simplify_vw: 0.000018 }
-          - { n: 4, simplify_vw: 0.000300 }
-          - { n: 5, simplify_vw: 0.000500 }
-          - { n: 6, simplify_vw: 0.001000 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
-          - { n: 0, simplify_vw: 0.000005 }
-          - { n: 1, simplify_vw: 0.000010 }
-          - { n: 2, simplify_vw: 0.000018 }
-          - { n: 3, simplify_vw: 0.000035 }
-          - { n: 4, simplify_vw: 0.000300 }
-          - { n: 5, simplify_vw: 0.001000 }
-          - { n: 6, simplify_vw: 0.002000 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
     levels:
-      - { n: 0, simplify_vw: 0.000003 }
-      - { n: 1, simplify_vw: 0.000005 }
-      - { n: 2, simplify_vw: 0.000010 }
-      - { n: 3, simplify_vw: 0.000018 }
-      - { n: 4, simplify_vw: 0.000300 }
-      - { n: 5, simplify_vw: 0.000500 }
-      - { n: 6, simplify_vw: 0.001000 }
+      - { n: 0, simplify_vw: 0.000001 }
+      - { n: 1, simplify_vw: 0.000002 }
+      - { n: 2, simplify_vw: 0.000003 }
+      - { n: 3, simplify_vw: 0.000004 }
+      - { n: 4, simplify_vw: 0.000060 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
 
   COURBE:
     levels:
-      - { n: 0, simplify: 0.00008 }
-      - { n: 1, simplify: 0.00010 }
-      - { n: 2, simplify: 0.00011 }
-      - { n: 3, simplify: 0.00014 }
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00006 }
       - { n: 4, simplify: 0.00030 }
       - { n: 5, simplify: 0.00100 }
       - { n: 6, simplify: 0.00100 }
@@ -143,11 +143,11 @@ profiles:
     # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
     # Paliers n=0..4 uniquement — imgforge ne rend pas au-delà de EndLevel.
     levels:
-      - { n: 0, simplify: 0.00005 }
-      - { n: 1, simplify: 0.00008 }
-      - { n: 2, simplify: 0.00012 }
-      - { n: 3, simplify: 0.00020 }
-      - { n: 4, simplify: 0.00035 }
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
 
   COMMUNE:
     # topology: true — frontières entre communes partagent des vertices bit-exacts
