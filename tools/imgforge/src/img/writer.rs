@@ -252,12 +252,9 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
 
     tre.polyline_overviews.sort();
     tre.polyline_overviews.dedup();
-    // Background polygon overview — type 0x4A (invisible on Alpha 100, not in I2023100.txt)
-    // 0x4B was originally used to match mkgmap but renders as dark green on Alpha 100
-    // because our TYP doesn't define it. 0x4A is invisible by design (same approach as
-    // overview_map.rs — cf. commit 31be860).
+    // Background polygon overview — type 0x4B is added to every subdivision at all levels
     let bg_max_level = num_levels.saturating_sub(1) as u8;
-    tre.polygon_overviews.push(PolygonOverview::new(0x4A, bg_max_level));
+    tre.polygon_overviews.push(PolygonOverview::new(0x4B, bg_max_level));
     tre.polygon_overviews.sort();
     tre.polygon_overviews.dedup();
     tre.point_overviews.sort();
@@ -1101,9 +1098,10 @@ fn encode_subdivision_rgn(
     let mut polygons_data = Vec::new();
 
     // Background polygon — mkgmap MapperBasedMapDataSource.addBackground()
-    // Type 0x4A (invisible on Alpha 100) instead of mkgmap's 0x4B:
-    // our TYP I2023100.txt doesn't define 0x4B → firmware default = dark green patches.
-    // 0x4A is not defined either but renders invisible on Alpha 100 (same as overview_map.rs).
+    // Type 0x4B covers the subdivision area, rendered behind all other polygons.
+    // mkgmap adds one 0x4B polygon covering the full map bounds, then the splitter
+    // clips it per subdivision. We achieve the same result by generating it directly
+    // from each subdivision's area bounds.
     {
         let bg_pts = vec![
             Coord::new(area.bounds.min_lat(), area.bounds.min_lon()),
@@ -1111,7 +1109,7 @@ fn encode_subdivision_rgn(
             Coord::new(area.bounds.max_lat(), area.bounds.max_lon()),
             Coord::new(area.bounds.max_lat(), area.bounds.min_lon()),
         ];
-        let bg = Polygon::new(0x4A, bg_pts.clone());
+        let bg = Polygon::new(0x4B, bg_pts.clone());
         let bg_deltas = compute_deltas(&bg_pts, subdiv);
         if let Some(bg_bs) = line_preparer::prepare_line(&bg_deltas, false, None, false) {
             polygons_data.extend_from_slice(
