@@ -1266,10 +1266,10 @@ pub fn run_validate(
         });
     } else {
         let detail = format!(
-            "{}/{} files missing: {}",
+            "{}/{} file(s) introuvable(s) :\n  - {}",
             missing_inputs.len(),
             input_count,
-            missing_inputs.join(", ")
+            missing_inputs.join("\n  - ")
         );
         checks.push(ValidationCheck {
             name: "input_files".to_string(),
@@ -1352,12 +1352,17 @@ pub fn run_validate(
                 checks.push(ValidationCheck {
                     name: "header_template".to_string(),
                     status: CheckStatus::Pass,
-                    details: "File exists".to_string(),
+                    details: format!("File exists: {}", template_path.display()),
                 });
             } else {
+                let abs = std::fs::canonicalize(template_path)
+                    .unwrap_or_else(|_| template_path.to_path_buf());
                 let err_msg = format!(
-                    "Header template file does not exist: {}",
-                    template_path.display()
+                    "header.template introuvable : {}\n  \
+                     → chemin résolu : {}\n  \
+                     Astuce : ce chemin est résolu depuis le CWD, pas depuis sources.yaml",
+                    template_path.display(),
+                    abs.display(),
                 );
                 checks.push(ValidationCheck {
                     name: "header_template".to_string(),
@@ -1450,13 +1455,18 @@ pub fn run_validate(
                 } else {
                     let err_msg = if is_pattern {
                         format!(
-                            "{}: spatial_filter.source pattern matched no files: {}",
+                            "{}: spatial_filter.source — aucun fichier pour le pattern : {}",
                             label, source
                         )
                     } else {
+                        let abs = std::fs::canonicalize(source)
+                            .unwrap_or_else(|_| std::path::PathBuf::from(source));
                         format!(
-                            "{}: spatial_filter.source file does not exist: {}",
-                            label, source
+                            "{}: spatial_filter.source introuvable : {}\n  \
+                             → chemin résolu : {}",
+                            label,
+                            source,
+                            abs.display(),
                         )
                     };
                     errors.push(err_msg.clone());
@@ -1506,8 +1516,13 @@ pub fn run_validate(
                 ));
             } else {
                 let err_msg = format!(
-                    "generalize_profiles_path not found: {}",
-                    path.display()
+                    "generalize_profiles_path introuvable : {}\n  \
+                     → chemin résolu    : {}\n  \
+                     → base de résolution : {}\n  \
+                     Astuce : le chemin est relatif au répertoire de sources.yaml, pas au CWD",
+                    path.display(),
+                    resolved.display(),
+                    base_dir_gen.display(),
                 );
                 errors.push(err_msg.clone());
                 gen_details.push(err_msg);
@@ -1618,7 +1633,10 @@ pub fn run_validate(
                 });
             }
             Err(e) => {
-                let err_msg = format!("profile_catalog error: {:#}", e);
+                let err_msg = format!(
+                    "profile_catalog : chargement échoué\n  → {:#}",
+                    e
+                );
                 checks.push(ValidationCheck {
                     name: "profile_catalog".to_string(),
                     status: CheckStatus::Fail,
