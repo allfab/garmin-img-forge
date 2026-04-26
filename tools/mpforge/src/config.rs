@@ -1395,76 +1395,51 @@ pub fn run_validate(
                 details: "Not configured".to_string(),
             });
         } else {
-            // Grouper par source pour éviter de lister N fois le même fichier quand
-            // plusieurs inputs partagent le même spatial_filter (ex : COMMUNE.shp × 83).
-            // order_keys préserve l'ordre de première apparition ; lookup est O(1).
-            let mut order_keys: Vec<String> = Vec::new();
-            let mut by_source: std::collections::HashMap<String, (Vec<usize>, bool)> =
-                std::collections::HashMap::new();
             let mut all_ok = true;
-            for (i, source) in &sf_sources {
-                let source_ok =
-                    if source.contains('{') || source.contains('*') || source.contains('?') {
-                        let expanded = expand_braces(source);
-                        expanded.iter().any(|pat| {
-                            glob::glob(pat)
-                                .ok()
-                                .and_then(|mut e| e.next())
-                                .map(|r| r.is_ok())
-                                .unwrap_or(false)
-                        })
-                    } else {
-                        std::path::Path::new(source).exists()
-                    };
-                if !by_source.contains_key(*source) {
-                    order_keys.push(source.to_string());
-                    by_source.insert(source.to_string(), (Vec::new(), true));
-                }
-                let entry = by_source.get_mut(*source).unwrap();
-                entry.0.push(*i);
-                if !source_ok {
-                    entry.1 = false;
-                    all_ok = false;
-                }
-            }
             let mut details_parts = Vec::new();
-            for source in &order_keys {
-                let (indices, ok) = &by_source[source];
-                let is_pattern =
-                    source.contains('{') || source.contains('*') || source.contains('?');
-                let suffix = if is_pattern { " (pattern)" } else { "" };
-                let label = if indices.len() == 1 {
-                    format!("input #{}", indices[0])
-                } else {
-                    format!(
-                        "inputs #{}-#{} ({})",
-                        indices.first().unwrap(),
-                        indices.last().unwrap(),
-                        indices.len()
-                    )
-                };
-                if *ok {
-                    details_parts.push(format!("{}: {}{}", label, source, suffix));
-                } else {
-                    let err_msg = if is_pattern {
-                        format!(
-                            "{}: spatial_filter.source pattern matched no files: {}",
-                            label, source
-                        )
+            for (i, source) in &sf_sources {
+                // Support brace/glob patterns in spatial_filter.source
+                if source.contains('{') || source.contains('*') || source.contains('?') {
+                    let expanded = expand_braces(source);
+                    let mut matched = false;
+                    for pat in &expanded {
+                        if let Ok(entries) = glob::glob(pat) {
+                            if entries.filter_map(|e| e.ok()).next().is_some() {
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if matched {
+                        details_parts.push(format!("input #{}: {} (pattern)", i, source));
                     } else {
-                        format!(
-                            "{}: spatial_filter.source file does not exist: {}",
-                            label, source
-                        )
-                    };
-                    errors.push(err_msg.clone());
-                    details_parts.push(err_msg);
+                        all_ok = false;
+                        let err_msg = format!(
+                            "Input #{}: spatial_filter.source pattern matched no files: {}",
+                            i, source
+                        );
+                        errors.push(err_msg.clone());
+                        details_parts.push(err_msg);
+                    }
+                } else {
+                    let path = std::path::Path::new(source);
+                    if path.exists() {
+                        details_parts.push(format!("input #{}: {}", i, source));
+                    } else {
+                        all_ok = false;
+                        let err_msg = format!(
+                            "Input #{}: spatial_filter.source file does not exist: {}",
+                            i, source
+                        );
+                        errors.push(err_msg.clone());
+                        details_parts.push(err_msg);
+                    }
                 }
             }
             checks.push(ValidationCheck {
                 name: "spatial_filter".to_string(),
                 status: if all_ok { CheckStatus::Pass } else { CheckStatus::Fail },
-                details: details_parts.join("; "),
+                details: details_parts.join("\n"),
             });
         }
     }
@@ -3167,10 +3142,11 @@ output:
 
         let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
         assert_eq!(sf_check.status, CheckStatus::Pass);
-        // Une seule entrée groupée, pas deux lignes séparées.
-        let semicolons = sf_check.details.matches(';').count();
-        assert_eq!(semicolons, 0, "details should have one group, not two: {}", sf_check.details);
-        assert!(sf_check.details.contains("inputs #0-#1 (2)"), "got: {}", sf_check.details);
+        // Deux inputs → deux lignes séparées par \n, pas par "; ".
+        let lines: Vec<&str> = sf_check.details.lines().collect();
+        assert_eq!(lines.len(), 2, "got: {}", sf_check.details);
+        assert!(lines[0].contains("input #0"), "got: {}", lines[0]);
+        assert!(lines[1].contains("input #1"), "got: {}", lines[1]);
     }
 
     #[test]
