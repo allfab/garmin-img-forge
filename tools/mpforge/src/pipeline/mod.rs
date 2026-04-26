@@ -970,8 +970,27 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             .collect(),
     );
 
+    // Early-exit Phase 1.5 : si --skip-existing est actif et que toutes les tuiles
+    // existent déjà sur disque, la pré-simplification topologique globale est inutile
+    // (chaque tuile sera skippée avant d'utiliser topo_presimplified).
+    // Garde {seq} identique à l'early-skip par tuile : nom non déterminable à l'avance.
+    let all_tiles_exist = !topo_layer_names.is_empty()
+        && should_skip_existing
+        && !config.output.filename_pattern.contains("{seq")
+        && tiles.iter().all(|tb| {
+            resolve_tile_pattern(&config.output.filename_pattern, tb.col, tb.row, 0)
+                .map(|name| PathBuf::from(&config.output.directory).join(name).exists())
+                .unwrap_or(false)
+        });
+    if all_tiles_exist {
+        info!(
+            tiles = tiles.len(),
+            "--skip-existing : toutes les tuiles existent, Phase 1.5 ignorée"
+        );
+    }
+
     let phase_15_start = Instant::now();
-    let spinner_15: Option<ProgressBar> = if !topo_layer_names.is_empty() && args.verbose < 2 {
+    let spinner_15: Option<ProgressBar> = if !topo_layer_names.is_empty() && !all_tiles_exist && args.verbose < 2 {
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
@@ -985,7 +1004,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         None
     };
 
-    let topo_presimplified: Arc<Vec<Feature>> = if topo_layer_names.is_empty() {
+    let topo_presimplified: Arc<Vec<Feature>> = if topo_layer_names.is_empty() || all_tiles_exist {
         Arc::new(Vec::new())
     } else {
         info!(
