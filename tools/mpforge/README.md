@@ -1108,10 +1108,10 @@ La sous-commande `mpforge validate` effectue 9 checks sans exécuter le pipeline
 | 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, spatial_filter, generalize) |
 | 3 | `input_files` | Existence des fichiers sources (après résolution des wildcards) |
 | 4 | `rules_file` | Parsing et validation du fichier de règles |
-| 5 | `field_mapping` | Parsing du fichier de field mapping |
-| 6 | `header_template` | Existence du template header |
-| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial |
-| 8 | `generalize` | Rapport des configs de généralisation (smooth, iterations, simplify) |
+| 5 | `field_mapping` | Parsing du fichier de renommage de champs GDAL — **distinct de `garmin-rules.yaml`** : renomme les *clés* d'attributs bruts avant que les règles ne s'appliquent. Utile quand la source change ses noms de colonnes entre millésimes. |
+| 6 | `header_template` | Présence d'un fichier template header, ou valeurs directes dans la section `header:` |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (regroupés par source unique) |
+| 8 | `generalize` | Catalogue externe (`generalize_profiles_path`) et/ou directives inline par-input |
 | 9 | `label_case` | Cohérence label_case dans les règles (warning si aucune règle ne set Label) |
 
 ## Gestion d'erreurs

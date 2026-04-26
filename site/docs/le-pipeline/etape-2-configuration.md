@@ -394,26 +394,32 @@ Neuf vérifications sont effectuées en chaîne :
 | 2 | `semantic_validation` | Règles métier : grille cohérente, inputs non vides, bbox valide, SRS, base_id dans 1..9999, filename pattern, spatial_filter (buffer ≥ 0, source non vide), generalize (iterations ≥ 1, simplify > 0, algorithme connu) |
 | 3 | `input_files` | Existence de chaque fichier source sur disque (après résolution des wildcards) |
 | 4 | `rules_file` | Parsing et validation du fichier de règles de catégorisation |
-| 5 | `field_mapping` | Parsing du fichier de field mapping |
-| 6 | `header_template` | Existence du fichier template header |
-| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (par input) |
-| 8 | `generalize` | Rapport des configs de généralisation détectées (smooth, iterations, simplify) |
+| 5 | `field_mapping` | Parsing du fichier de renommage de champs GDAL — **distinct de `garmin-rules.yaml`** : renomme les *clés* d'attributs bruts avant que les règles ne s'appliquent (ex: `NOM_COMMUN` → `NAME`). Utile quand la source de données change ses noms de colonnes entre millésimes. |
+| 6 | `header_template` | Présence d'un fichier template header, ou valeurs directes dans la section `header:` |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (regroupés par source unique) |
+| 8 | `generalize` | Catalogue externe (`generalize_profiles_path`) et/ou directives inline par-input |
 | 9 | `label_case` | Cohérence label_case dans les règles : warning si aucune règle du ruleset ne set `Label` |
 
-Exemple de sortie :
+Exemple de sortie (config BDTOPO D038 sans `field_mapping` ni template header) :
 
 ```
 ✓ yaml_syntax          — Parsed successfully
 ✓ semantic_validation  — All validations passed
-✓ input_files          — 21/21 files found
-✓ rules_file           — 22 rulesets, 283 rules total
-✓ field_mapping        — 6 field mappings loaded
-- header_template      — No template configured
-✓ spatial_filter       — input #0: data/COMMUNE.shp
-✓ generalize           — input #2: smooth=chaikin, iterations=1
-✓ label_case           — 18 ruleset(s): Toponymie: Title, Communes: Title, ...
+✓ input_files          — 104 files found
+✓ rules_file           — 28 rulesets, 351 rules total
+- field_mapping        — Not configured (optional — renomme les clés d'attributs GDAL bruts avant l'application des règles garmin-rules.yaml)
+✓ header_template      — Header configured (direct values, no template file)
+✓ spatial_filter       — inputs #21-#103 (83): data/COMMUNE.shp (pattern)
+✓ generalize           — catalog: ../generalize-profiles.yaml (8 profil(s), 84 niveau(x))
+✓ label_case           — 20 ruleset(s): Voies ferrees: Title, Communes: Title, ...
 
-Config valid. (8/8 checks passed)
+Config valid. (7/10 checks passed)
+```
+
+Exemple avec `field_mapping` configuré :
+
+```
+✓ field_mapping        — 6 field mappings loaded
 ```
 
 ### Rapport JSON

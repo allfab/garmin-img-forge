@@ -125,10 +125,10 @@ Neuf vérifications sont effectuées :
 | 2 | `semantic_validation` | Règles métier (grille, inputs, bbox, SRS, base_id, header, spatial_filter, generalize) |
 | 3 | `input_files` | Existence des fichiers sources (après résolution des wildcards) |
 | 4 | `rules_file` | Parsing et validation du fichier de règles |
-| 5 | `field_mapping` | Parsing du fichier de field mapping |
-| 6 | `header_template` | Existence du template header |
-| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (par input) |
-| 8 | `generalize` | Rapport des configs de généralisation (smooth, iterations, simplify) |
+| 5 | `field_mapping` | Parsing du fichier de renommage de champs GDAL (optionnel — distinct de `garmin-rules.yaml`) |
+| 6 | `header_template` | Présence d'un fichier template header, ou valeurs directes dans la section `header:` |
+| 7 | `spatial_filter` | Existence des fichiers source de filtrage spatial (regroupés par source unique) |
+| 8 | `generalize` | Catalogue externe (`generalize_profiles_path`) et/ou directives inline par-input |
 | 9 | `label_case` | Cohérence label_case dans les règles (warning si aucune règle ne set Label) |
 
 Exemple de sortie :
@@ -136,15 +136,15 @@ Exemple de sortie :
 ```
 ✓ yaml_syntax          — Parsed successfully
 ✓ semantic_validation  — All validations passed
-✓ input_files          — 21/21 files found
-✓ rules_file           — 22 rulesets, 283 rules total
-- field_mapping        — Not configured
-- header_template      — No template configured
-✓ spatial_filter       — input #0: data/COMMUNE.shp
-✓ generalize           — input #2: smooth=chaikin, iterations=1
-✓ label_case           — 18 ruleset(s): Toponymie: Title, Communes: Title, ...
+✓ input_files          — 104 files found
+✓ rules_file           — 28 rulesets, 351 rules total
+- field_mapping        — Not configured (optional — renomme les clés d'attributs GDAL bruts avant l'application des règles garmin-rules.yaml)
+✓ header_template      — Header configured (direct values, no template file)
+✓ spatial_filter       — inputs #21-#103 (83): data/COMMUNE.shp (pattern)
+✓ generalize           — catalog: ../generalize-profiles.yaml (8 profil(s), 84 niveau(x))
+✓ label_case           — 20 ruleset(s): Voies ferrees: Title, Communes: Title, ...
 
-Config valid. (7/7 checks passed)
+Config valid. (7/10 checks passed)
 ```
 
 Code de sortie : `0` si valide, `1` si invalide. Le rapport JSON est exploitable en CI/CD.
