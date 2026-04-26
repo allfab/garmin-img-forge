@@ -320,6 +320,10 @@ fn main() -> Result<()> {
                 );
             }
 
+            if gmp_override.is_some() && packaging != imgforge::cli::PackagingArg::Gmp {
+                anyhow::bail!("--gmp-override requiert --packaging gmp");
+            }
+
             let fid = family_id.unwrap_or(1);
             let pid = product_id.unwrap_or(1);
             let map_desc = mapname.as_deref()
@@ -520,6 +524,9 @@ fn apply_tile_overrides(
     mp.header.simplify_polygons = simplify_polygons.map(|s| s.to_string());
     mp.header.min_size_polygon = min_size_polygon;
     mp.header.merge_lines = merge_lines;
+    if merge_lines {
+        tracing::warn!("--merge-lines n'est pas encore implémenté — option ignorée");
+    }
 
     mp.header.no_round_coords = no_round_coords;
     mp.header.no_size_filter = no_size_filter;

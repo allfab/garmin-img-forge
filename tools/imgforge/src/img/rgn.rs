@@ -16,6 +16,10 @@ pub struct RgnWriter {
     ext_points_data: Vec<u8>,
 }
 
+impl Default for RgnWriter {
+    fn default() -> Self { Self::new() }
+}
+
 impl RgnWriter {
     pub fn new() -> Self {
         Self {

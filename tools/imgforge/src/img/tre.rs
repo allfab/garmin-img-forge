@@ -51,6 +51,10 @@ pub struct TreWriter {
     pub has_routing: bool,
 }
 
+impl Default for TreWriter {
+    fn default() -> Self { Self::new() }
+}
+
 impl TreWriter {
     pub fn new() -> Self {
         Self {

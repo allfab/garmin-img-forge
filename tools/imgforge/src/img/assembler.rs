@@ -149,7 +149,8 @@ pub fn build_gmapsupp_with_overview(
             }
             Packaging::Gmp => {
                 let gmp_bytes = if let Some(ref path) = meta.gmp_override {
-                    std::fs::read(path).unwrap_or_else(|e| panic!("--gmp-override: {e}"))
+                    std::fs::read(path)
+                        .map_err(|e| ImgError::InvalidFormat(format!("--gmp-override {}: {e}", path.display())))?
                 } else {
                     GmpWriter::new(
                         tile.tre.clone(),
@@ -236,7 +237,10 @@ fn build_mps(
     // → Alpha 100 voyait une famille incohérente et refusait le rendu
     // multi-tuiles en wide-zoom.
     for tile in tiles {
-        let map_num: u32 = tile.map_number.parse().unwrap_or(0);
+        let map_num: u32 = tile.map_number.parse().unwrap_or_else(|_| {
+            eprintln!("WARNING: MPS: map_number '{}' non-numérique, défaut 0", tile.map_number);
+            0
+        });
         let area = if tile.description.is_empty() {
             format!("Area {}", tile.map_number)
         } else {

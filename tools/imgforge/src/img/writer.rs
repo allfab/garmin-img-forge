@@ -145,7 +145,7 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     let (all_subdivisions, tre_levels, ext_type_offsets_data, subdiv_road_refs) = build_multilevel_hierarchy(
         mp, &bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
         routing_ctx.as_ref(),
-    );
+    )?;
 
     // 5b. Patch NET1 level/div entries with subdivision references collected during RGN encoding
     if let Some(ref mut net_writer) = net_writer_opt {
@@ -250,21 +250,19 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         }
     }
 
-    tre.polyline_overviews.sort();
-    tre.polyline_overviews.dedup();
     // Background polygon overview — type 0x4B is added to every subdivision at all levels
     let bg_max_level = num_levels.saturating_sub(1) as u8;
     tre.polygon_overviews.push(PolygonOverview::new(0x4B, bg_max_level));
-    tre.polygon_overviews.sort();
-    tre.polygon_overviews.dedup();
-    tre.point_overviews.sort();
-    tre.point_overviews.dedup();
-    tre.ext_polyline_overviews.sort();
-    tre.ext_polyline_overviews.dedup();
-    tre.ext_polygon_overviews.sort();
-    tre.ext_polygon_overviews.dedup();
-    tre.ext_point_overviews.sort();
-    tre.ext_point_overviews.dedup();
+
+    // Deduplicate overviews by type_code, keeping the maximum max_level.
+    // Simple sort+dedup() would use full PartialEq (type_code, max_level), leaving duplicate
+    // type_code entries with different max_levels. dedup_by merges them correctly.
+    dedup_overviews_polyline(&mut tre.polyline_overviews);
+    dedup_overviews_polygon(&mut tre.polygon_overviews);
+    dedup_overviews_point(&mut tre.point_overviews);
+    dedup_overviews_ext_polyline(&mut tre.ext_polyline_overviews);
+    dedup_overviews_ext_polygon(&mut tre.ext_polygon_overviews);
+    dedup_overviews_ext_point(&mut tre.ext_point_overviews);
 
     // Set extended type offsets data
     tre.ext_type_offsets_data = ext_type_offsets_data;
@@ -289,6 +287,38 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
     })
 }
 
+// ── Overview deduplication helpers ────────────────────────────────────────────
+
+// Each function sorts by type_code then merges consecutive same-type entries,
+// keeping the maximum max_level. Derived Ord on (type_code, max_level) means
+// dedup() alone would treat entries with the same type but different max_level
+// as distinct — leaving duplicates in the TRE section.
+
+fn dedup_overviews_polyline(v: &mut Vec<PolylineOverview>) {
+    v.sort_by_key(|o| o.type_code);
+    v.dedup_by(|a, b| { if a.type_code == b.type_code { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+fn dedup_overviews_polygon(v: &mut Vec<PolygonOverview>) {
+    v.sort_by_key(|o| o.type_code);
+    v.dedup_by(|a, b| { if a.type_code == b.type_code { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+fn dedup_overviews_point(v: &mut Vec<PointOverview>) {
+    v.sort_by_key(|o| (o.type_code, o.sub_type));
+    v.dedup_by(|a, b| { if a.type_code == b.type_code && a.sub_type == b.sub_type { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+fn dedup_overviews_ext_polyline(v: &mut Vec<ExtPolylineOverview>) {
+    v.sort_by_key(|o| (o.type_high, o.type_low));
+    v.dedup_by(|a, b| { if a.type_high == b.type_high && a.type_low == b.type_low { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+fn dedup_overviews_ext_polygon(v: &mut Vec<ExtPolygonOverview>) {
+    v.sort_by_key(|o| (o.type_high, o.type_low));
+    v.dedup_by(|a, b| { if a.type_high == b.type_high && a.type_low == b.type_low { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+fn dedup_overviews_ext_point(v: &mut Vec<ExtPointOverview>) {
+    v.sort_by_key(|o| (o.type_high, o.type_low));
+    v.dedup_by(|a, b| { if a.type_high == b.type_high && a.type_low == b.type_low { b.max_level = b.max_level.max(a.max_level); true } else { false } });
+}
+
 // ── Multi-level hierarchy — mkgmap MapBuilder.makeMapAreas ─────────────────
 
 /// Build multi-level subdivision tree: topdiv → level N → ... → level 0.
@@ -306,12 +336,12 @@ fn build_multilevel_hierarchy(
     poly_labels: &[u32],
     rgn: &mut RgnWriter,
     routing_ctx: Option<&RoutingContext>,
-) -> (Vec<Subdivision>, Vec<Zoom>, Vec<u8>, Vec<(usize, u8, u16)>) {
+) -> Result<(Vec<Subdivision>, Vec<Zoom>, Vec<u8>, Vec<(usize, u8, u16)>), ImgError> {
     // 4th return: subdiv_road_refs = (road_idx, polyline_num, subdiv_num) for NET1 level/div patching
     let mut all_subdiv_road_refs: Vec<(usize, u8, u16)> = Vec::new();
 
     if levels.is_empty() {
-        return (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new()));
     }
 
     let num_levels = levels.len();
@@ -490,7 +520,11 @@ fn build_multilevel_hierarchy(
         let first_child_num = subdiv_counter;
 
         for (i, (&area, &parent_num)) in sorted_areas.iter().zip(sorted_parents.iter()).enumerate() {
-            assert!(subdiv_counter <= u16::MAX as u32, "Too many subdivisions (>65535)");
+            if subdiv_counter > u16::MAX as u32 {
+                return Err(ImgError::InvalidFormat(
+                    "Too many subdivisions (>65535) — tile is too dense".into(),
+                ));
+            }
             let subdiv_num = subdiv_counter as u16;
             subdiv_counter += 1;
 
@@ -644,7 +678,7 @@ fn build_multilevel_hierarchy(
         Vec::new()
     };
 
-    (all_subdivisions, tre_levels_build, ext_type_offsets_data, all_subdiv_road_refs)
+    Ok((all_subdivisions, tre_levels_build, ext_type_offsets_data, all_subdiv_road_refs))
 }
 
 // ── Feature filtering per level ────────────────────────────────────────────
