@@ -75,6 +75,22 @@ MIN_SIZE_POLYGON=""        # imgforge --min-size-polygon (réf. mkgmap : 8)
 MERGE_LINES=false          # imgforge --merge-lines
 PACKAGING="legacy"         # imgforge --packaging (legacy | gmp)
 
+# imgforge — filtres géométriques (opt-in désactivation, off par défaut)
+NO_ROUND_COORDS=false           # imgforge --no-round-coords (désactive quantification grille)
+NO_SIZE_FILTER=false            # imgforge --no-size-filter (désactive filtre sous-pixel)
+NO_REMOVE_OBSOLETE_POINTS=false # imgforge --no-remove-obsolete-points (désactive nettoyage colinéaires)
+
+# imgforge — rendu et robustesse
+KEEP_GOING=false                # imgforge --keep-going (continuer si une tuile échoue)
+ORDER_BY_DECREASING_AREA=false  # imgforge --order-by-decreasing-area (rendu polygones)
+DRAW_PRIORITY=""                # imgforge --draw-priority (priorité affichage, défaut: 25)
+TRANSPARENT=false               # imgforge --transparent (carte overlay transparente)
+WITH_NET=false                  # imgforge --net (NET sans routage complet)
+
+# imgforge — DEM avancé
+DEM_DISTS=""                    # imgforge --dem-dists (distances entre points par niveau)
+DEM_INTERPOLATION=""            # imgforge --dem-interpolation (auto|bicubic|bilinear)
+
 # Contrôle
 DRY_RUN=false
 PUBLISH=false
@@ -355,6 +371,16 @@ IMGFORGE :
     --min-size-polygon N       Filtre polygones < N unités carte (réf. mkgmap : 8)
     --merge-lines              Fusionne polylignes adjacentes même type/label
     --packaging MODE           legacy (6 FAT par tuile, défaut) | gmp (1 .GMP consolidé)
+    --keep-going               Continuer le build si une tuile échoue
+    --order-by-decreasing-area Trier les polygones par aire décroissante (rendu)
+    --draw-priority N          Priorité d'affichage sur le GPS (défaut imgforge : 25)
+    --transparent              Carte overlay transparente
+    --net                      Générer NET seulement (recherche adresse sans guidage complet)
+    --no-round-coords          Désactiver la quantification des coords sur la grille subdivision
+    --no-size-filter           Désactiver le filtre de features sous-pixel (SizeFilter)
+    --no-remove-obsolete-points Désactiver la suppression de points colinéaires/spikes
+    --dem-dists DISTS          Distances entre points DEM par niveau de zoom
+    --dem-interpolation METHOD Méthode d'interpolation DEM (auto|bicubic|bilinear, défaut: auto)
 
 CONTRÔLE :
     --dry-run               Simuler sans exécuter
@@ -440,6 +466,16 @@ parse_args() {
             --min-size-polygon)     MIN_SIZE_POLYGON="$2";     shift 2 ;;
             --merge-lines)          MERGE_LINES=true;          shift   ;;
             --packaging)            PACKAGING="$2";            shift 2 ;;
+            --keep-going)                   KEEP_GOING=true;                    shift   ;;
+            --order-by-decreasing-area)     ORDER_BY_DECREASING_AREA=true;      shift   ;;
+            --draw-priority)                DRAW_PRIORITY="$2";                 shift 2 ;;
+            --transparent)                  TRANSPARENT=true;                   shift   ;;
+            --net)                          WITH_NET=true;                      shift   ;;
+            --no-round-coords)              NO_ROUND_COORDS=true;               shift   ;;
+            --no-size-filter)               NO_SIZE_FILTER=true;                shift   ;;
+            --no-remove-obsolete-points)    NO_REMOVE_OBSOLETE_POINTS=true;     shift   ;;
+            --dem-dists)                    DEM_DISTS="$2";                     shift 2 ;;
+            --dem-interpolation)            DEM_INTERPOLATION="$2";             shift 2 ;;
             --dry-run)       DRY_RUN=true; shift ;;
             --publish)       PUBLISH=true; shift ;;
             --publish-target=*) PUBLISH_TARGET="${1#*=}"; shift ;;
@@ -601,6 +637,31 @@ validate_params() {
                 prev=$lvl
             done
         fi
+    fi
+
+    # --- draw-priority : entier positif si défini ---
+    if [[ -n "$DRAW_PRIORITY" ]]; then
+        if ! [[ "$DRAW_PRIORITY" =~ ^[0-9]+$ ]] || [[ "$DRAW_PRIORITY" -lt 1 ]]; then
+            log_error "--draw-priority : doit être un entier positif, reçu '${DRAW_PRIORITY}'"
+            errors=$(( errors + 1 ))
+        fi
+    fi
+
+    # --- dem-interpolation : valeurs admises ---
+    if [[ -n "$DEM_INTERPOLATION" ]]; then
+        case "$DEM_INTERPOLATION" in
+            auto|bicubic|bilinear) ;;
+            *)
+                log_error "--dem-interpolation : valeur attendue auto|bicubic|bilinear, reçu '${DEM_INTERPOLATION}'"
+                errors=$(( errors + 1 ))
+                ;;
+        esac
+    fi
+
+    # --- net : incompatible avec --no-route ---
+    if [[ "$WITH_NET" == true && "$WITH_ROUTE" == false ]]; then
+        log_error "--net et --no-route sont incompatibles"
+        errors=$(( errors + 1 ))
     fi
 
     # --- year : format YYYY ---
@@ -1129,7 +1190,9 @@ run_imgforge() {
         --copyright-message "$COPYRIGHT"
     )
 
-    if [[ "$WITH_ROUTE" == true ]]; then
+    if [[ "$WITH_NET" == true ]]; then
+        cmd+=(--net)
+    elif [[ "$WITH_ROUTE" == true ]]; then
         cmd+=(--route)
     else
         cmd+=(--no-route)
@@ -1164,7 +1227,17 @@ run_imgforge() {
             fi
         done
         cmd+=(--dem-source-srs "EPSG:2154")
+        [[ -n "$DEM_DISTS" ]]         && cmd+=(--dem-dists "$DEM_DISTS")
+        [[ -n "$DEM_INTERPOLATION" ]] && cmd+=(--dem-interpolation "$DEM_INTERPOLATION")
     fi
+
+    [[ "$KEEP_GOING" == true ]]                && cmd+=(--keep-going)
+    [[ "$ORDER_BY_DECREASING_AREA" == true ]]  && cmd+=(--order-by-decreasing-area)
+    [[ -n "$DRAW_PRIORITY" ]]                  && cmd+=(--draw-priority "$DRAW_PRIORITY")
+    [[ "$TRANSPARENT" == true ]]               && cmd+=(--transparent)
+    [[ "$NO_ROUND_COORDS" == true ]]           && cmd+=(--no-round-coords)
+    [[ "$NO_SIZE_FILTER" == true ]]            && cmd+=(--no-size-filter)
+    [[ "$NO_REMOVE_OBSOLETE_POINTS" == true ]] && cmd+=(--no-remove-obsolete-points)
 
     [[ "$VERBOSE_COUNT" -ge 1 ]] && cmd+=(-v)
     [[ "$VERBOSE_COUNT" -ge 2 ]] && cmd+=(-v)
