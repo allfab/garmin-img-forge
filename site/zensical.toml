@@ -71,7 +71,8 @@ Accueil = "index.md"
   { "Données & Transformation" = [
     { "Correspondances BD TOPO" = "reference/correspondances-bdtopo.md" },
     { "Niveaux de zoom et EndLevel" = "reference/niveaux-et-zoom.md" },
-    { "Profils de généralisation" = "reference/generalize-profiles.md" }
+    { "Profils de généralisation" = "reference/generalize-profiles.md" },
+    { "Comparaison mkgmap/imgforge" = "reference/comparaison-mkgmap-imgforge.md" }
   ]},
   { "Outils & Configuration" = [
     { "Convention --base-id" = "reference/base-id-convention.md" },

@@ -201,3 +201,12 @@ MPFORGE_PROFILES=off mpforge build --config config.yaml
 ```
 
 Seul le catalogue `generalize_profiles_path` est désactivé. Les directives `generalize:` inline dans `sources.yaml` restent actives.
+
+---
+
+## Pour aller plus loin
+
+La page [Comparaison mkgmap/imgforge](comparaison-mkgmap-imgforge.md) analyse la chaîne de filtres mkgmap r4924
+(`RoundCoordsFilter`, `SizeFilter`, `DouglasPeuckerFilter`) par résolution, mesure les bytes RGN
+par niveau (mkgmap vs imgforge) sur la tuile de référence BDTOPO-001-004, et liste les recommandations
+priorisées pour réduire la taille IMG et aligner le lissage géométrique.
