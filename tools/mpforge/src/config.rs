@@ -1340,7 +1340,8 @@ pub fn run_validate(
         checks.push(ValidationCheck {
             name: "field_mapping".to_string(),
             status: CheckStatus::Skipped,
-            details: "Not configured".to_string(),
+            details: "Not configured (optional — renomme les clés d'attributs GDAL bruts \
+                      avant l'application des règles garmin-rules.yaml)".to_string(),
         });
     }
 
