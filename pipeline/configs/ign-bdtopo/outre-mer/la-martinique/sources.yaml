@@ -1,7 +1,7 @@
 version: 1
 
 # Tech-spec #2 — catalogue de profils multi-niveaux BDTOPO (6L contigu).
-generalize_profiles_path: "../../generalize-profiles.yaml"
+generalize_profiles_path: "../../generalize-profiles-local.yaml"
 
 # Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
 # BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque

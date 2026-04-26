@@ -1,38 +1,25 @@
-# Tech-spec #2 — profils de simplification multi-niveaux BDTOPO pour mpforge.
+# Profils de simplification — scopes locaux (départements, outre-mer).
 #
-# CATALOGUE 7L PARTAGÉ — header cible 24/23/22/21/20/18/16 (cf. chaque sources.yaml).
+# Variante moins agressive de generalize-profiles.yaml, destinée aux scopes
+# dont l'emprise géographique est petite (un département, une île) et où les
+# tronçons routiers doivent conserver davantage de vertices aux niveaux de
+# zoom proches (n=0..3).
 #
-# Chaque profil est indexé par `source_layer` (nom de couche BDTOPO). mpforge
-# résout le profil au chargement de `sources.yaml` via le champ racine
-# `generalize_profiles_path`.
+# Seul TRONCON_DE_ROUTE est modifié par rapport au catalogue partagé :
+# les valeurs simplify_vw des niveaux n=0..3 sont réduites d'environ 50 %
+# pour éviter la perte de virages et d'intersections au zoom élevé.
+# Les couches non routières restent identiques à generalize-profiles.yaml.
 #
-# Paliers contigus n=0..6 (7 niveaux complets). Les trous d'index éventuels
-# sont comblés automatiquement par mpforge (fill_level_gaps) en clonant le
-# palier précédent — condition sine qua non du rendu sur Alpha 100 et autres
-# firmwares Garmin sensibles à la contiguïté des sections Data0..DataN du .mp.
+# Header cible : 24/23/22/21/20/18/16 (7 niveaux, paliers n=0..6).
+# Contraintes : n=0 présent dans chaque branche when (routage F4).
+#               Paliers contigus n=0..6 obligatoires.
 #
 # Sémantique des clés :
-#   - n         : index de niveau de détail dans MpHeader.levels (0 = le plus
-#                 détaillé = émis en Data0= ; 6 = émis en Data6=).
-#   - smooth    : "chaikin" uniquement pour l'instant (optionnel).
-#   - iterations: itérations de Chaikin (borne [0, 5]).
-#   - simplify  : tolérance Douglas-Peucker en degrés WGS84 (borne [0, 0.001],
-#                 ≈ 110 m). 0.00002 ≈ 2 m ; 0.00005 ≈ 5 m ; 0.00020 ≈ 22 m.
-#
-# Contraintes fail-fast validées par `load_config` :
-#   - Toute couche routable (is_routable_layer → TRONCON_DE_ROUTE) doit
-#     déclarer `n: 0` dans chaque branche visible (default ET chaque `when`).
-#     Cf. Tech-spec #1 F4 : routing exige Data0 strict.
-#   - Un même `source_layer` ne peut pas apparaître à la fois inline dans
-#     `sources.yaml` (champ `generalize:`) et ici (conflit rejeté).
-#
-# BATIMENT : volontairement ABSENT du catalogue. Les bâtiments doivent rester
-# intacts (Data0= seul, géométrie brute du shapefile). cf. AC12.
-#
-# NOTE ARCHITECTURALE : imgforge n'applique plus de DP automatique aux polygones
-# (suppression du fallback auto_epsilon dans poly_epsilon). La simplification des
-# polygones est entièrement déléguée à mpforge via ces profils. Les polylignes
-# conservent l'auto-DP imgforge (pas de contrainte topologique entre features).
+#   - n           : index dans MpHeader.levels (0 = plus détaillé = Data0=).
+#   - simplify_vw : seuil Visvalingam-Whyatt en degrés WGS84².
+#   - simplify    : tolérance Douglas-Peucker en degrés WGS84.
+#   - smooth      : "chaikin" uniquement (optionnel).
+#   - iterations  : itérations de Chaikin ([0, 5]).
 
 profiles:
   TRONCON_HYDROGRAPHIQUE:
@@ -58,8 +45,9 @@ profiles:
   TRONCON_DE_ROUTE:
     # topology: true — vertices partagés aux nœuds d'intersection ancrés par VW
     # topologique (même contrat que COMMUNE). Seul simplify_vw autorisé avec
-    # topology: true. Valeurs conservatrices : partir petit, ajuster au besoin.
-    # Data0 strict présent dans chaque branche when (contrainte routage F4).
+    # topology: true.
+    # Variante locale : n=0..3 réduits ~50 % vs catalogue partagé pour préserver
+    # la géométrie des routes sur emprise départementale / insulaire.
     topology: true
     when:
       - field: CL_ADMIN
@@ -67,8 +55,8 @@ profiles:
         levels:
           - { n: 0, simplify_vw: 0.000001 }
           - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000004 }
-          - { n: 3, simplify_vw: 0.000008 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000005 }
           - { n: 4, simplify_vw: 0.000015 }
           - { n: 5, simplify_vw: 0.000030 }
           - { n: 6, simplify_vw: 0.000080 }
@@ -76,37 +64,37 @@ profiles:
         values: [Départementale]
         levels:
           - { n: 0, simplify_vw: 0.000002 }
-          - { n: 1, simplify_vw: 0.000005 }
-          - { n: 2, simplify_vw: 0.000010 }
-          - { n: 3, simplify_vw: 0.000020 }
+          - { n: 1, simplify_vw: 0.000003 }
+          - { n: 2, simplify_vw: 0.000005 }
+          - { n: 3, simplify_vw: 0.000010 }
           - { n: 4, simplify_vw: 0.000040 }
           - { n: 5, simplify_vw: 0.000080 }
           - { n: 6, simplify_vw: 0.000200 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
-          - { n: 0, simplify_vw: 0.000004 }
-          - { n: 1, simplify_vw: 0.000008 }
-          - { n: 2, simplify_vw: 0.000018 }
-          - { n: 3, simplify_vw: 0.000035 }
+          - { n: 0, simplify_vw: 0.000003 }
+          - { n: 1, simplify_vw: 0.000005 }
+          - { n: 2, simplify_vw: 0.000010 }
+          - { n: 3, simplify_vw: 0.000018 }
           - { n: 4, simplify_vw: 0.000070 }
           - { n: 5, simplify_vw: 0.000130 }
           - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
-          - { n: 0, simplify_vw: 0.000008 }
-          - { n: 1, simplify_vw: 0.000016 }
-          - { n: 2, simplify_vw: 0.000035 }
-          - { n: 3, simplify_vw: 0.000070 }
+          - { n: 0, simplify_vw: 0.000005 }
+          - { n: 1, simplify_vw: 0.000010 }
+          - { n: 2, simplify_vw: 0.000018 }
+          - { n: 3, simplify_vw: 0.000035 }
           - { n: 4, simplify_vw: 0.000130 }
           - { n: 5, simplify_vw: 0.000250 }
           - { n: 6, simplify_vw: 0.000550 }
     levels:
-      - { n: 0, simplify_vw: 0.000004 }
-      - { n: 1, simplify_vw: 0.000008 }
-      - { n: 2, simplify_vw: 0.000018 }
-      - { n: 3, simplify_vw: 0.000035 }
+      - { n: 0, simplify_vw: 0.000003 }
+      - { n: 1, simplify_vw: 0.000005 }
+      - { n: 2, simplify_vw: 0.000010 }
+      - { n: 3, simplify_vw: 0.000018 }
       - { n: 4, simplify_vw: 0.000070 }
       - { n: 5, simplify_vw: 0.000130 }
       - { n: 6, simplify_vw: 0.000300 }
