@@ -1129,9 +1129,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         info!("Pas de section 'header' dans la config — les tuiles auront des métadonnées par défaut");
     }
 
-    // Story 11.1 — Task 3: Sequential counter for filename patterns (atomic for thread-safety).
-    let seq_counter = Arc::new(AtomicUsize::new(0));
-
     // Ces messages sont informatifs : le comportement est attendu pour une configuration valide.
     // Niveau INFO pour n'apparaître qu'avec -v (pas en production verbose=0).
     if args.jobs > 1 && config.output.filename_pattern.contains("{seq}") {
@@ -1178,7 +1175,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         tile_bounds: &TileBounds,
         tile_index: usize,
         ctx: &TileContext<'_>,
-        _seq_counter: &AtomicUsize,
         progress: &Option<Arc<ProgressBar>>,
         accumulators: &SharedAccumulators,
     ) -> Result<(), TileExportError> {
@@ -1208,13 +1204,13 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         if fail_fast {
             for (idx, tile_bounds) in tiles.iter().enumerate() {
                 process_and_aggregate(
-                    tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
+                    tile_bounds, idx, &ctx, &progress, &accumulators,
                 ).map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
             }
         } else {
             for (idx, tile_bounds) in tiles.iter().enumerate() {
                 let _ = process_and_aggregate(
-                    tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
+                    tile_bounds, idx, &ctx, &progress, &accumulators,
                 );
             }
         }
@@ -1227,17 +1223,16 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
         let parallel_result = pool.install(|| {
             if fail_fast {
-                // Story 11.1 — Task 4: try_for_each stops on first error (AC6)
                 tiles.par_iter().enumerate().try_for_each(|(idx, tile_bounds)| {
                     process_and_aggregate(
-                        tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
+                        tile_bounds, idx, &ctx, &progress, &accumulators,
                     )
                 })
             } else {
-                // Continue mode: process all tiles, collect errors (AC5)
+                // Continue mode: process all tiles, collect errors
                 tiles.par_iter().enumerate().for_each(|(idx, tile_bounds)| {
                     let _ = process_and_aggregate(
-                        tile_bounds, idx, &ctx, &seq_counter, &progress, &accumulators,
+                        tile_bounds, idx, &ctx, &progress, &accumulators,
                     );
                 });
                 Ok(())
@@ -1354,16 +1349,14 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Console summary
     print_console_summary(&report, &config.output.directory, args, tiles_skipped_existing, &rules_stats);
 
-    // Exit with appropriate code for CI/CD
     if !summary.is_success() {
         warn!(
             tiles_failed = summary.tiles_failed,
-            "Pipeline completed with errors, exiting with code 1"
+            "Pipeline completed with errors"
         );
-        std::process::exit(1);
+    } else {
+        info!("Pipeline completed successfully");
     }
-
-    info!("Pipeline completed successfully");
     Ok(summary)
 }
 

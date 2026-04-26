@@ -2,7 +2,6 @@
 
 use thiserror::Error;
 
-#[allow(dead_code)] // Will be used in Stories 5.2+
 #[derive(Error, Debug)]
 pub enum PipelineError {
     #[error("Configuration invalide: {message}")]

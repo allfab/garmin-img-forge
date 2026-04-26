@@ -96,12 +96,19 @@ fn main() -> ExitCode {
                 config.reset_profile_map_to_inline_only();
             }
 
-            if let Err(e) = pipeline::run(&config, args) {
-                eprintln!("Error: {:#}", e);
-                return ExitCode::FAILURE;
+            match pipeline::run(&config, args) {
+                Err(e) => {
+                    eprintln!("Error: {:#}", e);
+                    ExitCode::FAILURE
+                }
+                Ok(summary) => {
+                    if summary.is_success() {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
             }
-
-            ExitCode::SUCCESS
         }
         Commands::Validate(ref args) => {
             setup_tracing(args.verbose);

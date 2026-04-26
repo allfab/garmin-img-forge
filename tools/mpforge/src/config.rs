@@ -3148,7 +3148,7 @@ output:
         let report = run_validate(&config_path).unwrap();
         let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
         assert_eq!(sf_check.status, CheckStatus::Fail);
-        assert!(sf_check.details.contains("does not exist"));
+        assert!(sf_check.details.contains("introuvable"));
     }
 
     #[test]

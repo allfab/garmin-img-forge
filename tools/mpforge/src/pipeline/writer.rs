@@ -165,7 +165,7 @@ impl MpWriter {
         macro_rules! set_if_some {
             ($field:expr, $key:expr) => {
                 if let Some(ref value) = $field {
-                    info!(key = $key, value = value, "Setting header metadata");
+                    tracing::debug!(key = $key, value = value, "Setting header metadata");
                     dataset.set_metadata_item($key, value, "")?;
                 }
             };
@@ -199,7 +199,7 @@ impl MpWriter {
         // Custom header fields (arbitrary key-value pairs)
         if let Some(ref custom) = header.custom {
             for (key, value) in custom {
-                info!(key = key, value = value, "Setting custom header metadata");
+                tracing::debug!(key = key, value = value, "Setting custom header metadata");
                 dataset.set_metadata_item(key, value, "")?;
             }
         }
@@ -930,7 +930,6 @@ impl MpWriter {
                     );
                 }
                 if let Err(e) = ogr_feature.set_field_string(field_idx, &sanitized) {
-                    // Field set failed - log warning and continue (graceful degradation)
                     warn!(
                         source_field = source_key,
                         target_field = target_key,
@@ -940,12 +939,6 @@ impl MpWriter {
                     );
                     continue;
                 }
-                info!(
-                    source_field = source_key,
-                    target_field = target_key,
-                    value = value,
-                    "Field set successfully"
-                );
             } else {
                 // Field not in schema - log warning for debugging
                 warn!(

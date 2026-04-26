@@ -382,14 +382,6 @@ impl TileBounds {
     }
 }
 
-/// Placeholder for tile data with features.
-/// TODO: Story 6.4 - Define complete tile data structure for export
-#[allow(dead_code)] // Stub - will be fully implemented in Story 6.4
-#[derive(Debug)]
-pub struct TileData {
-    pub tile_id: String,
-}
-
 // ============================================================================
 // Task 2-3: Geometry Clipping Functions (Story 6.3)
 // ============================================================================
