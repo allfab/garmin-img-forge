@@ -347,21 +347,6 @@ impl MapArea {
             sub_areas[idx].add_point(pt.clone());
         }
 
-        // Max cell dimensions for large object detection — parité mkgmap MapArea.java:260-271.
-        // maxSize est shifté selon la résolution : plus la résolution est faible (wide-zoom),
-        // plus maxSize est grand. Sans ce shift, notre plafond fixe `MAX_DIVISION_SIZE/2`
-        // (≈16K units) déclenche les "largeObjectArea" beaucoup trop souvent aux wide-zoom
-        // levels (bits≤20) → prolifération de subdivs dédiés, bytes RGN dupliqués.
-        const MAX_RESOLUTION: i32 = 24;
-        let max_size = {
-            let shifted = (MAX_DIVISION_SIZE as i64) << (MAX_RESOLUTION - self.resolution as i32).max(0);
-            let clamped = shifted.min(((1i64 << 24) - 1) as i64).max(0x8000);
-            clamped as i32
-        };
-        let cell_w = self.bounds.width() / nx.max(1) as i32;
-        let cell_h = self.bounds.height() / ny.max(1) as i32;
-        let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
-        let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
         // ── Lines: single sub-area by bbox midpoint (mkgmap pickArea, no clipping).
         // La ligne intacte va dans UNE seule sub-area ; add_line() → extend_bounds_points()
