@@ -7,58 +7,47 @@ grid:
   overlap: 0.005
 
 inputs:
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/PARCELLE.gpkg"
-    layer_alias: "PARCELLE"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/PARCELLE_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/BATIMENT.gpkg"
-    layer_alias: "BATIMENT"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/BATIMENT_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF.gpkg"
-    layer_alias: "TSURF"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/SECTION.gpkg"
-    layer_alias: "SECTION"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/SECTION_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONFLUV.gpkg"
-    layer_alias: "TRONFLUV"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONFLUV_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONROUTE.gpkg"
-    layer_alias: "TRONROUTE"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONROUTE_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/LIEUDIT.gpkg"
-    layer_alias: "LIEUDIT"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/LIEUDIT_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/ZONCOMMUNI.gpkg"
-    layer_alias: "ZONCOMMUNI"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/ZONCOMMUNI_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TLINE.gpkg"
-    layer_alias: "TLINE"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TLINE_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TPOINT.gpkg"
-    layer_alias: "TPOINT"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TPOINT_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 
-  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/NUMVOIE.gpkg"
-    layer_alias: "NUMVOIE"
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/NUMVOIE_id.gpkg"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
 

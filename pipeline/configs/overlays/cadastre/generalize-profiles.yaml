@@ -1,9 +1,10 @@
 # Profils de simplification pour l'overlay cadastre
 # Simplification minimale : le cadastre est au 1:1000, on préserve la précision géométrique.
+# Clés = noms de layers GDAL EDIGEO (suffixe _id, vérifiés avec ogrinfo)
 version: 1
 
 profiles:
-  PARCELLE:
+  PARCELLE_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -14,12 +15,12 @@ profiles:
       - n: 3
         simplify: 0.00003
 
-  BATIMENT:
+  BATIMENT_id:
     levels:
       - n: 0
         simplify: 0.0
 
-  TSURF:
+  TSURF_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -28,7 +29,7 @@ profiles:
       - n: 2
         simplify: 0.00002
 
-  SECTION:
+  SECTION_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -39,7 +40,7 @@ profiles:
       - n: 3
         simplify: 0.0001
 
-  TRONFLUV:
+  TRONFLUV_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -48,14 +49,14 @@ profiles:
       - n: 2
         simplify: 0.00002
 
-  TRONROUTE:
+  TRONROUTE_id:
     levels:
       - n: 0
         simplify: 0.0
       - n: 1
         simplify: 0.000005
 
-  LIEUDIT:
+  LIEUDIT_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -66,7 +67,7 @@ profiles:
       - n: 3
         simplify: 0.0002
 
-  TLINE:
+  TLINE_id:
     levels:
       - n: 0
         simplify: 0.0
@@ -75,19 +76,19 @@ profiles:
       - n: 2
         simplify: 0.00002
 
-  ZONCOMMUNI:
+  ZONCOMMUNI_id:
     levels:
       - n: 0
         simplify: 0.0
 
-  TPOINT:
+  TPOINT_id:
     levels:
       - n: 0
         simplify: 0.0
       - n: 1
         simplify: 0.0
 
-  NUMVOIE:
+  NUMVOIE_id:
     levels:
       - n: 0
         simplify: 0.0

@@ -1,20 +1,21 @@
 # Règles overlay cadastre PCI EDIGÉO → types Garmin
+# Noms de layers : suffixe _id conforme au driver GDAL EDIGEO (vérifié ogrinfo)
 version: 1
 
 rulesets:
 
-  # PARCELLE — polygones cadastraux (contour uniquement)
+  # PARCELLE_id — polygones cadastraux (contour uniquement)
   - name: "Parcelles"
-    source_layer: "PARCELLE"
+    source_layer: "PARCELLE_id"
     rules:
       - set:
           Type: "0x10d00"
           EndLevel: "0"
           Label: "${IDU}"
 
-  # BATIMENT — bâtiments (DUR : 01=dur, 02=léger, 03=FI)
+  # BATIMENT_id — bâtiments (DUR : 01=dur, 02=léger, 03=FI)
   - name: "Bâtiments"
-    source_layer: "BATIMENT"
+    source_layer: "BATIMENT_id"
     rules:
       - match:
           DUR: "01"
@@ -35,9 +36,9 @@ rulesets:
           Type: "0x10d01"
           EndLevel: "0"
 
-  # TSURF — objets surfaciques divers (SYM précodé)
+  # TSURF_id — objets surfaciques divers (SYM précodé)
   - name: "Objets surfaciques divers"
-    source_layer: "TSURF"
+    source_layer: "TSURF_id"
     rules:
       - match:
           SYM: "34"
@@ -80,51 +81,51 @@ rulesets:
           Type: "0x10d16"
           EndLevel: "1"
 
-  # SECTION — sections cadastrales (repère de navigation)
+  # SECTION_id — sections cadastrales (repère de navigation)
   - name: "Sections"
-    source_layer: "SECTION"
+    source_layer: "SECTION_id"
     rules:
       - set:
           Type: "0x10d20"
           EndLevel: "3"
 
-  # TRONFLUV — tronçons de cours d'eau
+  # TRONFLUV_id — tronçons de cours d'eau
   - name: "Cours d'eau"
-    source_layer: "TRONFLUV"
+    source_layer: "TRONFLUV_id"
     rules:
       - set:
           Type: "0x10d21"
           EndLevel: "2"
 
-  # TRONROUTE — réseau routier cadastral
+  # TRONROUTE_id — réseau routier cadastral (absent de certains départements)
   - name: "Voies routières cadastre"
-    source_layer: "TRONROUTE"
+    source_layer: "TRONROUTE_id"
     rules:
       - set:
           Type: "0x10d22"
           EndLevel: "1"
 
-  # LIEUDIT — lieux-dits (label TEX)
+  # LIEUDIT_id — lieux-dits (label TEX)
   - name: "Lieux-dits"
-    source_layer: "LIEUDIT"
+    source_layer: "LIEUDIT_id"
     rules:
       - set:
           Type: "0x10d23"
           EndLevel: "3"
           Label: "${TEX}"
 
-  # ZONCOMMUNI — zones de communication / rues (POLYLINE)
+  # ZONCOMMUNI_id — zones de communication / rues (POLYLINE)
   - name: "Zones de communication"
-    source_layer: "ZONCOMMUNI"
+    source_layer: "ZONCOMMUNI_id"
     rules:
       - set:
           Type: "0x10e00"
           EndLevel: "0"
           Label: "${TEX}"
 
-  # TLINE — objets linéaires divers (POLYLINE)
+  # TLINE_id — objets linéaires divers (POLYLINE)
   - name: "Objets linéaires divers"
-    source_layer: "TLINE"
+    source_layer: "TLINE_id"
     rules:
       - match:
           SYM: "29"
@@ -140,18 +141,18 @@ rulesets:
           Type: "0x10e03"
           EndLevel: "1"
 
-  # NUMVOIE — numéros de voirie (POI label)
+  # NUMVOIE_id — numéros de voirie (POI label, absent de certaines communes)
   - name: "Numéros de voirie"
-    source_layer: "NUMVOIE"
+    source_layer: "NUMVOIE_id"
     rules:
       - set:
           Type: "0x6400"
           EndLevel: "0"
           Label: "${TEX}"
 
-  # TPOINT — objets ponctuels divers (POI)
+  # TPOINT_id — objets ponctuels divers (POI)
   - name: "Objets ponctuels divers"
-    source_layer: "TPOINT"
+    source_layer: "TPOINT_id"
     rules:
       - match:
           SYM: "63"
