@@ -1,0 +1,90 @@
+version: 1
+
+generalize_profiles_path: "./generalize-profiles.yaml"
+
+grid:
+  cell_size: 0.225    # identique au scope departement
+  overlap: 0.005
+
+inputs:
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/PARCELLE.gpkg"
+    layer_alias: "PARCELLE"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/BATIMENT.gpkg"
+    layer_alias: "BATIMENT"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF.gpkg"
+    layer_alias: "TSURF"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/SECTION.gpkg"
+    layer_alias: "SECTION"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONFLUV.gpkg"
+    layer_alias: "TRONFLUV"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONROUTE.gpkg"
+    layer_alias: "TRONROUTE"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/LIEUDIT.gpkg"
+    layer_alias: "LIEUDIT"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/ZONCOMMUNI.gpkg"
+    layer_alias: "ZONCOMMUNI"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TLINE.gpkg"
+    layer_alias: "TLINE"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TPOINT.gpkg"
+    layer_alias: "TPOINT"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/NUMVOIE.gpkg"
+    layer_alias: "NUMVOIE"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+
+output:
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "CADASTRE-{col:03}-{row:03}.mp"
+  overwrite: true
+  base_id: ${BASE_ID}
+
+header:
+  name: "CADASTRE-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio - DGFiP Plan Cadastral Informatisé 2026"
+  levels: "4"
+  level0: "24"
+  level1: "21"
+  level2: "18"
+  level3: "16"
+  simplify_level: "0"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  transparent: "Y"
+  marine: "N"
+  preprocess: "F"
+  lbl_coding: "9"
+  routing: "N"
+
+rules: ./garmin-rules.yaml
+
+error_handling: "continue"

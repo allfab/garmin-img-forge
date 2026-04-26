@@ -1,0 +1,267 @@
+[_id]
+ProductCode=1
+FID=1101
+CodePage=1252
+[End]
+
+[_drawOrder]
+Type=0x10d20,1
+Type=0x10d00,2
+Type=0x10d21,2
+Type=0x10d22,2
+Type=0x10d10,3
+Type=0x10d16,3
+Type=0x10d14,4
+Type=0x10d15,4
+Type=0x10d11,4
+Type=0x10d12,4
+Type=0x10d13,4
+Type=0x10d01,5
+Type=0x10d02,5
+Type=0x10d03,5
+[End]
+
+; ====== POLYGONES ======
+
+[_polygon]
+Type=0x10d00
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#686868
+ContourColor=DayAndNight
+DaycontourColor:#686868
+NightcontourColor:#686868
+Xpm="0 0 1 0"
+"1 c none"
+[end]
+
+[_polygon]
+Type=0x10d01
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#D2B48C
+NightcustomColor:#A08060
+ContourColor=DayAndNight
+DaycontourColor:#8B6340
+NightcontourColor:#8B6340
+Xpm="0 0 1 0"
+"1 c #D2B48C"
+[end]
+
+[_polygon]
+Type=0x10d02
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#C8C8C8
+NightcustomColor:#909090
+ContourColor=DayAndNight
+DaycontourColor:#888888
+NightcontourColor:#888888
+Xpm="0 0 1 0"
+"1 c #C8C8C8"
+[end]
+
+[_polygon]
+Type=0x10d03
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#A8A8A8
+NightcustomColor:#707070
+ContourColor=DayAndNight
+DaycontourColor:#686868
+NightcontourColor:#686868
+Xpm="0 0 1 0"
+"1 c #A8A8A8"
+[end]
+
+[_polygon]
+Type=0x10d10
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#1A7AAC
+NightcustomColor:#0E5070
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #1A7AAC"
+[end]
+
+[_polygon]
+Type=0x10d11
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#228B22
+NightcustomColor:#155015
+ContourColor=DayAndNight
+DaycontourColor:#006400
+NightcontourColor:#006400
+Xpm="8 4 2 1"
+"1 c #228B22"
+"2 c none"
+"11111111"
+"12222221"
+"12222221"
+"11111111"
+[end]
+
+[_polygon]
+Type=0x10d12
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#4169E1
+NightcustomColor:#2040A0
+ContourColor=DayAndNight
+DaycontourColor:#00008B
+NightcontourColor:#00008B
+Xpm="8 4 2 1"
+"1 c #4169E1"
+"2 c none"
+"11111111"
+"12222221"
+"12222221"
+"11111111"
+[end]
+
+[_polygon]
+Type=0x10d13
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#90EE90
+NightcustomColor:#508850
+ContourColor=DayAndNight
+DaycontourColor:#008000
+NightcontourColor:#008000
+Xpm="8 4 2 1"
+"1 c #90EE90"
+"2 c none"
+"11111111"
+"12222221"
+"12222221"
+"11111111"
+[end]
+
+[_polygon]
+Type=0x10d14
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#9AC2DB
+NightcustomColor:#5080A0
+ContourColor=DayAndNight
+DaycontourColor:#4080B0
+NightcontourColor:#4080B0
+Xpm="0 0 1 0"
+"1 c #9AC2DB"
+[end]
+
+[_polygon]
+Type=0x10d15
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#9AC2DB
+NightcustomColor:#5080A0
+ContourColor=DayAndNight
+DaycontourColor:#4080B0
+NightcontourColor:#4080B0
+Xpm="0 0 1 0"
+"1 c #9AC2DB"
+[end]
+
+[_polygon]
+Type=0x10d16
+ExtendedLabels=N
+ContourColor=DayAndNight
+DaycontourColor:#831341
+NightcontourColor:#831341
+Xpm="0 0 1 0"
+"1 c none"
+[end]
+
+[_polygon]
+Type=0x10d20
+ExtendedLabels=N
+ContourColor=DayAndNight
+DaycontourColor:#003399
+NightcontourColor:#001166
+Xpm="0 0 1 0"
+"1 c none"
+[end]
+
+[_polygon]
+Type=0x10d21
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#4DC3FF
+NightcustomColor:#2080BB
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #4DC3FF"
+[end]
+
+[_polygon]
+Type=0x10d22
+ExtendedLabels=N
+CustomColor=DayAndNight
+DaycustomColor:#E8E8E8
+NightcustomColor:#A0A0A0
+ContourColor=DayAndNight
+DaycontourColor:#999999
+NightcontourColor:#666666
+Xpm="0 0 1 0"
+"1 c #E8E8E8"
+[end]
+
+[_polygon]
+Type=0x10d23
+ExtendedLabels=N
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c none"
+[end]
+
+; ====== POLYLIGNES ======
+
+[_line]
+Type=0x10e00
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+ExtendedLabels=Y
+FontStyle=Default
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#888888
+Xpm="0 0 1 0"
+"1 c #999999"
+[end]
+
+[_line]
+Type=0x10e01
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+ExtendedLabels=N
+Xpm="0 0 2 0"
+"1 c #BBBBBB"
+"2 c none"
+[end]
+
+[_line]
+Type=0x10e02
+UseOrientation=N
+LineWidth=2
+BorderWidth=1
+ExtendedLabels=N
+Xpm="0 0 2 0"
+"1 c #000000"
+"2 c #FFFFFF"
+[end]
+
+[_line]
+Type=0x10e03
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+ExtendedLabels=N
+Xpm="0 0 1 0"
+"1 c #CCCCCC"
+[end]

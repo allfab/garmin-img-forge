@@ -1,0 +1,163 @@
+# Règles overlay cadastre PCI EDIGÉO → types Garmin
+version: 1
+
+rulesets:
+
+  # PARCELLE — polygones cadastraux (contour uniquement)
+  - name: "Parcelles"
+    source_layer: "PARCELLE"
+    rules:
+      - set:
+          Type: "0x10d00"
+          EndLevel: "0"
+          Label: "${IDU}"
+
+  # BATIMENT — bâtiments (DUR : 01=dur, 02=léger, 03=FI)
+  - name: "Bâtiments"
+    source_layer: "BATIMENT"
+    rules:
+      - match:
+          DUR: "01"
+        set:
+          Type: "0x10d01"
+          EndLevel: "0"
+      - match:
+          DUR: "02"
+        set:
+          Type: "0x10d02"
+          EndLevel: "0"
+      - match:
+          DUR: "03"
+        set:
+          Type: "0x10d03"
+          EndLevel: "0"
+      - set:
+          Type: "0x10d01"
+          EndLevel: "0"
+
+  # TSURF — objets surfaciques divers (SYM précodé)
+  - name: "Objets surfaciques divers"
+    source_layer: "TSURF"
+    rules:
+      - match:
+          SYM: "34"
+        set:
+          Type: "0x10d10"
+          EndLevel: "2"
+      - match:
+          SYM: "51"
+        set:
+          Type: "0x10d11"
+          EndLevel: "1"
+      - match:
+          SYM: "52"
+        set:
+          Type: "0x10d12"
+          EndLevel: "1"
+      - match:
+          SYM: "53"
+        set:
+          Type: "0x10d13"
+          EndLevel: "1"
+      - match:
+          SYM: "65"
+        set:
+          Type: "0x10d14"
+          EndLevel: "0"
+      - match:
+          SYM: "66"
+        set:
+          Type: "0x10d15"
+          EndLevel: "0"
+      - match:
+          SYM: "32"
+        set:
+          Type: "0x10d16"
+          EndLevel: "1"
+      - match:
+          SYM: "37"
+        set:
+          Type: "0x10d16"
+          EndLevel: "1"
+
+  # SECTION — sections cadastrales (repère de navigation)
+  - name: "Sections"
+    source_layer: "SECTION"
+    rules:
+      - set:
+          Type: "0x10d20"
+          EndLevel: "3"
+
+  # TRONFLUV — tronçons de cours d'eau
+  - name: "Cours d'eau"
+    source_layer: "TRONFLUV"
+    rules:
+      - set:
+          Type: "0x10d21"
+          EndLevel: "2"
+
+  # TRONROUTE — réseau routier cadastral
+  - name: "Voies routières cadastre"
+    source_layer: "TRONROUTE"
+    rules:
+      - set:
+          Type: "0x10d22"
+          EndLevel: "1"
+
+  # LIEUDIT — lieux-dits (label TEX)
+  - name: "Lieux-dits"
+    source_layer: "LIEUDIT"
+    rules:
+      - set:
+          Type: "0x10d23"
+          EndLevel: "3"
+          Label: "${TEX}"
+
+  # ZONCOMMUNI — zones de communication / rues (POLYLINE)
+  - name: "Zones de communication"
+    source_layer: "ZONCOMMUNI"
+    rules:
+      - set:
+          Type: "0x10e00"
+          EndLevel: "0"
+          Label: "${TEX}"
+
+  # TLINE — objets linéaires divers (POLYLINE)
+  - name: "Objets linéaires divers"
+    source_layer: "TLINE"
+    rules:
+      - match:
+          SYM: "29"
+        set:
+          Type: "0x10e02"
+          EndLevel: "2"
+      - match:
+          SYM: "21"
+        set:
+          Type: "0x10e01"
+          EndLevel: "1"
+      - set:
+          Type: "0x10e03"
+          EndLevel: "1"
+
+  # NUMVOIE — numéros de voirie (POI label)
+  - name: "Numéros de voirie"
+    source_layer: "NUMVOIE"
+    rules:
+      - set:
+          Type: "0x6400"
+          EndLevel: "0"
+          Label: "${TEX}"
+
+  # TPOINT — objets ponctuels divers (POI)
+  - name: "Objets ponctuels divers"
+    source_layer: "TPOINT"
+    rules:
+      - match:
+          SYM: "63"
+        set:
+          Type: "0x6512"
+          EndLevel: "1"
+      - set:
+          Type: "0x6400"
+          EndLevel: "1"

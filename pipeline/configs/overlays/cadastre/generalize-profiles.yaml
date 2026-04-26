@@ -1,0 +1,93 @@
+# Profils de simplification pour l'overlay cadastre
+# Simplification minimale : le cadastre est au 1:1000, on préserve la précision géométrique.
+version: 1
+
+profiles:
+  PARCELLE:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.000005   # ~0.5m — pour les niveaux intermédiaires
+      - n: 2
+        simplify: 0.00001
+      - n: 3
+        simplify: 0.00003
+
+  BATIMENT:
+    levels:
+      - n: 0
+        simplify: 0.0
+
+  TSURF:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.000005
+      - n: 2
+        simplify: 0.00002
+
+  SECTION:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.00001
+      - n: 2
+        simplify: 0.00005
+      - n: 3
+        simplify: 0.0001
+
+  TRONFLUV:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.000005
+      - n: 2
+        simplify: 0.00002
+
+  TRONROUTE:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.000005
+
+  LIEUDIT:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.00001
+      - n: 2
+        simplify: 0.00005
+      - n: 3
+        simplify: 0.0002
+
+  TLINE:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.000005
+      - n: 2
+        simplify: 0.00002
+
+  ZONCOMMUNI:
+    levels:
+      - n: 0
+        simplify: 0.0
+
+  TPOINT:
+    levels:
+      - n: 0
+        simplify: 0.0
+      - n: 1
+        simplify: 0.0
+
+  NUMVOIE:
+    levels:
+      - n: 0
+        simplify: 0.0

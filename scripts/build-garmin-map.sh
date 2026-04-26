@@ -50,6 +50,7 @@ OUTPUT_BASE="./pipeline/output"
 CONTOURS_DIR=""         # défaut: ${DATA_DIR}/contours
 DEM_DIR=""              # défaut: ${DATA_DIR}/dem
 OSM_DIR=""              # défaut: ${DATA_DIR}/osm
+CADASTRE_DIR=""         # défaut: ${DATA_DIR}/cadastre
 HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
 
 # mpforge
@@ -145,6 +146,7 @@ _DATA_ROOT=""
 _CONTOURS_DATA_ROOT=""
 _DEM_DATA_ROOT=""
 _OSM_DATA_ROOT=""
+_CADASTRE_DATA_ROOT=""
 _HIKING_TRAILS_DATA_ROOT=""
 _OUTPUT_DIR=""
 _REPORT_FILE=""
@@ -328,6 +330,7 @@ CHEMINS :
     --contours-dir DIR      Racine courbes de niveau (défaut: ${data-dir}/contours)
     --dem-dir DIR           Racine MNT BD ALTI (défaut: ${data-dir}/dem)
     --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
+    --cadastre-dir DIR      Racine données cadastre (défaut: ${data-dir}/cadastre)
     --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
     --config FILE           Config YAML mpforge custom (défaut auto-résolu :
@@ -442,6 +445,7 @@ parse_args() {
             --contours-dir)  CONTOURS_DIR="$2"; shift 2 ;;
             --dem-dir)       DEM_DIR="$2"; shift 2 ;;
             --osm-dir)       OSM_DIR="$2"; shift 2 ;;
+            --cadastre-dir)  CADASTRE_DIR="$2"; shift 2 ;;
             --hiking-trails-dir) HIKING_TRAILS_DIR="$2"; shift 2 ;;
             --output-base)   OUTPUT_BASE="$2"; shift 2 ;;
             --config)        CONFIG_FILE="$2"; shift 2 ;;
@@ -747,6 +751,7 @@ resolve_paths() {
     _CONTOURS_DATA_ROOT="${CONTOURS_DIR:-${DATA_DIR}/contours}"
     _DEM_DATA_ROOT="${DEM_DIR:-${DATA_DIR}/dem}"
     _OSM_DATA_ROOT="${OSM_DIR:-${DATA_DIR}/osm}"
+    _CADASTRE_DATA_ROOT="${CADASTRE_DIR:-${DATA_DIR}/cadastre}"
     _HIKING_TRAILS_DATA_ROOT="${HIKING_TRAILS_DIR:-${DATA_DIR}/hiking-trails}"
 
     # Nom de la carte pour l'output
@@ -1032,6 +1037,7 @@ prepare_config() {
     export DATA_ROOT="$_DATA_ROOT"
     export CONTOURS_DATA_ROOT="$_CONTOURS_DATA_ROOT"
     export OSM_DATA_ROOT="$_OSM_DATA_ROOT"
+    export CADASTRE_DATA_ROOT="$_CADASTRE_DATA_ROOT"
     export HIKING_TRAILS_DATA_ROOT="$_HIKING_TRAILS_DATA_ROOT"
     export OUTPUT_DIR="$_OUTPUT_DIR"
     export BASE_ID
