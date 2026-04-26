@@ -781,11 +781,15 @@ fn filter_features_for_level(
             }
             let mut pts = geom.to_vec();
             if shift_u > 0 {
-                pts = round_coords(&pts, shift_u);
-                if !passes_size_filter(&pts, shift_u, 1) {
+                if !mp.header.no_round_coords {
+                    pts = round_coords(&pts, shift_u);
+                }
+                if !mp.header.no_size_filter && !passes_size_filter(&pts, shift_u, 1) {
                     return None;
                 }
-                pts = remove_obsolete_points(&pts, false);
+                if !mp.header.no_remove_obsolete_points {
+                    pts = remove_obsolete_points(&pts, false);
+                }
             }
             if let Some(eps) = line_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();
@@ -822,11 +826,15 @@ fn filter_features_for_level(
             // Même chaîne mkgmap pour les polygones (cf. `processShapes`), ordre strict
             // Round → Size → RemoveObsolete → DP → RemoveEmpty. Gated sur `shift > 0`.
             if shift_u > 0 {
-                pts = round_coords(&pts, shift_u);
-                if !passes_size_filter(&pts, shift_u, 1) {
+                if !mp.header.no_round_coords {
+                    pts = round_coords(&pts, shift_u);
+                }
+                if !mp.header.no_size_filter && !passes_size_filter(&pts, shift_u, 1) {
                     return None;
                 }
-                pts = remove_obsolete_points(&pts, true);
+                if !mp.header.no_remove_obsolete_points {
+                    pts = remove_obsolete_points(&pts, true);
+                }
             }
             if let Some(eps) = poly_epsilon {
                 let coords: Vec<(i32, i32)> = pts.iter().map(|c| (c.latitude(), c.longitude())).collect();

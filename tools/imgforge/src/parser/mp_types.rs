@@ -53,6 +53,10 @@ pub struct MpHeader {
     pub simplify_polygons: Option<String>,
     pub min_size_polygon: Option<i32>,
     pub merge_lines: bool,
+    // Geometry filter opt-out (mkgmap parité — désactivables pour analyse/debug)
+    pub no_round_coords: bool,
+    pub no_size_filter: bool,
+    pub no_remove_obsolete_points: bool,
     // Routing
     pub routing_mode: RoutingMode,
     // Metadata (TDB-level)

@@ -62,6 +62,7 @@ fn main() -> Result<()> {
             code_page, unicode, latin1, lower_case,
             transparent, draw_priority, levels, order_by_decreasing_area,
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
+            no_round_coords, no_size_filter, no_remove_obsolete_points,
             route, net, no_route, copyright_message, typ_file,
             dem, dem_dists, dem_interpolation, dem_source_srs,
             report,
@@ -81,6 +82,7 @@ fn main() -> Result<()> {
                 transparent, draw_priority, levels.as_deref(),
                 order_by_decreasing_area,
                 reduce_point_density, simplify_polygons.as_deref(), min_size_polygon, merge_lines,
+                no_round_coords, no_size_filter, no_remove_obsolete_points,
                 route, net, no_route, copyright_message.as_deref(),
             );
 
@@ -143,6 +145,7 @@ fn main() -> Result<()> {
             code_page, unicode, latin1, lower_case,
             transparent, draw_priority, levels, order_by_decreasing_area,
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
+            no_round_coords, no_size_filter, no_remove_obsolete_points,
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going, typ_file,
@@ -233,6 +236,7 @@ fn main() -> Result<()> {
                     transparent, draw_priority, levels_clone.as_deref(),
                     order_by_decreasing_area,
                     reduce_point_density, simplify_clone.as_deref(), min_size_polygon, merge_lines,
+                    no_round_coords, no_size_filter, no_remove_obsolete_points,
                     route, net, no_route, copyright_clone.as_deref(),
                 );
 
@@ -488,6 +492,7 @@ fn apply_tile_overrides(
     order_by_decreasing_area: bool,
     reduce_point_density: Option<f64>, simplify_polygons: Option<&str>,
     min_size_polygon: Option<i32>, merge_lines: bool,
+    no_round_coords: bool, no_size_filter: bool, no_remove_obsolete_points: bool,
     route: bool, net: bool, no_route: bool,
     copyright_message: Option<&str>,
 ) {
@@ -515,6 +520,10 @@ fn apply_tile_overrides(
     mp.header.simplify_polygons = simplify_polygons.map(|s| s.to_string());
     mp.header.min_size_polygon = min_size_polygon;
     mp.header.merge_lines = merge_lines;
+
+    mp.header.no_round_coords = no_round_coords;
+    mp.header.no_size_filter = no_size_filter;
+    mp.header.no_remove_obsolete_points = no_remove_obsolete_points;
 
     if no_route {
         mp.header.routing_mode = RoutingMode::Disabled;

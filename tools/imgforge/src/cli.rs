@@ -149,6 +149,18 @@ pub enum Commands {
         #[arg(long)]
         merge_lines: bool,
 
+        /// Disable coordinate quantization to subdivision grid (RoundCoordsFilter)
+        #[arg(long)]
+        no_round_coords: bool,
+
+        /// Disable sub-pixel feature removal (SizeFilter)
+        #[arg(long)]
+        no_size_filter: bool,
+
+        /// Disable collinear/spike point removal after rounding (RemoveObsoletePointsFilter)
+        #[arg(long)]
+        no_remove_obsolete_points: bool,
+
         /// Force NET+NOD routing generation
         #[arg(long, conflicts_with = "no_route")]
         route: bool,
@@ -266,6 +278,18 @@ pub enum Commands {
         /// Merge adjacent polylines with same type/label
         #[arg(long)]
         merge_lines: bool,
+
+        /// Disable coordinate quantization to subdivision grid (RoundCoordsFilter)
+        #[arg(long)]
+        no_round_coords: bool,
+
+        /// Disable sub-pixel feature removal (SizeFilter)
+        #[arg(long)]
+        no_size_filter: bool,
+
+        /// Disable collinear/spike point removal after rounding (RemoveObsoletePointsFilter)
+        #[arg(long)]
+        no_remove_obsolete_points: bool,
 
         /// Force NET+NOD routing generation
         #[arg(long, conflicts_with = "no_route")]
