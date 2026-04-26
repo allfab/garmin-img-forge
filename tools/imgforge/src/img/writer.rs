@@ -370,28 +370,15 @@ fn build_multilevel_hierarchy(
             )
         }).collect();
 
-        // Lines: pre-clip each polyline to every parent it overlaps (Liang-Barsky),
-        // same rationale as shapes — ensures roads/contours visible after panning.
-        let ln_clips: Vec<Vec<(u16, Vec<Vec<Coord>>)>> = all_lines.iter().map(|l| {
+        // Lines: single-parent by bbox midpoint (mkgmap pickArea).
+        // Full unclipped lines go to ONE parent; subdivision TRE bounds expand
+        // via full_bounds() to cover any overflow beyond the cell boundary,
+        // so the device loads the subdivision when any part of the line is visible.
+        let ln_parents: Vec<Option<u16>> = all_lines.iter().map(|l| {
             let bbox = Area::from_coords(&l.points);
-            let mut clips: Vec<(u16, Vec<Vec<Coord>>)> = Vec::new();
-            for &(area, pnum) in &parent_areas {
-                if area.intersects(&bbox) {
-                    let segs = splitter::clip_polyline_to_rect(&l.points, &area);
-                    let valid: Vec<Vec<Coord>> = segs.into_iter().filter(|s| s.len() >= 2).collect();
-                    if !valid.is_empty() {
-                        clips.push((pnum as u16, valid));
-                    }
-                }
-            }
-            if clips.is_empty() {
-                let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
-                let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
-                if let Some(p) = assign_to_parent(mid_lat, mid_lon, &parent_areas) {
-                    clips.push((p, vec![l.points.clone()]));
-                }
-            }
-            clips
+            let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
+            let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
+            assign_to_parent(mid_lat, mid_lon, &parent_areas)
         }).collect();
 
         // Shapes: pre-clip each polygon to every parent it overlaps so that panning
@@ -431,15 +418,10 @@ fn build_multilevel_hierarchy(
                 .collect();
 
             let parent_lines: Vec<splitter::SplitLine> = all_lines.iter().enumerate()
-                .flat_map(|(i, l)| {
-                    ln_clips[i].iter()
-                        .filter(|(p, _)| *p == pnum16)
-                        .flat_map(move |(_, segs)| {
-                            segs.iter().map(move |pts| splitter::SplitLine {
-                                mp_index: l.mp_index,
-                                points: pts.clone(),
-                            })
-                        })
+                .filter(|(i, _)| ln_parents[*i] == Some(pnum16))
+                .map(|(_, l)| splitter::SplitLine {
+                    mp_index: l.mp_index,
+                    points: l.points.clone(),
                 })
                 .collect();
 
@@ -487,7 +469,14 @@ fn build_multilevel_hierarchy(
                 for (i, p) in all_points.iter().enumerate() {
                     if pt_parents[i].is_none() { areas[pos].add_point(p.clone()); }
                 }
-                // Lines: already handled by ln_clips intersection logic above.
+                for (i, l) in all_lines.iter().enumerate() {
+                    if ln_parents[i].is_none() {
+                        areas[pos].add_line(splitter::SplitLine {
+                            mp_index: l.mp_index,
+                            points: l.points.clone(),
+                        });
+                    }
+                }
                 // Shapes: already handled by sh_clips intersection logic above.
             }
         }
@@ -506,24 +495,18 @@ fn build_multilevel_hierarchy(
             subdiv_counter += 1;
 
             let mut subdiv = Subdivision::new(subdiv_num, level_num, level.resolution);
-            // Subdivision bounds = area.bounds (cell géographique du splitter).
-            // Les cells du splitter sont non-chevauchantes → 0% overlap → l'Alpha 100
-            // trouve toujours UNE SEULE subdivision candidate par viewport.
-            //
-            // full_bounds() (bbox des features) est dangereux : un polygone de forêt
-            // dans une cell SW peut étendre full_bounds à toute la tuile → 100% des
-            // points du tile sont couverts par plusieurs level=1 subdivisions simultanément
-            // → l'Alpha 100 prend la première (mauvaise) → first_child vers enfants
-            // hors-viewport → route invisible. Confirmé empiriquement : 200/200 points
-            // random couverts par >1 subdiv level=1 avec full_bounds.
-            //
-            // Pour que les routes soient visibles depuis tout viewport le long de leur
-            // tracé, le splitter distribue chaque polyline dans TOUTES les cells dont
-            // les bounds intersectent son bbox (pas seulement la cell du premier point).
+            // Subdivision TRE bounds = full_bounds() (union bbox de toutes les features).
+            // Parité mkgmap MapBuilder.java:913 — createSubdivision(parent, ma.getFullBounds(), z).
+            // Les polygones sont clipés à la cellule → full_bounds ≈ cell pour les shapes.
+            // Les polylignes sont stockées intactes dans UNE seule subdivision → full_bounds
+            // s'étend pour couvrir toute la ligne. Le firmware charge la subdivision dès que
+            // son TRE bounds intersecte le viewport → la ligne reste visible lors du panning.
+            // Le centre reste ancré sur la cellule grille (hiérarchie de navigation inchangée).
+            let fb = area.full_bounds();
             subdiv.set_center(&area.bounds.center());
             subdiv.set_bounds(
-                area.bounds.min_lat(), area.bounds.min_lon(),
-                area.bounds.max_lat(), area.bounds.max_lon(),
+                fb.min_lat(), fb.min_lon(),
+                fb.max_lat(), fb.max_lon(),
             );
             subdiv.parent = parent_num;
             // is_last marks the last child in each parent's group, NOT the last at the level.

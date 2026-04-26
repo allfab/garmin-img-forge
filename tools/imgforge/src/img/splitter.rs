@@ -363,9 +363,11 @@ impl MapArea {
         let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
         let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: clip each polyline to every sub-area it overlaps (Liang-Barsky).
-        // Parité mkgmap MapSplitter — les segments résultants héritent du même mp_index,
-        // ce qui garantit l'affichage des routes et courbes de niveau lors du panning.
+        // ── Lines: single sub-area by bbox midpoint (mkgmap pickArea, no clipping).
+        // La ligne intacte va dans UNE seule sub-area ; add_line() → extend_bounds_points()
+        // étend full_bounds() pour couvrir toute la ligne, même si elle déborde de la cell.
+        // writer.rs utilise full_bounds() pour les bounds TRE → le firmware charge la
+        // subdivision quand n'importe quelle portion de la ligne est dans le viewport.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
@@ -377,29 +379,7 @@ impl MapArea {
                 mid_lon, mid_lat,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
-
-            let fits_target = sub_areas[target].bounds.contains_area(&line_bbox);
-            if fits_target {
-                sub_areas[target].add_line(line.clone());
-                continue;
-            }
-
-            // Polyline crosses cell boundaries: clip to each overlapping sub-area.
-            let mut clipped_any = false;
-            for j in 0..num_areas {
-                if !sub_areas[j].bounds.intersects(&line_bbox) {
-                    continue;
-                }
-                for seg in clip_polyline_to_rect(&line.points, &sub_areas[j].bounds) {
-                    if seg.len() >= 2 {
-                        sub_areas[j].add_line(SplitLine { mp_index: line.mp_index, points: seg });
-                        clipped_any = true;
-                    }
-                }
-            }
-            if !clipped_any {
-                sub_areas[target].add_line(line.clone());
-            }
+            sub_areas[target].add_line(line.clone());
         }
 
         // ── Shapes: clip each polygon to every sub-area it overlaps (Sutherland-Hodgman).
