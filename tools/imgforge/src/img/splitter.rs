@@ -5,7 +5,6 @@
 // - splitMaxSize: initial grid split to respect MAX_DIVISION_SIZE
 // - addAreasToList: recursive re-split until all areas fit limits
 // - Sutherland-Hodgman: polygon clipping against axis-aligned rectangles
-// - Large objects: dedicated subdivision when feature exceeds cell dimensions
 
 use super::area::Area;
 use super::coord::Coord;
@@ -18,7 +17,6 @@ pub const MAX_NUM_LINES: usize = 0xFF;
 pub const MAX_NUM_POINTS: usize = 0xFF;
 pub const WANTED_MAX_AREA_SIZE: usize = 0x3FFF; // 16383 bytes — parité mkgmap MapSplitter.java:66
 pub const MIN_DIMENSION: i32 = 10;
-pub const LARGE_OBJECT_DIM: i32 = 8192;
 
 // Size estimation — mkgmap MapArea.addSize
 const POINT_SIZE: usize = 9;
@@ -909,28 +907,6 @@ mod tests {
         // La ligne doit apparaître UNE SEULE FOIS (dans une seule sub-area ou
         // dans un dedicated subdiv).
         assert_eq!(total_lines, 1, "line must not be duplicated across cells");
-    }
-
-    #[test]
-    fn test_split_large_line_gets_dedicated_area() {
-        // Une polyline dont le bbox dépasse max_cell_w/h ET qui ne tient pas
-        // dans la cell de son premier point → subdiv dédié (largeObjectArea).
-        let bounds = Area::new(0, 0, (LARGE_OBJECT_DIM * 8) as i32, (LARGE_OBJECT_DIM * 8) as i32);
-        let mut area = MapArea::new(bounds, 24);
-        area.add_line(SplitLine {
-            mp_index: 0,
-            points: vec![
-                pt(100, 100),
-                pt((LARGE_OBJECT_DIM * 7) as i32, (LARGE_OBJECT_DIM * 7) as i32),
-            ],
-        });
-
-        let subs = area.split(2, 2);
-        // 4 cells (2×2) + 1 dedicated = 5 sub-areas au total.
-        assert!(subs.len() >= 5, "expected extra dedicated subdiv, got {}", subs.len());
-        // La ligne n'apparaît qu'une seule fois globalement.
-        let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        assert_eq!(total_lines, 1);
     }
 
     #[test]
