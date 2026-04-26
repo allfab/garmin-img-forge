@@ -147,6 +147,12 @@ Ces métadonnées sont écrites dans le fichier TDB et sont visibles dans les lo
 
 Ces options réduisent significativement la taille du fichier final (parfois -30 à -50 %) en éliminant les détails invisibles sur un écran GPS.
 
+imgforge applique également, par défaut, la chaîne de filtres mkgmap r4924 à chaque niveau de zoom n>0 : quantification des coordonnées (`RoundCoordsFilter`), rejet des features sub-pixel (`SizeFilter`) et suppression des colinéaires post-quantification (`RemoveObsoletePointsFilter`). Ces filtres sont transparents en production. Pour les désactiver (mesure d'impact, debug) :
+
+```bash
+imgforge build tiles/ --no-round-coords --no-size-filter --no-remove-obsolete-points
+```
+
 ### Symbologie
 
 ```bash

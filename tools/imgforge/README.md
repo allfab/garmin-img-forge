@@ -10,7 +10,7 @@
 - **Build multi-tile** : Assembler un répertoire de `.mp` en `gmapsupp.img` prêt pour le GPS
 - **Parallélisation** : Compilation multi-thread des tuiles via rayon
 - **Encodage configurable** : Format 6 (ASCII), Format 9 (CP1252/CP1250/CP1251), Format 10 (UTF-8)
-- **Optimisation géométrique** : Simplification Douglas-Peucker, filtrage polygones par taille, tri par aire
+- **Optimisation géométrique** : Parité chaîne mkgmap r4924 — `RoundCoordsFilter`, `SizeFilter`, `RemoveObsoletePointsFilter` actifs par défaut (désactivables individuellement), simplification Douglas-Peucker, filtrage polygones par taille, tri par aire
 - **Contrôle routing** : NET+NOD complet, NET seul, ou désactivation du routing
 - **Cartes overlay** : Support transparent avec priorité d'affichage configurable
 - **Métadonnées complètes** : Copyright, pays, région, version produit dans le TDB
@@ -251,6 +251,9 @@ Les options suivantes sont disponibles sur les deux commandes. Elles sont appliq
 | `--simplify-polygons <SPEC>` | DP par résolution : `"24:12,18:10,16:8"` (prioritaire sur `--reduce-point-density` pour les polygones) | - |
 | `--min-size-polygon <NUM>` | Filtrer les polygones dont l'aire < NUM (en map units², mkgmap défaut: 8) | - |
 | `--merge-lines` | Fusionner les polylignes adjacentes de même type/label *(réservé, non implémenté)* | `false` |
+| `--no-round-coords` | Désactiver la quantification des coordonnées à la grille de subdivision (`RoundCoordsFilter`) — actif par défaut aux niveaux n>0 | `false` |
+| `--no-size-filter` | Désactiver le rejet des features sub-pixel (`SizeFilter`) — actif par défaut aux niveaux n>0 | `false` |
+| `--no-remove-obsolete-points` | Désactiver la suppression des colinéaires/spikes post-quantification (`RemoveObsoletePointsFilter`) — actif par défaut aux niveaux n>0 | `false` |
 
 #### Contrôle routing
 

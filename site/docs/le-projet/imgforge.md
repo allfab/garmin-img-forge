@@ -193,6 +193,26 @@ imgforge build tiles/ --simplify-polygons "24:12,18:10,16:8"
 
 Plus la résolution est basse (vue large), plus la simplification est agressive.
 
+### Parité chaîne de filtres mkgmap
+
+imgforge implémente la chaîne de filtres géométriques de mkgmap r4924 (`normalFilters`), appliquée à chaque niveau de zoom n>0 :
+
+| Filtre | Rôle | Flag opt-out |
+|--------|------|--------------|
+| `RoundCoordsFilter` | Quantifie les coordonnées à la grille `(1 << shift)` unités Garmin — élimine les points sub-pixel | `--no-round-coords` |
+| `SizeFilter` | Rejette les features dont la bbox est trop petite pour être visible à la résolution courante | `--no-size-filter` |
+| `RemoveObsoletePointsFilter` | Supprime les doublons post-quantification, colinéaires stricts et spikes | `--no-remove-obsolete-points` |
+
+Ces filtres sont **actifs par défaut**. Les flags `--no-*` permettent de les désactiver individuellement pour mesurer leur impact ou reproduire une baseline sans filtrage :
+
+```bash
+# Mesurer l'impact de RoundCoordsFilter seul
+imgforge build tiles/ --no-round-coords
+
+# Baseline sans les trois filtres (comportement pré-parité mkgmap)
+imgforge build tiles/ --no-round-coords --no-size-filter --no-remove-obsolete-points
+```
+
 ### Découpage automatique des features volumineuses
 
 imgforge découpe automatiquement les features de plus de **250 points** pour éviter les débordements dans l'encodage RGN Garmin (delta variable-width) :

@@ -160,8 +160,8 @@ Quantifie chaque coordonnée à la grille de résolution `(1 << shift)` unités 
 
 **Mode spécial courbes de niveau** : pour chaque point intermédiaire, mkgmap teste les **4 coins de la cellule** et choisit celui qui minimise la somme des distances au segment avant et après (`calcDistortion`). Ce mode "best-fit" produit un tracé naturellement aligné sur la grille, visuellement plus fluide que l'arrondi naïf.
 
-!!! warning "Absent d'imgforge"
-    imgforge n'implémente pas `RoundCoordsFilter`. Les coordonnées sont écrites à pleine précision WGS84 (24 bits), quelle que soit la résolution. L'absence de quantification produit des points "sub-pixel" qui ne contribuent pas au rendu mais occupent des bytes RGN.
+!!! success "Implémenté dans imgforge"
+    imgforge applique `RoundCoordsFilter` par défaut aux niveaux n>0 (gated sur `shift > 0`). Les coordonnées sont quantifiées à la grille `(1 << shift)` unités Garmin avant encodage RGN, éliminant les points sub-pixel. Désactivable avec `--no-round-coords` pour mesurer l'impact isolé ou comparer avec une baseline non quantifiée.
 
 ### SizeFilter
 
@@ -178,8 +178,8 @@ maxDimension < minSize × (1 << shift)
 
 Exemple : une portion de `CONSTRUCTION_LINEAIRE` (mur, haie) de 20 m de long disparaît dès n=3 (shift=3, seuil = 8 unités ≈ 17 m pour les lignes). Cela réduit la RGN aux niveaux larges sans affecter le zoom maximal.
 
-!!! warning "Absent d'imgforge"
-    imgforge n'implémente pas `SizeFilter`. Des features trop petites pour être visibles sont émises à tous les niveaux traversés (jusqu'à leur EndLevel), augmentant inutilement la RGN.
+!!! success "Implémenté dans imgforge"
+    imgforge applique `SizeFilter(MIN_SIZE_LINE=1)` par défaut aux niveaux n>0. Les polylignes et polygones dont la bounding box max-dim est inférieure au seuil `1 × (1 << shift)` sont éliminés avant encodage RGN. Désactivable avec `--no-size-filter`.
 
 ### DouglasPeuckerFilter
 
@@ -214,8 +214,8 @@ maxErrorDistance = filterDistance * (1 << config.getShift());
 
 Appliqué après `RoundCoordsFilter` pour les polylignes et polygones. Le nettoyage post-quantification est crucial : `RoundCoordsFilter` peut projeter deux coordonnées distinctes vers la même valeur arrondie, produisant des doublons que `RemoveObsolete` élimine immédiatement.
 
-!!! warning "Absent d'imgforge"
-    imgforge n'implémente pas `RemoveObsoletePointsFilter`. Les doublons et colinéaires stricts restent dans la RGN à tous les niveaux.
+!!! success "Implémenté dans imgforge"
+    imgforge applique `RemoveObsoletePointsFilter` par défaut aux niveaux n>0, après `RoundCoordsFilter`. Les doublons post-quantification, colinéaires stricts et spikes sont supprimés avant encodage RGN. Désactivable avec `--no-remove-obsolete-points`.
 
 ### SmoothingFilter — code mort
 
@@ -242,9 +242,9 @@ Le lissage `smooth: chaikin` d'imgforge/mpforge (itérations de subdivision de c
 |---|---|---|
 | Gate `minResolution <= res` | `filter_features_for_level` (`writer.rs`) | ✅ Fix TD-1 commit `6478c47` |
 | `DouglasPeuckerFilter` | `simplify` / `simplify_vw` dans profil YAML | ⚠️ 8 couches seulement, tolérances 10-40× inférieures aux niveaux larges |
-| `RoundCoordsFilter` | Absent | ❌ |
-| `SizeFilter` lignes/polygones | Absent | ❌ |
-| `RemoveObsoletePointsFilter` | Absent | ❌ |
+| `RoundCoordsFilter` | `round_coords` (`filters/round_coords.rs`) — actif par défaut n>0, `--no-round-coords` | ✅ |
+| `SizeFilter` lignes/polygones | `passes_size_filter` (`filters/size.rs`) — actif par défaut n>0, `--no-size-filter` | ✅ |
+| `RemoveObsoletePointsFilter` | `remove_obsolete_points` (`filters/remove_obsolete_points.rs`) — actif par défaut n>0, `--no-remove-obsolete-points` | ✅ |
 | Lissage `smooth: chaikin` | `geometry_smoother.rs` | ⚠️ Quelques couches polygones seulement, pas de scaling par résolution |
 | `LineMergeFilter` | Absent (option mkgmap non standard) | — |
 | `SmoothingFilter` | N/A (code mort mkgmap) | — |
@@ -310,19 +310,27 @@ Candidats d'implémentation classés par rapport gain/complexité, basés sur le
 
 Les niveaux n=1..5 représentent **389 342 bytes** (37 % du RGN total) — c'est sur cette tranche que les filtres mkgmap ont le plus d'effet. Le niveau n=0 (663 942 bytes, 63 %) est non affecté par les filtres mkgmap (`res < 24`).
 
-| Candidat | Gain estimé (% RGN total) | Complexité impl. | Priorité |
-|---|---|---|---|
-| **Augmenter tolérances DP/VW aux niveaux n=4..6** (aligner sur scaling mkgmap × 10-40) | ~3-5 % — niveaux n=1..5 couverts à 34 %, réduction 20-40 % sur cette fraction | **Faible** (YAML seul) | **Haute** |
-| **Étendre le profil à `TRONCON_DE_VOIE_FERREE`** (EndLevel=4, géométrie identique aux 5 niveaux — 1534 points × 4 niveaux sans simplification ≈ 24 KB) | ~2 % sur les niveaux n=1..4 | **Faible** (YAML seul) | **Haute** |
-| **`RoundCoordsFilter` dans imgforge** | ~4-7 % — élimine points sub-pixel sur toutes les features aux niveaux n=1..5 | Moyenne (Rust, nouveau filtre par résolution) | Moyenne |
-| **`SizeFilter` (polylignes + polygones) dans imgforge** | ~2-6 % — supprime features trop petites au zoom courant | Faible (Rust, quelques lignes) | Moyenne |
-| **`RemoveObsoletePointsFilter` dans imgforge** | ~1-3 % — nettoyage colinéaires post-arrondi | Faible (Rust) | Basse (utile surtout après `RoundCoordsFilter`) |
+| Candidat | Gain estimé (% RGN total) | Statut |
+|---|---|---|
+| **Augmenter tolérances DP/VW aux niveaux n=4..6** (aligner sur scaling mkgmap × 10-40) | ~3-5 % — niveaux n=1..5 couverts à 34 %, réduction 20-40 % sur cette fraction | ✅ Implémenté (`generalize-profiles*.yaml`) |
+| **Étendre le profil à `TRONCON_DE_VOIE_FERREE`** (EndLevel=4, géométrie identique aux 5 niveaux — 1534 points × 4 niveaux sans simplification ≈ 24 KB) | ~2 % sur les niveaux n=1..4 | ✅ Implémenté (`generalize-profiles*.yaml`) |
+| **`RoundCoordsFilter` dans imgforge** | ~4-7 % — élimine points sub-pixel sur toutes les features aux niveaux n=1..5 | ✅ Implémenté — actif par défaut, `--no-round-coords` pour désactiver |
+| **`SizeFilter` (polylignes + polygones) dans imgforge** | ~2-6 % — supprime features trop petites au zoom courant | ✅ Implémenté — actif par défaut, `--no-size-filter` pour désactiver |
+| **`RemoveObsoletePointsFilter` dans imgforge** | ~1-3 % — nettoyage colinéaires post-arrondi | ✅ Implémenté — actif par défaut, `--no-remove-obsolete-points` pour désactiver |
 
-### Note sur l'ordre d'implémentation
+### Bilan
 
-Les deux premières recommandations (YAML uniquement) sont réalisables immédiatement. `RoundCoordsFilter` est le filtre avec le plus fort impact architectural : il réduit le nombre de points effectifs avant DP et avant écriture RGN, et bénéficie pleinement de `RemoveObsolete` en aval. Ces deux filtres forment un tandem naturel à implémenter ensemble.
+L'ensemble des 5 candidats est maintenant implémenté. Le gain total combiné estimé reste de l'ordre de **12-21 % du RGN total** (1 053 284 → ~830-925 KB), en supposant une indépendance approximative des effets. L'effet principal de mkgmap au niveau visuel (lissage géométrique aux zooms larges) vient surtout de `RoundCoordsFilter` + DP scalé.
 
-Le gain total estimé des 5 candidats combinés est de l'ordre de **12-21 % du RGN total** (1 053 284 → ~830-925 KB) — en supposant une indépendance approximative des effets. L'effet principal de mkgmap au niveau visuel (lissage géométrique aux zooms larges) vient surtout de `RoundCoordsFilter` + DP scalé, pas du nombre de features.
+Les trois filtres imgforge (`RoundCoordsFilter`, `SizeFilter`, `RemoveObsoletePointsFilter`) sont actifs par défaut à tous les niveaux n>0. Ils peuvent être désactivés individuellement pour mesurer leur impact isolé ou reproduire le comportement d'une baseline sans filtres :
+
+```bash
+# Désactiver uniquement RoundCoordsFilter (mesure impact sub-pixel)
+imgforge build tiles/ --no-round-coords
+
+# Désactiver les trois filtres (baseline sans filtrage post-parsing)
+imgforge build tiles/ --no-round-coords --no-size-filter --no-remove-obsolete-points
+```
 
 !!! success "Anomalie DataN mkgmap — résolue"
     La différence 95 subdivisions (mkgmap) vs 4 (imgforge) à n=5 n'est **pas** due à une promotion de features au-delà de leur EndLevel. Les deux outils incluent exactement les mêmes 4 795 features à n=5 (celles avec `EndLevel=6`). L'écart vient de la granularité du splitter spatial — voir §7.
