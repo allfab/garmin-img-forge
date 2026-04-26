@@ -1479,13 +1479,25 @@ pub fn run_validate(
 
         // Catalogue externe — source principale en production.
         if let Some(ref path) = config.generalize_profiles_path {
-            let profile_count = config.resolved_profile_map.len();
-            let level_count: usize = config
-                .resolved_profile_map
-                .values()
-                .map(|p| p.levels.len())
-                .sum();
-            if path.exists() {
+            // Résoudre le chemin relatif depuis le répertoire de config_path,
+            // comme le fait build_profile_map — pas depuis le CWD courant.
+            let base_dir_gen = std::path::Path::new(config_path)
+                .parent()
+                .unwrap_or(std::path::Path::new("."));
+            let resolved = if path.is_absolute() {
+                path.clone()
+            } else {
+                base_dir_gen.join(path)
+            };
+            if resolved.exists() {
+                let (profile_count, level_count) =
+                    match config.build_profile_map(base_dir_gen) {
+                        Ok(map) => {
+                            let lc: usize = map.values().map(|p| p.levels.len()).sum();
+                            (map.len(), lc)
+                        }
+                        Err(_) => (0, 0),
+                    };
                 gen_details.push(format!(
                     "catalog: {} ({} profil(s), {} niveau(x))",
                     path.display(),
