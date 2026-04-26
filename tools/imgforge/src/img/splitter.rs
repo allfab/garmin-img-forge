@@ -363,10 +363,9 @@ impl MapArea {
         let max_cell_w = cell_w.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
         let max_cell_h = cell_h.min(max_size / 2).max(LARGE_OBJECT_DIM * 2);
 
-        // ── Lines: chaque polyline va ENTIÈRE dans la cell de son centre de bbox
-        // (parité mkgmap MapLine.getLocation() = midpoint du bbox, pas first point).
-        // Les bounds de subdivision étant area.bounds (non-chevauchantes), la
-        // navigation Alpha 100 trouve exactement UNE subdivision candidate.
+        // ── Lines: clip each polyline to every sub-area it overlaps (Liang-Barsky).
+        // Parité mkgmap MapSplitter — les segments résultants héritent du même mp_index,
+        // ce qui garantit l'affichage des routes et courbes de niveau lors du panning.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
@@ -379,24 +378,35 @@ impl MapArea {
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            // Large object : si le bbox dépasse la cell ET ne tient pas dans la
-            // cell cible → subdiv dédié (bounds = line_bbox).
-            let exceeds_cell = line_bbox.width() > max_cell_w || line_bbox.height() > max_cell_h;
             let fits_target = sub_areas[target].bounds.contains_area(&line_bbox);
-            if exceeds_cell && !fits_target {
-                let mut dedicated = MapArea::new(line_bbox, self.resolution);
-                dedicated.add_line(line.clone());
-                sub_areas.push(dedicated);
+            if fits_target {
+                sub_areas[target].add_line(line.clone());
                 continue;
             }
 
-            sub_areas[target].add_line(line.clone());
+            // Polyline crosses cell boundaries: clip to each overlapping sub-area.
+            let mut clipped_any = false;
+            for j in 0..num_areas {
+                if !sub_areas[j].bounds.intersects(&line_bbox) {
+                    continue;
+                }
+                for seg in clip_polyline_to_rect(&line.points, &sub_areas[j].bounds) {
+                    if seg.len() >= 2 {
+                        sub_areas[j].add_line(SplitLine { mp_index: line.mp_index, points: seg });
+                        clipped_any = true;
+                    }
+                }
+            }
+            if !clipped_any {
+                sub_areas[target].add_line(line.clone());
+            }
         }
 
-        // ── Shapes: parité mkgmap MapArea.java:280-295 — shape entier dans une
-        // seule sub-area (center), sauf si bbox dépasse maxSize (split forcé dans
-        // toutes les cellules chevauchées). On n'active pas ce split agressif par
-        // défaut ; comportement = comme les polylines (dedicated si trop gros).
+        // ── Shapes: clip each polygon to every sub-area it overlaps (Sutherland-Hodgman).
+        // Parité mkgmap MapArea.java:280-295 split agressif activé pour les polygones.
+        // Chaque fragment va dans la sous-zone correspondante avec le même mp_index,
+        // ce qui garantit l'affichage lors du panning même quand le polygone chevauche
+        // plusieurs sous-divisions.
         for shape in &self.shapes {
             if shape.points.len() < 3 {
                 continue;
@@ -409,16 +419,30 @@ impl MapArea {
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
 
-            let exceeds_cell = shape_bbox.width() > max_cell_w || shape_bbox.height() > max_cell_h;
             let fits_target = sub_areas[target].bounds.contains_area(&shape_bbox);
-            if exceeds_cell && !fits_target {
-                let mut dedicated = MapArea::new(shape_bbox, self.resolution);
-                dedicated.add_shape(shape.clone());
-                sub_areas.push(dedicated);
+            if fits_target {
+                sub_areas[target].add_shape(shape.clone());
                 continue;
             }
 
-            sub_areas[target].add_shape(shape.clone());
+            // Polygon crosses cell boundaries: clip to each overlapping sub-area.
+            let mut clipped_any = false;
+            for j in 0..num_areas {
+                if !sub_areas[j].bounds.intersects(&shape_bbox) {
+                    continue;
+                }
+                let clipped = clip_polygon_to_rect(&shape.points, &sub_areas[j].bounds);
+                if clipped.len() >= 3 {
+                    sub_areas[j].add_shape(SplitShape {
+                        mp_index: shape.mp_index,
+                        points: clipped,
+                    });
+                    clipped_any = true;
+                }
+            }
+            if !clipped_any {
+                sub_areas[target].add_shape(shape.clone());
+            }
         }
 
         sub_areas
@@ -446,6 +470,66 @@ fn pick_area(
         0
     };
     (xcell * ny + ycell).min(num_areas - 1)
+}
+
+// ── Polyline clipping — Liang-Barsky ───────────────────────────────────────
+
+/// Clip an open polyline to a rectangle using Liang-Barsky parametric clipping.
+/// Returns one or more segments (a line may exit and re-enter the rect multiple times).
+/// Each returned segment has ≥ 2 points and lies entirely within `rect`.
+pub fn clip_polyline_to_rect(points: &[Coord], rect: &Area) -> Vec<Vec<Coord>> {
+    if points.len() < 2 {
+        return vec![];
+    }
+    let mut segments: Vec<Vec<Coord>> = Vec::new();
+    let mut current: Vec<Coord> = Vec::new();
+    for i in 0..points.len() - 1 {
+        match clip_segment_lb(points[i], points[i + 1], rect) {
+            None => {
+                if current.len() >= 2 { segments.push(std::mem::take(&mut current)); }
+                else { current.clear(); }
+            }
+            Some((ca, cb)) => {
+                if current.is_empty() {
+                    current.push(ca);
+                } else if ca != *current.last().unwrap() {
+                    if current.len() >= 2 { segments.push(std::mem::take(&mut current)); }
+                    else { current.clear(); }
+                    current.push(ca);
+                }
+                current.push(cb);
+            }
+        }
+    }
+    if current.len() >= 2 { segments.push(current); }
+    segments
+}
+
+/// Liang-Barsky segment clip: returns None if fully outside, Some((a',b')) otherwise.
+fn clip_segment_lb(a: Coord, b: Coord, rect: &Area) -> Option<(Coord, Coord)> {
+    let ax = a.longitude() as f64;
+    let ay = a.latitude() as f64;
+    let dx = (b.longitude() - a.longitude()) as f64;
+    let dy = (b.latitude() - a.latitude()) as f64;
+    let mut t0 = 0.0f64;
+    let mut t1 = 1.0f64;
+    for (p, q) in [
+        (-dx, ax - rect.min_lon() as f64),
+        ( dx, rect.max_lon() as f64 - ax),
+        (-dy, ay - rect.min_lat() as f64),
+        ( dy, rect.max_lat() as f64 - ay),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 { return None; }
+        } else {
+            let r = q / p;
+            if p < 0.0 { if r > t1 { return None; } else if r > t0 { t0 = r; } }
+            else       { if r < t0 { return None; } else if r < t1 { t1 = r; } }
+        }
+    }
+    let ca = Coord::new((ay + t0 * dy).round() as i32, (ax + t0 * dx).round() as i32);
+    let cb = Coord::new((ay + t1 * dy).round() as i32, (ax + t1 * dx).round() as i32);
+    Some((ca, cb))
 }
 
 // ── Polygon clipping — Sutherland-Hodgman ──────────────────────────────────

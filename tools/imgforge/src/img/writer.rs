@@ -370,18 +370,56 @@ fn build_multilevel_hierarchy(
             )
         }).collect();
 
-        let ln_parents: Vec<Option<u16>> = all_lines.iter().map(|l| {
+        // Lines: pre-clip each polyline to every parent it overlaps (Liang-Barsky),
+        // same rationale as shapes — ensures roads/contours visible after panning.
+        let ln_clips: Vec<Vec<(u16, Vec<Vec<Coord>>)>> = all_lines.iter().map(|l| {
             let bbox = Area::from_coords(&l.points);
-            let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
-            let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
-            assign_to_parent(mid_lat, mid_lon, &parent_areas)
+            let mut clips: Vec<(u16, Vec<Vec<Coord>>)> = Vec::new();
+            for &(area, pnum) in &parent_areas {
+                if area.intersects(&bbox) {
+                    let segs = splitter::clip_polyline_to_rect(&l.points, &area);
+                    let valid: Vec<Vec<Coord>> = segs.into_iter().filter(|s| s.len() >= 2).collect();
+                    if !valid.is_empty() {
+                        clips.push((pnum as u16, valid));
+                    }
+                }
+            }
+            if clips.is_empty() {
+                let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
+                let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
+                if let Some(p) = assign_to_parent(mid_lat, mid_lon, &parent_areas) {
+                    clips.push((p, vec![l.points.clone()]));
+                }
+            }
+            clips
         }).collect();
 
-        let sh_parents: Vec<Option<u16>> = all_shapes.iter().map(|s| {
+        // Shapes: pre-clip each polygon to every parent it overlaps so that panning
+        // across subdivision boundaries keeps the polygon visible. Each overlapping
+        // parent receives a Sutherland-Hodgman-clipped fragment referencing the same
+        // mp_index (type/label lookup unchanged). Replaces the single-parent-by-centroid
+        // approach that caused polygons to vanish when the user panned to an adjacent
+        // subdivision whose subtree didn't contain the polygon.
+        let sh_clips: Vec<Vec<(u16, Vec<Coord>)>> = all_shapes.iter().map(|s| {
             let bbox = Area::from_coords(&s.points);
-            let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
-            let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
-            assign_to_parent(mid_lat, mid_lon, &parent_areas)
+            let mut clips: Vec<(u16, Vec<Coord>)> = Vec::new();
+            for &(area, pnum) in &parent_areas {
+                if area.intersects(&bbox) {
+                    let clipped = splitter::clip_polygon_to_rect(&s.points, &area);
+                    if clipped.len() >= 3 {
+                        clips.push((pnum as u16, clipped));
+                    }
+                }
+            }
+            // Fallback: centroid parent if no clip produced ≥3 pts (degenerate polygon)
+            if clips.is_empty() {
+                let mid_lat = (bbox.min_lat() + bbox.max_lat()) / 2;
+                let mid_lon = (bbox.min_lon() + bbox.max_lon()) / 2;
+                if let Some(p) = assign_to_parent(mid_lat, mid_lon, &parent_areas) {
+                    clips.push((p, s.points.clone()));
+                }
+            }
+            clips
         }).collect();
 
         for &(parent_bounds, parent_num) in &parent_areas {
@@ -393,13 +431,27 @@ fn build_multilevel_hierarchy(
                 .collect();
 
             let parent_lines: Vec<splitter::SplitLine> = all_lines.iter().enumerate()
-                .filter(|(i, _)| ln_parents[*i] == Some(pnum16))
-                .map(|(_, l)| l.clone())
+                .flat_map(|(i, l)| {
+                    ln_clips[i].iter()
+                        .filter(|(p, _)| *p == pnum16)
+                        .flat_map(move |(_, segs)| {
+                            segs.iter().map(move |pts| splitter::SplitLine {
+                                mp_index: l.mp_index,
+                                points: pts.clone(),
+                            })
+                        })
+                })
                 .collect();
 
             let parent_shapes: Vec<splitter::SplitShape> = all_shapes.iter().enumerate()
-                .filter(|(i, _)| sh_parents[*i] == Some(pnum16))
-                .map(|(_, s)| s.clone())
+                .flat_map(|(i, s)| {
+                    sh_clips[i].iter()
+                        .filter(|(p, _)| *p == pnum16)
+                        .map(move |(_, clipped_pts)| splitter::SplitShape {
+                            mp_index: s.mp_index,
+                            points: clipped_pts.clone(),
+                        })
+                })
                 .collect();
 
             let has_features = !parent_pts.is_empty()
@@ -435,12 +487,8 @@ fn build_multilevel_hierarchy(
                 for (i, p) in all_points.iter().enumerate() {
                     if pt_parents[i].is_none() { areas[pos].add_point(p.clone()); }
                 }
-                for (i, l) in all_lines.iter().enumerate() {
-                    if ln_parents[i].is_none() { areas[pos].add_line(l.clone()); }
-                }
-                for (i, s) in all_shapes.iter().enumerate() {
-                    if sh_parents[i].is_none() { areas[pos].add_shape(s.clone()); }
-                }
+                // Lines: already handled by ln_clips intersection logic above.
+                // Shapes: already handled by sh_clips intersection logic above.
             }
         }
 
