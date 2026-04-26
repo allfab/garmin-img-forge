@@ -1395,45 +1395,70 @@ pub fn run_validate(
                 details: "Not configured".to_string(),
             });
         } else {
+            // Grouper par source unique pour éviter de répéter N fois le même fichier
+            // (ex : COMMUNE.shp utilisé comme spatial_filter sur 83 couches).
+            // order_keys préserve l'ordre de première apparition ; by_source = lookup O(1).
+            let mut order_keys: Vec<String> = Vec::new();
+            let mut by_source: std::collections::HashMap<String, (Vec<usize>, bool)> =
+                std::collections::HashMap::new();
             let mut all_ok = true;
-            let mut details_parts = Vec::new();
             for (i, source) in &sf_sources {
-                // Support brace/glob patterns in spatial_filter.source
-                if source.contains('{') || source.contains('*') || source.contains('?') {
-                    let expanded = expand_braces(source);
-                    let mut matched = false;
-                    for pat in &expanded {
-                        if let Ok(entries) = glob::glob(pat) {
-                            if entries.filter_map(|e| e.ok()).next().is_some() {
-                                matched = true;
-                                break;
-                            }
-                        }
-                    }
-                    if matched {
-                        details_parts.push(format!("input #{}: {} (pattern)", i, source));
+                let source_ok =
+                    if source.contains('{') || source.contains('*') || source.contains('?') {
+                        let expanded = expand_braces(source);
+                        expanded.iter().any(|pat| {
+                            glob::glob(pat)
+                                .ok()
+                                .and_then(|mut e| e.next())
+                                .map(|r| r.is_ok())
+                                .unwrap_or(false)
+                        })
                     } else {
-                        all_ok = false;
-                        let err_msg = format!(
-                            "Input #{}: spatial_filter.source pattern matched no files: {}",
-                            i, source
-                        );
-                        errors.push(err_msg.clone());
-                        details_parts.push(err_msg);
-                    }
+                        std::path::Path::new(source).exists()
+                    };
+                if !by_source.contains_key(*source) {
+                    order_keys.push(source.to_string());
+                    by_source.insert(source.to_string(), (Vec::new(), true));
+                }
+                let entry = by_source.get_mut(*source).unwrap();
+                entry.0.push(*i);
+                if !source_ok {
+                    entry.1 = false;
+                    all_ok = false;
+                }
+            }
+            let mut details_parts = Vec::new();
+            for source in &order_keys {
+                let (indices, ok) = &by_source[source];
+                let is_pattern =
+                    source.contains('{') || source.contains('*') || source.contains('?');
+                let suffix = if is_pattern { " (pattern)" } else { "" };
+                let label = if indices.len() == 1 {
+                    format!("input #{}", indices[0])
                 } else {
-                    let path = std::path::Path::new(source);
-                    if path.exists() {
-                        details_parts.push(format!("input #{}: {}", i, source));
+                    format!(
+                        "inputs #{}-#{} ({})",
+                        indices.first().unwrap(),
+                        indices.last().unwrap(),
+                        indices.len()
+                    )
+                };
+                if *ok {
+                    details_parts.push(format!("{}: {}{}", label, source, suffix));
+                } else {
+                    let err_msg = if is_pattern {
+                        format!(
+                            "{}: spatial_filter.source pattern matched no files: {}",
+                            label, source
+                        )
                     } else {
-                        all_ok = false;
-                        let err_msg = format!(
-                            "Input #{}: spatial_filter.source file does not exist: {}",
-                            i, source
-                        );
-                        errors.push(err_msg.clone());
-                        details_parts.push(err_msg);
-                    }
+                        format!(
+                            "{}: spatial_filter.source file does not exist: {}",
+                            label, source
+                        )
+                    };
+                    errors.push(err_msg.clone());
+                    details_parts.push(err_msg);
                 }
             }
             checks.push(ValidationCheck {
@@ -3142,11 +3167,10 @@ output:
 
         let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
         assert_eq!(sf_check.status, CheckStatus::Pass);
-        // Deux inputs → deux lignes séparées par \n, pas par "; ".
+        // Deux inputs partageant la même source → une seule ligne groupée.
         let lines: Vec<&str> = sf_check.details.lines().collect();
-        assert_eq!(lines.len(), 2, "got: {}", sf_check.details);
-        assert!(lines[0].contains("input #0"), "got: {}", lines[0]);
-        assert!(lines[1].contains("input #1"), "got: {}", lines[1]);
+        assert_eq!(lines.len(), 1, "got: {}", sf_check.details);
+        assert!(sf_check.details.contains("inputs #0-#1 (2)"), "got: {}", sf_check.details);
     }
 
     #[test]
