@@ -41,7 +41,7 @@ Ce qui est miroirisé et donc modifiable via PR :
 - `tools/` (mpforge, imgforge, ogr-polishmap, ogr-garminimg)
 - `pipeline/` **sauf** `data/` et `output/` (les configs, resources, scripts internes sont accessibles)
 - `site/` (contenu et config Zensical)
-- `scripts/` : `check_environment.sh`, `download-bdtopo.sh`, `build-garmin-map.sh`, `generate-typ-reference.py` et `README.md`
+- `scripts/` : `check_environment.sh`, `download-data.sh`, `build-garmin-map.sh`, `generate-typ-reference.py` et `README.md`
 - `.github/` (templates + workflow Pages)
 - Fichiers racine (`README.md`, `LICENSE`, ce fichier, etc.)
 

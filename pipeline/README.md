@@ -143,6 +143,6 @@ Ajouter `--disable-profiles` à mpforge et/ou les options de simplification / `-
 | Profils de simplification (partagés) | `pipeline/configs/ign-bdtopo/generalize-profiles.yaml` |
 | Styles TYP | `pipeline/resources/typfiles/I2023100.typ` |
 | Script de build | `scripts/build-garmin-map.sh` |
-| Script de téléchargement | `scripts/download-bdtopo.sh` |
+| Script de téléchargement | `scripts/download-data.sh` |
 
 Documentation complète : [site/docs/reference/niveaux-de-simplification.md](../site/docs/reference/niveaux-de-simplification.md) — [site/docs/le-pipeline/](../site/docs/le-pipeline/)

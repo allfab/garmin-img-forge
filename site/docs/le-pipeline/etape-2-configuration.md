@@ -348,7 +348,7 @@ inputs:
     target_srs: "EPSG:4326"
 
   # --- Sources OSM GPKG ---
-  # Les PBF Geofabrik sont pré-convertis en GPKG par download-bdtopo.sh (--with-osm)
+  # Les PBF Geofabrik sont pré-convertis en GPKG par download-data.sh (--with-osm)
   # Le spatial_filter utilise les communes de TOUTES les zones sélectionnées
 
   # Amenity POIs (restaurants, pharmacies, parking, etc.)

@@ -16,7 +16,7 @@ Tout ce qu'il faut pour mettre en place l'environnement de production de cartes 
 | **OpenStreetMap** (optionnel) | Données complémentaires (sentiers, commerces) | Variable | ODbL |
 
 !!! info "BD TOPO IGN"
-    La BD TOPO est librement accessible depuis le 1er janvier 2021. Téléchargement depuis le [Géoportail IGN](https://geoservices.ign.fr/bdtopo). Le script `download-bdtopo.sh` automatise le téléchargement.
+    La BD TOPO est librement accessible depuis le 1er janvier 2021. Téléchargement depuis le [Géoportail IGN](https://geoservices.ign.fr/bdtopo). Le script `download-data.sh` automatise le téléchargement.
 
 !!! note "SRTM"
     Les tuiles SRTM 30m sont téléchargeables depuis [dwtkns.com/srtm30m](http://dwtkns.com/srtm30m/) (inscription NASA Earth Observation requise).

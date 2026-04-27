@@ -195,7 +195,7 @@ inputs:
   # ==========================================================================
   # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
   #
-  # Les PBF sont pré-convertis en GPKG par le script download-bdtopo.sh
+  # Les PBF sont pré-convertis en GPKG par le script download-data.sh
   # (option --with-osm). Les GPKG ont un accès aléatoire, éliminant les
   # erreurs "Too many features accumulated" du driver OSM sur les gros PBF.
   #

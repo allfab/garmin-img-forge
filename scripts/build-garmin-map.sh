@@ -11,7 +11,7 @@
 #   4. Lance imgforge build (compile .mp → gmapsupp.img)
 #   5. Affiche le résumé final (tuiles, temps, taille)
 #
-# Pipeline : download-bdtopo.sh → build-garmin-map.sh → gmapsupp.img
+# Pipeline : download-data.sh → build-garmin-map.sh → gmapsupp.img
 #
 # Prérequis : mpforge, imgforge (ou cargo build --release dans tools/*)
 # =============================================================================
@@ -153,7 +153,7 @@ _REPORT_FILE=""
 _IMGFORGE_REPORT_FILE=""
 
 # ---------------------------------------------------------------------------
-# Régions → zones de données BDTOPO (même mapping que REGIONS dans download-bdtopo.sh)
+# Régions → zones de données BDTOPO (même mapping que REGIONS dans download-data.sh)
 # Mix R-codes (régions complètes) + D-codes (départements isolés) = répertoires sur disque
 # ---------------------------------------------------------------------------
 declare -A REGIONS_TO_ZONES=(
@@ -713,9 +713,9 @@ auto_detect_year_version() {
     if [[ ! -d "$bdtopo_dir" ]]; then
         log_error "Répertoire BDTOPO introuvable : $bdtopo_dir"
         if [[ -n "$REGION" ]]; then
-            log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --region ${REGION}"
+            log_error "  → Téléchargez d'abord avec : ./scripts/download-data.sh --region ${REGION}"
         else
-            log_error "  → Téléchargez d'abord avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+            log_error "  → Téléchargez d'abord avec : ./scripts/download-data.sh --zones ${ZONES}"
         fi
         exit 1
     fi
@@ -814,9 +814,9 @@ resolve_paths() {
 
     if [[ "$missing" == true ]]; then
         if [[ -n "$REGION" ]]; then
-            log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --region ${REGION}"
+            log_error "  → Téléchargez avec : ./scripts/download-data.sh --region ${REGION}"
         else
-            log_error "  → Téléchargez avec : ./scripts/download-bdtopo.sh --zones ${ZONES}"
+            log_error "  → Téléchargez avec : ./scripts/download-data.sh --zones ${ZONES}"
         fi
         exit 1
     fi
@@ -1329,7 +1329,7 @@ update_manifest() {
     local tmp="${manifest}.tmp"
 
     # build_params : valeurs dynamiques nécessaires pour régénérer les commandes
-    # download-bdtopo.sh et build-garmin-map.sh de cette publication. Le front
+    # download-data.sh et build-garmin-map.sh de cette publication. Le front
     # (downloads-manifest.js) les injecte dans un template statique.
     local bp_zones="${ZONES}"
     local bp_base_id="${BASE_ID}"

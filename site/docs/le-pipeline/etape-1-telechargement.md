@@ -23,29 +23,29 @@ La **BD TOPO IGN** est la base de données topographique de référence de l'IGN
 
 ## Téléchargement automatisé
 
-Le script `download-bdtopo.sh` automatise le téléchargement depuis le Géoportail IGN :
+Le script `download-data.sh` automatise le téléchargement depuis le Géoportail IGN :
 
 ### Par département
 
 ```bash
 # Télécharger un département (Isère) avec toutes les données complémentaires
-./scripts/download-bdtopo.sh --zones D038 --with-contours --with-osm --with-dem
+./scripts/download-data.sh --zones D038 --with-contours --with-osm --with-dem
 
 # Plusieurs départements
-./scripts/download-bdtopo.sh --zones D038,D069 --with-contours --with-osm --with-dem
+./scripts/download-data.sh --zones D038,D069 --with-contours --with-osm --with-dem
 ```
 
 ### Par région
 
 ```bash
 # Auvergne-Rhône-Alpes
-./scripts/download-bdtopo.sh --region ARA --with-contours --with-osm --with-dem
+./scripts/download-data.sh --region ARA --with-contours --with-osm --with-dem
 ```
 
 ### France entière
 
 ```bash
-./scripts/download-bdtopo.sh --region FXX --with-contours --with-osm --with-dem
+./scripts/download-data.sh --region FXX --with-contours --with-osm --with-dem
 ```
 
 ### Cibler un millésime précis
@@ -54,13 +54,13 @@ Par défaut, le script télécharge **la dernière édition** publiée par l'IGN
 
 ```bash
 # 1. Lister les millésimes disponibles pour une zone (ne télécharge rien)
-./scripts/download-bdtopo.sh --zones D038 --list-editions
+./scripts/download-data.sh --zones D038 --list-editions
 
 # 2. Résoudre via API la dernière édition d'un mois donné
-./scripts/download-bdtopo.sh --zones D038 --bdtopo-version v2025.09
+./scripts/download-data.sh --zones D038 --bdtopo-version v2025.09
 
 # 3. Forcer une date d'édition exacte
-./scripts/download-bdtopo.sh --zones D038 --date 2025-09-15
+./scripts/download-data.sh --zones D038 --date 2025-09-15
 ```
 
 | Option | Comportement |
@@ -159,7 +159,7 @@ Les fichiers HGT sont directement utilisables par imgforge (`--dem ./srtm_hgt/`)
 
 ### BDAltiv2 (IGN) — haute résolution France
 
-Les fichiers ASC au format ESRI ASCII Grid (25 m), en projection Lambert 93, sont téléchargés automatiquement par `download-bdtopo.sh` avec `--with-dem` et stockés dans `pipeline/data/dem/{zone}/`. imgforge les utilise avec reprojection intégrée (`--dem ./pipeline/data/dem/D038/ --dem-source-srs EPSG:2154`). En multi-zones, le script `build-garmin-map.sh` passe un `--dem` par département.
+Les fichiers ASC au format ESRI ASCII Grid (25 m), en projection Lambert 93, sont téléchargés automatiquement par `download-data.sh` avec `--with-dem` et stockés dans `pipeline/data/dem/{zone}/`. imgforge les utilise avec reprojection intégrée (`--dem ./pipeline/data/dem/D038/ --dem-source-srs EPSG:2154`). En multi-zones, le script `build-garmin-map.sh` passe un `--dem` par département.
 
 ## Données OSM (OpenStreetMap)
 
@@ -167,17 +167,17 @@ Les données OpenStreetMap complètent la BD TOPO avec des POIs (commerces, rest
 
 ### Téléchargement depuis Geofabrik
 
-Le script `download-bdtopo.sh` gère aussi le téléchargement des fichiers `.osm.pbf` depuis [Geofabrik](https://download.geofabrik.de/europe/france.html) :
+Le script `download-data.sh` gère aussi le téléchargement des fichiers `.osm.pbf` depuis [Geofabrik](https://download.geofabrik.de/europe/france.html) :
 
 ```bash
 # BDTOPO + OSM pour Auvergne-Rhône-Alpes
-./scripts/download-bdtopo.sh --region ARA --with-osm
+./scripts/download-data.sh --region ARA --with-osm
 
 # France entière (BDTOPO + 1 seul fichier OSM ~4.5 Go)
-./scripts/download-bdtopo.sh --region FXX --with-osm
+./scripts/download-data.sh --region FXX --with-osm
 
 # Simuler sans télécharger
-./scripts/download-bdtopo.sh --region ARA --with-osm --dry-run
+./scripts/download-data.sh --region ARA --with-osm --dry-run
 ```
 
 !!! note "Régions Geofabrik"
@@ -185,7 +185,7 @@ Le script `download-bdtopo.sh` gère aussi le téléchargement des fichiers `.os
 
 ### Organisation des données OSM
 
-Les fichiers PBF Geofabrik sont automatiquement convertis en GPKG par `download-bdtopo.sh` (`--with-osm`), ce qui élimine les erreurs mémoire du driver GDAL OSM sur les gros PBF.
+Les fichiers PBF Geofabrik sont automatiquement convertis en GPKG par `download-data.sh` (`--with-osm`), ce qui élimine les erreurs mémoire du driver GDAL OSM sur les gros PBF.
 
 ```
 pipeline/data/osm/
@@ -207,7 +207,7 @@ Les GPKG sont directement utilisables par mpforge — pas de configuration OSM (
 !!! note "DEM et courbes de niveau : ne pas confondre"
     Les **courbes de niveau** (isolignes au pas de 10 m) sont des **données vectorielles** issues des couches altimétriques de l'IGN. Elles sont intégrées au pipeline comme n'importe quelle source de données via la configuration YAML de mpforge. Le **DEM** (BDAltiv2, SRTM) est un modèle numérique de terrain en raster, utilisé par imgforge (`--dem`) pour l'**ombrage du relief** (hill shading) et les **profils d'altitude**. Ce sont deux données complémentaires mais distinctes.
 
-Les courbes de niveau au pas de 10 m sont disponibles sous forme de données vectorielles (Shapefile) auprès de l'IGN. Elles sont téléchargées automatiquement par `download-bdtopo.sh` avec l'option `--with-contours` et stockées dans `pipeline/data/contours/{zone}/`.
+Les courbes de niveau au pas de 10 m sont disponibles sous forme de données vectorielles (Shapefile) auprès de l'IGN. Elles sont téléchargées automatiquement par `download-data.sh` avec l'option `--with-contours` et stockées dans `pipeline/data/contours/{zone}/`.
 
 ```yaml
 inputs:

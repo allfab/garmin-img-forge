@@ -27,7 +27,7 @@ flowchart TD
 
 | Étape | Outil | Entrée | Sortie | Durée typique |
 |-------|-------|--------|--------|---------------|
-| 1. Téléchargement | `download-bdtopo.sh` | URL IGN + Geofabrik | `.gpkg` / `.shp` / `.osm.pbf` | 10-30 min |
+| 1. Téléchargement | `download-data.sh` | URL IGN + Geofabrik | `.gpkg` / `.shp` / `.osm.pbf` | 10-30 min |
 | 2. Configuration | Éditeur texte | - | `.yaml` | 5-15 min |
 | 3. Tuilage | `mpforge build` | `.gpkg` / `.shp` | `tiles/*.mp` | 30 min - 3h |
 | 4. Compilation | `imgforge build` | `tiles/*.mp` | `gmapsupp.img` | 10 min - 1h |

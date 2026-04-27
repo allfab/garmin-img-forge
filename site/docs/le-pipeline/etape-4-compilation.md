@@ -69,7 +69,7 @@ Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (downlo
 
 ```bash
 # 1. Télécharger les données (SHP + contours + OSM + DEM)
-./scripts/download-bdtopo.sh \
+./scripts/download-data.sh \
     --region FRANCE-SE \
     --bdtopo-version v2026.03 \
     --format SHP \
@@ -113,7 +113,7 @@ Pour les gros scopes, c'est le script wrapper qui pilote les deux phases (downlo
     - **`--skip-existing`** : les tuiles `.mp` déjà générées sont réutilisées. Bonus : si le `.img` cible existe déjà, la phase 2 imgforge est elle aussi skippée — utile pour republier sans rebuilder.
 
 !!! warning "Données `--hiking-trails-dir`"
-    Le script `download-bdtopo.sh` ne télécharge pas automatiquement les sentiers GR ; le flag `--hiking-trails-dir` de `build-garmin-map.sh` pointe vers un répertoire optionnel qui peut être vide. Si vous ne disposez pas de données trails, omettez ce flag ou laissez-le pointer vers un répertoire vide — la config `france-quadrant/sources.yaml` gère l'absence sans erreur.
+    Le script `download-data.sh` ne télécharge pas automatiquement les sentiers GR ; le flag `--hiking-trails-dir` de `build-garmin-map.sh` pointe vers un répertoire optionnel qui peut être vide. Si vous ne disposez pas de données trails, omettez ce flag ou laissez-le pointer vers un répertoire vide — la config `france-quadrant/sources.yaml` gère l'absence sans erreur.
 
 ### Identité de la carte
 

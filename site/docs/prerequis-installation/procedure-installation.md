@@ -129,7 +129,7 @@ Pour valider l'installation, générez une carte à partir d'un seul départemen
 
 ```bash
 # 1. Télécharger un département (Isère)
-./scripts/download-bdtopo.sh --zones D038 --data-root ./data/bdtopo
+./scripts/download-data.sh --zones D038 --data-root ./data/bdtopo
 
 # 2. Lancer le tuilage
 mpforge build --config configs/test-isere.yaml --jobs 4
