@@ -64,6 +64,14 @@ Cette section rassemble les spécifications techniques du projet : format binair
 
     [:octicons-arrow-right-24: Consulter](generalize-profiles.md)
 
+-   :material-layers-triple-outline: **Niveaux de simplification**
+
+    ---
+
+    Les 4 niveaux du moins au plus détaillé : de la simplification maximale (profils mpforge + filtres imgforge) aux données brutes shapefile sans aucun filtre — triplets de commandes pour chaque niveau.
+
+    [:octicons-arrow-right-24: Consulter](niveaux-de-simplification.md)
+
 </div>
 
 ---
