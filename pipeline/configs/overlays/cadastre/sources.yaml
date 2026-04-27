@@ -8,48 +8,26 @@ grid:
 
 inputs:
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/PARCELLE_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/BATIMENT_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/SECTION_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONFLUV_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TRONROUTE_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/LIEUDIT_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/ZONCOMMUNI_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TLINE_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TPOINT_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/NUMVOIE_id.gpkg"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
 
 output:
   directory: "${OUTPUT_DIR}/mp/"
@@ -60,11 +38,14 @@ output:
 header:
   name: "CADASTRE-{col:03}-{row:03}"
   copyright: "2026 Allfab Studio - DGFiP Plan Cadastral Informatisé 2026"
-  levels: "4"
+  levels: "7"
   level0: "24"
-  level1: "21"
-  level2: "18"
-  level3: "16"
+  level1: "23"
+  level2: "22"
+  level3: "21"
+  level4: "20"
+  level5: "18"
+  level6: "16"
   simplify_level: "0"
   tree_size: "1000"
   rgn_limit: "1024"
@@ -74,6 +55,6 @@ header:
   lbl_coding: "9"
   routing: "N"
 
-rules: ./garmin-rules.yaml
+rules: ./pipeline/configs/overlays/cadastre/garmin-rules.yaml
 
 error_handling: "continue"

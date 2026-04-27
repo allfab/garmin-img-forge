@@ -8,7 +8,9 @@ rulesets:
   - name: "Parcelles"
     source_layer: "PARCELLE_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10d00"
           EndLevel: "0"
           Label: "${IDU}"
@@ -32,7 +34,9 @@ rulesets:
         set:
           Type: "0x10d03"
           EndLevel: "0"
-      - set:
+      - match:
+          DUR: "*"
+        set:
           Type: "0x10d01"
           EndLevel: "0"
 
@@ -85,7 +89,9 @@ rulesets:
   - name: "Sections"
     source_layer: "SECTION_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10d20"
           EndLevel: "3"
 
@@ -93,7 +99,9 @@ rulesets:
   - name: "Cours d'eau"
     source_layer: "TRONFLUV_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10d21"
           EndLevel: "2"
 
@@ -101,7 +109,9 @@ rulesets:
   - name: "Voies routières cadastre"
     source_layer: "TRONROUTE_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10d22"
           EndLevel: "1"
 
@@ -109,7 +119,9 @@ rulesets:
   - name: "Lieux-dits"
     source_layer: "LIEUDIT_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10d23"
           EndLevel: "3"
           Label: "${TEX}"
@@ -118,7 +130,9 @@ rulesets:
   - name: "Zones de communication"
     source_layer: "ZONCOMMUNI_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x10e00"
           EndLevel: "0"
           Label: "${TEX}"
@@ -137,7 +151,9 @@ rulesets:
         set:
           Type: "0x10e01"
           EndLevel: "1"
-      - set:
+      - match:
+          SYM: "*"
+        set:
           Type: "0x10e03"
           EndLevel: "1"
 
@@ -145,7 +161,9 @@ rulesets:
   - name: "Numéros de voirie"
     source_layer: "NUMVOIE_id"
     rules:
-      - set:
+      - match:
+          OBJECT_RID: "*"
+        set:
           Type: "0x6400"
           EndLevel: "0"
           Label: "${TEX}"
@@ -159,6 +177,8 @@ rulesets:
         set:
           Type: "0x6512"
           EndLevel: "1"
-      - set:
+      - match:
+          SYM: "*"
+        set:
           Type: "0x6400"
           EndLevel: "1"
