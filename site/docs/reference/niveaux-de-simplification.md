@@ -30,6 +30,24 @@ Les profils mpforge et les filtres opt-in imgforge sont **cumulatifs** : la donn
 
 ---
 
+## Prérequis — téléchargement des données
+
+Avant tout build, les données source doivent être présentes dans `pipeline/data/`. Utiliser `download-data.sh` :
+
+```bash
+./scripts/download-data.sh \
+    --zones D038 \
+    --bdtopo-version v2026.03 \
+    --format SHP \
+    --with-contours \
+    --with-osm \
+    --with-dem
+```
+
+Cela peuple `pipeline/data/bdtopo/2026/v2026.03/D038/`, `pipeline/data/contours/`, `pipeline/data/osm/` et `pipeline/data/dem/D038/` — les chemins attendus par `sources.yaml` via les variables d'environnement ci-dessous.
+
+---
+
 ## Variables d'environnement (commandes standalone)
 
 Avant d'appeler mpforge ou imgforge directement (hors script), exporter ces variables — le script `build-garmin-map.sh` s'en charge automatiquement :

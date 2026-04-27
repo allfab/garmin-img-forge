@@ -30,6 +30,24 @@ pipeline/
 
 ---
 
+## Téléchargement des données — D038 (Isère)
+
+Avant tout build, télécharger les données source avec `scripts/download-data.sh` :
+
+```bash
+./scripts/download-data.sh \
+    --zones D038 \
+    --bdtopo-version v2026.03 \
+    --format SHP \
+    --with-contours \
+    --with-osm \
+    --with-dem
+```
+
+Cela peuple `pipeline/data/bdtopo/2026/v2026.03/D038/`, `pipeline/data/contours/`, `pipeline/data/osm/` et `pipeline/data/dem/D038/`.
+
+---
+
 ## Lancement rapide — D038 (Isère)
 
 Le script `scripts/build-garmin-map.sh` orchestre mpforge et imgforge en une seule commande. Données disponibles : `YEAR=2026`, `VERSION=v2026.03`.
