@@ -418,12 +418,9 @@ fn main() -> Result<()> {
                 typ_data.as_deref(), overview.as_ref(),
             )?;
             if let Some(parent) = Path::new(&output).parent() {
-                if !parent.as_os_str().is_empty() && !parent.exists() {
-                    anyhow::bail!(
-                        "Le répertoire de sortie n'existe pas : {}\n  → Créez-le avec : mkdir -p {}",
-                        parent.display(),
-                        parent.display()
-                    );
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
                 }
             }
             std::fs::write(&output, &gmapsupp)?;
