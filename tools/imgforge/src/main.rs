@@ -417,6 +417,15 @@ fn main() -> Result<()> {
                 &tile_subfiles, map_desc, &gmapsupp_meta,
                 typ_data.as_deref(), overview.as_ref(),
             )?;
+            if let Some(parent) = Path::new(&output).parent() {
+                if !parent.as_os_str().is_empty() && !parent.exists() {
+                    anyhow::bail!(
+                        "Le répertoire de sortie n'existe pas : {}\n  → Créez-le avec : mkdir -p {}",
+                        parent.display(),
+                        parent.display()
+                    );
+                }
+            }
             std::fs::write(&output, &gmapsupp)?;
 
             {
