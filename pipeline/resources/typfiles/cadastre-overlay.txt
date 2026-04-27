@@ -26,14 +26,19 @@ Type=0x10d03,5
 [_polygon]
 Type=0x10d00
 ExtendedLabels=N
-CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#686868
-ContourColor=DayAndNight
-DaycontourColor:#686868
-NightcontourColor:#686868
-Xpm="0 0 1 0"
-"1 c none"
+Xpm="8 8 2 1"
+"1 c #39FF14"
+"2 c none"
+"11111111"
+"12222221"
+"12222221"
+"12222221"
+"12222221"
+"12222221"
+"12222221"
+"11111111"
 [end]
 
 [_polygon]
