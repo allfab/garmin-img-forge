@@ -5,7 +5,7 @@ version: 1
 # ign-bdtopo/). Voir ../../generalize-profiles.yaml pour la sémantique.
 # Conflit rejeté au chargement si une couche apparaît à la fois en inline
 # `generalize:` et dans le catalogue externe.
-generalize_profiles_path: "../../generalize-profiles-local.yaml"
+generalize_profiles_path: "../generalize-profiles.yaml"
 
 # Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
 # BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque

@@ -4,7 +4,7 @@
 # dérivée à l'origine de pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml.
 #
 # Les EndLevel avaient été rabaissés pour réduire la taille IMG des quadrants :
-#   - BATIMENT (13 règles)            : "0" -> "1"
+#   - BATIMENT (13 règles)            : "0" -> "1" [ANNULÉ — retour à "0" pour cohérence avec departement/]
 #   - CONSTRUCTION_LINEAIRE (12 règles): "0" -> "1"
 #   - ZONE_DE_VEGETATION forêts fermées (4 règles) : "2" -> "1"
 #
@@ -514,91 +514,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "2"
+          EndLevel: "0"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "0"
 
   # ==========================================================================
   # BATI — Cimetieres (POLYGON)

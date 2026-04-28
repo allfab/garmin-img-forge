@@ -325,21 +325,24 @@ Label : `${TOPONYME}`
 
 | NATURE (BATIMENT) | Type | EndLevel |
 |-------------------|------|----------|
-| Arène ou théâtre antique | `0x10f08` | 2 |
-| Chapelle | `0x10f09` | 2 |
-| Château | `0x10f0a` | 2 |
-| Eglise | `0x10f0b` | 2 |
-| Fort, blockhaus, casemate | `0x10f0c` | 2 |
-| Indifférenciée | `0x1101c` | 2 |
-| Industriel, agricole ou commercial | `0x10f04` | 2 |
-| Monument | `0x10f0d` | 2 |
-| Préfecture | `0x10f0f` | 2 |
-| Sous-préfecture | `0x10f10` | 2 |
-| Serre | `0x10f05` | 2 |
-| Silo | `0x10f06` | 2 |
-| Tour, donjon | `0x10f11` | 2 |
-| Tribune | `0x10f12` | 2 |
-| Construction légère | `0x10f14` | 2 |
+| Arène ou théâtre antique | `0x10f08` | 0 |
+| Chapelle | `0x10f09` | 0 |
+| Château | `0x10f0a` | 0 |
+| Eglise | `0x10f0b` | 0 |
+| Fort, blockhaus, casemate | `0x10f0c` | 0 |
+| Indifférenciée | `0x1101c` | 0 |
+| Industriel, agricole ou commercial | `0x10f04` | 0 |
+| Monument | `0x10f0d` | 0 |
+| Préfecture | `0x10f0f` | 0 |
+| Sous-préfecture | `0x10f10` | 0 |
+| Serre | `0x10f05` | 0 |
+| Silo | `0x10f06` | 0 |
+| Tour, donjon | `0x10f11` | 0 |
+| Tribune | `0x10f12` | 0 |
+| Construction légère | `0x10f14` | 0 |
+
+!!! note "Détail uniquement — tous les scopes"
+    `EndLevel=0` est identique pour `departement/`, `france-quadrant/` et `outre-mer/` : les bâtiments ne sont visibles qu'au zoom maximum (level 0, 24 bits ≈ 25–350 m). Aucun profil de simplification n'est défini pour `BATIMENT` : la géométrie est émise brute en `Data0=` uniquement.
 
 Label : `${TOPONYME}`
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-18T13:43:46Z",
+  "generated_at": "2026-04-28T14:10:03Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -80,9 +80,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-18T13:43:46Z",
-          "size_bytes": 3634823168,
-          "sha256": "82fe96b5a71728418d8b6ac1d0badeef630c4222b84ec2b71f3b8769b570bb86",
+          "published_at": "2026-04-28T14:10:03Z",
+          "size_bytes": 2253520896,
+          "sha256": "084e65343230097136ad2e5da63922ba850af15b2052a34a60a0ab3765d35e52",
           "file": "IGN-BDTOPO-FRANCE-SE-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/quadrant/france-se/v2026.03/IGN-BDTOPO-FRANCE-SE-v2026.03.img",
           "build_params": {

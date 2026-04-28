@@ -129,7 +129,7 @@ Le tableau ci-dessous propose des valeurs d'`EndLevel` optimisées pour une conf
 | **Ruisseaux** | 0x18 | 0 | Détail uniquement |
 | **Grandes surfaces d'eau** | 0x3c, 0x29 | 2 | Visibles partout |
 | **Petits plans d'eau** | 0x40-0x44 | 0 | Détail uniquement |
-| **Bâtiments** | 0x13 | 0 | Détail uniquement |
+| **Bâtiments** | 0x13 | 0 | Détail uniquement (tous les scopes) |
 | **Forêts** | 0x50 | 1 | Visibles au zoom moyen |
 | **Contours maîtres (25m)** | 0x22 | 1 | Visibles au zoom moyen |
 | **Contours intermédiaires (10m)** | 0x21 | 0 | Détail uniquement |

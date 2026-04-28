@@ -1,0 +1,171 @@
+# Profils de simplification — scopes locaux (départements, outre-mer).
+#
+# Variante moins agressive de generalize-profiles.yaml, destinée aux scopes
+# dont l'emprise géographique est petite (un département, une île) et où les
+# tronçons routiers doivent conserver davantage de vertices aux niveaux de
+# zoom proches (n=0..3).
+#
+# Seul TRONCON_DE_ROUTE est modifié par rapport au catalogue partagé :
+# les valeurs simplify_vw des niveaux n=0..3 sont réduites d'environ 50 %
+# pour éviter la perte de virages et d'intersections au zoom élevé.
+# Les couches non routières restent identiques à generalize-profiles.yaml.
+#
+# Header cible : 24/23/22/21/20/18/16 (7 niveaux, paliers n=0..6).
+# Contraintes : n=0 présent dans chaque branche when (routage F4).
+#               Paliers contigus n=0..6 obligatoires.
+#
+# Sémantique des clés :
+#   - n           : index dans MpHeader.levels (0 = plus détaillé = Data0=).
+#   - simplify_vw : seuil Visvalingam-Whyatt en degrés WGS84².
+#   - simplify    : tolérance Douglas-Peucker en degrés WGS84.
+#   - smooth      : "chaikin" uniquement (optionnel).
+#   - iterations  : itérations de Chaikin ([0, 5]).
+
+profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_DE_VEGETATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_ROUTE:
+    # topology: true — vertices partagés aux nœuds d'intersection ancrés par VW
+    # topologique (même contrat que COMMUNE). Seul simplify_vw autorisé avec
+    # topology: true.
+    # Variante locale : n=0..3 réduits ~50 % vs catalogue partagé pour préserver
+    # la géométrie des routes sur emprise départementale / insulaire.
+    topology: true
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Départementale]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000004 }
+          - { n: 4, simplify_vw: 0.000060 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+    levels:
+      - { n: 0, simplify_vw: 0.000001 }
+      - { n: 1, simplify_vw: 0.000002 }
+      - { n: 2, simplify_vw: 0.000003 }
+      - { n: 3, simplify_vw: 0.000004 }
+      - { n: 4, simplify_vw: 0.000060 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
+
+  COURBE:
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00006 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0, simplify: 0.00003 }
+      - { n: 1, simplify: 0.00004 }
+      - { n: 2, simplify: 0.00006 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_VOIE_FERREE:
+    # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
+    # Paliers n=0..4 uniquement — imgforge ne rend pas au-delà de EndLevel.
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
+
+  COMMUNE:
+    # topology: true — frontières entre communes partagent des vertices bit-exacts
+    # (même shapefile BDTOPO). VW topologique intra-cellule garantit l'absence de
+    # trous/chevauchements à tous les niveaux de zoom.
+    #
+    # n=4..6 : pas de simplify_vw. À bits=20/18/16, le rounding de coordonnées
+    # (shift=4/6/8) élimine naturellement les points redondants. Appliquer une
+    # VW avant le rounding sur de petites communes (< 0.01°) les effondre à ≤3
+    # points identiques après rounding → polygone silencieusement supprimé →
+    # aplats verts visibles (ZONE_DE_VEGETATION sous-jacente). Confirmé : 7/61
+    # communes disparaissent avec simplify_vw à n=6, 0/61 sans.
+    topology: true
+    levels:
+      - { n: 0, simplify_vw: 0.00003 }
+      - { n: 1, simplify_vw: 0.00007 }
+      - { n: 2, simplify_vw: 0.00013 }
+      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
