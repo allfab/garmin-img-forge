@@ -38,38 +38,134 @@
   line-height: 1.4;
 }
 
-.downloads-commands {
-  margin-top: 0.4em;
-  font-size: 0.78em;
-}
+/* ============================================================
+   Téléchargements — bouton déclencheur de la modal commandes
+   ============================================================ */
 
-.downloads-commands > summary {
+.dl-cmds-trigger {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 0.5em;
   cursor: pointer;
   color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.6));
+  font-size: 0.78em;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.downloads-commands-label {
-  margin: 0.6em 0 0.2em;
+.dl-cmds-trigger:hover {
+  color: var(--md-accent-fg-color, #ff6d00);
+}
+
+.dl-cmds-trigger:focus-visible {
+  color: var(--md-accent-fg-color, #ff6d00);
+  outline: 2px solid var(--md-accent-fg-color, #ff6d00);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ============================================================
+   Téléchargements — modal commandes
+   ============================================================ */
+
+.dl-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 9999;
+  overflow-y: auto;
+  padding: 1.5rem 1rem;
+}
+
+.dl-modal-overlay.is-open {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dl-modal-dialog {
+  background: var(--md-default-bg-color, #fff);
+  border-radius: 6px;
+  max-width: 780px;
+  width: 100%;
+  margin: auto;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+}
+
+.dl-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.2rem;
+  gap: 0.5rem;
+}
+
+.dl-modal-title {
+  font-size: 1rem;
   font-weight: 600;
-  font-size: 0.92em;
+  margin: 0;
+  word-break: break-word;
 }
 
-.downloads-commands-pre {
+.dl-modal-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+  color: var(--md-default-fg-color, #000);
+  opacity: 0.55;
+  border-radius: 3px;
+}
+
+.dl-modal-close:hover {
+  opacity: 1;
+  background: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+}
+
+.dl-modal-close:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--md-accent-fg-color, #ff6d00);
+  outline-offset: 1px;
+}
+
+.dl-modal-body {
+  /* Pas de défilement interne : c'est l'overlay qui défile */
+}
+
+.dl-modal-section-label {
+  margin: 1.1rem 0 0.3rem;
+  font-weight: 600;
+  font-size: 0.88em;
+}
+
+.dl-modal-section-label:first-child {
+  margin-top: 0;
+}
+
+.dl-modal-pre-wrapper {
   position: relative;
-  margin: 0 0 0.4em;
+  margin-bottom: 0.2rem;
 }
 
-.downloads-commands-pre pre {
+.dl-modal-pre-wrapper pre {
   margin: 0;
   overflow-x: auto;
+  border-radius: 4px;
 }
 
-.downloads-commands-pre pre code {
-  font-size: 0.82em;
+.dl-modal-pre-wrapper pre code {
+  font-size: 0.78em;
   white-space: pre;
 }
 
-.downloads-commands-copy {
+.dl-modal-copy {
   position: absolute;
   top: 0.35em;
   right: 0.35em;
@@ -84,19 +180,24 @@
   opacity: 0.75;
 }
 
-.downloads-commands-copy:hover,
-.downloads-commands-copy:focus {
+.dl-modal-copy:hover {
   opacity: 1;
 }
 
-.downloads-commands-copy.is-copied {
+.dl-modal-copy:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--md-accent-fg-color, #ff6d00);
+  outline-offset: 1px;
+}
+
+.dl-modal-copy.is-copied {
   background: #2e7d32;
   color: #fff;
   border-color: #2e7d32;
   opacity: 1;
 }
 
-[data-md-color-scheme="slate"] .downloads-commands-copy {
+[data-md-color-scheme="slate"] .dl-modal-copy {
   border-color: rgba(255, 255, 255, 0.26);
 }
 
