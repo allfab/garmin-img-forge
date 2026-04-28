@@ -960,12 +960,12 @@ rulesets:
     source_layer: "ZONE_DE_VEGETATION"
     label_case: "title"
     rules:
-      # 1. Bois (EndLevel=6, Label statique)
+      # 1. Bois (EndLevel=2, Label statique)
       - match:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "6"
+          EndLevel: "2"
           Label: "Bois"
 
       # 2. Foret fermee de coniferes (EndLevel=1 [FRANCE-SE], Label raccourci)
@@ -1093,7 +1093,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10a04"
-          EndLevel: "2"
+          EndLevel: "3"
           Label: "${TOPONYME}"
 
   # ==========================================================================
