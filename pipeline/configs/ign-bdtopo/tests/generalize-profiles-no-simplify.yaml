@@ -1,0 +1,136 @@
+# Profils de test — AUCUNE simplification.
+#
+# Copie de generalize-profiles-local.yaml avec tous les paramètres
+# `simplify` et `simplify_vw` supprimés. Permet d'isoler si les
+# aplats verts / pertes de communes viennent de la généralisation
+# ou d'un autre problème (types, niveaux, imgforge).
+#
+# Usage :
+#   Remplacer temporairement generalize_profiles_path dans sources.yaml :
+#     generalize_profiles_path: ../../generalize-profiles-no-simplify.yaml
+#
+# NE PAS utiliser en production — les tuiles seront beaucoup plus lourdes.
+
+profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  ZONE_DE_VEGETATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  TRONCON_DE_ROUTE:
+    topology: true
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2 }
+          - { n: 3 }
+          - { n: 4 }
+          - { n: 5 }
+          - { n: 6 }
+      - field: CL_ADMIN
+        values: [Départementale]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2 }
+          - { n: 3 }
+          - { n: 4 }
+          - { n: 5 }
+          - { n: 6 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2 }
+          - { n: 3 }
+          - { n: 4 }
+          - { n: 5 }
+          - { n: 6 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2 }
+          - { n: 3 }
+          - { n: 4 }
+          - { n: 5 }
+          - { n: 6 }
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  COURBE:
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
+
+  COMMUNE:
+    topology: true
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2 }
+      - { n: 3 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
