@@ -1,0 +1,152 @@
+# Profils de simplification multi-niveaux BDTOPO — scope france-quadrant.
+#
+# Bifurqué depuis ../generalize-profiles.yaml (catalogue partagé departement/).
+#
+# Divergence intentionnelle : topology: false sur TRONCON_DE_ROUTE et COMMUNE.
+# Raison : la pré-simplification topologique charge le graphe de vertices partagés
+# de la totalité des couches en RAM avant parallélisation (Phase 1.5 mpforge).
+# Sur 25 départements FRANCE-SE (1014 tuiles), ce graphe dépasse 40 Go et déclenche
+# l'OOM killer même avec 32 Go RAM + ZRAM. La garantie topologique (continuité aux
+# frontières de tuiles) est inutile ici : le build quadrant utilise --no-route,
+# donc aucun calcul d'itinéraire ne traverse les frontières de tuiles.
+#
+# Toutes les valeurs de simplification (n=0..6) sont identiques au catalogue partagé.
+# NE PAS répercuter topology: true depuis ../generalize-profiles.yaml sans avoir
+# validé la consommation mémoire sur la machine cible.
+
+profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_DE_VEGETATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_ROUTE:
+    # topology: false — divergence volontaire vs catalogue partagé (voir en-tête).
+    # n=0..2 : ultra-conservateurs (proche terrain, GPS 25–1500 m).
+    # n=3..4 : re-différenciés par classe (à ~3–6 km, 5–30 m de déviation est sub-pixel).
+    # n=5..6 : non rendus en france-quadrant (EndLevel max routes = 4).
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute, Nationale]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000010 }
+          - { n: 4, simplify_vw: 0.000100 }
+          - { n: 5, simplify_vw: 0.000300 }
+          - { n: 6, simplify_vw: 0.000700 }
+      - field: CL_ADMIN
+        values: [Départementale]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000020 }
+          - { n: 4, simplify_vw: 0.000150 }
+          - { n: 5, simplify_vw: 0.000400 }
+          - { n: 6, simplify_vw: 0.000800 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000035 }
+          - { n: 4, simplify_vw: 0.000200 }
+          - { n: 5, simplify_vw: 0.000500 }
+          - { n: 6, simplify_vw: 0.001000 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000050 }
+          - { n: 4, simplify_vw: 0.000250 }
+          - { n: 5, simplify_vw: 0.000600 }
+          - { n: 6, simplify_vw: 0.001000 }
+    levels:
+      - { n: 0, simplify_vw: 0.000001 }
+      - { n: 1, simplify_vw: 0.000002 }
+      - { n: 2, simplify_vw: 0.000003 }
+      - { n: 3, simplify_vw: 0.000035 }
+      - { n: 4, simplify_vw: 0.000200 }
+      - { n: 5, simplify_vw: 0.000500 }
+      - { n: 6, simplify_vw: 0.001000 }
+
+  COURBE:
+    levels:
+      - { n: 0, simplify: 0.00008 }
+      - { n: 1, simplify: 0.00010 }
+      - { n: 2, simplify: 0.00011 }
+      - { n: 3, simplify: 0.00014 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0, simplify: 0.00003 }
+      - { n: 1, simplify: 0.00004 }
+      - { n: 2, simplify: 0.00006 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_VOIE_FERREE:
+    # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
+    levels:
+      - { n: 0, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00008 }
+      - { n: 2, simplify: 0.00012 }
+      - { n: 3, simplify: 0.00020 }
+      - { n: 4, simplify: 0.00035 }
+
+  COMMUNE:
+    # topology: false — divergence volontaire vs catalogue partagé (voir en-tête).
+    # Valeurs VW identiques au catalogue partagé.
+    levels:
+      - { n: 0, simplify_vw: 0.00003 }
+      - { n: 1, simplify_vw: 0.00007 }
+      - { n: 2, simplify_vw: 0.00013 }
+      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 4, simplify_vw: 0.00040 }
+      - { n: 5, simplify_vw: 0.00080 }
+      - { n: 6, simplify_vw: 0.00150 }
