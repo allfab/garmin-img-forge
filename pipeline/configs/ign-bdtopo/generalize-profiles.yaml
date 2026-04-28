@@ -58,8 +58,12 @@ profiles:
   TRONCON_DE_ROUTE:
     # topology: true — vertices partagés aux nœuds d'intersection ancrés par VW
     # topologique (même contrat que COMMUNE). Seul simplify_vw autorisé avec
-    # topology: true. Valeurs conservatrices : partir petit, ajuster au besoin.
-    # Data0 strict présent dans chaque branche when (contrainte routage F4).
+    # topology: true. Data0 strict présent dans chaque branche when (contrainte F4).
+    #
+    # n=0..2 : ultra-conservateurs (proche terrain, GPS 25–1500 m).
+    # n=3..4 : re-différenciés par classe (à ~3–6 km, 5–30 m de déviation est sub-pixel).
+    # n=5..6 : non rendus en france-quadrant (EndLevel max routes = 4) — conservés
+    #          pour compatibilité catalogue partagé avec futurs scopes EndLevel=6.
     topology: true
     when:
       - field: CL_ADMIN
@@ -67,47 +71,47 @@ profiles:
         levels:
           - { n: 0, simplify_vw: 0.000001 }
           - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000004 }
-          - { n: 3, simplify_vw: 0.000008 }
-          - { n: 4, simplify_vw: 0.000060 }
-          - { n: 5, simplify_vw: 0.000100 }
-          - { n: 6, simplify_vw: 0.000300 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000010 }
+          - { n: 4, simplify_vw: 0.000100 }
+          - { n: 5, simplify_vw: 0.000300 }
+          - { n: 6, simplify_vw: 0.000700 }
       - field: CL_ADMIN
         values: [Départementale]
         levels:
-          - { n: 0, simplify_vw: 0.000002 }
-          - { n: 1, simplify_vw: 0.000005 }
-          - { n: 2, simplify_vw: 0.000010 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
           - { n: 3, simplify_vw: 0.000020 }
-          - { n: 4, simplify_vw: 0.000200 }
-          - { n: 5, simplify_vw: 0.000300 }
+          - { n: 4, simplify_vw: 0.000150 }
+          - { n: 5, simplify_vw: 0.000400 }
           - { n: 6, simplify_vw: 0.000800 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
-          - { n: 0, simplify_vw: 0.000004 }
-          - { n: 1, simplify_vw: 0.000008 }
-          - { n: 2, simplify_vw: 0.000018 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
           - { n: 3, simplify_vw: 0.000035 }
-          - { n: 4, simplify_vw: 0.000300 }
+          - { n: 4, simplify_vw: 0.000200 }
           - { n: 5, simplify_vw: 0.000500 }
           - { n: 6, simplify_vw: 0.001000 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
-          - { n: 0, simplify_vw: 0.000008 }
-          - { n: 1, simplify_vw: 0.000016 }
-          - { n: 2, simplify_vw: 0.000035 }
-          - { n: 3, simplify_vw: 0.000070 }
-          - { n: 4, simplify_vw: 0.000300 }
-          - { n: 5, simplify_vw: 0.001000 }
-          - { n: 6, simplify_vw: 0.002000 }
+          - { n: 0, simplify_vw: 0.000001 }
+          - { n: 1, simplify_vw: 0.000002 }
+          - { n: 2, simplify_vw: 0.000003 }
+          - { n: 3, simplify_vw: 0.000050 }
+          - { n: 4, simplify_vw: 0.000250 }
+          - { n: 5, simplify_vw: 0.000600 }
+          - { n: 6, simplify_vw: 0.001000 }
     levels:
-      - { n: 0, simplify_vw: 0.000004 }
-      - { n: 1, simplify_vw: 0.000008 }
-      - { n: 2, simplify_vw: 0.000018 }
+      - { n: 0, simplify_vw: 0.000001 }
+      - { n: 1, simplify_vw: 0.000002 }
+      - { n: 2, simplify_vw: 0.000003 }
       - { n: 3, simplify_vw: 0.000035 }
-      - { n: 4, simplify_vw: 0.000300 }
+      - { n: 4, simplify_vw: 0.000200 }
       - { n: 5, simplify_vw: 0.000500 }
       - { n: 6, simplify_vw: 0.001000 }
 

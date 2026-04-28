@@ -20,10 +20,15 @@ Les profils mpforge et les filtres opt-in imgforge sont **cumulatifs** : la donn
 
 | # | Profils mpforge | imgforge — DP/taille (opt-in) | imgforge — filtres géom (défaut) | Cas d'usage |
 |---|:-:|:-:|:-:|---|
-| **1 — Max simplifié** | actifs | `reduce + simplify-poly + min-size + merge` | actifs | Quadrants, France entière — taille minimale |
+| **1 — Quadrant (recommandé)** | actifs | `min-size + merge` | actifs | **Quadrants, France entière** — profiles mpforge actifs, pas de double simplification |
 | **2 — Standard** | actifs | aucun | actifs | **Production département** — recommandé |
 | **3 — mpforge brut** | désactivés | aucun | actifs | Mesure de l'apport des profils |
 | **4 — Données brutes** | désactivés | aucun | désactivés | Debug / mesure d'impact des filtres imgforge |
+
+!!! warning "Double simplification — piège à éviter"
+    Les options `--reduce-point-density` et `--simplify-polygons` appliquent un DP **supplémentaire** à imgforge sur des données **déjà simplifiées** par mpforge (`generalize-profiles.yaml`). Cumuler les deux dégrade la précision géométrique aux zooms détaillés (n=0..2, GPS 25–1500 m) sans gain réel sur la taille.
+
+    **Règle :** si les profils mpforge sont actifs, ne pas utiliser `--reduce-point-density` ni `--simplify-polygons`. Ces options ne sont pertinentes que sans profils (`--disable-profiles`).
 
 !!! warning "Niveau 4 et matériel Garmin"
     Le niveau 4 désactive `--no-round-coords`, ce qui produit un IMG avec des coordonnées non quantifiées sur la grille de subdivision. Toléré par QMapShack et QGIS, **potentiellement non conforme au rendu firmware** (notamment Alpha 100). Réserver à la mesure d'impact et au debug — ne pas utiliser en production.
@@ -65,16 +70,19 @@ mkdir -p "$OUTPUT_DIR/mp" "$OUTPUT_DIR/img"
 
 ---
 
-## Niveau 1 — Maximum simplifié
+## Niveau 1 — Quadrant (recommandé)
 
-Profils mpforge actifs + tous les filtres imgforge opt-in. Recommandé pour les quadrants et la France entière.
+Profils mpforge actifs + filtres imgforge `--min-size-polygon` et `--merge-lines`. Recommandé pour les quadrants et la France entière.
+
+`--reduce-point-density` et `--simplify-polygons` sont **exclus** : les profils mpforge gèrent déjà la simplification multi-niveaux ; les ajouter produirait une double simplification qui dégrade la précision aux zooms détaillés (voir encadré ci-dessus).
 
 === "build-garmin-map.sh (recommandé)"
 
     ```bash
-    ./scripts/build-garmin-map.sh --zones D038 \
-      --reduce-point-density 4.0 \
-      --simplify-polygons "24:12,18:10,16:8" \
+    ./scripts/build-garmin-map.sh \
+      --region FRANCE-SE \
+      --config pipeline/configs/ign-bdtopo/france-quadrant/sources.yaml \
+      --levels "24,23,22,21,20,18,16" \
       --min-size-polygon 8 \
       --merge-lines
     ```
@@ -260,7 +268,7 @@ Profils désactivés + tous les filtres imgforge par défaut désactivés. Rése
 
 !!! tip "Quand activer les options opt-in"
     Pour un **département**, les valeurs par défaut suffisent (niveau 2 standard).
-    Pour un **quadrant** (≥ 20 départements), activez les 4 options : la taille IMG baisse de 15-25 % et imgforge tient en RAM avec moins de workers.
+    Pour un **quadrant** (≥ 20 départements), activez uniquement `--min-size-polygon 8` et `--merge-lines`. Ne pas utiliser `--reduce-point-density` ni `--simplify-polygons` si les profils mpforge sont actifs (double simplification — voir encadré ci-dessus).
 
 ### Options imgforge filtres par défaut (opt-out)
 

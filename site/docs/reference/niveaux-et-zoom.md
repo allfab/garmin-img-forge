@@ -10,14 +10,19 @@ Le format Garmin IMG organise les données cartographiques en **niveaux de zoom*
 
 La résolution d'un niveau est exprimée en **bits** (1 à 24). Plus la valeur est élevée, plus le niveau est détaillé :
 
-| Bits | Précision approx. | Usage typique |
-|------|-------------------|---------------|
-| 24 | ~5 m | Détail maximum (sentiers, bâtiments) |
-| 22 | ~20 m | Détail élevé |
-| 20 | ~80 m | Zoom moyen (routes, contours) |
-| 18 | ~300 m | Vue régionale (routes principales, lacs) |
-| 16 | ~1,2 km | Vue départementale |
-| 14 | ~5 km | Vue nationale |
+| Bits | Précision/unité | Plage GPS approx. | Usage typique |
+|------|-----------------|-------------------|---------------|
+| 24 | ≈ 2.4 m | 25 m – 350 m | Sentiers, bâtiments, détail maximum |
+| 23 | ≈ 4.8 m | 50 m – 700 m | Quartier, village |
+| 22 | ≈ 9.5 m | 100 m – 1.5 km | Bourg, commune |
+| 21 | ≈ 19 m | 200 m – 3 km | Inter-communes |
+| 20 | ≈ 38 m | 400 m – 6 km | Petit département |
+| 18 | ≈ 152 m | 2 km – 23 km | Arrondissement, département |
+| 16 | ≈ 610 m | 6 km – 90 km | Région, grand territoire |
+| 14 | ≈ 2.4 km | 25 km – 350 km | Vue nationale |
+
+!!! info "Formule"
+    1 map unit à N bits = 360 / 2^N degrés. À la latitude de la France (~46°), 1 degré latitude ≈ 111 km. La "plage GPS approx." correspond à la plage d'échelles d'affichage où le firmware Garmin utilise le niveau à N bits (10× à 150× la taille d'un map unit).
 
 ### Niveaux (levels)
 
@@ -88,7 +93,27 @@ La règle est simple : **une feature avec `EndLevel=N` est visible aux niveaux 0
 | 9 (`"24,23,...,16"`) | Maximum théorique | +200-400% |
 
 !!! tip "Recommandation pour la BD TOPO"
-    **3 à 4 niveaux** avec des sauts de résolution significatifs (4-6 bits d'écart) offrent le meilleur compromis. Les niveaux intermédiaires (24→23→22) n'apportent quasiment aucune différence visuelle sur un GPS et gonflent inutilement le fichier.
+    **3 à 4 niveaux** avec des sauts de résolution significatifs (4-6 bits d'écart) offrent le meilleur compromis pour un département.
+    Pour un **quadrant** (France-SE, SO, NE, NO), la configuration de production utilise **7 niveaux `24/23/22/21/20/18/16`** : les paliers 23 et 21 densifient la zone détaillée pour un panning fluide sans alourdir les zooms larges.
+
+### Configuration 7 niveaux production (quadrants France)
+
+La configuration de production `france-quadrant/` utilise le header `24/23/22/21/20/18/16`. Le tableau ci-dessous donne la correspondance entre l'index `n`, la résolution, la plage GPS et les catégories visibles :
+
+| n | bits | Plage GPS approx. | EndLevel production | Catégories visibles |
+|---|------|-------------------|--------------------:|---------------------|
+| 0 | 24 | 25 m – 350 m | ≥ 0 (tout) | Tout : bâtiments, sentiers, routes, contours… |
+| 1 | 23 | 50 m – 700 m | ≥ 1 | Hors features EndLevel=0 (petites routes locales, bâtiments) |
+| 2 | 22 | 100 m – 1.5 km | ≥ 2 | Idem, hors EndLevel≤1 |
+| 3 | 21 | 200 m – 3 km | ≥ 3 | Routes primaires, fer, hydrographie, végétation |
+| 4 | 20 | 400 m – 6 km | ≥ 4 | Routes principales (autoroutes → départementales), fer |
+| 5 | 18 | 2 km – 23 km | = 6 uniquement | Communes, zones d'habitation, végétation, toponymie |
+| 6 | 16 | 6 km – 90 km | = 6 uniquement | Communes, zones d'habitation, végétation, toponymie |
+
+!!! note "EndLevel max routes = 4"
+    Dans la configuration quadrant, les routes (autoroutes, nationales, départementales) ont `EndLevel: "4"`. Elles disparaissent aux zooms n=5 et n=6 (6 km+). Seuls les polygones structurants (communes, forêts, agglomérations) et la toponymie restent visibles à grand zoom (`EndLevel: "6"`).
+
+---
 
 ### EndLevel par catégorie de feature
 
