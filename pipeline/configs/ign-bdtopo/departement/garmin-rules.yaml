@@ -941,7 +941,7 @@ rulesets:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "Bois"
 
       # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
@@ -949,7 +949,7 @@ rulesets:
           NATURE: "Forêt fermée de conifères"
         set:
           Type: "0x10f1f"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "Forêt de conifères"
 
       # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
@@ -957,7 +957,7 @@ rulesets:
           NATURE: "Forêt fermée de feuillus"
         set:
           Type: "0x10f1e"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "Forêt de feuillus"
 
       # 4. Foret fermee mixte (EndLevel=6, pas de Label)
@@ -965,14 +965,14 @@ rulesets:
           NATURE: "Forêt fermée mixte"
         set:
           Type: "0x4e"
-          EndLevel: "4"
+          EndLevel: "3"
 
       # 5. Foret ouverte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt ouverte"
         set:
           Type: "0x11000"
-          EndLevel: "4"
+          EndLevel: "3"
 
       # 6. Haie (EndLevel=4, pas de Label)
       - match:
@@ -1069,7 +1069,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10a04"
-          EndLevel: "2"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
   # ==========================================================================
