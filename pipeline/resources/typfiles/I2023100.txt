@@ -4895,6 +4895,23 @@ Xpm="32 32 2 1"
 [end]
 
 
+[_polygon]
+Type=0x1101e
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_63/Customizable area/Non NT, NT
+String1=0x04,SWIMMING POOL (PRIVATE)
+String2=0x01,PISCINE PRIVÉE
+String3=0x02,SCHWIMMBAD (PRIVAT)
+String4=0x00,PISCINE PRIVEE
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #10DCE0"
+[end]
+
 ;====================== LINES ===========================
 
 

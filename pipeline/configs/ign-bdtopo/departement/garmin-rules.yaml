@@ -3440,3 +3440,17 @@ rulesets:
         set:
           Type: "0x10f04"
           EndLevel: "4"
+
+  # ==========================================================================
+  # CADASTRE — Piscines privées (TSURF_id, SYM=65)
+  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
+  # Pas de Label (TSURF_id ne porte pas de nom).
+  # ==========================================================================
+  - name: "Piscines cadastre"
+    source_layer: "TSURF_id"
+    rules:
+      - match:
+          SYM: "65"
+        set:
+          Type: "0x1101e"
+          EndLevel: "0"
