@@ -4,7 +4,7 @@
 // Feature distribution by pickArea (first point), polygon clipping, recursive split
 
 use crate::error::ImgError;
-use crate::parser::mp_types::MpFile;
+use crate::parser::mp_types::{ElevationUnit, MpFile};
 use crate::routing::graph_builder::{self, RouteParams, find_junctions, compute_node_flags};
 use std::collections::{HashMap, HashSet};
 use super::area::Area;
@@ -123,7 +123,16 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         .map(|p| lbl_writer.add_label(&p.label))
         .collect();
     let line_labels: Vec<u32> = mp.polylines.iter()
-        .map(|pl| lbl_writer.add_label(&pl.label))
+        .map(|pl| {
+            let label = if mp.header.elevation_unit == ElevationUnit::Metres
+                && is_contour_type(pl.type_code)
+            {
+                metres_label_to_feet(&pl.label)
+            } else {
+                pl.label.clone()
+            };
+            lbl_writer.add_label(&label)
+        })
         .collect();
     let poly_labels: Vec<u32> = mp.polygons.iter()
         .map(|pg| lbl_writer.add_label(&pg.label))
@@ -1599,6 +1608,22 @@ fn find_first_route_node_offset(
     fallback.unwrap_or(0)
 }
 
+/// Contour line types: 0x20–0x25 inclusive (mkgmap GType.isContourLine).
+/// No mask: real contour types are always < 0x100; applying & 0xFF would cause false positives
+/// on types with sub-type encoded in low byte (e.g. 0x0A22 would incorrectly match 0x22).
+fn is_contour_type(type_code: u32) -> bool {
+    type_code >= 0x20 && type_code <= 0x25
+}
+
+/// Convert a numeric metres label to feet (mkgmap fixElevation logic).
+/// Non-numeric labels are returned unchanged.
+fn metres_label_to_feet(label: &str) -> String {
+    match label.trim().parse::<f64>() {
+        Ok(m) => (m * 3.280_839_9).round().to_string(),
+        Err(_) => label.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1824,6 +1849,68 @@ Data0=(48.57,7.75),(48.58,7.75),(48.58,7.76),(48.57,7.76)
     }
 
     #[test]
+    fn test_elevation_metres_contour_label_converted_in_lbl() {
+        // F3 E2E: Elevation=M + type 0x22 label "100" → LBL contient "328", pas "100"
+        let content = r#"
+[IMG ID]
+ID=1
+Name=Test Elevation
+CodePage=1252
+Levels=24
+Elevation=M
+[END-IMG ID]
+[POLYLINE]
+Type=0x22
+Label=100
+Data0=(45.0,6.0),(45.1,6.1)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+        let lbl = &result.lbl;
+        let label_off = u32::from_le_bytes([lbl[21], lbl[22], lbl[23], lbl[24]]) as usize;
+        let label_data = &lbl[label_off..];
+
+        assert!(
+            label_data.windows(3).any(|w| w == b"328"),
+            "LBL doit contenir '328' (100m converti en pieds)"
+        );
+        assert!(
+            !label_data.windows(3).any(|w| w == b"100"),
+            "LBL ne doit PAS contenir '100' (valeur en mètres brute)"
+        );
+    }
+
+    #[test]
+    fn test_elevation_metres_non_contour_label_unchanged_in_lbl() {
+        // F3 E2E: Elevation=M + type 0x06 (route) → label "100" inchangé dans LBL
+        let content = r#"
+[IMG ID]
+ID=1
+Name=Test Elevation Non-Contour
+CodePage=1252
+Levels=24
+Elevation=M
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Label=100
+Data0=(45.0,6.0),(45.1,6.1)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+        let lbl = &result.lbl;
+        let label_off = u32::from_le_bytes([lbl[21], lbl[22], lbl[23], lbl[24]]) as usize;
+        let label_data = &lbl[label_off..];
+
+        assert!(
+            label_data.windows(3).any(|w| w == b"100"),
+            "LBL doit contenir '100' inchangé pour un type non-contour"
+        );
+    }
+
+    #[test]
     fn test_build_routing_img_has_net_nod() {
         let content = r#"
 [IMG ID]
@@ -2023,6 +2110,55 @@ Data0=(48.90,7.90),(48.91,7.90),(48.91,7.91),(48.90,7.91)
             pos += 512;
         }
         false
+    }
+}
+
+// ── Tests for elevation helpers ──────────────────────────────────────────
+
+#[cfg(test)]
+mod elevation_tests {
+    use super::{is_contour_type, metres_label_to_feet};
+
+    #[test]
+    fn contour_types_0x20_to_0x25_recognised() {
+        for t in 0x20u32..=0x25 {
+            assert!(is_contour_type(t), "0x{:02X} should be contour", t);
+        }
+    }
+
+    #[test]
+    fn non_contour_types_not_recognised() {
+        // 0x0A22 has subtype 0x22 in low byte but is NOT a contour — no mask applied
+        for t in [0x1F, 0x26, 0x00, 0x06, 0x10000u32, 0x0A22, 0x0120, 0x10D20] {
+            assert!(!is_contour_type(t), "0x{:X} should NOT be contour", t);
+        }
+    }
+
+    #[test]
+    fn metres_to_feet_100m() {
+        assert_eq!(metres_label_to_feet("100"), "328");
+    }
+
+    #[test]
+    fn metres_to_feet_1000m() {
+        assert_eq!(metres_label_to_feet("1000"), "3281");
+    }
+
+    #[test]
+    fn metres_to_feet_non_numeric_unchanged() {
+        assert_eq!(metres_label_to_feet(""), "");
+        assert_eq!(metres_label_to_feet("Col du Lautaret"), "Col du Lautaret");
+    }
+
+    #[test]
+    fn metres_to_feet_zero() {
+        assert_eq!(metres_label_to_feet("0"), "0");
+    }
+
+    #[test]
+    fn metres_to_feet_negative() {
+        // -10m → -10 * 3.2808399 = -32.808399 → round = -33
+        assert_eq!(metres_label_to_feet("-10"), "-33");
     }
 }
 

@@ -487,6 +487,9 @@ pub struct HeaderConfig {
     /// Routing enabled (Polish Map: Routing) — required by mkgmap when RoadID present
     #[serde(default)]
     pub routing: Option<String>,
+    /// Elevation unit for contour line labels: "M" = metres, "F" = feet (Polish Map: Elevation)
+    #[serde(rename = "Elevation", alias = "elevation", default)]
+    pub elevation: Option<String>,
     /// Custom arbitrary header fields
     #[serde(default)]
     pub custom: Option<HashMap<String, String>>,
@@ -960,6 +963,17 @@ impl Config {
             warn_yn("transparent", &header.transparent);
             warn_yn("marine", &header.marine);
             warn_tf("preprocess", &header.preprocess);
+
+            if let Some(ref v) = header.elevation {
+                if !matches!(v.to_uppercase().as_str(), "M" | "F") {
+                    tracing::warn!(
+                        field = "Elevation",
+                        value = %v,
+                        "header.Elevation = '{}' — valeur attendue : M ou F",
+                        v
+                    );
+                }
+            }
         }
 
         Ok(())

@@ -210,6 +210,12 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
                 }
             }
         }
+        "elevation" => {
+            header.elevation_unit = match value.to_uppercase().as_str() {
+                "M" => ElevationUnit::Metres,
+                _ => ElevationUnit::Feet,
+            };
+        }
         _ => {}
     }
 }
@@ -782,5 +788,33 @@ Data0=(49.0,8.0)
         let mp = parse_mp(content).unwrap();
         assert_eq!(mp.points.len(), 1);
         assert!((mp.points[0].coord.lat_degrees() - 49.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_elevation_metres() {
+        let content = "[IMG ID]\nID=1\nLevels=24\nElevation=M\n[END-IMG ID]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.header.elevation_unit, ElevationUnit::Metres);
+    }
+
+    #[test]
+    fn test_parse_elevation_feet() {
+        let content = "[IMG ID]\nID=1\nLevels=24\nElevation=F\n[END-IMG ID]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.header.elevation_unit, ElevationUnit::Feet);
+    }
+
+    #[test]
+    fn test_parse_elevation_default_is_feet() {
+        let content = "[IMG ID]\nID=1\nLevels=24\n[END-IMG ID]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.header.elevation_unit, ElevationUnit::Feet);
+    }
+
+    #[test]
+    fn test_parse_elevation_case_insensitive() {
+        let content = "[IMG ID]\nID=1\nLevels=24\nelevation=m\n[END-IMG ID]\n";
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.header.elevation_unit, ElevationUnit::Metres);
     }
 }

@@ -3,6 +3,15 @@
 use crate::img::coord::Coord;
 use std::collections::BTreeMap;
 
+/// Unit declared by `Elevation=` in the [IMG ID] header.
+/// Garmin IMG always stores contour labels in feet; Metres triggers m→ft conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ElevationUnit {
+    #[default]
+    Feet,
+    Metres,
+}
+
 /// Complete parsed .mp file
 #[derive(Debug, Clone)]
 pub struct MpFile {
@@ -59,6 +68,8 @@ pub struct MpHeader {
     pub no_remove_obsolete_points: bool,
     // Routing
     pub routing_mode: RoutingMode,
+    // Elevation
+    pub elevation_unit: ElevationUnit,
     // Metadata (TDB-level)
     pub country_name: String,
     pub country_abbr: String,
