@@ -44,8 +44,8 @@ Tout ce qu'il faut pour mettre en place l'environnement de production de cartes 
 
 | Logiciel | Version | Téléchargement | Usage |
 |----------|---------|----------------|-------|
-| **mpforge** (binaire statique) | v0.5.0 | [:material-download: tar.gz](https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.5.0/mpforge-linux-amd64.tar.gz) · [:material-download: zip](https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.5.0/mpforge-linux-amd64.zip) | Tuilage — inclut GDAL et ogr-polishmap |
-| **imgforge** (binaire statique) | v0.5.1 | [:material-download: tar.gz](https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.5.1/imgforge-linux-amd64.tar.gz) · [:material-download: zip](https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.5.1/imgforge-linux-amd64.zip) | Compilation Garmin IMG |
+| **mpforge** (binaire statique) | v0.8.1 | [:material-download: tar.gz](https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.8.1/mpforge-linux-amd64.tar.gz) · [:material-download: zip](https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.8.1/mpforge-linux-amd64.zip) | Tuilage — inclut GDAL et ogr-polishmap |
+| **imgforge** (binaire statique) | v0.8.2 | [:material-download: tar.gz](https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.8.2/imgforge-linux-amd64.tar.gz) · [:material-download: zip](https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.8.2/imgforge-linux-amd64.zip) | Compilation Garmin IMG |
 
 C'est tout ! Les binaires pré-compilés de mpforge embarquent GDAL, PROJ, GEOS et le driver ogr-polishmap. Aucune installation de bibliothèque système n'est nécessaire.
 
