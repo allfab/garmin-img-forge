@@ -27,7 +27,7 @@ profiles:
 
   ZONE_DE_VEGETATION:
     levels:
-      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00003 }
       - { n: 1, simplify: 0.00006 }
       - { n: 2, simplify: 0.00008 }
       - { n: 3, simplify: 0.00010 }
@@ -42,53 +42,63 @@ profiles:
     # n=5..6 : non rendus en france-quadrant (EndLevel max routes = 4).
     when:
       - field: CL_ADMIN
-        values: [Autoroute, Nationale]
+        values: [Autoroute]
         levels:
-          - { n: 0, simplify_vw: 0.000001 }
-          - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000003 }
-          - { n: 3, simplify_vw: 0.000010 }
-          - { n: 4, simplify_vw: 0.000100 }
-          - { n: 5, simplify_vw: 0.000300 }
-          - { n: 6, simplify_vw: 0.000700 }
+          - { n: 0 }
+          - { n: 1, simplify_vw: 0.000001 }
+          - { n: 2, simplify_vw: 0.000002 }
+          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Nationale]
+        levels:
+          - { n: 0 }
+          - { n: 1, simplify_vw: 0.000001 }
+          - { n: 2, simplify_vw: 0.000002 }
+          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Départementale]
         levels:
-          - { n: 0, simplify_vw: 0.000001 }
-          - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000003 }
-          - { n: 3, simplify_vw: 0.000020 }
-          - { n: 4, simplify_vw: 0.000150 }
-          - { n: 5, simplify_vw: 0.000400 }
-          - { n: 6, simplify_vw: 0.000800 }
+          - { n: 0 }
+          - { n: 1, simplify_vw: 0.000001 }
+          - { n: 2, simplify_vw: 0.000002 }
+          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Communale, "Sans objet"]
         levels:
-          - { n: 0, simplify_vw: 0.000001 }
-          - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000003 }
-          - { n: 3, simplify_vw: 0.000035 }
-          - { n: 4, simplify_vw: 0.000200 }
-          - { n: 5, simplify_vw: 0.000500 }
-          - { n: 6, simplify_vw: 0.001000 }
+          - { n: 0 }
+          - { n: 1, simplify_vw: 0.000001 }
+          - { n: 2, simplify_vw: 0.000002 }
+          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
         values: [Chemin, Sentier]
         levels:
-          - { n: 0, simplify_vw: 0.000001 }
-          - { n: 1, simplify_vw: 0.000002 }
-          - { n: 2, simplify_vw: 0.000003 }
-          - { n: 3, simplify_vw: 0.000050 }
-          - { n: 4, simplify_vw: 0.000250 }
-          - { n: 5, simplify_vw: 0.000600 }
-          - { n: 6, simplify_vw: 0.001000 }
+          - { n: 0 }
+          - { n: 1, simplify_vw: 0.000001 }
+          - { n: 2, simplify_vw: 0.000002 }
+          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
     levels:
-      - { n: 0, simplify_vw: 0.000001 }
-      - { n: 1, simplify_vw: 0.000002 }
-      - { n: 2, simplify_vw: 0.000003 }
-      - { n: 3, simplify_vw: 0.000035 }
-      - { n: 4, simplify_vw: 0.000200 }
-      - { n: 5, simplify_vw: 0.000500 }
-      - { n: 6, simplify_vw: 0.001000 }
+      - { n: 0 }
+      - { n: 1, simplify_vw: 0.000001 }
+      - { n: 2, simplify_vw: 0.000002 }
+      - { n: 3, simplify_vw: 0.000003 }
+      - { n: 4, simplify_vw: 0.000010 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
 
   COURBE:
     levels:
@@ -128,7 +138,6 @@ profiles:
       - { n: 3, simplify: 0.00012 }
       - { n: 4, simplify: 0.00030 }
       - { n: 5, simplify: 0.00100 }
-      - { n: 6, simplify: 0.00100 }
 
   TRONCON_DE_VOIE_FERREE:
     # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
@@ -140,13 +149,13 @@ profiles:
       - { n: 4, simplify: 0.00035 }
 
   COMMUNE:
-    # topology: false — divergence volontaire vs catalogue partagé (voir en-tête).
+    topology: true # divergence volontaire vs catalogue partagé (voir en-tête).
     # Valeurs VW identiques au catalogue partagé.
     levels:
       - { n: 0, simplify_vw: 0.00003 }
       - { n: 1, simplify_vw: 0.00007 }
       - { n: 2, simplify_vw: 0.00013 }
-      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 3 }
       - { n: 4 }
       - { n: 5 }
       - { n: 6 }
