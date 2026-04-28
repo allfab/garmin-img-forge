@@ -374,6 +374,19 @@
         if (_modalTrigger) { _modalTrigger.focus(); _modalTrigger = null; }
     }
 
+    // Labels courts affichés dans les onglets (index aligné sur sections[]).
+    var TAB_LABELS = ['Téléchargement', 'Compilation', 'mpforge', 'imgforge'];
+
+    function activateTab(idx, tabBtns, panels) {
+        tabBtns.forEach(function (t, i) {
+            var active = i === idx;
+            t.classList.toggle('is-active', active);
+            t.setAttribute('aria-selected', active ? 'true' : 'false');
+            t.tabIndex = active ? 0 : -1;
+            panels[i].hidden = !active;
+        });
+    }
+
     function openModal(titleText, sections, triggerEl) {
         var m = getOrCreateModal();
         _modalTrigger = triggerEl || null;
@@ -382,23 +395,75 @@
         // Vider le contenu précédent
         while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
 
-        sections.forEach(function (pair) {
-            var h = document.createElement('p');
-            h.className = 'dl-modal-section-label';
-            h.textContent = pair[0];
-            m.body.appendChild(h);
+        // Barre d'onglets
+        var tablist = document.createElement('div');
+        tablist.className = 'dl-modal-tablist';
+        tablist.setAttribute('role', 'tablist');
+        m.body.appendChild(tablist);
+
+        var tabBtns = [];
+        var panels = [];
+
+        sections.forEach(function (pair, i) {
+            var tabId   = 'dl-tab-btn-' + i;
+            var panelId = 'dl-tab-panel-' + i;
+            var shortLabel = TAB_LABELS[i] || pair[0];
+
+            // Bouton onglet
+            var tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'dl-modal-tab' + (i === 0 ? ' is-active' : '');
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+            tab.setAttribute('aria-controls', panelId);
+            tab.id = tabId;
+            tab.tabIndex = i === 0 ? 0 : -1;
+            tab.textContent = shortLabel;
+            tablist.appendChild(tab);
+            tabBtns.push(tab);
+
+            // Panneau
+            var panel = document.createElement('div');
+            panel.className = 'dl-modal-panel';
+            panel.setAttribute('role', 'tabpanel');
+            panel.id = panelId;
+            panel.setAttribute('aria-labelledby', tabId);
+            if (i !== 0) panel.hidden = true;
 
             var wrapper = document.createElement('div');
             wrapper.className = 'dl-modal-pre-wrapper';
-
-            var pre = document.createElement('pre');
+            var pre  = document.createElement('pre');
             var code = document.createElement('code');
             code.className = 'language-bash';
             code.textContent = pair[1];
             pre.appendChild(code);
             wrapper.appendChild(pre);
             wrapper.appendChild(createCopyBtn(pair[1]));
-            m.body.appendChild(wrapper);
+            panel.appendChild(wrapper);
+            m.body.appendChild(panel);
+            panels.push(panel);
+        });
+
+        // Clic sur un onglet
+        tabBtns.forEach(function (tab, i) {
+            tab.addEventListener('click', function () {
+                activateTab(i, tabBtns, panels);
+            });
+        });
+
+        // Navigation clavier dans la barre d'onglets (flèches ← →, Home, End)
+        tablist.addEventListener('keydown', function (e) {
+            var idx = tabBtns.indexOf(document.activeElement);
+            if (idx === -1) return;
+            var next = idx;
+            if      (e.key === 'ArrowRight') next = (idx + 1) % tabBtns.length;
+            else if (e.key === 'ArrowLeft')  next = (idx - 1 + tabBtns.length) % tabBtns.length;
+            else if (e.key === 'Home')        next = 0;
+            else if (e.key === 'End')         next = tabBtns.length - 1;
+            else return;
+            e.preventDefault();
+            activateTab(next, tabBtns, panels);
+            tabBtns[next].focus();
         });
 
         m.overlay.classList.add('is-open');

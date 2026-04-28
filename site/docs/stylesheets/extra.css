@@ -139,15 +139,54 @@
   /* Pas de défilement interne : c'est l'overlay qui défile */
 }
 
-.dl-modal-section-label {
-  margin: 1.1rem 0 0.3rem;
-  font-weight: 600;
-  font-size: 0.88em;
+/* ---- Onglets ---- */
+
+.dl-modal-tablist {
+  display: flex;
+  border-bottom: 2px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.12));
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.dl-modal-section-label:first-child {
-  margin-top: 0;
+.dl-modal-tablist::-webkit-scrollbar {
+  display: none;
 }
+
+.dl-modal-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.6));
+  white-space: nowrap;
+}
+
+.dl-modal-tab:hover {
+  color: var(--md-default-fg-color, #000);
+}
+
+.dl-modal-tab.is-active {
+  color: var(--md-primary-fg-color, #2e7d32);
+  border-bottom-color: var(--md-primary-fg-color, #2e7d32);
+  font-weight: 600;
+}
+
+.dl-modal-tab:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color, #ff6d00);
+  outline-offset: -2px;
+  border-radius: 3px 3px 0 0;
+}
+
+.dl-modal-panel {
+  /* le panneau actif est visible, les autres ont hidden */
+}
+
+/* ---- Bloc de code ---- */
 
 .dl-modal-pre-wrapper {
   position: relative;
@@ -161,7 +200,7 @@
 }
 
 .dl-modal-pre-wrapper pre code {
-  font-size: 0.78em;
+  font-size: 0.875em;
   white-space: pre;
 }
 
@@ -170,7 +209,7 @@
   top: 0.35em;
   right: 0.35em;
   padding: 0.15em 0.55em;
-  font-size: 0.78em;
+  font-size: 0.82em;
   line-height: 1.2;
   background: var(--md-default-bg-color, #fff);
   color: var(--md-default-fg-color, #000);
