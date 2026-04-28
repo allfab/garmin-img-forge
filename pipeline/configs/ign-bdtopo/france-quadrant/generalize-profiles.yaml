@@ -147,6 +147,6 @@ profiles:
       - { n: 1, simplify_vw: 0.00007 }
       - { n: 2, simplify_vw: 0.00013 }
       - { n: 3, simplify_vw: 0.00020 }
-      - { n: 4, simplify_vw: 0.00040 }
-      - { n: 5, simplify_vw: 0.00080 }
-      - { n: 6, simplify_vw: 0.00150 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }

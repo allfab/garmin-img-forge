@@ -101,6 +101,13 @@ COMMUNE:
 
 L'algorithme Visvalingam-Whyatt (`simplify_vw`) est contraint topologiquement : il préserve les vertices partagés entre features voisines.
 
+!!! warning "Consommation mémoire à grande échelle"
+    La Phase 1.5 charge le **graphe de vertices partagés de la totalité des données** en RAM avant toute parallélisation. Ce comportement est indépendant de `--mpforge-jobs`.
+
+    Sur un département (~40 tuiles), le graphe topologique tient facilement en mémoire. Sur un **quadrant France** (~25 départements, 1000+ tuiles), il peut dépasser 40 Go et déclencher l'OOM killer (exit code 137) même avec 32 Go RAM + ZRAM.
+
+    **Solution** : utiliser un catalogue bifurqué sans `topology: true` pour les scopes à grande emprise. Voir [Catalogues bifurqués par scope](#catalogues-bifurques-par-scope) ci-dessous.
+
 ---
 
 ## Dispatch conditionnel (`when`)
@@ -168,20 +175,47 @@ La table des profils de production ci-dessous indique 5 branches pour `TRONCON_D
 
 ---
 
+## Catalogues bifurqués par scope
+
+Le projet maintient **deux catalogues distincts** selon l'emprise géographique du build :
+
+| Fichier | Scope | `topology` routes/communes | Quand l'utiliser |
+|---------|-------|:--------------------------:|-----------------|
+| `pipeline/configs/ign-bdtopo/generalize-profiles.yaml` | `departement/`, `outre-mer/` | ✅ `true` | Build d'un ou quelques départements |
+| `pipeline/configs/ign-bdtopo/france-quadrant/generalize-profiles.yaml` | `france-quadrant/` | ❌ absent (= `false`) | Quadrants FRANCE-SE/SO/NE/NO (~25 dép.) |
+
+Les valeurs de simplification (n=0..6) sont **identiques** entre les deux catalogues. Seul `topology` diffère. Le catalogue `france-quadrant` est référencé par son `sources.yaml` local via un chemin relatif direct :
+
+```yaml
+# pipeline/configs/ign-bdtopo/france-quadrant/sources.yaml
+generalize_profiles_path: "generalize-profiles.yaml"   # catalogue local
+```
+
+```yaml
+# pipeline/configs/ign-bdtopo/departement/sources.yaml
+generalize_profiles_path: "../generalize-profiles.yaml" # catalogue partagé
+```
+
+!!! note "Pas de régression visuelle"
+    Les builds quadrant utilisent `--no-route` (pas de calcul d'itinéraire). La continuité topologique aux frontières de tuiles est donc inutile : les éventuels micro-décalages de vertices aux jonctions de tuiles sont invisibles à l'œil et sans impact sur le routage désactivé.
+
+---
+
 ## Profils de production BDTOPO
 
-Le catalogue de production (`pipeline/configs/ign-bdtopo/generalize-profiles.yaml`) couvre 8 couches pour le header 7 niveaux `24/23/22/21/20/18/16` :
+Les deux catalogues couvrent 9 couches pour le header 7 niveaux `24/23/22/21/20/18/16` :
 
-| Couche | Algorithme | Dispatch | Notes |
-|--------|------------|----------|-------|
-| `TRONCON_DE_ROUTE` | `simplify_vw` | Par `CL_ADMIN` (5 branches) | `topology: true` — contrainte routage F4 |
-| `COMMUNE` | `simplify_vw` | Non | `topology: true` — frontières partagées |
-| `TRONCON_HYDROGRAPHIQUE` | `simplify` (DP) | Non | |
-| `SURFACE_HYDROGRAPHIQUE` | Chaikin + `simplify` (DP) | Non | Lissage n=0 |
-| `ZONE_DE_VEGETATION` | Chaikin + `simplify` (DP) | Non | Lissage n=0 |
-| `ZONE_D_HABITATION` | Chaikin + `simplify` (DP) | Non | Lissage n=0 |
-| `COURBE` | `simplify` (DP) | Non | Courbes de niveau (alias `COURBE_*.shp`) |
-| `CONSTRUCTION_LINEAIRE` | `simplify` (DP) | Non | Ponts, murs, haies... |
+| Couche | Algorithme | Dispatch | `topology` (dép.) | `topology` (quadrant) |
+|--------|------------|----------|:-----------------:|:---------------------:|
+| `TRONCON_DE_ROUTE` | `simplify_vw` | Par `CL_ADMIN` (5 branches) | ✅ | ❌ |
+| `COMMUNE` | `simplify_vw` | Non | ✅ | ❌ |
+| `TRONCON_HYDROGRAPHIQUE` | `simplify` (DP) | Non | — | — |
+| `SURFACE_HYDROGRAPHIQUE` | Chaikin + `simplify` (DP) | Non | — | — |
+| `ZONE_DE_VEGETATION` | Chaikin + `simplify` (DP) | Non | — | — |
+| `ZONE_D_HABITATION` | Chaikin + `simplify` (DP) | Non | — | — |
+| `COURBE` | `simplify` (DP) | Non | — | — |
+| `CONSTRUCTION_LINEAIRE` | `simplify` (DP) | Non | — | — |
+| `TRONCON_DE_VOIE_FERREE` | `simplify` (DP) | Non | — | — |
 
 !!! note "BATIMENT volontairement absent"
     Les bâtiments sont exclus du catalogue : ils doivent rester intacts (géométrie brute `Data0=` uniquement). Toute simplification des bâtiments produit des angles absurdes visibles sur le GPS.
