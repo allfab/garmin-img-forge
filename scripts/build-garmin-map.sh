@@ -1328,9 +1328,9 @@ update_manifest() {
     fi
     local tmp="${manifest}.tmp"
 
-    # build_params : valeurs dynamiques nécessaires pour régénérer les commandes
-    # download-data.sh et build-garmin-map.sh de cette publication. Le front
-    # (downloads-manifest.js) les injecte dans un template statique.
+    # build_params : toutes les valeurs nécessaires pour régénérer exactement les
+    # commandes download-data.sh et build-garmin-map.sh. Le front
+    # (downloads-manifest.js) les utilise pour reconstruire la commande complète.
     local bp_zones="${ZONES}"
     local bp_base_id="${BASE_ID}"
     local bp_year="${YEAR}"
@@ -1338,6 +1338,32 @@ update_manifest() {
     local bp_family_id="${FAMILY_ID}"
     local bp_family_name="${FAMILY_NAME}"
     local bp_copyright="${COPYRIGHT}"
+    local bp_jobs="${JOBS}"
+    local bp_mpforge_jobs="${MPFORGE_JOBS:-}"
+    local bp_imgforge_jobs="${IMGFORGE_JOBS:-}"
+    local bp_series_name="${SERIES_NAME}"
+    local bp_code_page="${CODE_PAGE}"
+    local bp_levels="${LEVELS}"
+    local bp_typ_file="${TYP_FILE}"
+    local bp_packaging="${PACKAGING}"
+    local bp_product_id="${PRODUCT_ID}"
+    local bp_publish_target="${PUBLISH_TARGET}"
+    local bp_reduce_point_density="${REDUCE_POINT_DENSITY:-}"
+    local bp_simplify_polygons="${SIMPLIFY_POLYGONS:-}"
+    local bp_min_size_polygon="${MIN_SIZE_POLYGON:-}"
+    local bp_merge_lines="${MERGE_LINES}"
+    local bp_with_dem="${WITH_DEM}"
+    local bp_with_route="${WITH_ROUTE}"
+    local bp_with_net="${WITH_NET}"
+    local bp_draw_priority="${DRAW_PRIORITY:-}"
+    local bp_transparent="${TRANSPARENT}"
+    local bp_order_by_decreasing_area="${ORDER_BY_DECREASING_AREA}"
+    local bp_no_round_coords="${NO_ROUND_COORDS}"
+    local bp_no_size_filter="${NO_SIZE_FILTER}"
+    local bp_no_remove_obsolete_points="${NO_REMOVE_OBSOLETE_POINTS}"
+    local bp_keep_going="${KEEP_GOING}"
+    local bp_dem_dists="${DEM_DISTS:-}"
+    local bp_dem_interpolation="${DEM_INTERPOLATION:-}"
 
     jq \
         --arg key "$key" \
@@ -1361,6 +1387,32 @@ update_manifest() {
         --arg bp_family_id "$bp_family_id" \
         --arg bp_family_name "$bp_family_name" \
         --arg bp_copyright "$bp_copyright" \
+        --arg bp_jobs "$bp_jobs" \
+        --arg bp_mpforge_jobs "$bp_mpforge_jobs" \
+        --arg bp_imgforge_jobs "$bp_imgforge_jobs" \
+        --arg bp_series_name "$bp_series_name" \
+        --arg bp_code_page "$bp_code_page" \
+        --arg bp_levels "$bp_levels" \
+        --arg bp_typ_file "$bp_typ_file" \
+        --arg bp_packaging "$bp_packaging" \
+        --arg bp_product_id "$bp_product_id" \
+        --arg bp_publish_target "$bp_publish_target" \
+        --arg bp_reduce_point_density "$bp_reduce_point_density" \
+        --arg bp_simplify_polygons "$bp_simplify_polygons" \
+        --arg bp_min_size_polygon "$bp_min_size_polygon" \
+        --arg bp_merge_lines "$bp_merge_lines" \
+        --arg bp_with_dem "$bp_with_dem" \
+        --arg bp_with_route "$bp_with_route" \
+        --arg bp_with_net "$bp_with_net" \
+        --arg bp_draw_priority "$bp_draw_priority" \
+        --arg bp_transparent "$bp_transparent" \
+        --arg bp_order_by_decreasing_area "$bp_order_by_decreasing_area" \
+        --arg bp_no_round_coords "$bp_no_round_coords" \
+        --arg bp_no_size_filter "$bp_no_size_filter" \
+        --arg bp_no_remove_obsolete_points "$bp_no_remove_obsolete_points" \
+        --arg bp_keep_going "$bp_keep_going" \
+        --arg bp_dem_dists "$bp_dem_dists" \
+        --arg bp_dem_interpolation "$bp_dem_interpolation" \
         '
         .generated_at = $now
         | .storage = (
@@ -1392,7 +1444,33 @@ update_manifest() {
                         version: $bp_version,
                         family_id: $bp_family_id,
                         family_name: $bp_family_name,
-                        copyright: $bp_copyright
+                        copyright: $bp_copyright,
+                        jobs: $bp_jobs,
+                        mpforge_jobs: $bp_mpforge_jobs,
+                        imgforge_jobs: $bp_imgforge_jobs,
+                        series_name: $bp_series_name,
+                        code_page: $bp_code_page,
+                        levels: $bp_levels,
+                        typ_file: $bp_typ_file,
+                        packaging: $bp_packaging,
+                        product_id: $bp_product_id,
+                        publish_target: $bp_publish_target,
+                        reduce_point_density: $bp_reduce_point_density,
+                        simplify_polygons: $bp_simplify_polygons,
+                        min_size_polygon: $bp_min_size_polygon,
+                        merge_lines: $bp_merge_lines,
+                        with_dem: $bp_with_dem,
+                        with_route: $bp_with_route,
+                        with_net: $bp_with_net,
+                        draw_priority: $bp_draw_priority,
+                        transparent: $bp_transparent,
+                        order_by_decreasing_area: $bp_order_by_decreasing_area,
+                        no_round_coords: $bp_no_round_coords,
+                        no_size_filter: $bp_no_size_filter,
+                        no_remove_obsolete_points: $bp_no_remove_obsolete_points,
+                        keep_going: $bp_keep_going,
+                        dem_dists: $bp_dem_dists,
+                        dem_interpolation: $bp_dem_interpolation
                     }
                 }]
               )
@@ -1841,6 +1919,20 @@ main() {
     run_mpforge
     run_imgforge
     show_summary
+
+    # Mise à jour automatique du manifest après chaque build réussi.
+    # Pour les builds sans --publish : stockage local (path relatif, sans URL S3).
+    # Les fonctions publish_coverage* appellent update_manifest à nouveau avec
+    # l'URL finale (S3 ou locale) — l'upsert jq écrase cette entrée intermédiaire.
+    if [[ "$DRY_RUN" != true && "$PARTIAL_FAILURE" != true && \
+          -f "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" ]]; then
+        resolve_coverage_info
+        local _auto_sha256 _auto_size
+        _auto_sha256=$(sha256sum "${_OUTPUT_DIR}/img/${_IMG_FILENAME}" | awk '{print $1}')
+        _auto_size=$(stat -c%s "${_OUTPUT_DIR}/img/${_IMG_FILENAME}")
+        update_manifest "$_PUB_TYPE" "$_PUB_SLUG" "$_PUB_LABEL" "$VERSION" \
+                        "$_auto_size" "$_auto_sha256" "$_IMG_FILENAME" "$_IMG_LATEST_NAME"
+    fi
 
     if [[ "$PUBLISH" == true ]]; then
         if [[ "$DRY_RUN" == true && "$PUBLISH_TARGET" != "s3" ]]; then

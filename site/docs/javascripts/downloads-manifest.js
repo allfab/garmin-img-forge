@@ -55,7 +55,7 @@
     // Construit la commande download-bdtopo.sh depuis les build_params.
     function buildDownloadCmd(bp) {
         return [
-            './scripts/download-bdtopo.sh \\',
+            './scripts/download-data.sh \\',
             '    --zones ' + bp.zones + ' \\',
             '    --bdtopo-version ' + bp.version + ' \\',
             '    --format SHP \\',
@@ -68,31 +68,81 @@
 
     // Construit la commande build-garmin-map.sh depuis les build_params.
     function buildCompileCmd(bp) {
-        return [
-            './scripts/build-garmin-map.sh \\',
-            '    --zones ' + bp.zones + ' \\',
-            '    --base-id ' + bp.base_id + ' \\',
-            '    --year ' + bp.year + ' \\',
-            '    --version ' + bp.version + ' \\',
-            '    --data-dir ./pipeline/data \\',
-            '    --contours-dir ./pipeline/data/contours \\',
-            '    --dem-dir ./pipeline/data/dem \\',
-            '    --osm-dir ./pipeline/data/osm \\',
-            '    --hiking-trails-dir ./pipeline/data/hiking-trails \\',
-            '    --output-base ./pipeline/output \\',
-            '    --jobs 8 \\',
-            '    --family-id ' + bp.family_id + ' \\',
-            '    --product-id 1 \\',
-            '    --family-name "' + bp.family_name + '" \\',
-            '    --series-name "IGN-BDTOPO-MAP" \\',
-            '    --code-page 1252 \\',
-            '    --levels "24,22,20,18,16" \\',
-            '    --typ pipeline/resources/typfiles/I2023100.typ \\',
-            '    --copyright "' + bp.copyright + '" \\',
-            '    --publish \\',
-            '    --publish-target s3 \\',
-            '    -v'
-        ].join('\n');
+        var lines = ['./scripts/build-garmin-map.sh \\'];
+        function add(flag, val) {
+            lines.push('    ' + flag + (val !== undefined ? ' ' + val : '') + ' \\');
+        }
+
+        // Géographique
+        add('--zones', bp.zones);
+        add('--base-id', bp.base_id);
+        add('--year', bp.year);
+        add('--version', bp.version);
+
+        // Chemins (défauts conventionnels)
+        add('--data-dir', './pipeline/data');
+        add('--contours-dir', './pipeline/data/contours');
+        add('--dem-dir', './pipeline/data/dem');
+        add('--osm-dir', './pipeline/data/osm');
+        add('--hiking-trails-dir', './pipeline/data/hiking-trails');
+        add('--output-base', './pipeline/output');
+
+        // Parallélisation
+        add('--jobs', bp.jobs || '8');
+        if (bp.mpforge_jobs)  add('--mpforge-jobs', bp.mpforge_jobs);
+        if (bp.imgforge_jobs) add('--imgforge-jobs', bp.imgforge_jobs);
+
+        // Identité carte
+        add('--family-id', bp.family_id);
+        add('--product-id', bp.product_id || '1');
+        add('--family-name', '"' + bp.family_name + '"');
+        add('--series-name', '"' + (bp.series_name || 'IGN-BDTOPO-MAP') + '"');
+
+        // Encodage / niveaux / styles
+        add('--code-page', bp.code_page || '1252');
+        add('--levels', '"' + (bp.levels || '24,22,20,18,16') + '"');
+        add('--typ', bp.typ_file || 'pipeline/resources/typfiles/I2023100.typ');
+
+        // Copyright
+        add('--copyright', '"' + bp.copyright + '"');
+
+        // Packaging
+        if (bp.packaging && bp.packaging !== 'legacy') add('--packaging', bp.packaging);
+
+        // Simplification géométrique (opt-in)
+        if (bp.reduce_point_density)  add('--reduce-point-density', bp.reduce_point_density);
+        if (bp.simplify_polygons)     add('--simplify-polygons', '"' + bp.simplify_polygons + '"');
+        if (bp.min_size_polygon)      add('--min-size-polygon', bp.min_size_polygon);
+        if (bp.merge_lines === 'true') add('--merge-lines');
+
+        // DEM / routage (opt-out : affiché seulement si désactivé)
+        if (bp.with_dem   === 'false') add('--no-dem');
+        if (bp.with_route === 'false' && bp.with_net !== 'true') add('--no-route');
+        if (bp.with_net   === 'true')  add('--net');
+
+        // Options rendu (opt-in)
+        if (bp.draw_priority)                      add('--draw-priority', bp.draw_priority);
+        if (bp.transparent            === 'true')  add('--transparent');
+        if (bp.order_by_decreasing_area === 'true') add('--order-by-decreasing-area');
+        if (bp.keep_going             === 'true')  add('--keep-going');
+
+        // Options imgforge avancées (opt-in)
+        if (bp.no_round_coords          === 'true') add('--no-round-coords');
+        if (bp.no_size_filter           === 'true') add('--no-size-filter');
+        if (bp.no_remove_obsolete_points === 'true') add('--no-remove-obsolete-points');
+
+        // DEM avancé (opt-in)
+        if (bp.dem_dists)         add('--dem-dists', '"' + bp.dem_dists + '"');
+        if (bp.dem_interpolation) add('--dem-interpolation', bp.dem_interpolation);
+
+        // Publication
+        add('--publish');
+        add('--publish-target', bp.publish_target || 's3');
+        add('-v');
+
+        // Supprimer le ' \' final de la dernière ligne
+        lines[lines.length - 1] = lines[lines.length - 1].replace(' \\', '');
+        return lines.join('\n');
     }
 
     function buildCommandsBlock(bp) {
