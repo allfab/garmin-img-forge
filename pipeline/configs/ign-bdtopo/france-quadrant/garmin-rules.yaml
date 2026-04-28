@@ -1148,7 +1148,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x02d0b"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
