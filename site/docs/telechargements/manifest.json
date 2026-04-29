@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-28T21:43:01Z",
+  "generated_at": "2026-04-29T09:16:15Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -54,9 +54,63 @@
       "latest_file": "IGN-BDTOPO-D038.img",
       "latest_url": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
       "latest_path": "files/departement/d038/latest/IGN-BDTOPO-D038.img"
+    },
+    "departement/d974": {
+      "type": "departement",
+      "slug": "d974",
+      "label": "Départements: D974",
+      "latest": "v2026.03",
+      "versions": [
+        {
+          "version": "v2026.03",
+          "published_at": "2026-04-29T09:16:15Z",
+          "size_bytes": 50603008,
+          "sha256": "5c9e45eac6cee775dcfb4ac5810ef9b9b59e08d72363eb1618a27a84ba5ccb09",
+          "file": "IGN-BDTOPO-LA-REUNION-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img",
+          "build_params": {
+            "zones": "D974",
+            "base_id": "974",
+            "year": "2026",
+            "version": "v2026.03",
+            "family_id": "974",
+            "family_name": "IGN-BDTOPO-LA-REUNION-v2026.03",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "jobs": "8",
+            "mpforge_jobs": "8",
+            "imgforge_jobs": "8",
+            "series_name": "IGN-BDTOPO-MAP",
+            "code_page": "1252",
+            "levels": "24,23,22,21,20,18,16",
+            "typ_file": "./pipeline/resources/typfiles/I2023100.typ",
+            "packaging": "legacy",
+            "product_id": "1",
+            "publish_target": "s3",
+            "reduce_point_density": "",
+            "simplify_polygons": "",
+            "min_size_polygon": "",
+            "merge_lines": "false",
+            "with_dem": "true",
+            "with_route": "true",
+            "with_net": "false",
+            "draw_priority": "",
+            "transparent": "false",
+            "order_by_decreasing_area": "false",
+            "no_round_coords": "false",
+            "no_size_filter": "false",
+            "no_remove_obsolete_points": "false",
+            "keep_going": "false",
+            "dem_dists": "",
+            "dem_interpolation": ""
+          }
+        }
+      ],
+      "latest_file": "IGN-BDTOPO-LA-REUNION.img",
+      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img"
     }
   },
   "storage": {
-    "type": "local"
+    "type": "s3",
+    "endpoint_public": "https://download-maps.garmin.allfabox.fr"
   }
 }

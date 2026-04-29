@@ -13,5 +13,5 @@ sont signalés *Non disponible* par le site.
 | D971 | Guadeloupe | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d971/v2026.03/IGN-BDTOPO-LA-GUADELOUPE-v2026.03.img){ .md-button } |
 | D972 | Martinique | [:material-download: Télécharger](files/departement/d972/latest/IGN-BDTOPO-D972.img){ .md-button } |
 | D973 | Guyane | [:material-download: Télécharger](files/departement/d973/latest/IGN-BDTOPO-D973.img){ .md-button } |
-| D974 | La Réunion | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d974/v2025.12/IGN-BDTOPO-LA-REUNION-v2025.12.img){ .md-button } |
+| D974 | La Réunion | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img){ .md-button } |
 | D976 | Mayotte | [:material-download: Télécharger](files/departement/d976/latest/IGN-BDTOPO-D976.img){ .md-button } |
