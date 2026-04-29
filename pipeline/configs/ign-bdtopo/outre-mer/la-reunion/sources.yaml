@@ -20,6 +20,15 @@ grid:
 
 inputs:
   # ==========================================================================
+  # BOUNDS - SEA — Polygones de mer (pour rendre les zones marines bleues)
+  # Source : ./pipeline/resources/bounds/D974/D974_SEA.shp (tracké dans git)
+  # Déjà en EPSG:4326 — pas de reprojection nécessaire
+  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # ==========================================================================
+  - path: "./pipeline/resources/bounds/D974/D974_SEA.shp"
+    layer_alias: "SEA"
+
+  # ==========================================================================
   # TRANSPORT (4 couches — FME 01-TRANSPORT)
   # ==========================================================================
 
@@ -250,7 +259,7 @@ inputs:
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
+  # Source : ./pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
   # Déjà en EPSG:4326 — pas de reprojection nécessaire
   # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
   # ==========================================================================

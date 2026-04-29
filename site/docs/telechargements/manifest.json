@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-29T09:16:15Z",
+  "generated_at": "2026-04-29T21:08:12Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,11 +9,11 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-28T21:43:01Z",
-          "size_bytes": 176979968,
-          "sha256": "cb69587c910499e3a3730b96bca837ac10eb83861b1c36a6c0e65fe6f81708a6",
+          "published_at": "2026-04-29T10:35:35Z",
+          "size_bytes": 176988160,
+          "sha256": "7385888fe02fccebe6c2d5e7d69fea71929e4c00cd9b2a7a0a537f8e84f7bf7f",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
-          "path": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
             "zones": "D038",
             "base_id": "38",
@@ -52,8 +52,7 @@
         }
       ],
       "latest_file": "IGN-BDTOPO-D038.img",
-      "latest_url": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
-      "latest_path": "files/departement/d038/latest/IGN-BDTOPO-D038.img"
+      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img"
     },
     "departement/d974": {
       "type": "departement",
@@ -63,11 +62,11 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-29T09:16:15Z",
-          "size_bytes": 50603008,
-          "sha256": "5c9e45eac6cee775dcfb4ac5810ef9b9b59e08d72363eb1618a27a84ba5ccb09",
+          "published_at": "2026-04-29T21:08:12Z",
+          "size_bytes": 61908992,
+          "sha256": "64db5f6a397fe55c6a3165ba1db72367c00137062d65e2ac5a446009d7428a11",
           "file": "IGN-BDTOPO-LA-REUNION-v2026.03.img",
-          "path": "https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img",
+          "path": "files/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img",
           "build_params": {
             "zones": "D974",
             "base_id": "974",
@@ -106,11 +105,64 @@
         }
       ],
       "latest_file": "IGN-BDTOPO-LA-REUNION.img",
-      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img"
+      "latest_url": "files/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img",
+      "latest_path": "files/departement/d974/latest/IGN-BDTOPO-LA-REUNION.img"
+    },
+    "departement/d069": {
+      "type": "departement",
+      "slug": "d069",
+      "label": "Départements: D069",
+      "latest": "v2026.03",
+      "versions": [
+        {
+          "version": "v2026.03",
+          "published_at": "2026-04-29T10:37:45Z",
+          "size_bytes": 107091968,
+          "sha256": "b17af11cfdf40f5f540f8ddb6c14bef80cc4660da425665e29936dab7a4a5978",
+          "file": "IGN-BDTOPO-D069-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d069/v2026.03/IGN-BDTOPO-D069-v2026.03.img",
+          "build_params": {
+            "zones": "D069",
+            "base_id": "69",
+            "year": "2026",
+            "version": "v2026.03",
+            "family_id": "69",
+            "family_name": "IGN-BDTOPO-D069-v2026.03",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "jobs": "8",
+            "mpforge_jobs": "8",
+            "imgforge_jobs": "8",
+            "series_name": "IGN-BDTOPO-MAP",
+            "code_page": "1252",
+            "levels": "24,23,22,21,20,18,16",
+            "typ_file": "./pipeline/resources/typfiles/I2023100.typ",
+            "packaging": "legacy",
+            "product_id": "1",
+            "publish_target": "s3",
+            "reduce_point_density": "",
+            "simplify_polygons": "",
+            "min_size_polygon": "",
+            "merge_lines": "false",
+            "with_dem": "true",
+            "with_route": "true",
+            "with_net": "false",
+            "draw_priority": "",
+            "transparent": "false",
+            "order_by_decreasing_area": "false",
+            "no_round_coords": "false",
+            "no_size_filter": "false",
+            "no_remove_obsolete_points": "false",
+            "keep_going": "false",
+            "dem_dists": "",
+            "dem_interpolation": ""
+          }
+        }
+      ],
+      "latest_file": "IGN-BDTOPO-D069.img",
+      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d069/v2026.03/IGN-BDTOPO-D069-v2026.03.img"
     }
   },
   "storage": {
-    "type": "s3",
-    "endpoint_public": "https://download-maps.garmin.allfabox.fr"
+    "type": "local"
   }
 }

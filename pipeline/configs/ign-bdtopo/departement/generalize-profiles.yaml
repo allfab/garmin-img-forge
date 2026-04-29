@@ -61,7 +61,7 @@ profiles:
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
-        values: [Nationale]
+        values: [Nationale, "Nationale/Route nommée"]
         levels:
           - { n: 0 }
           - { n: 1, simplify_vw: 0.000001 }
@@ -71,7 +71,7 @@ profiles:
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
       - field: CL_ADMIN
-        values: [Départementale]
+        values: [Départementale, "Départementale/Route nommée"]
         levels:
           - { n: 0 }
           - { n: 1, simplify_vw: 0.000001 }

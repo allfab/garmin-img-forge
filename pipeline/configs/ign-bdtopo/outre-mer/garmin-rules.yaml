@@ -23,37 +23,65 @@ rulesets:
       # 2. Nationale (hors Rond-point)
       - match:
           CL_ADMIN: "Nationale"
-          NATURE: "!Rond-point"
         set:
           Type: "0x04"
-          EndLevel: "4"
+          EndLevel: "5"
           Label: "~[0x05]${NUMERO}"
 
-      # 3. Nationale Rond-point (pas de label)
       - match:
-          CL_ADMIN: "Nationale"
-          NATURE: "Rond-point"
+          CL_ADMIN: "Nationale/Route nommée"
         set:
           Type: "0x04"
-          EndLevel: "4"
+          EndLevel: "5"
+          Label: "~[0x05]${NUMERO}"
+
+      # - match:
+      #     CL_ADMIN: "Nationale"
+      #     NATURE: "!Rond-point"
+      #   set:
+      #     Type: "0x06"
+      #     EndLevel: "4"
+      #     Label: "~[0x05]${NUMERO}"
+
+      # 3. Nationale Rond-point (pas de label)
+      # - match:
+      #     CL_ADMIN: "Nationale"
+      #     NATURE: "Rond-point"
+      #   set:
+      #     Type: "0x04"
+      #     EndLevel: "6"
 
       # 4. Departementale (hors Rond-point)
       - match:
           CL_ADMIN: "Départementale"
-          NATURE: "!Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "4"
+          EndLevel: "5"
           Label: "~[0x06]${NUMERO}"
+
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # - match:
+      #     CL_ADMIN: "Départementale"
+      #     NATURE: "!Rond-point"
+      #   set:
+      #     Type: "0x05"
+      #     EndLevel: "5"
+      #     Label: "~[0x06]${NUMERO}"
 
       # 5. Departementale Rond-point — garde Type=0x05 (couleur RD),
       #    pas de label (cohérence avec rond-point Nationale).
-      - match:
-          CL_ADMIN: "Départementale"
-          NATURE: "Rond-point"
-        set:
-          Type: "0x05"
-          EndLevel: "4"
+      # - match:
+      #     CL_ADMIN: "Départementale"
+      #     NATURE: "Rond-point"
+      #   set:
+      #     Type: "0x05"
+      #     EndLevel: "5"
 
       # 6. Route intercommunale (toute NATURE)
       - match:
@@ -319,7 +347,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x18"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${NOM_C_EAU}"
 
   # ==========================================================================
@@ -1510,7 +1538,7 @@ rulesets:
           NATURE: "Sommet"
         set:
           Type: "0x06616"
-          EndLevel: "0"
+          EndLevel: "5"
           Label: "${GRAPHIE}"
 
       # 45. Terril
@@ -1546,7 +1574,7 @@ rulesets:
           NATURE: "Volcan"
         set:
           Type: "0x06608"
-          EndLevel: "0"
+          EndLevel: "6"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -1560,7 +1588,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x0660a"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -3454,3 +3482,17 @@ rulesets:
         set:
           Type: "0x1101e"
           EndLevel: "0"
+
+  # ==========================================================================
+  # SEA — Polygones de mer (bounds D974, EPSG:4326)
+  # Source : pipeline/resources/bounds/D974/D974_SEA.shp
+  # Catch-all : toutes les features reçoivent le type mer (0x32).
+  # ==========================================================================
+  - name: "Mer (SEA bounds)"
+    source_layer: "SEA"
+    rules:
+      - match:
+          NAME: "*"
+        set:
+          Type: "0x32"
+          EndLevel: "6"
