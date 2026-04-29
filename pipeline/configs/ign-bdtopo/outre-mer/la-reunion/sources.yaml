@@ -239,6 +239,16 @@ inputs:
       buffer: 500
 
   # ==========================================================================
+  # CADASTRE — Piscines privées (SYM=65, TSURF_id)
+  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
+  # Construit par : ./scripts/download-data.sh --with-pools (ou --with-cadastre)
+  # Déjà en EPSG:4326 — pas de reprojection. Filtre attributaire : SYM='65'
+  # ==========================================================================
+  - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
+    layer_alias: "TSURF_id"
+    attribute_filter: "SYM = '65'"
+
+  # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
   # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
   # Déjà en EPSG:4326 — pas de reprojection nécessaire
@@ -278,6 +288,7 @@ header:
   preprocess: "F"
   lbl_coding: "9"
   routing: "Y"
+  elevation: "M"
 
 # Règles de transformation BDTOPO → types Garmin
 rules: pipeline/configs/ign-bdtopo/outre-mer/garmin-rules.yaml

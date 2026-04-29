@@ -17,7 +17,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
         set:
           Type: "0x01"
-          EndLevel: "4"
+          EndLevel: "6"
           Label: "~[0x04]${NUMERO}"
 
       # 2. Nationale (hors Rond-point)
@@ -105,7 +105,7 @@ rulesets:
           NATURE: "Type autoroutier"
         set:
           Type: "0x01"
-          EndLevel: "4"
+          EndLevel: "6"
           Label: "~[0x04]${NUMERO}"
 
       # 13. Chemin
@@ -936,43 +936,43 @@ rulesets:
     source_layer: "ZONE_DE_VEGETATION"
     label_case: "title"
     rules:
-      # 1. Bois (EndLevel=6, Label statique)
+      # 1. Bois (EndLevel=3, Label statique)
       - match:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "6"
+          EndLevel: "3"
           Label: "Bois"
 
-      # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
+      # 2. Foret fermee de coniferes (EndLevel=3, Label raccourci)
       - match:
           NATURE: "Forêt fermée de conifères"
         set:
           Type: "0x10f1f"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "Forêt de conifères"
 
-      # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
+      # 3. Foret fermee de feuillus (EndLevel=3, Label raccourci)
       - match:
           NATURE: "Forêt fermée de feuillus"
         set:
           Type: "0x10f1e"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "Forêt de feuillus"
 
-      # 4. Foret fermee mixte (EndLevel=6, pas de Label)
+      # 4. Foret fermee mixte (EndLevel=3, pas de Label)
       - match:
           NATURE: "Forêt fermée mixte"
         set:
           Type: "0x4e"
-          EndLevel: "4"
+          EndLevel: "3"
 
-      # 5. Foret ouverte (EndLevel=6, pas de Label)
+      # 5. Foret ouverte (EndLevel=3, pas de Label)
       - match:
           NATURE: "Forêt ouverte"
         set:
           Type: "0x11000"
-          EndLevel: "4"
+          EndLevel: "3"
 
       # 6. Haie (EndLevel=4, pas de Label)
       - match:
@@ -1069,7 +1069,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10a04"
-          EndLevel: "2"
+          EndLevel: "4"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -1124,7 +1124,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x02d0b"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -3440,3 +3440,17 @@ rulesets:
         set:
           Type: "0x10f04"
           EndLevel: "4"
+
+  # ==========================================================================
+  # CADASTRE — Piscines privées (TSURF_id, SYM=65)
+  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
+  # Pas de Label (TSURF_id ne porte pas de nom).
+  # ==========================================================================
+  - name: "Piscines cadastre"
+    source_layer: "TSURF_id"
+    rules:
+      - match:
+          SYM: "65"
+        set:
+          Type: "0x1101e"
+          EndLevel: "0"
