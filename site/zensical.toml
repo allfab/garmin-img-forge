@@ -101,7 +101,8 @@ Installation = [
   { "France métropolitaine" = "telechargements/france.md" },
   { "Par région" = "telechargements/regions.md" },
   { "Par département" = "telechargements/departement.md" },
-  { "Outre-mer" = "telechargements/outre-mer.md" }
+  { "Outre-mer" = "telechargements/outre-mer.md" },
+  { "Installation sur carte SD" = "telechargements/installation-carte-sd.md" }
 ]
 
 [[nav]]
