@@ -47,8 +47,13 @@
         label = prevCell ? prevCell.textContent.trim() : "carte-inconnue";
       }
 
+      var filename = link.getAttribute("href").split("/").pop() || "";
+
       link.setAttribute("data-umami-event", "download-carte");
       link.setAttribute("data-umami-event-carte", slugify(label));
+      if (filename) {
+        link.setAttribute("data-umami-event-fichier", filename);
+      }
     });
   }
 
