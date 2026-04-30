@@ -97,6 +97,7 @@
 
     links.forEach(function (link) {
       if (link.dataset.umamiEvent) return;
+      if (link.classList.contains("zn-donate-fab") || link.classList.contains("zn-donate-inline")) return;
 
       var url;
       try {
