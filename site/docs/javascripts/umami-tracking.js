@@ -30,15 +30,21 @@
       if (!/t[ée]l[ée]charger/i.test(text)) return;
 
       var card = link.closest(".card") || link.closest("li");
-      if (!card) return;
+      var cell = !card ? link.closest("td") : null;
+      if (!card && !cell) return;
 
-      var heading =
-        card.querySelector("h2, h3, h4, p:first-child, .card-title");
-      var label = heading ? heading.textContent.trim() : "";
-
-      if (!label) {
-        var strong = card.querySelector("strong");
-        label = strong ? strong.textContent.trim() : "carte-inconnue";
+      var label = "";
+      if (card) {
+        var heading = card.querySelector("h2, h3, h4, p:first-child, .card-title");
+        label = heading ? heading.textContent.trim() : "";
+        if (!label) {
+          var strong = card.querySelector("strong");
+          label = strong ? strong.textContent.trim() : "carte-inconnue";
+        }
+      } else {
+        // Table : label = cellule précédente (colonne "Département" / "Territoire")
+        var prevCell = cell.previousElementSibling;
+        label = prevCell ? prevCell.textContent.trim() : "carte-inconnue";
       }
 
       link.setAttribute("data-umami-event", "download-carte");
