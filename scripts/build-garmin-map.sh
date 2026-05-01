@@ -66,7 +66,7 @@ FAMILY_NAME=""          # Auto-calculé : IGN-BDTOPO-{ZONES}-{VERSION}
 SERIES_NAME="IGN-BDTOPO-MAP"
 CODE_PAGE=1252
 LEVELS="24,22,20,18,16"
-TYP_FILE="pipeline/resources/typfiles/I2023100.typ"
+TYP_FILE="pipeline/resources/typfiles/IGNBDTOPO.typ"
 COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
 
 # imgforge — optimisation taille IMG (opt-in, off par défaut)
@@ -365,7 +365,7 @@ IMGFORGE :
     --series-name STR       Nom de la série (défaut: IGN-BDTOPO-MAP)
     --code-page N           Code page encodage (défaut: 1252)
     --levels STR            Niveaux de zoom (défaut: 24,22,20,18,16)
-    --typ FILE              Fichier TYP styles (défaut: pipeline/resources/typfiles/I2023100.typ)
+    --typ FILE              Fichier TYP styles (défaut: pipeline/resources/typfiles/IGNBDTOPO.typ)
     --copyright STR         Message copyright
     --no-route              Désactiver le routage
     --no-dem                Désactiver le DEM (relief ombré)
