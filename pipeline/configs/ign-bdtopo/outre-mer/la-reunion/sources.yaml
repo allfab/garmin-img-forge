@@ -259,11 +259,11 @@ inputs:
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : ./pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
+  # Source : ./pipeline/data/hiking-trails/MON_GR_ITINERAIRE_RE.shp
   # Déjà en EPSG:4326 — pas de reprojection nécessaire
   # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
   # ==========================================================================
-  - path: "${HIKING_TRAILS_DATA_ROOT}/FRANCE-GR.shp"
+  - path: "${HIKING_TRAILS_DATA_ROOT}/MON_GR_ITINERAIRE_RE.shp"
     layer_alias: "FRANCE_GR"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
@@ -280,7 +280,7 @@ output:
 # avec padding optionnel {col:03}
 header:
   name: "BDTOPO-{col:03}-{row:03}"
-  copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2026 - Les contributeurs de la communauté OpenStreetMap"
   levels: "7"
   level0: "24"
   level1: "23"
