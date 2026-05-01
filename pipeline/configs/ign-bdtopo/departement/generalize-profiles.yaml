@@ -54,9 +54,9 @@ profiles:
         values: [Autoroute]
         levels:
           - { n: 0 }
-          - { n: 1, simplify_vw: 0.000001 }
-          - { n: 2, simplify_vw: 0.000002 }
-          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
           - { n: 4, simplify_vw: 0.000010 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
@@ -64,9 +64,9 @@ profiles:
         values: [Nationale, "Nationale/Route nommée"]
         levels:
           - { n: 0 }
-          - { n: 1, simplify_vw: 0.000001 }
-          - { n: 2, simplify_vw: 0.000002 }
-          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
           - { n: 4, simplify_vw: 0.000010 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
@@ -74,9 +74,9 @@ profiles:
         values: [Départementale, "Départementale/Route nommée"]
         levels:
           - { n: 0 }
-          - { n: 1, simplify_vw: 0.000001 }
-          - { n: 2, simplify_vw: 0.000002 }
-          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
           - { n: 4, simplify_vw: 0.000010 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
@@ -84,9 +84,9 @@ profiles:
         values: [Communale, "Sans objet"]
         levels:
           - { n: 0 }
-          - { n: 1, simplify_vw: 0.000001 }
-          - { n: 2, simplify_vw: 0.000002 }
-          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
           - { n: 4, simplify_vw: 0.000010 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
@@ -94,17 +94,17 @@ profiles:
         values: [Chemin, Sentier]
         levels:
           - { n: 0 }
-          - { n: 1, simplify_vw: 0.000001 }
-          - { n: 2, simplify_vw: 0.000002 }
-          - { n: 3, simplify_vw: 0.000003 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
           - { n: 4, simplify_vw: 0.000010 }
           - { n: 5, simplify_vw: 0.000100 }
           - { n: 6, simplify_vw: 0.000300 }
     levels:
       - { n: 0 }
-      - { n: 1, simplify_vw: 0.000001 }
-      - { n: 2, simplify_vw: 0.000002 }
-      - { n: 3, simplify_vw: 0.000003 }
+      - { n: 1 }
+      - { n: 2, simplify_vw: 0.000001 }
+      - { n: 3, simplify_vw: 0.000002 }
       - { n: 4, simplify_vw: 0.000010 }
       - { n: 5, simplify_vw: 0.000100 }
       - { n: 6, simplify_vw: 0.000300 }
@@ -153,9 +153,9 @@ profiles:
     # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
     # Paliers n=0..4 uniquement — imgforge ne rend pas au-delà de EndLevel.
     levels:
-      - { n: 0, simplify: 0.00001 }
-      - { n: 1, simplify: 0.00002 }
-      - { n: 2, simplify: 0.00008 }
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00005 }
       - { n: 3, simplify: 0.00010 }
       - { n: 4, simplify: 0.00020 }
 

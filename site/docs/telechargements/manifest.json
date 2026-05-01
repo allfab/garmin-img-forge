@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-29T21:15:10Z",
+  "generated_at": "2026-05-01T21:37:31Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,9 +9,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-29T10:35:35Z",
-          "size_bytes": 176988160,
-          "sha256": "7385888fe02fccebe6c2d5e7d69fea71929e4c00cd9b2a7a0a537f8e84f7bf7f",
+          "published_at": "2026-05-01T21:19:19Z",
+          "size_bytes": 177025024,
+          "sha256": "727688079cd9f74f2b9b90c8707cfcb5024df8a701193cfc76a895d5d287b7e8",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
@@ -28,7 +28,7 @@
             "series_name": "IGN-BDTOPO-MAP",
             "code_page": "1252",
             "levels": "24,23,22,21,20,18,16",
-            "typ_file": "./pipeline/resources/typfiles/I2023100.typ",
+            "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
             "packaging": "legacy",
             "product_id": "1",
             "publish_target": "s3",
@@ -62,9 +62,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-04-29T21:15:10Z",
-          "size_bytes": 61913088,
-          "sha256": "df7236dab7824eeae043cb9cd1d5d9bd6cc2311b4ae71ccc3a3ec9f09bace408",
+          "published_at": "2026-05-01T21:37:31Z",
+          "size_bytes": 62014464,
+          "sha256": "41752b2f04610c2b02ff5669d6bb8f49698b330c3c1be8044d6744be16930cbb",
           "file": "IGN-BDTOPO-LA-REUNION-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d974/v2026.03/IGN-BDTOPO-LA-REUNION-v2026.03.img",
           "build_params": {
@@ -81,7 +81,7 @@
             "series_name": "IGN-BDTOPO-MAP",
             "code_page": "1252",
             "levels": "24,23,22,21,20,18,16",
-            "typ_file": "./pipeline/resources/typfiles/I2023100.typ",
+            "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
             "packaging": "legacy",
             "product_id": "1",
             "publish_target": "s3",
