@@ -1,0 +1,205 @@
+[_id]
+ProductCode=1
+FID=1200
+CodePage=1252
+[End]
+
+[_drawOrder]
+; Ordre de rendu polygones — fond en premier, détails par-dessus
+Type=0x50,1
+Type=0x17,2
+Type=0x52,2
+Type=0x3f,3
+Type=0x03,4
+Type=0x1101c,5
+Type=0x10f20,5
+Type=0x10f1a,5
+[End]
+
+; ===========================================================================
+; LIGNES — types non-standard (0x10xxx)
+; ===========================================================================
+
+[_line]
+Type=0x10c00
+UseOrientation=Y
+LineWidth=2
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #B7484B"
+"2 c #834D54"
+[end]
+
+[_line]
+Type=0x10e03
+UseOrientation=Y
+LineWidth=1
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #B7484B"
+"2 c #834D54"
+[end]
+
+[_line]
+Type=0x10e06
+UseOrientation=Y
+LineWidth=1
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #808080"
+"2 c #505050"
+[end]
+
+[_line]
+Type=0x10f0a
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #FFAA00"
+"2 c #FF7700"
+[end]
+
+[_line]
+Type=0x10f0b
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #444444"
+"2 c #222222"
+[end]
+
+[_line]
+Type=0x10f0c
+UseOrientation=N
+LineWidth=1
+BorderWidth=0
+Xpm="0 0 2 0"
+"1 c #888888"
+"2 c #555555"
+[end]
+
+; ===========================================================================
+; POLYGONES — types non-standard (0x10xxx)
+; ===========================================================================
+
+[_polygon]
+Type=0x1101c
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #E15989"
+"2 c #A14062"
+[end]
+
+[_polygon]
+Type=0x10f20
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #E8718D"
+"2 c #A65165"
+[end]
+
+[_polygon]
+Type=0x10f1a
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #CCCCCC"
+"2 c #999999"
+[end]
+
+[_polygon]
+Type=0x10f09
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #FFEECC"
+"2 c #BBAA88"
+[end]
+
+[_polygon]
+Type=0x10f0b
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #FFEECC"
+"2 c #BBAA88"
+[end]
+
+[_polygon]
+Type=0x10f11
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #DDDDDD"
+"2 c #888888"
+[end]
+
+[_polygon]
+Type=0x10f06
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #AACCEE"
+"2 c #6699BB"
+[end]
+
+[_polygon]
+Type=0x10f05
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #DDEEDD"
+"2 c #99BB99"
+[end]
+
+[_polygon]
+Type=0x10f0c
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #888888"
+"2 c #555555"
+[end]
+
+[_polygon]
+Type=0x10f0d
+ExtendedLabels=Y
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 2 0"
+"1 c #FFDDAA"
+"2 c #BB9966"
+[end]

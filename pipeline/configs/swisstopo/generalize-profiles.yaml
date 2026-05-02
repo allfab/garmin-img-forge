@@ -1,0 +1,161 @@
+# Profils de simplification — scope swisstopo (tuiles SMV10).
+#
+# Calqué sur pipeline/configs/ign-bdtopo/departement/generalize-profiles.yaml.
+# Noms de couches BDTOPO → équivalents SMV10 ; tolérances identiques.
+#
+# Seul changement structurel : le dispatch `when` de T45_DKM10_STRASSE
+# utilise field: OBJEKTART (au lieu de CL_ADMIN) avec les catégories SMV10.
+#
+# Header cible : 24/23/22/21/20/18/16 (7 niveaux).
+# Contraintes : paliers contigus n=0..max(EndLevel) obligatoires.
+# Profils limités à max(EndLevel) de leurs rulesets pour éviter les passes DP
+# inutiles. Les couches de type POINT n'ont pas de profil (géométrie non simplifiable).
+
+profiles:
+  T57_DKM10_GEWAESSER_LIN:
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  T65_DKM10_BODENBEDECKUNG:
+    # EndLevel=4 max (Wald) — n=0..4 uniquement (F4)
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+
+  T45_DKM10_STRASSE:
+    topology: true
+    when:
+      - field: OBJEKTART
+        values: [Autobahn]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: OBJEKTART
+        values: [10m_Strasse]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: OBJEKTART
+        values: [8m_Strasse, 6m_Strasse]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: OBJEKTART
+        values: [4m_Strasse, 3m_Strasse, Zufahrt, Dienstzufahrt]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: OBJEKTART
+        values: [2m_Weg, 1m_Weg, 2m_Wegfragment, 1m_Wegfragment, Markierte_Spur]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify_vw: 0.000001 }
+      - { n: 3, simplify_vw: 0.000002 }
+      - { n: 4, simplify_vw: 0.000010 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
+
+  T62_DKM10_HOEHENKURVE:
+    # Normalkurve EndLevel=0, Zaehlkurve EndLevel=1 — n=0..1 uniquement (F3+F10)
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00002 }
+
+  T40_DKM10_BAUTE_LIN:
+    levels:
+      - { n: 0, simplify: 0.00003 }
+      - { n: 1, simplify: 0.00004 }
+      - { n: 2, simplify: 0.00006 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  T56_DKM10_GEWAESSER_PLY:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00007 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  DKM10_SIEDLUNGSNAME:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  T44_DKM10_EISENBAHN:
+    # EndLevel=4 max — paliers n=0..4 uniquement.
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00005 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
+
+  T46_DKM10_EISENBAHN_TUNNEL:
+    # EndLevel=4 max (Normalspur) — calqué sur T44 (F5)
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00005 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
+
+  T53_DKM10_HOHEITSGRENZE:
+    # EndLevel=5 max (Kantonsgrenze) — paliers n=0..5 (F8)
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00010 }
+      - { n: 3, simplify: 0.00030 }
+      - { n: 4, simplify: 0.00080 }
+      - { n: 5, simplify: 0.00100 }
+
+  # DKM10_HOHEITSGEBIET_ZENTROID est de type POINT — simplify_vw ignoré silencieusement
+  # par mpforge (geometry_smoother retourne 0 buckets pour les points). Profil supprimé (F2).

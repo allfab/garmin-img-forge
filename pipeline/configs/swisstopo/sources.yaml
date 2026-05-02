@@ -1,0 +1,89 @@
+version: 1
+
+# Profils de simplification — scope swisstopo.
+# Résolu relativement à ce fichier.
+generalize_profiles_path: "./generalize-profiles.yaml"
+
+grid:
+  cell_size: 0.15   # ~17 km par tuile mp (une tuile SMV10 ~14×15 km)
+  overlap: 0.005
+
+inputs:
+  # ==========================================================================
+  # GPKG multi-couches SMV10 — un seul fichier par tuile, 20 couches sélectionnées.
+  # Path pattern : DATA_ROOT/{TILE_IDS}/swiss-map-vector10_*_{TILE_IDS}_2056.gpkg
+  # Projection source : EPSG:2056 (CH1903+ / LV95) → EPSG:4326 (WGS84).
+  #
+  # Format multi-layer GPKG : 1 entrée + liste `layers:` (clé correcte pour GPKG
+  # avec plusieurs couches — layer_alias ne sélectionne pas la couche GDAL).
+  #
+  # T36_DKM10_EINZELBAUM (arbres isolés, 86 331 feat/tuile) exclu de la config
+  # de base pour garder les IMG légers.
+  # Couches vides tuile 1167 (T52, T55, T54, T50) gérées par error_handling: continue.
+  # ==========================================================================
+
+  - path: "${DATA_ROOT}/${TILE_IDS}/swiss-map-vector10_*_${TILE_IDS}_2056.gpkg"
+    source_srs: "EPSG:2056"
+    target_srs: "EPSG:4326"
+    layers:
+      # TRANSPORT
+      - "T45_DKM10_STRASSE"
+      - "T44_DKM10_EISENBAHN"
+      - "T46_DKM10_EISENBAHN_TUNNEL"
+      - "T42_DKM10_OEV_LIN"
+      # BÂTI
+      - "T48_DKM10_GEBAEUDE"
+      - "T60_DKM10_BAUTE_PLY"
+      - "T40_DKM10_BAUTE_LIN"
+      # HYDROGRAPHIE
+      - "T56_DKM10_GEWAESSER_PLY"
+      - "T57_DKM10_GEWAESSER_LIN"
+      # OROGRAPHIE
+      - "T62_DKM10_HOEHENKURVE"
+      - "T38_DKM10_HOEHENKOTE"
+      # VÉGÉTATION / OCCUPATION SOL
+      - "T65_DKM10_BODENBEDECKUNG"
+      - "T64_DKM10_NUTZUNGSAREAL"
+      # LOISIRS / TRAFIC
+      - "T63_DKM10_FREIZEITAREAL"
+      - "T61_DKM10_VERKEHRSAREAL"
+      # ADMINISTRATIF
+      - "T53_DKM10_HOHEITSGRENZE"
+      # LIEUX NOMMÉS
+      - "DKM10_SIEDLUNGSNAME"
+      - "DKM10_HOHEITSGEBIET_ZENTROID"
+      # BÂTI POI / OROGRAPHIE POI
+      - "T32_DKM10_BAUTE_PKT"
+      - "T39_DKM10_MORPH_KLEINFORM_PKT"
+
+output:
+  directory: "${OUTPUT_DIR}/mp/"
+  filename_pattern: "SMV10-{col:03}-{row:03}.mp"
+  overwrite: true
+  base_id: ${BASE_ID}
+
+# Header MP — même 7 niveaux que tous les scopes de production (24/23/22/21/20/18/16)
+header:
+  name: "SMV10-{col:03}-{row:03}"
+  copyright: "2026 Allfab Studio - SwissTopo Swiss Map Vector 10 2025"
+  levels: "7"
+  level0: "24"
+  level1: "23"
+  level2: "22"
+  level3: "21"
+  level4: "20"
+  level5: "18"
+  level6: "16"
+  simplify_level: "0"
+  tree_size: "1000"
+  rgn_limit: "1024"
+  transparent: "N"
+  marine: "N"
+  preprocess: "F"
+  lbl_coding: "9"
+  routing: "Y"
+  elevation: "M"
+
+rules: ./pipeline/configs/swisstopo/garmin-rules.yaml
+
+error_handling: "continue"
