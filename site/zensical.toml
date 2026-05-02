@@ -109,12 +109,17 @@ Installation = [
 "Soutenir le projet" = "soutenir/index.md"
 
 [[nav]]
-"À propos" = "a-propos/index.md"
+"À propos" = [
+  { "À propos" = "a-propos/index.md" },
+  { "Mentions légales & RGPD" = "mentions-legales/index.md" },
+  { "CGU" = "cgu/index.md" },
+  { "Conditions de soutien" = "cgv/index.md" }
+]
 
 
 [extra]
 generator = false
-copyright = "Documentation sous licence <a href=\"https://creativecommons.org/licenses/by-sa/4.0/deed.fr\">CC BY-SA 4.0</a> — Outils sous licences MIT et GPL v3"
+copyright = "Documentation sous licence <a href=\"https://creativecommons.org/licenses/by-sa/4.0/deed.fr\">CC BY-SA 4.0</a> — Outils sous licences MIT et GPL v3 &nbsp;|&nbsp; <a href=\"/mentions-legales/\">Mentions légales</a> &nbsp;·&nbsp; <a href=\"/cgu/\">CGU</a> &nbsp;·&nbsp; <a href=\"/cgv/\">Conditions de soutien</a>"
 comentario_url = "https://comentario.allfabox.fr/comentario.js"
 
 [[extra.social]]
