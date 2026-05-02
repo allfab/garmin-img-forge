@@ -15,7 +15,7 @@ signalés *Non disponible* par le site.
 
 | Code | Département | Téléchargement |
 |------|-------------|----------------|
-| D001 | Ain | [:material-download: Télécharger](files/departement/d001/latest/IGN-BDTOPO-D001.img){ .md-button } |
+| D001 | Ain | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d001/v2026.03/IGN-BDTOPO-D001-v2026.03.img){ .md-button } |
 | D002 | Aisne | [:material-download: Télécharger](files/departement/d002/latest/IGN-BDTOPO-D002.img){ .md-button } |
 | D003 | Allier | [:material-download: Télécharger](files/departement/d003/latest/IGN-BDTOPO-D003.img){ .md-button } |
 | D004 | Alpes-de-Haute-Provence | [:material-download: Télécharger](files/departement/d004/latest/IGN-BDTOPO-D004.img){ .md-button } |

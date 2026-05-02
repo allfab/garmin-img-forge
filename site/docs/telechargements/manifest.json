@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-01T21:37:31Z",
+  "generated_at": "2026-05-01T22:09:05Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -159,6 +159,59 @@
       ],
       "latest_file": "IGN-BDTOPO-D069.img",
       "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d069/v2026.03/IGN-BDTOPO-D069-v2026.03.img"
+    },
+    "departement/d001": {
+      "type": "departement",
+      "slug": "d001",
+      "label": "Départements: D001",
+      "latest": "v2026.03",
+      "versions": [
+        {
+          "version": "v2026.03",
+          "published_at": "2026-05-01T22:09:05Z",
+          "size_bytes": 99846144,
+          "sha256": "6dbac5ec51b73ad392ba4c0a0f4b35e054d161655b618396ef01e21454826283",
+          "file": "IGN-BDTOPO-D001-v2026.03.img",
+          "path": "https://download-maps.garmin.allfabox.fr/departement/d001/v2026.03/IGN-BDTOPO-D001-v2026.03.img",
+          "build_params": {
+            "zones": "D001",
+            "base_id": "1",
+            "year": "2026",
+            "version": "v2026.03",
+            "family_id": "1",
+            "family_name": "IGN-BDTOPO-D001-v2026.03",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "jobs": "8",
+            "mpforge_jobs": "8",
+            "imgforge_jobs": "8",
+            "series_name": "IGN-BDTOPO-MAP",
+            "code_page": "1252",
+            "levels": "24,23,22,21,20,18,16",
+            "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
+            "packaging": "legacy",
+            "product_id": "1",
+            "publish_target": "s3",
+            "reduce_point_density": "",
+            "simplify_polygons": "",
+            "min_size_polygon": "",
+            "merge_lines": "false",
+            "with_dem": "true",
+            "with_route": "true",
+            "with_net": "false",
+            "draw_priority": "",
+            "transparent": "false",
+            "order_by_decreasing_area": "false",
+            "no_round_coords": "false",
+            "no_size_filter": "false",
+            "no_remove_obsolete_points": "false",
+            "keep_going": "false",
+            "dem_dists": "",
+            "dem_interpolation": ""
+          }
+        }
+      ],
+      "latest_file": "IGN-BDTOPO-D001.img",
+      "latest_url": "https://download-maps.garmin.allfabox.fr/departement/d001/v2026.03/IGN-BDTOPO-D001-v2026.03.img"
     }
   },
   "storage": {
