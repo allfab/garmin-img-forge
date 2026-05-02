@@ -1,0 +1,152 @@
+import { ScrollView, Button, LineEdit, ComboBox, StandardListView } from "std-widgets.slint";
+
+export component LeftPanel inherits Rectangle {
+    width: 260px;
+    background: #eeeeee;
+
+    in-out property <string> meta-family-id: "0";
+    in-out property <string> meta-product-code: "1";
+    in-out property <string> meta-header-str: "";
+    in-out property <int>    meta-codepage: 1252;
+
+    in property <[StandardListViewItem]> polygons-model: [];
+    in property <[StandardListViewItem]> lines-model: [];
+    in property <[StandardListViewItem]> points-model: [];
+    in property <[StandardListViewItem]> extra-pois-model: [];
+    in property <[StandardListViewItem]> draworder-model: [];
+
+    in-out property <int> active-list-selection: -1;
+
+    callback add-element(int);
+    callback edit-element(int, int);
+    callback delete-element(int, int);
+    callback element-selected(int, int);
+    callback edit-draworder();
+
+    ScrollView {
+        VerticalLayout {
+            padding: 4px;
+            spacing: 4px;
+            alignment: start;
+
+            // ── Métadonnées ──────────────────────────────
+            Rectangle {
+                height: 20px;
+                background: #c8c8c8;
+                border-radius: 2px;
+                Text { text: "Métadonnées [_id]"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            HorizontalLayout { spacing: 4px;
+                Text { text: "FID:"; font-size: 11px; width: 70px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-family-id; }
+            }
+            HorizontalLayout { spacing: 4px;
+                Text { text: "Product:"; font-size: 11px; width: 70px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-product-code; }
+            }
+            HorizontalLayout { spacing: 4px;
+                Text { text: "CodePage:"; font-size: 11px; width: 70px; vertical-alignment: center; }
+                ComboBox {
+                    model: ["1252 (CP1252)", "65001 (UTF-8)"];
+                    current-index: root.meta-codepage == 65001 ? 1 : 0;
+                    selected(v) => { root.meta-codepage = v == "65001 (UTF-8)" ? 65001 : 1252; }
+                }
+            }
+            HorizontalLayout { spacing: 4px;
+                Text { text: "En-tête:"; font-size: 11px; width: 70px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-header-str; }
+            }
+
+            Rectangle { height: 4px; }
+
+            // ── Polygones ────────────────────────────────
+            Rectangle {
+                height: 20px; background: #b8d4f0; border-radius: 2px;
+                Text { text: "Polygones"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            poly-list := StandardListView {
+                height: 100px;
+                model: root.polygons-model;
+                current-item-changed(idx) => { root.element-selected(0, idx); }
+            }
+            HorizontalLayout { spacing: 2px;
+                Button { text: "+"; height: 22px; clicked => { root.add-element(0); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(0, poly-list.current-item); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(0, poly-list.current-item); } }
+            }
+
+            Rectangle { height: 4px; }
+
+            // ── Polylignes ────────────────────────────────
+            Rectangle {
+                height: 20px; background: #b8f0c0; border-radius: 2px;
+                Text { text: "Polylignes"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            line-list := StandardListView {
+                height: 100px;
+                model: root.lines-model;
+                current-item-changed(idx) => { root.element-selected(1, idx); }
+            }
+            HorizontalLayout { spacing: 2px;
+                Button { text: "+"; height: 22px; clicked => { root.add-element(1); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(1, line-list.current-item); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(1, line-list.current-item); } }
+            }
+
+            Rectangle { height: 4px; }
+
+            // ── POIs ─────────────────────────────────────
+            Rectangle {
+                height: 20px; background: #f0d8b8; border-radius: 2px;
+                Text { text: "POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            point-list := StandardListView {
+                height: 100px;
+                model: root.points-model;
+                current-item-changed(idx) => { root.element-selected(2, idx); }
+            }
+            HorizontalLayout { spacing: 2px;
+                Button { text: "+"; height: 22px; clicked => { root.add-element(2); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(2, point-list.current-item); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(2, point-list.current-item); } }
+            }
+
+            Rectangle { height: 4px; }
+
+            // ── Extra POIs ───────────────────────────────
+            Rectangle {
+                height: 20px; background: #e8c8e8; border-radius: 2px;
+                Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            icon-list := StandardListView {
+                height: 80px;
+                model: root.extra-pois-model;
+                current-item-changed(idx) => { root.element-selected(3, idx); }
+            }
+            HorizontalLayout { spacing: 2px;
+                Button { text: "+"; height: 22px; clicked => { root.add-element(3); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(3, icon-list.current-item); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(3, icon-list.current-item); } }
+            }
+
+            Rectangle { height: 4px; }
+
+            // ── DrawOrder ────────────────────────────────
+            Rectangle {
+                height: 20px; background: #c8c8c8; border-radius: 2px;
+                Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+            }
+            StandardListView {
+                height: 70px;
+                model: root.draworder-model;
+            }
+            Button {
+                text: "Modifier DrawOrder";
+                height: 24px;
+                clicked => { root.edit-draworder(); }
+            }
+
+            Rectangle { height: 8px; }
+        }
+    }
+}

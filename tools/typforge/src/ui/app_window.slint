@@ -1,0 +1,230 @@
+import { Button, HorizontalBox } from "std-widgets.slint";
+import { LeftPanel } from "left_panel.slint";
+import { Gallery, GalleryItem } from "gallery.slint";
+import { PreviewPanel } from "preview_panel.slint";
+
+export { GalleryItem }
+
+export component AppWindow inherits Window {
+    title: "typforge — TYP Editor";
+    min-width: 960px;
+    min-height: 640px;
+    background: #f0f0f0;
+
+    // Métadonnées (bi-directionnelles avec panneau gauche)
+    in-out property <string> meta-family-id: "";
+    in-out property <string> meta-product-code: "";
+    in-out property <string> meta-header-str: "";
+    in-out property <int>    meta-codepage: 1252;
+
+    // Listes éléments
+    in property <[StandardListViewItem]> polygons: [];
+    in property <[StandardListViewItem]> lines: [];
+    in property <[StandardListViewItem]> points: [];
+    in property <[StandardListViewItem]> extra-pois: [];
+    in property <[StandardListViewItem]> draworder: [];
+
+    // Galerie
+    in property <[GalleryItem]> gallery-items: [];
+
+    // Preview
+    in property <image> preview-day;
+    in property <image> preview-night;
+
+    // Compteurs barre navigation
+    in property <int> poly-count: 0;
+    in property <int> line-count: 0;
+    in property <int> point-count: 0;
+    in property <int> poi-count: 0;
+
+    // Onglet nav actif (0=Poly 1=Line 2=Point 3=Extra)
+    in-out property <int> active-nav-tab: 0;
+
+    // Callbacks fichiers
+    callback open-file();
+    callback save-file();
+    callback export-typ();
+    callback quit();
+
+    // Callbacks éléments
+    callback add-element(int);
+    callback edit-element(int, int);
+    callback delete-element(int, int);
+    callback element-selected(int, int);
+    callback edit-draworder();
+
+    // Callbacks galerie
+    callback gallery-item-selected(int, int);
+    callback gallery-tab-changed(int);
+
+    // Callback navigation
+    callback nav-tab-changed(int);
+
+    VerticalLayout {
+        // ── Barre d'outils ──────────────────────────────
+        Rectangle {
+            height: 38px;
+            background: #dcdcdc;
+            border-color: #b0b0b0;
+            border-width: 0px;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                Button {
+                    text: "Ouvrir";
+                    height: 28px;
+                    clicked => { root.open-file(); }
+                }
+                Button {
+                    text: "Enregistrer";
+                    height: 28px;
+                    clicked => { root.save-file(); }
+                }
+                Button {
+                    text: "Enregistrer .TYP";
+                    height: 28px;
+                    clicked => { root.export-typ(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    text: "Quitter";
+                    height: 28px;
+                    clicked => { root.quit(); }
+                }
+            }
+        }
+
+        // ── Barre navigation ────────────────────────────
+        Rectangle {
+            height: 38px;
+            background: #e4e4e4;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                Rectangle {
+                    width: 120px; height: 28px;
+                    border-radius: 4px;
+                    background: root.active-nav-tab == 0 ? #3080ff : #cccccc;
+                    Text {
+                        text: "Polygones [" + root.poly-count + "]";
+                        color: root.active-nav-tab == 0 ? #ffffff : #333333;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.active-nav-tab = 0;
+                            root.nav-tab-changed(0);
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 120px; height: 28px;
+                    border-radius: 4px;
+                    background: root.active-nav-tab == 1 ? #3080ff : #cccccc;
+                    Text {
+                        text: "Lignes [" + root.line-count + "]";
+                        color: root.active-nav-tab == 1 ? #ffffff : #333333;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.active-nav-tab = 1;
+                            root.nav-tab-changed(1);
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 120px; height: 28px;
+                    border-radius: 4px;
+                    background: root.active-nav-tab == 2 ? #3080ff : #cccccc;
+                    Text {
+                        text: "POIs [" + root.point-count + "]";
+                        color: root.active-nav-tab == 2 ? #ffffff : #333333;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.active-nav-tab = 2;
+                            root.nav-tab-changed(2);
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 120px; height: 28px;
+                    border-radius: 4px;
+                    background: root.active-nav-tab == 3 ? #3080ff : #cccccc;
+                    Text {
+                        text: "Pois+ [" + root.poi-count + "]";
+                        color: root.active-nav-tab == 3 ? #ffffff : #333333;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.active-nav-tab = 3;
+                            root.nav-tab-changed(3);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 3 panneaux ──────────────────────────────────
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            // Panneau gauche
+            left := LeftPanel {
+                width: 264px;
+                meta-family-id <=> root.meta-family-id;
+                meta-product-code <=> root.meta-product-code;
+                meta-header-str <=> root.meta-header-str;
+                meta-codepage <=> root.meta-codepage;
+                polygons-model: root.polygons;
+                lines-model: root.lines;
+                points-model: root.points;
+                extra-pois-model: root.extra-pois;
+                draworder-model: root.draworder;
+                add-element(kind) => { root.add-element(kind); }
+                edit-element(kind, idx) => { root.edit-element(kind, idx); }
+                delete-element(kind, idx) => { root.delete-element(kind, idx); }
+                element-selected(kind, idx) => { root.element-selected(kind, idx); }
+                edit-draworder => { root.edit-draworder(); }
+            }
+
+            // Séparateur vertical
+            Rectangle { width: 1px; background: #aaaaaa; }
+
+            // Galerie centrale
+            gallery := Gallery {
+                horizontal-stretch: 1;
+                items: root.gallery-items;
+                gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
+                gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
+            }
+
+            // Séparateur vertical
+            Rectangle { width: 1px; background: #aaaaaa; }
+
+            // Panneau droit preview
+            PreviewPanel {
+                width: 224px;
+                preview-day: root.preview-day;
+                preview-night: root.preview-night;
+            }
+        }
+    }
+}

@@ -1,0 +1,51 @@
+[_id]
+ProductCode=1
+FID=1100
+CodePage=1252
+[end]
+
+[_drawOrder]
+Type=0x054,1
+Type=0x06,2
+[end]
+
+[_polygon]
+Type=0x01
+ExtendedLabels=Y
+FontStyle=NoLabel
+Xpm="0 0 2 0"
+"1 c #E0E4E0"
+"2 c #101010"
+[end]
+
+[_line]
+Type=0x01
+UseOrientation=Y
+LineWidth=2
+BorderWidth=2
+Xpm="0 0 2 0"
+"1 c #F8FCF8"
+"2 c #0000F8"
+[end]
+
+[_point]
+Type=0x001
+SubType=0x00
+DayXpm="4 4 3 1"
+"! c #F8FCF8"
+"# c #000000"
+"  c none"
+" ## "
+"#!!#"
+"#!!#"
+" ## "
+NightXpm="4 4 2 1"
+"! c #000000"
+"# c #F8FCF8"
+" ## "
+"#!!#"
+"#!!#"
+" ## "
+String1=0x01,Ville
+String2=0x04,City
+[end]

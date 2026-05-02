@@ -1,0 +1,134 @@
+import { VerticalBox, HorizontalBox, ComboBox, Slider, ScrollView } from "std-widgets.slint";
+
+export component PreviewPanel inherits Rectangle {
+    width: 220px;
+    background: #f4f4f4;
+
+    in property <image> preview-day;
+    in property <image> preview-night;
+    in-out property <int> preview-mode: 0;    // 0=Single 1=Mosaic 2=Superposition
+    in-out property <float> zoom: 1.0;
+    in-out property <color> bg-color: #808080;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 6px;
+            spacing: 6px;
+            alignment: start;
+
+            // Mode selector
+            Rectangle {
+                background: #e0e0e0;
+                height: 22px;
+                Text { text: "Prévisualisation"; font-size: 11px; font-weight: 700; }
+            }
+
+            HorizontalLayout {
+                spacing: 2px;
+
+                Rectangle {
+                    width: 60px; height: 24px;
+                    background: root.preview-mode == 0 ? #4488ff : #cccccc;
+                    border-radius: 3px;
+                    Text { text: "Single"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 0 ? #ffffff : #000000; }
+                    TouchArea { clicked => { root.preview-mode = 0; } }
+                }
+                Rectangle {
+                    width: 60px; height: 24px;
+                    background: root.preview-mode == 1 ? #4488ff : #cccccc;
+                    border-radius: 3px;
+                    Text { text: "Mosaic"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 1 ? #ffffff : #000000; }
+                    TouchArea { clicked => { root.preview-mode = 1; } }
+                }
+                Rectangle {
+                    width: 60px; height: 24px;
+                    background: root.preview-mode == 2 ? #4488ff : #cccccc;
+                    border-radius: 3px;
+                    Text { text: "Super"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 2 ? #ffffff : #000000; }
+                    TouchArea { clicked => { root.preview-mode = 2; } }
+                }
+            }
+
+            // Zoom slider
+            HorizontalLayout {
+                spacing: 4px;
+                Text { text: "Zoom:"; font-size: 11px; vertical-alignment: center; width: 40px; }
+                Slider {
+                    horizontal-stretch: 1;
+                    minimum: 0.5;
+                    maximum: 4.0;
+                    value <=> root.zoom;
+                }
+            }
+
+            // Séparateur
+            Rectangle { height: 1px; background: #cccccc; }
+
+            // Preview Jour
+            Text { text: "Jour"; font-size: 11px; font-weight: 700; color: #333333; }
+            Rectangle {
+                height: 140px;
+                background: root.bg-color;
+                border-width: 1px;
+                border-color: #999999;
+
+                Image {
+                    source: root.preview-day;
+                    image-fit: contain;
+                    width: parent.width - 8px;
+                    height: parent.height - 8px;
+                    x: 4px;
+                    y: 4px;
+                }
+            }
+
+            // Séparateur
+            Rectangle { height: 1px; background: #cccccc; }
+
+            // Preview Nuit
+            Text { text: "Nuit"; font-size: 11px; font-weight: 700; color: #333333; }
+            Rectangle {
+                height: 140px;
+                background: #202020;
+                border-width: 1px;
+                border-color: #666666;
+
+                Image {
+                    source: root.preview-night;
+                    image-fit: contain;
+                    width: parent.width - 8px;
+                    height: parent.height - 8px;
+                    x: 4px;
+                    y: 4px;
+                }
+            }
+
+            // Couleur de fond picker (simple)
+            HorizontalLayout {
+                spacing: 4px;
+                Text { text: "Fond:"; font-size: 11px; vertical-alignment: center; width: 40px; }
+                Rectangle {
+                    width: 28px; height: 22px;
+                    background: #808080;
+                    border-width: 1px; border-color: #888;
+                    TouchArea { clicked => { root.bg-color = #808080; } }
+                    Text { text: "G"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Rectangle {
+                    width: 28px; height: 22px;
+                    background: #ffffff;
+                    border-width: 1px; border-color: #888;
+                    TouchArea { clicked => { root.bg-color = #ffffff; } }
+                    Text { text: "W"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Rectangle {
+                    width: 28px; height: 22px;
+                    background: #000000;
+                    border-width: 1px; border-color: #888;
+                    TouchArea { clicked => { root.bg-color = #000000; } }
+                    Text { text: "B"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; color: #ffffff; }
+                }
+            }
+        }
+    }
+}

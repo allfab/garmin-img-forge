@@ -1,0 +1,117 @@
+import { ScrollView, HorizontalBox, VerticalBox } from "std-widgets.slint";
+
+export struct GalleryItem {
+    thumb: image,
+    name: string,
+    kind: int,
+    index: int,
+}
+
+export component Gallery inherits Rectangle {
+    background: #ffffff;
+
+    in property <[GalleryItem]> items: [];
+    in-out property <int> gallery-tab: 0;
+    in-out property <int> selected-index: -1;
+
+    callback gallery-item-selected(int, int);
+    callback gallery-tab-changed(int);
+
+    VerticalLayout {
+        // Onglets Text / Icons
+        Rectangle {
+            height: 32px;
+            background: #e8e8e8;
+
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 4px;
+                spacing: 2px;
+
+                text-tab := Rectangle {
+                    width: 70px;
+                    background: root.gallery-tab == 0 ? #ffffff : #d0d0d0;
+                    border-width: 1px;
+                    border-color: #aaa;
+                    Text {
+                        text: "Text";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-size: 12px;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.gallery-tab = 0;
+                            root.gallery-tab-changed(0);
+                        }
+                    }
+                }
+
+                icons-tab := Rectangle {
+                    width: 70px;
+                    background: root.gallery-tab == 1 ? #ffffff : #d0d0d0;
+                    border-width: 1px;
+                    border-color: #aaa;
+                    Text {
+                        text: "Icons";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-size: 12px;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.gallery-tab = 1;
+                            root.gallery-tab-changed(1);
+                        }
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+
+        // Contenu galerie
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+                alignment: start;
+
+                for item in root.items: Rectangle {
+                    height: 76px;
+                    border-width: 1px;
+                    border-color: root.selected-index == item.index ? #3080ff : #dddddd;
+                    background: cell-ta.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : #ffffff);
+
+                    cell-ta := TouchArea {
+                        clicked => {
+                            root.selected-index = item.index;
+                            root.gallery-item-selected(item.kind, item.index);
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding: 6px;
+                        spacing: 8px;
+
+                        Image {
+                            source: item.thumb;
+                            width: 56px;
+                            height: 56px;
+                            image-fit: contain;
+                        }
+
+                        Text {
+                            text: item.name;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
