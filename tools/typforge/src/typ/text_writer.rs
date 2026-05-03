@@ -213,6 +213,37 @@ fn emit_xpm(s: &mut String, xpm: &Xpm, key: &str) {
     }
 }
 
+/// Formate un [`Xpm`] en texte brut multi-lignes (sans clé ni guillemets).
+pub fn xpm_to_text(xpm: &Xpm) -> String {
+    let cpp = xpm.palette.first().map(|(tag, _)| tag.chars().count()).unwrap_or(1);
+    let cpp_actual = if xpm.pixels.is_empty() { 0 } else { cpp };
+    let n = xpm.palette.len();
+    let mut s = String::new();
+    s.push_str(&format!("{} {} {} {}\n", xpm.width, xpm.height, n, cpp_actual));
+    for (tag, color) in &xpm.palette {
+        if color.is_transparent() {
+            s.push_str(&format!("{}  c none\n", tag));
+        } else {
+            s.push_str(&format!("{}  c #{:02X}{:02X}{:02X}\n", tag, color.r, color.g, color.b));
+        }
+    }
+    if cpp_actual > 0 {
+        for row in &xpm.pixels {
+            let mut row_str = String::with_capacity(xpm.width as usize * cpp);
+            for &idx in row {
+                if let Some((tag, _)) = xpm.palette.get(idx) {
+                    row_str.push_str(tag);
+                } else if let Some((tag, _)) = xpm.palette.first() {
+                    row_str.push_str(tag);
+                }
+            }
+            s.push_str(&row_str);
+            s.push('\n');
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

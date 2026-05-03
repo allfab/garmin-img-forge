@@ -7,7 +7,7 @@ slint::include_modules!();
 use std::rc::Rc;
 use std::cell::RefCell;
 use slint::{ModelRc, VecModel, StandardListViewItem, SharedPixelBuffer, Rgb8Pixel};
-use typ::{TypDocument, TypPolygon, TypLine, TypPoint, Xpm};
+use typ::{TypDocument, TypPolygon, TypLine, TypPoint, Xpm, Rgb, Rgba, ColorMode, FontStyle};
 use app::App;
 
 // ─── Render helpers ──────────────────────────────────────────────
@@ -107,6 +107,84 @@ fn render_point_thumb(point: &TypPoint, size: u32) -> slint::Image {
         }
     }
     slint::Image::from_rgb8(buf)
+}
+
+// ─── Editor helpers ──────────────────────────────────────────────
+
+fn font_style_to_int(s: FontStyle) -> i32 {
+    match s {
+        FontStyle::Default   => 0,
+        FontStyle::NoLabel   => 1,
+        FontStyle::Small     => 2,
+        FontStyle::Normal    => 3,
+        FontStyle::Large     => 4,
+        FontStyle::Custom(n) => n as i32 + 10,
+    }
+}
+
+fn int_to_font_style(n: i32) -> FontStyle {
+    match n {
+        0 => FontStyle::Default,
+        1 => FontStyle::NoLabel,
+        2 => FontStyle::Small,
+        3 => FontStyle::Normal,
+        4 => FontStyle::Large,
+        n if n >= 10 => FontStyle::Custom((n - 10) as u8),
+        _ => FontStyle::Default,
+    }
+}
+
+fn hex_to_rgb(s: &str) -> Option<Rgb> {
+    let s = s.trim().trim_start_matches('#');
+    if s.len() == 6 {
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some(Rgb { r, g, b })
+    } else {
+        None
+    }
+}
+
+/// Crée ou met à jour la première entrée opaque de la palette XPM avec `color`.
+/// Si la palette est entièrement transparente, remplace l'XPM par un 1×1 solide.
+fn set_xpm_fill_color(xpm: &mut Option<Xpm>, color: Rgb) {
+    let solid = || Xpm {
+        width: 1, height: 1,
+        colour_mode: ColorMode::Indexed,
+        palette: vec![(".".to_string(), Rgba::opaque(color.r, color.g, color.b))],
+        pixels: vec![vec![0]],
+    };
+    match xpm {
+        Some(x) => {
+            if let Some((_, c)) = x.palette.iter_mut().find(|(_, c)| !c.is_transparent()) {
+                *c = Rgba::opaque(color.r, color.g, color.b);
+            } else {
+                *xpm = Some(solid());
+            }
+        }
+        None => *xpm = Some(solid()),
+    }
+}
+
+fn xpm_fill_color(xpm: Option<&Xpm>) -> (slint::SharedString, slint::Color) {
+    match first_opaque(xpm) {
+        Some((r, g, b)) => (
+            format!("#{:02X}{:02X}{:02X}", r, g, b).into(),
+            slint::Color::from_rgb_u8(r, g, b),
+        ),
+        None => (
+            "#888888".into(),
+            slint::Color::from_rgb_u8(0x88, 0x88, 0x88),
+        ),
+    }
+}
+
+fn xpm_to_text_opt(xpm: Option<&Xpm>) -> slint::SharedString {
+    match xpm {
+        Some(x) => typ::text_writer::xpm_to_text(x).into(),
+        None => "".into(),
+    }
 }
 
 // ─── UI bridge ───────────────────────────────────────────────────
@@ -366,9 +444,188 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
+    // on_edit_element — ouvre l'éditeur polygone/ligne
+    {
+        let app_c = Rc::clone(&app);
+        let ww = window.as_weak();
+        window.on_edit_element(move |kind, idx| {
+            if idx < 0 { return; }
+            let a = app_c.borrow();
+            if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
+                match kind {
+                    0 => {
+                        if let Some(p) = doc.polygons.get(idx as usize) {
+                            let (day_text, day_color) = xpm_fill_color(p.day_xpm.as_ref());
+                            let (night_text, night_color) = xpm_fill_color(p.night_xpm.as_ref());
+                            w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
+                            w.set_ep_day_fill_text(day_text);
+                            w.set_ep_day_fill_color(day_color);
+                            w.set_ep_night_fill_text(night_text);
+                            w.set_ep_night_fill_color(night_color);
+                            w.set_ep_extended_labels(p.extended_labels);
+                            w.set_ep_font_style(font_style_to_int(p.font_style));
+                            w.set_ep_xpm_text(xpm_to_text_opt(p.day_xpm.as_ref()));
+                            w.set_ep_night_xpm_text(xpm_to_text_opt(p.night_xpm.as_ref()));
+                            w.set_editor_kind(0);
+                            w.set_editor_idx(idx);
+                            w.set_editor_visible(true);
+                        }
+                    }
+                    1 => {
+                        if let Some(l) = doc.lines.get(idx as usize) {
+                            let (day_text, day_color) = xpm_fill_color(l.day_xpm.as_ref());
+                            let (night_text, night_color) = xpm_fill_color(l.night_xpm.as_ref());
+                            w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
+                            w.set_el_day_text(day_text);
+                            w.set_el_day_color(day_color);
+                            w.set_el_night_text(night_text);
+                            w.set_el_night_color(night_color);
+                            w.set_el_line_width(l.line_width as i32);
+                            w.set_el_border_width(l.border_width as i32);
+                            w.set_el_use_orientation(l.use_orientation);
+                            w.set_el_extended_labels(l.extended_labels);
+                            w.set_el_font_style(font_style_to_int(l.font_style));
+                            w.set_el_xpm_text(xpm_to_text_opt(l.day_xpm.as_ref()));
+                            w.set_el_night_xpm_text(xpm_to_text_opt(l.night_xpm.as_ref()));
+                            w.set_editor_kind(1);
+                            w.set_editor_idx(idx);
+                            w.set_editor_visible(true);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    // on_editor_apply — applique les modifications au TypDocument
+    {
+        let app_c = Rc::clone(&app);
+        let ww = window.as_weak();
+        window.on_editor_apply(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+
+            // F9 — guard idx négatif
+            if w.get_editor_idx() < 0 {
+                w.set_editor_visible(false);
+                return;
+            }
+
+            w.set_editor_error("".into());
+            let kind = w.get_editor_kind();
+            let idx = w.get_editor_idx() as usize;
+            let mut had_error = false;
+
+            {
+                let mut a = app_c.borrow_mut();
+                if let Some(doc) = &mut a.doc {
+                    match kind {
+                        0 => {
+                            if let Some(p) = doc.polygons.get_mut(idx) {
+                                // F1 — XPM brut OU couleur hex, jamais les deux
+                                let xpm_text = w.get_ep_xpm_text();
+                                if !xpm_text.trim().is_empty() {
+                                    match typ::text_reader::parse_xpm_lines(&xpm_text) {
+                                        Ok(Some(xpm)) => p.day_xpm = Some(xpm),
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            w.set_editor_error(format!("XPM jour : {}", e).into());
+                                            had_error = true;
+                                        }
+                                    }
+                                } else if let Some(c) = hex_to_rgb(w.get_ep_day_fill_text().as_str()) {
+                                    set_xpm_fill_color(&mut p.day_xpm, c);
+                                }
+                                if !had_error {
+                                    let night_text = w.get_ep_night_xpm_text();
+                                    if !night_text.trim().is_empty() {
+                                        match typ::text_reader::parse_xpm_lines(&night_text) {
+                                            Ok(Some(xpm)) => p.night_xpm = Some(xpm),
+                                            Ok(None) => {}
+                                            Err(e) => {
+                                                w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                had_error = true;
+                                            }
+                                        }
+                                    } else if let Some(c) = hex_to_rgb(w.get_ep_night_fill_text().as_str()) {
+                                        set_xpm_fill_color(&mut p.night_xpm, c);
+                                    }
+                                }
+                                if !had_error {
+                                    p.extended_labels = w.get_ep_extended_labels();
+                                    p.font_style = int_to_font_style(w.get_ep_font_style());
+                                }
+                            }
+                        }
+                        1 => {
+                            if let Some(l) = doc.lines.get_mut(idx) {
+                                let xpm_text = w.get_el_xpm_text();
+                                if !xpm_text.trim().is_empty() {
+                                    match typ::text_reader::parse_xpm_lines(&xpm_text) {
+                                        Ok(Some(xpm)) => l.day_xpm = Some(xpm),
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            w.set_editor_error(format!("XPM jour : {}", e).into());
+                                            had_error = true;
+                                        }
+                                    }
+                                } else if let Some(c) = hex_to_rgb(w.get_el_day_text().as_str()) {
+                                    set_xpm_fill_color(&mut l.day_xpm, c);
+                                }
+                                if !had_error {
+                                    let night_text = w.get_el_night_xpm_text();
+                                    if !night_text.trim().is_empty() {
+                                        match typ::text_reader::parse_xpm_lines(&night_text) {
+                                            Ok(Some(xpm)) => l.night_xpm = Some(xpm),
+                                            Ok(None) => {}
+                                            Err(e) => {
+                                                w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                had_error = true;
+                                            }
+                                        }
+                                    } else if let Some(c) = hex_to_rgb(w.get_el_night_text().as_str()) {
+                                        set_xpm_fill_color(&mut l.night_xpm, c);
+                                    }
+                                }
+                                if !had_error {
+                                    l.line_width = w.get_el_line_width().clamp(0, 255) as u8;
+                                    l.border_width = w.get_el_border_width().clamp(0, 255) as u8;
+                                    l.use_orientation = w.get_el_use_orientation();
+                                    l.extended_labels = w.get_el_extended_labels();
+                                    l.font_style = int_to_font_style(w.get_el_font_style());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    if !had_error {
+                        let nav = w.get_active_nav_tab();
+                        rebuild_gallery(doc, &w, nav);
+                        let (day, night) = render_preview(doc, kind, idx);
+                        w.set_preview_day(day);
+                        w.set_preview_night(night);
+                    }
+                }
+            }
+
+            if !had_error {
+                w.set_editor_visible(false);
+            }
+        });
+    }
+
+    // on_editor_cancel
+    {
+        let ww = window.as_weak();
+        window.on_editor_cancel(move || {
+            if let Some(w) = ww.upgrade() {
+                w.set_editor_visible(false);
+            }
+        });
+    }
+
     // Stubs Phase 5
     window.on_add_element(|kind| { eprintln!("[stub] add kind={}", kind); });
-    window.on_edit_element(|kind, idx| { eprintln!("[stub] edit kind={} idx={}", kind, idx); });
     window.on_delete_element(|kind, idx| { eprintln!("[stub] delete kind={} idx={}", kind, idx); });
     window.on_edit_draworder(|| { eprintln!("[stub] edit draworder"); });
 

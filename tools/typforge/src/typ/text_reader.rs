@@ -331,7 +331,10 @@ fn push_xpm_line(acc: &mut ElementAcc, inner: &str, line: usize) -> Result<()> {
         } else {
             inner.chars().take(cpp).collect()
         };
-        let after_key = if cpp <= inner.len() { &inner[cpp..] } else { "" };
+        let after_key = match inner.char_indices().nth(cpp) {
+            Some((i, _)) => &inner[i..],
+            None => "",
+        };
         // Cherche " c " (séparateur XPM standard)
         let color_str = extract_xpm_color_value(after_key).ok_or_else(|| TypforgeError::Parse {
             line,
@@ -547,6 +550,64 @@ fn flush(doc: &mut TypDocument, state: ParseState, acc: &mut ElementAcc) {
         }
         _ => {}
     }
+}
+
+/// Parse un bloc XPM depuis du texte brut (sans clé `DayXpm=`).
+///
+/// Format attendu (lignes, avec ou sans guillemets) :
+/// ```text
+/// W H N CPP
+/// TAG  c #RRGGBB
+/// ROWDATA
+/// ```
+/// Retourne `None` si le texte est vide.
+pub fn parse_xpm_lines(text: &str) -> crate::error::Result<Option<Xpm>> {
+    let lines: Vec<&str> = text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return Ok(None);
+    }
+    let header_raw = if lines[0].starts_with('"') {
+        parse_quoted(lines[0]).unwrap_or(lines[0])
+    } else {
+        lines[0]
+    };
+    let mut pending = parse_xpm_header(header_raw, 1)?;
+    for (i, &line) in lines[1..].iter().enumerate() {
+        let inner = if line.starts_with('"') {
+            parse_quoted(line).unwrap_or(line)
+        } else {
+            line
+        };
+        if pending.palette.len() < pending.colors_expected {
+            let cpp = pending.chars_per_pixel;
+            let key_chars: String = if cpp == 0 {
+                String::new()
+            } else {
+                inner.chars().take(cpp).collect()
+            };
+            let after_key = match inner.char_indices().nth(cpp) {
+            Some((i, _)) => &inner[i..],
+            None => "",
+        };
+            let color_str = extract_xpm_color_value(after_key)
+                .ok_or_else(|| TypforgeError::Parse {
+                    line: i + 2,
+                    context: format!("Palette XPM invalide: '{}'", inner),
+                })?;
+            let color = parse_rgba_from_str(color_str)
+                .ok_or_else(|| TypforgeError::Parse {
+                    line: i + 2,
+                    context: format!("Couleur XPM invalide: '{}'", color_str),
+                })?;
+            pending.palette.push((key_chars, color));
+        } else {
+            pending.pixel_rows.push(inner.to_string());
+        }
+    }
+    Ok(Some(finalize_xpm(pending)))
 }
 
 #[cfg(test)]
