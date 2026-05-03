@@ -319,6 +319,24 @@ fn hex_to_slint_color(hex: &str) -> slint::Color {
     }
 }
 
+fn parse_type_code(s: &str) -> Option<u16> {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u16::from_str_radix(hex, 16).ok()
+    } else {
+        s.parse::<u16>().ok()
+    }
+}
+
+fn parse_sub_type(s: &str) -> Option<u8> {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u8::from_str_radix(hex, 16).ok()
+    } else {
+        s.parse::<u8>().ok()
+    }
+}
+
 fn normalize_color_string(s: &str) -> Option<String> {
     let s = s.trim();
     // "#RRGGBB" ou "#RRGGBBAA" — l'alpha zenity est toujours en fin, on prend les 6 premiers
@@ -776,15 +794,16 @@ fn open_poi_editor(
                 night_font_colour: p.night_font_colour,
                 labels: p.labels.clone(),
             };
-            push_poi_state_to_window(&state, window, &format!("POI 0x{:02X}/0x{:02X}", p.type_code, p.sub_type));
+            push_poi_state_to_window(&state, window, p.type_code, p.sub_type);
             state
         }),
         _ => None,
     }
 }
 
-fn push_poi_state_to_window(state: &PoiEditorState, window: &AppWindow, type_info: &str) {
-    window.set_poi_type_info(type_info.into());
+fn push_poi_state_to_window(state: &PoiEditorState, window: &AppWindow, type_code: u16, sub_type: u8) {
+    window.set_poi_type_code_text(format!("0x{:02X}", type_code).into());
+    window.set_poi_sub_type_text(format!("0x{:02X}", sub_type).into());
     window.set_poi_editing_night(state.editing_night);
     window.set_poi_has_night_bmp(state.has_night_bmp);
     window.set_poi_extended_labels(state.extended_labels);
@@ -827,6 +846,7 @@ fn push_poi_state_to_window(state: &PoiEditorState, window: &AppWindow, type_inf
     window.set_poi_active_tool(state.tool);
     window.set_poi_brush_size(state.brush_size as i32);
     window.set_poi_active_palette_idx(state.active_color_idx as i32);
+    window.set_poi_editor_error("".into());
     window.set_poi_editor_visible(true);
 }
 
@@ -1082,12 +1102,43 @@ fn main() -> anyhow::Result<()> {
                 if let Some(doc) = &mut a.doc {
                     match kind {
                         0 => {
+                            // Valider TypeCode/SubType
+                            let tc_str = w.get_ep_type_code_text();
+                            let st_str = w.get_ep_sub_type_text();
+                            let new_tc = match parse_type_code(tc_str.as_str()) {
+                                Some(v) => v,
+                                None => {
+                                    w.set_editor_error("TypeCode invalide (ex: 0x01 ou 1)".into());
+                                    had_error = true;
+                                    0
+                                }
+                            };
+                            let new_st = if !had_error {
+                                match parse_sub_type(st_str.as_str()) {
+                                    Some(v) => v,
+                                    None => {
+                                        w.set_editor_error("SubType invalide (ex: 0x00 ou 0)".into());
+                                        had_error = true;
+                                        0
+                                    }
+                                }
+                            } else { 0 };
+                            // Vérifier doublon
+                            if !had_error {
+                                let dup = doc.polygons.iter().enumerate()
+                                    .any(|(i, p)| i != idx && p.type_code == new_tc && p.sub_type == new_st);
+                                if dup {
+                                    w.set_editor_error(format!("Un polygone 0x{:02X}/0x{:02X} existe déjà", new_tc, new_st).into());
+                                    had_error = true;
+                                }
+                            }
+                            // Collecter XPM jour/nuit dans des locaux — écriture atomique ensuite
                             if let Some(p) = doc.polygons.get_mut(idx) {
-                                // F1 — XPM brut OU couleur hex, jamais les deux
+                                let mut new_day_xpm = p.day_xpm.clone();
                                 let xpm_text = w.get_ep_xpm_text();
                                 if !xpm_text.trim().is_empty() {
                                     match typ::text_reader::parse_xpm_lines(&xpm_text) {
-                                        Ok(Some(xpm)) => p.day_xpm = Some(xpm),
+                                        Ok(Some(xpm)) => new_day_xpm = Some(xpm),
                                         Ok(None) => {}
                                         Err(e) => {
                                             w.set_editor_error(format!("XPM jour : {}", e).into());
@@ -1095,13 +1146,14 @@ fn main() -> anyhow::Result<()> {
                                         }
                                     }
                                 } else if let Some(c) = hex_to_rgb(w.get_ep_day_fill_text().as_str()) {
-                                    set_xpm_fill_color(&mut p.day_xpm, c);
+                                    set_xpm_fill_color(&mut new_day_xpm, c);
                                 }
+                                let mut new_night_xpm = p.night_xpm.clone();
                                 if !had_error {
                                     let night_text = w.get_ep_night_xpm_text();
                                     if !night_text.trim().is_empty() {
                                         match typ::text_reader::parse_xpm_lines(&night_text) {
-                                            Ok(Some(xpm)) => p.night_xpm = Some(xpm),
+                                            Ok(Some(xpm)) => new_night_xpm = Some(xpm),
                                             Ok(None) => {}
                                             Err(e) => {
                                                 w.set_editor_error(format!("XPM nuit : {}", e).into());
@@ -1109,21 +1161,58 @@ fn main() -> anyhow::Result<()> {
                                             }
                                         }
                                     } else if let Some(c) = hex_to_rgb(w.get_ep_night_fill_text().as_str()) {
-                                        set_xpm_fill_color(&mut p.night_xpm, c);
+                                        set_xpm_fill_color(&mut new_night_xpm, c);
                                     }
                                 }
+                                // Écriture atomique : seulement si tout est valide
                                 if !had_error {
+                                    p.type_code = new_tc;
+                                    p.sub_type = new_st;
+                                    p.day_xpm = new_day_xpm;
+                                    p.night_xpm = new_night_xpm;
                                     p.extended_labels = w.get_ep_extended_labels();
                                     p.font_style = int_to_font_style(w.get_ep_font_style());
                                 }
                             }
                         }
                         1 => {
+                            // Valider TypeCode/SubType
+                            let tc_str = w.get_el_type_code_text();
+                            let st_str = w.get_el_sub_type_text();
+                            let new_tc = match parse_type_code(tc_str.as_str()) {
+                                Some(v) => v,
+                                None => {
+                                    w.set_editor_error("TypeCode invalide (ex: 0x01 ou 1)".into());
+                                    had_error = true;
+                                    0
+                                }
+                            };
+                            let new_st = if !had_error {
+                                match parse_sub_type(st_str.as_str()) {
+                                    Some(v) => v,
+                                    None => {
+                                        w.set_editor_error("SubType invalide (ex: 0x00 ou 0)".into());
+                                        had_error = true;
+                                        0
+                                    }
+                                }
+                            } else { 0 };
+                            // Vérifier doublon
+                            if !had_error {
+                                let dup = doc.lines.iter().enumerate()
+                                    .any(|(i, l)| i != idx && l.type_code == new_tc && l.sub_type == new_st);
+                                if dup {
+                                    w.set_editor_error(format!("Une ligne 0x{:02X}/0x{:02X} existe déjà", new_tc, new_st).into());
+                                    had_error = true;
+                                }
+                            }
+                            // Collecter XPM jour/nuit dans des locaux — écriture atomique ensuite
                             if let Some(l) = doc.lines.get_mut(idx) {
+                                let mut new_day_xpm = l.day_xpm.clone();
                                 let xpm_text = w.get_el_xpm_text();
                                 if !xpm_text.trim().is_empty() {
                                     match typ::text_reader::parse_xpm_lines(&xpm_text) {
-                                        Ok(Some(xpm)) => l.day_xpm = Some(xpm),
+                                        Ok(Some(xpm)) => new_day_xpm = Some(xpm),
                                         Ok(None) => {}
                                         Err(e) => {
                                             w.set_editor_error(format!("XPM jour : {}", e).into());
@@ -1131,13 +1220,14 @@ fn main() -> anyhow::Result<()> {
                                         }
                                     }
                                 } else if let Some(c) = hex_to_rgb(w.get_el_day_text().as_str()) {
-                                    set_xpm_fill_color(&mut l.day_xpm, c);
+                                    set_xpm_fill_color(&mut new_day_xpm, c);
                                 }
+                                let mut new_night_xpm = l.night_xpm.clone();
                                 if !had_error {
                                     let night_text = w.get_el_night_xpm_text();
                                     if !night_text.trim().is_empty() {
                                         match typ::text_reader::parse_xpm_lines(&night_text) {
-                                            Ok(Some(xpm)) => l.night_xpm = Some(xpm),
+                                            Ok(Some(xpm)) => new_night_xpm = Some(xpm),
                                             Ok(None) => {}
                                             Err(e) => {
                                                 w.set_editor_error(format!("XPM nuit : {}", e).into());
@@ -1145,10 +1235,15 @@ fn main() -> anyhow::Result<()> {
                                             }
                                         }
                                     } else if let Some(c) = hex_to_rgb(w.get_el_night_text().as_str()) {
-                                        set_xpm_fill_color(&mut l.night_xpm, c);
+                                        set_xpm_fill_color(&mut new_night_xpm, c);
                                     }
                                 }
+                                // Écriture atomique : seulement si tout est valide
                                 if !had_error {
+                                    l.type_code = new_tc;
+                                    l.sub_type = new_st;
+                                    l.day_xpm = new_day_xpm;
+                                    l.night_xpm = new_night_xpm;
                                     l.line_width = w.get_el_line_width().clamp(0, 255) as u8;
                                     l.border_width = w.get_el_border_width().clamp(0, 255) as u8;
                                     l.use_orientation = w.get_el_use_orientation();
@@ -1160,6 +1255,22 @@ fn main() -> anyhow::Result<()> {
                         _ => {}
                     }
                     if !had_error {
+                        // Mettre à jour uniquement la liste concernée (F9)
+                        match kind {
+                            0 => {
+                                w.set_polygons(build_list_model(doc.polygons.iter().map(|p| (p.type_code, p.sub_type))));
+                                if let Some(p) = doc.polygons.get(idx) {
+                                    w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
+                                }
+                            }
+                            1 => {
+                                w.set_lines(build_list_model(doc.lines.iter().map(|l| (l.type_code, l.sub_type))));
+                                if let Some(l) = doc.lines.get(idx) {
+                                    w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
+                                }
+                            }
+                            _ => {}
+                        }
                         let nav = w.get_active_nav_tab();
                         rebuild_gallery(doc, &w, nav);
                         let (day, night) = render_preview(doc, kind, idx);
@@ -1210,6 +1321,8 @@ fn main() -> anyhow::Result<()> {
                             let (day_text, day_color) = xpm_fill_color(p.day_xpm.as_ref());
                             let (night_text, night_color) = xpm_fill_color(p.night_xpm.as_ref());
                             w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
+                            w.set_ep_type_code_text(format!("0x{:02X}", p.type_code).into());
+                            w.set_ep_sub_type_text(format!("0x{:02X}", p.sub_type).into());
                             w.set_ep_day_fill_text(day_text);
                             w.set_ep_day_fill_color(day_color);
                             w.set_ep_night_fill_text(night_text);
@@ -1228,6 +1341,8 @@ fn main() -> anyhow::Result<()> {
                             let (day_text, day_color) = xpm_fill_color(l.day_xpm.as_ref());
                             let (night_text, night_color) = xpm_fill_color(l.night_xpm.as_ref());
                             w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
+                            w.set_el_type_code_text(format!("0x{:02X}", l.type_code).into());
+                            w.set_el_sub_type_text(format!("0x{:02X}", l.sub_type).into());
                             w.set_el_day_text(day_text);
                             w.set_el_day_color(day_color);
                             w.set_el_night_text(night_text);
@@ -1631,8 +1746,32 @@ fn main() -> anyhow::Result<()> {
         let ww = window.as_weak();
         window.on_poi_editor_apply(move || {
             let w = match ww.upgrade() { Some(w) => w, None => return };
-            let state_opt = poi_c.borrow();
-            let state = match state_opt.as_ref() { Some(s) => s, None => return };
+
+            // Extraire les données nécessaires depuis le state et la fenêtre avant tout borrow mut
+            let (doc_idx, day_xpm, night_xpm, labels) = {
+                let state_opt = poi_c.borrow();
+                let state = match state_opt.as_ref() { Some(s) => s, None => return };
+                (state.doc_idx, state.day_xpm.clone(), state.night_xpm.clone(), state.labels.clone())
+            };
+
+            // Valider TypeCode/SubType depuis l'UI
+            w.set_poi_editor_error("".into());
+            let tc_str = w.get_poi_type_code_text();
+            let st_str = w.get_poi_sub_type_text();
+            let new_tc = match parse_type_code(tc_str.as_str()) {
+                Some(v) => v,
+                None => {
+                    w.set_poi_editor_error("TypeCode invalide (ex: 0x01 ou 1)".into());
+                    return;
+                }
+            };
+            let new_st = match parse_sub_type(st_str.as_str()) {
+                Some(v) => v,
+                None => {
+                    w.set_poi_editor_error("SubType invalide (ex: 0x00 ou 0)".into());
+                    return;
+                }
+            };
 
             // Lire champs typography depuis la fenêtre
             let ext = w.get_poi_extended_labels();
@@ -1643,23 +1782,34 @@ fn main() -> anyhow::Result<()> {
 
             let mut a = app_c.borrow_mut();
             if let Some(doc) = &mut a.doc {
-                if let Some(point) = doc.points.get_mut(state.doc_idx) {
-                    point.day_xpm = state.day_xpm.clone();
-                    point.night_xpm = if has_night { state.night_xpm.clone() } else { None };
-                    point.labels = state.labels.clone();
+                // Vérifier doublon
+                let dup = doc.points.iter().enumerate()
+                    .any(|(i, p)| i != doc_idx && p.type_code == new_tc && p.sub_type == new_st);
+                if dup {
+                    w.set_poi_editor_error(format!("Un POI 0x{:02X}/0x{:02X} existe déjà", new_tc, new_st).into());
+                    return;
+                }
+
+                if let Some(point) = doc.points.get_mut(doc_idx) {
+                    point.type_code = new_tc;
+                    point.sub_type = new_st;
+                    point.day_xpm = day_xpm;
+                    point.night_xpm = if has_night { night_xpm } else { None };
+                    point.labels = labels;
                     point.extended_labels = ext;
                     point.font_style = fs;
                     point.day_font_colour = day_fc;
                     point.night_font_colour = night_fc;
                 }
+                // Mettre à jour la liste latérale (type_code peut avoir changé)
+                w.set_points(build_list_model(doc.points.iter().map(|p| (p.type_code, p.sub_type))));
                 let nav = w.get_active_nav_tab();
                 rebuild_gallery(doc, &w, nav);
-                let (day_img, night_img) = render_preview(doc, 2, state.doc_idx);
+                let (day_img, night_img) = render_preview(doc, 2, doc_idx);
                 w.set_preview_day(day_img);
                 w.set_preview_night(night_img);
             }
 
-            drop(state_opt);
             *poi_c.borrow_mut() = None;
             w.set_poi_editor_visible(false);
         });
@@ -1874,6 +2024,8 @@ fn main() -> anyhow::Result<()> {
                         let (day_text, day_color) = xpm_fill_color(p.day_xpm.as_ref());
                         let (night_text, night_color) = xpm_fill_color(p.night_xpm.as_ref());
                         w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
+                        w.set_ep_type_code_text(format!("0x{:02X}", p.type_code).into());
+                        w.set_ep_sub_type_text(format!("0x{:02X}", p.sub_type).into());
                         w.set_ep_day_fill_text(day_text); w.set_ep_day_fill_color(day_color);
                         w.set_ep_night_fill_text(night_text); w.set_ep_night_fill_color(night_color);
                         w.set_ep_extended_labels(false); w.set_ep_font_style(0);
@@ -1890,6 +2042,8 @@ fn main() -> anyhow::Result<()> {
                         let (day_text, day_color) = xpm_fill_color(l.day_xpm.as_ref());
                         let (night_text, night_color) = xpm_fill_color(l.night_xpm.as_ref());
                         w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
+                        w.set_el_type_code_text(format!("0x{:02X}", l.type_code).into());
+                        w.set_el_sub_type_text(format!("0x{:02X}", l.sub_type).into());
                         w.set_el_day_text(day_text); w.set_el_day_color(day_color);
                         w.set_el_night_text(night_text); w.set_el_night_color(night_color);
                         w.set_el_line_width(1); w.set_el_border_width(0);

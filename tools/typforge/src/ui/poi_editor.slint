@@ -18,7 +18,8 @@ export struct LangEntry {
 export component PoiEditor inherits Rectangle {
     background: #00000066;
 
-    in property <string>  type-info: "Type=0x00 / SubType=0x00";
+    in-out property <string> type-code-text: "0x00";
+    in-out property <string> sub-type-text: "0x00";
     in property <int>     bmp-width: 16;
     in property <int>     bmp-height: 16;
     in property <int>     colour-count: 0;
@@ -69,6 +70,7 @@ export component PoiEditor inherits Rectangle {
     callback set-as-default();
     callback editor-apply();
     callback editor-cancel();
+    in-out property <string> editor-error: "";
     callback zoom-changed(int);
     callback tool-changed(int);
     callback pick-new-color();
@@ -95,7 +97,7 @@ export component PoiEditor inherits Rectangle {
                 HorizontalLayout {
                     padding-left: 12px; padding-right: 8px;
                     Text {
-                        text: "Éditeur POI — " + root.type-info;
+                        text: "Éditeur POI — " + root.type-code-text + "/" + root.sub-type-text;
                         color: #ffffff; font-size: 13px; font-weight: 700;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
@@ -123,7 +125,28 @@ export component PoiEditor inherits Rectangle {
                         padding: 8px; spacing: 6px; alignment: start;
                         width: 206px;
 
-                        Text { text: root.type-info; font-size: 10px; wrap: word-wrap; }
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Type :"; font-size: 10px; width: 40px; vertical-alignment: center; }
+                            Rectangle {
+                                width: 60px; height: 22px; border-radius: 2px; border-width: 1px; border-color: #888;
+                                background: Palette.control-background;
+                                TextInput {
+                                    x: 4px; y: 0px; width: parent.width - 8px; height: parent.height;
+                                    text <=> root.type-code-text;
+                                    font-size: 10px; vertical-alignment: center; single-line: true;
+                                }
+                            }
+                            Text { text: "Sub :"; font-size: 10px; width: 28px; vertical-alignment: center; }
+                            Rectangle {
+                                width: 52px; height: 22px; border-radius: 2px; border-width: 1px; border-color: #888;
+                                background: Palette.control-background;
+                                TextInput {
+                                    x: 4px; y: 0px; width: parent.width - 8px; height: parent.height;
+                                    text <=> root.sub-type-text;
+                                    font-size: 10px; vertical-alignment: center; single-line: true;
+                                }
+                            }
+                        }
 
                         // Colormode
                         HorizontalLayout { spacing: 4px; alignment: start;
@@ -602,6 +625,19 @@ export component PoiEditor inherits Rectangle {
                             }
                         }
                     }
+                }
+            }
+
+            // Barre erreur (visible si editor-error non vide)
+            if root.editor-error != "" : Rectangle {
+                height: 30px;
+                background: #ffdddd;
+                border-width: 1px; border-color: #cc4444;
+                Text {
+                    text: root.editor-error;
+                    color: #cc0000; font-size: 10px;
+                    horizontal-alignment: center; vertical-alignment: center;
+                    overflow: elide;
                 }
             }
 

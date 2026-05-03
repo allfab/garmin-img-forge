@@ -90,6 +90,8 @@ export component AppWindow inherits Window {
     in-out property <string> editor-title: "";
 
     // Champs polygone
+    in-out property <string> ep-type-code-text: "0x00";
+    in-out property <string> ep-sub-type-text: "0x00";
     in-out property <color>  ep-day-fill-color: #888888;
     in-out property <string> ep-day-fill-text: "#888888";
     in-out property <color>  ep-night-fill-color: #888888;
@@ -100,6 +102,8 @@ export component AppWindow inherits Window {
     in-out property <string> ep-night-xpm-text: "";
 
     // Champs ligne
+    in-out property <string> el-type-code-text: "0x00";
+    in-out property <string> el-sub-type-text: "0x00";
     in-out property <color>  el-day-color: #000000;
     in-out property <string> el-day-text: "#000000";
     in-out property <color>  el-night-color: #000000;
@@ -118,7 +122,8 @@ export component AppWindow inherits Window {
 
     // ── Éditeur POI ──────────────────────────────────────────
     in-out property <bool>   poi-editor-visible: false;
-    in property <string>     poi-type-info: "";
+    in-out property <string> poi-type-code-text: "0x00";
+    in-out property <string> poi-sub-type-text: "0x00";
     in property <int>        poi-bmp-width: 16;
     in property <int>        poi-bmp-height: 16;
     in property <int>        poi-colour-count: 0;
@@ -160,6 +165,7 @@ export component AppWindow inherits Window {
     callback poi-set-as-default();
     callback poi-editor-apply();
     callback poi-editor-cancel();
+    in-out property <string> poi-editor-error: "";
     callback poi-zoom-changed(int);
     callback poi-tool-changed(int);
 
@@ -354,7 +360,8 @@ export component AppWindow inherits Window {
     if root.poi-editor-visible : PoiEditor {
         x: 0; y: 0;
         width: root.width; height: root.height;
-        type-info: root.poi-type-info;
+        type-code-text <=> root.poi-type-code-text;
+        sub-type-text <=> root.poi-sub-type-text;
         bmp-width: root.poi-bmp-width;
         bmp-height: root.poi-bmp-height;
         colour-count: root.poi-colour-count;
@@ -396,6 +403,7 @@ export component AppWindow inherits Window {
         lang-selected(c) => { root.poi-lang-selected(c); }
         lang-text-changed(t) => { root.poi-lang-text-changed(t); }
         set-as-default => { root.poi-set-as-default(); }
+        editor-error <=> root.poi-editor-error;
         editor-apply => { root.poi-editor-apply(); }
         editor-cancel => { root.poi-editor-cancel(); }
         zoom-changed(v) => { root.poi-zoom-changed(v); }
@@ -444,6 +452,16 @@ export component AppWindow inherits Window {
                             spacing: 8px;
 
                             HorizontalLayout { spacing: 6px; alignment: start;
+                                Text { text: "TypeCode :"; font-size: 11px; width: 130px; vertical-alignment: center; }
+                                LineEdit { text <=> root.ep-type-code-text; width: 90px; }
+                            }
+
+                            HorizontalLayout { spacing: 6px; alignment: start;
+                                Text { text: "SubType :"; font-size: 11px; width: 130px; vertical-alignment: center; }
+                                LineEdit { text <=> root.ep-sub-type-text; width: 90px; }
+                            }
+
+                            HorizontalLayout { spacing: 6px; alignment: start;
                                 Text { text: "Couleur Jour :"; font-size: 11px; width: 130px; vertical-alignment: center; }
                                 LineEdit {
                                     text <=> root.ep-day-fill-text; width: 90px;
@@ -487,6 +505,16 @@ export component AppWindow inherits Window {
                         // ── Formulaire Ligne ─────────────────────
                         if root.editor-kind == 1 : VerticalLayout {
                             spacing: 8px;
+
+                            HorizontalLayout { spacing: 6px; alignment: start;
+                                Text { text: "TypeCode :"; font-size: 11px; width: 130px; vertical-alignment: center; }
+                                LineEdit { text <=> root.el-type-code-text; width: 90px; }
+                            }
+
+                            HorizontalLayout { spacing: 6px; alignment: start;
+                                Text { text: "SubType :"; font-size: 11px; width: 130px; vertical-alignment: center; }
+                                LineEdit { text <=> root.el-sub-type-text; width: 90px; }
+                            }
 
                             HorizontalLayout { spacing: 6px; alignment: start;
                                 Text { text: "Couleur Jour :"; font-size: 11px; width: 130px; vertical-alignment: center; }
