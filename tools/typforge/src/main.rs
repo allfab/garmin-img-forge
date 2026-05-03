@@ -475,7 +475,6 @@ fn render_preview_with_mode(doc: &TypDocument, kind: i32, idx: usize, mode: i32)
 // ─── POI editor ──────────────────────────────────────────────────
 
 struct PoiEditorState {
-    kind: i32,
     doc_idx: usize,
     day_xpm: Option<Xpm>,
     night_xpm: Option<Xpm>,
@@ -494,9 +493,6 @@ struct PoiEditorState {
 }
 
 impl PoiEditorState {
-    fn active_xpm(&self) -> Option<&Xpm> {
-        if self.editing_night { self.night_xpm.as_ref() } else { self.day_xpm.as_ref() }
-    }
     fn active_xpm_mut(&mut self) -> &mut Option<Xpm> {
         if self.editing_night { &mut self.night_xpm } else { &mut self.day_xpm }
     }
@@ -694,7 +690,6 @@ fn open_poi_editor(
     match kind {
         2 => doc.points.get(idx).map(|p| {
             let state = PoiEditorState {
-                kind,
                 doc_idx: idx,
                 day_xpm: p.day_xpm.clone(),
                 night_xpm: p.night_xpm.clone(),

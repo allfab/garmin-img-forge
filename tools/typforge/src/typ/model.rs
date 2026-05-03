@@ -36,6 +36,7 @@ impl Rgba {
 pub enum ColorMode {
     #[default]
     Indexed,
+    #[allow(dead_code)]
     True16,
     True32,
 }

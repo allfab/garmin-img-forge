@@ -22,6 +22,7 @@ pub const GARMIN_PALETTE_16: [Rgba; 16] = [
 ];
 
 /// Convertit un XPM en grille RGBA (ligne par ligne).
+#[allow(dead_code)]
 pub fn xpm_to_image(xpm: &Xpm) -> Vec<Vec<Rgba>> {
     let mut result = Vec::with_capacity(xpm.height as usize);
     for row in &xpm.pixels {
