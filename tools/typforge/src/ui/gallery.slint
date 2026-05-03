@@ -1,4 +1,4 @@
-import { ScrollView, HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { ScrollView, HorizontalBox, VerticalBox, Palette } from "std-widgets.slint";
 
 export struct GalleryItem {
     thumb: image,
@@ -8,7 +8,7 @@ export struct GalleryItem {
 }
 
 export component Gallery inherits Rectangle {
-    background: #ffffff;
+    background: Palette.background;
 
     in property <[GalleryItem]> items: [];
     in-out property <int> gallery-tab: 0;
@@ -21,7 +21,7 @@ export component Gallery inherits Rectangle {
         // Onglets Text / Icons
         Rectangle {
             height: 32px;
-            background: #e8e8e8;
+            background: Palette.control-background;
 
             HorizontalLayout {
                 padding-left: 4px;
@@ -30,9 +30,9 @@ export component Gallery inherits Rectangle {
 
                 text-tab := Rectangle {
                     width: 70px;
-                    background: root.gallery-tab == 0 ? #ffffff : #d0d0d0;
+                    background: root.gallery-tab == 0 ? Palette.background : Palette.alternate-background;
                     border-width: 1px;
-                    border-color: #aaa;
+                    border-color: Palette.border;
                     Text {
                         text: "Text";
                         horizontal-alignment: center;
@@ -49,9 +49,9 @@ export component Gallery inherits Rectangle {
 
                 icons-tab := Rectangle {
                     width: 70px;
-                    background: root.gallery-tab == 1 ? #ffffff : #d0d0d0;
+                    background: root.gallery-tab == 1 ? Palette.background : Palette.alternate-background;
                     border-width: 1px;
-                    border-color: #aaa;
+                    border-color: Palette.border;
                     Text {
                         text: "Icons";
                         horizontal-alignment: center;
@@ -82,8 +82,8 @@ export component Gallery inherits Rectangle {
                 for item in root.items: Rectangle {
                     height: 76px;
                     border-width: 1px;
-                    border-color: root.selected-index == item.index ? #3080ff : #dddddd;
-                    background: cell-ta.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : #ffffff);
+                    border-color: root.selected-index == item.index ? #3080ff : Palette.border;
+                    background: cell-ta.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : Palette.background);
 
                     cell-ta := TouchArea {
                         clicked => {

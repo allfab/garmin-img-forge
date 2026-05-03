@@ -1,8 +1,8 @@
-import { VerticalBox, HorizontalBox, ComboBox, Slider, ScrollView } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, ComboBox, Slider, ScrollView, Palette } from "std-widgets.slint";
 
 export component PreviewPanel inherits Rectangle {
     width: 220px;
-    background: #f4f4f4;
+    background: Palette.alternate-background;
 
     in property <image> preview-day;
     in property <image> preview-night;
@@ -18,9 +18,9 @@ export component PreviewPanel inherits Rectangle {
 
             // Mode selector
             Rectangle {
-                background: #e0e0e0;
+                background: Palette.control-background;
                 height: 22px;
-                Text { text: "Prévisualisation"; font-size: 11px; font-weight: 700; }
+                Text { text: "Prévisualisation"; font-size: 11px; font-weight: 700; color: Palette.foreground; }
             }
 
             HorizontalLayout {
@@ -28,23 +28,23 @@ export component PreviewPanel inherits Rectangle {
 
                 Rectangle {
                     width: 60px; height: 24px;
-                    background: root.preview-mode == 0 ? #4488ff : #cccccc;
+                    background: root.preview-mode == 0 ? #4488ff : Palette.control-background;
                     border-radius: 3px;
-                    Text { text: "Single"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 0 ? #ffffff : #000000; }
+                    Text { text: "Single"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 0 ? #ffffff : Palette.foreground; }
                     TouchArea { clicked => { root.preview-mode = 0; } }
                 }
                 Rectangle {
                     width: 60px; height: 24px;
-                    background: root.preview-mode == 1 ? #4488ff : #cccccc;
+                    background: root.preview-mode == 1 ? #4488ff : Palette.control-background;
                     border-radius: 3px;
-                    Text { text: "Mosaic"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 1 ? #ffffff : #000000; }
+                    Text { text: "Mosaic"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 1 ? #ffffff : Palette.foreground; }
                     TouchArea { clicked => { root.preview-mode = 1; } }
                 }
                 Rectangle {
                     width: 60px; height: 24px;
-                    background: root.preview-mode == 2 ? #4488ff : #cccccc;
+                    background: root.preview-mode == 2 ? #4488ff : Palette.control-background;
                     border-radius: 3px;
-                    Text { text: "Super"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 2 ? #ffffff : #000000; }
+                    Text { text: "Super"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; color: root.preview-mode == 2 ? #ffffff : Palette.foreground; }
                     TouchArea { clicked => { root.preview-mode = 2; } }
                 }
             }
@@ -62,15 +62,15 @@ export component PreviewPanel inherits Rectangle {
             }
 
             // Séparateur
-            Rectangle { height: 1px; background: #cccccc; }
+            Rectangle { height: 1px; background: Palette.border; }
 
             // Preview Jour
-            Text { text: "Jour"; font-size: 11px; font-weight: 700; color: #333333; }
+            Text { text: "Jour"; font-size: 11px; font-weight: 700; color: Palette.foreground; }
             Rectangle {
                 height: 140px;
                 background: root.bg-color;
                 border-width: 1px;
-                border-color: #999999;
+                border-color: Palette.border;
 
                 Image {
                     source: root.preview-day;
@@ -83,15 +83,15 @@ export component PreviewPanel inherits Rectangle {
             }
 
             // Séparateur
-            Rectangle { height: 1px; background: #cccccc; }
+            Rectangle { height: 1px; background: Palette.border; }
 
             // Preview Nuit
-            Text { text: "Nuit"; font-size: 11px; font-weight: 700; color: #333333; }
+            Text { text: "Nuit"; font-size: 11px; font-weight: 700; color: Palette.foreground; }
             Rectangle {
                 height: 140px;
                 background: #202020;
                 border-width: 1px;
-                border-color: #666666;
+                border-color: Palette.border;
 
                 Image {
                     source: root.preview-night;

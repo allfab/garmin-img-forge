@@ -1,8 +1,8 @@
-import { ScrollView, Button, LineEdit, ComboBox, StandardListView } from "std-widgets.slint";
+import { ScrollView, Button, LineEdit, ComboBox, StandardListView, Palette } from "std-widgets.slint";
 
 export component LeftPanel inherits Rectangle {
     width: 260px;
-    background: #eeeeee;
+    background: Palette.alternate-background;
 
     in-out property <string> meta-family-id: "0";
     in-out property <string> meta-product-code: "1";
@@ -32,9 +32,9 @@ export component LeftPanel inherits Rectangle {
             // ── Métadonnées ──────────────────────────────
             Rectangle {
                 height: 20px;
-                background: #c8c8c8;
+                background: Palette.control-background;
                 border-radius: 2px;
-                Text { text: "Métadonnées [_id]"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                Text { text: "Métadonnées [_id]"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: Palette.foreground; }
             }
             HorizontalLayout { spacing: 4px;
                 Text { text: "FID:"; font-size: 11px; width: 70px; vertical-alignment: center; }
@@ -62,7 +62,7 @@ export component LeftPanel inherits Rectangle {
             // ── Polygones ────────────────────────────────
             Rectangle {
                 height: 20px; background: #b8d4f0; border-radius: 2px;
-                Text { text: "Polygones"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                Text { text: "Polygones"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
             }
             poly-list := StandardListView {
                 height: 100px;
@@ -80,7 +80,7 @@ export component LeftPanel inherits Rectangle {
             // ── Polylignes ────────────────────────────────
             Rectangle {
                 height: 20px; background: #b8f0c0; border-radius: 2px;
-                Text { text: "Polylignes"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                Text { text: "Polylignes"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
             }
             line-list := StandardListView {
                 height: 100px;
@@ -98,7 +98,7 @@ export component LeftPanel inherits Rectangle {
             // ── POIs ─────────────────────────────────────
             Rectangle {
                 height: 20px; background: #f0d8b8; border-radius: 2px;
-                Text { text: "POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                Text { text: "POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
             }
             point-list := StandardListView {
                 height: 100px;
@@ -116,7 +116,7 @@ export component LeftPanel inherits Rectangle {
             // ── Extra POIs ───────────────────────────────
             Rectangle {
                 height: 20px; background: #e8c8e8; border-radius: 2px;
-                Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
             }
             icon-list := StandardListView {
                 height: 80px;
@@ -133,8 +133,8 @@ export component LeftPanel inherits Rectangle {
 
             // ── DrawOrder ────────────────────────────────
             Rectangle {
-                height: 20px; background: #c8c8c8; border-radius: 2px;
-                Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; }
+                height: 20px; background: Palette.control-background; border-radius: 2px;
+                Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: Palette.foreground; }
             }
             StandardListView {
                 height: 70px;

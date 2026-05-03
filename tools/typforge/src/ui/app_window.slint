@@ -1,4 +1,4 @@
-import { Button, HorizontalBox, CheckBox, TextEdit, SpinBox, LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+import { Button, HorizontalBox, CheckBox, TextEdit, SpinBox, LineEdit, ComboBox, ScrollView, Palette } from "std-widgets.slint";
 import { LeftPanel } from "left_panel.slint";
 import { Gallery, GalleryItem } from "gallery.slint";
 import { PreviewPanel } from "preview_panel.slint";
@@ -9,7 +9,7 @@ export component AppWindow inherits Window {
     title: "typforge — TYP Editor";
     min-width: 960px;
     min-height: 640px;
-    background: #f0f0f0;
+    background: Palette.background;
 
     // Métadonnées (bi-directionnelles avec panneau gauche)
     in-out property <string> meta-family-id: "";
@@ -97,8 +97,8 @@ export component AppWindow inherits Window {
         // ── Barre d'outils ──────────────────────────────
         Rectangle {
             height: 38px;
-            background: #dcdcdc;
-            border-color: #b0b0b0;
+            background: Palette.control-background;
+            border-color: Palette.border;
             border-width: 0px;
 
             HorizontalLayout {
@@ -133,7 +133,7 @@ export component AppWindow inherits Window {
         // ── Barre navigation ────────────────────────────
         Rectangle {
             height: 38px;
-            background: #e4e4e4;
+            background: Palette.alternate-background;
 
             HorizontalLayout {
                 padding: 4px;
@@ -143,7 +143,7 @@ export component AppWindow inherits Window {
                 Rectangle {
                     width: 120px; height: 28px;
                     border-radius: 4px;
-                    background: root.active-nav-tab == 0 ? #3080ff : #cccccc;
+                    background: root.active-nav-tab == 0 ? #3080ff : Palette.control-background;
                     Text {
                         text: "Polygones [" + root.poly-count + "]";
                         color: root.active-nav-tab == 0 ? #ffffff : #333333;
@@ -161,10 +161,10 @@ export component AppWindow inherits Window {
                 Rectangle {
                     width: 120px; height: 28px;
                     border-radius: 4px;
-                    background: root.active-nav-tab == 1 ? #3080ff : #cccccc;
+                    background: root.active-nav-tab == 1 ? #3080ff : Palette.control-background;
                     Text {
                         text: "Lignes [" + root.line-count + "]";
-                        color: root.active-nav-tab == 1 ? #ffffff : #333333;
+                        color: root.active-nav-tab == 1 ? #ffffff : Palette.foreground;
                         font-size: 12px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -179,10 +179,10 @@ export component AppWindow inherits Window {
                 Rectangle {
                     width: 120px; height: 28px;
                     border-radius: 4px;
-                    background: root.active-nav-tab == 2 ? #3080ff : #cccccc;
+                    background: root.active-nav-tab == 2 ? #3080ff : Palette.control-background;
                     Text {
                         text: "POIs [" + root.point-count + "]";
-                        color: root.active-nav-tab == 2 ? #ffffff : #333333;
+                        color: root.active-nav-tab == 2 ? #ffffff : Palette.foreground;
                         font-size: 12px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -197,10 +197,10 @@ export component AppWindow inherits Window {
                 Rectangle {
                     width: 120px; height: 28px;
                     border-radius: 4px;
-                    background: root.active-nav-tab == 3 ? #3080ff : #cccccc;
+                    background: root.active-nav-tab == 3 ? #3080ff : Palette.control-background;
                     Text {
                         text: "Pois+ [" + root.poi-count + "]";
-                        color: root.active-nav-tab == 3 ? #ffffff : #333333;
+                        color: root.active-nav-tab == 3 ? #ffffff : Palette.foreground;
                         font-size: 12px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -271,7 +271,7 @@ export component AppWindow inherits Window {
             x: (parent.width - 520px) / 2;
             y: (parent.height - 580px) / 2;
             width: 520px; height: 580px;
-            background: #f0f0f0;
+            background: Palette.background;
             border-width: 1px; border-color: #888888;
 
             VerticalLayout {
@@ -406,8 +406,8 @@ export component AppWindow inherits Window {
                 // Boutons OK / Annuler
                 Rectangle {
                     height: 46px;
-                    background: #e0e0e0;
-                    border-width: 1px; border-color: #cccccc;
+                    background: Palette.control-background;
+                    border-width: 1px; border-color: Palette.border;
                     HorizontalLayout {
                         padding: 8px; spacing: 8px; alignment: end;
                         Button { text: "Annuler"; height: 30px; clicked => { root.editor-cancel(); } }
