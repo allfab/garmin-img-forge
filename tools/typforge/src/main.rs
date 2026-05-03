@@ -1,6 +1,7 @@
 mod app;
 mod error;
 mod typ;
+mod qml_import;
 
 slint::include_modules!();
 
@@ -921,6 +922,49 @@ fn main() -> anyhow::Result<()> {
             if let Some(p) = picked {
                 if let Err(e) = app_c.borrow().export_typ(&p) {
                     eprintln!("typforge: erreur export TYP: {}", e);
+                }
+            }
+        });
+    }
+
+    // on_import_qml
+    {
+        let app_c = Rc::clone(&app);
+        let ww = window.as_weak();
+        window.on_import_qml(move || {
+            let picked = rfd::FileDialog::new()
+                .add_filter("Style QGIS", &["qml"])
+                .set_title("Importer un style QGIS (.qml)")
+                .pick_file();
+            if let Some(p) = picked {
+                let bytes = match std::fs::read(&p) {
+                    Ok(b) => b,
+                    Err(e) => { eprintln!("typforge: impossible de lire {:?}: {}", p, e); return; }
+                };
+                let imported = match qml_import::parse(&bytes) {
+                    Ok(i) => i,
+                    Err(e) => { eprintln!("typforge: erreur import QML: {}", e); return; }
+                };
+                let mut a = app_c.borrow_mut();
+                if a.doc.is_none() {
+                    eprintln!("typforge: avertissement — aucun fichier TYP ouvert, création d'un document vide");
+                }
+                let doc = a.doc.get_or_insert_with(TypDocument::default);
+                // Offsets indépendants par namespace TYP (polygones/lignes/points non partagés)
+                let max_poly  = doc.polygons.iter().map(|p| p.type_code).max().unwrap_or(0);
+                let max_line  = doc.lines.iter().map(|l| l.type_code).max().unwrap_or(0);
+                let max_point = doc.points.iter().map(|p| p.type_code).max().unwrap_or(0);
+                let mut polys = imported.polygons;
+                let mut lns   = imported.lines;
+                let mut pts   = imported.points;
+                for p in &mut polys { p.type_code = p.type_code.saturating_add(max_poly); }
+                for l in &mut lns   { l.type_code = l.type_code.saturating_add(max_line); }
+                for p in &mut pts   { p.type_code = p.type_code.saturating_add(max_point); }
+                doc.polygons.extend(polys);
+                doc.lines.extend(lns);
+                doc.points.extend(pts);
+                if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
+                    update_ui_from_doc(doc, &w);
                 }
             }
         });

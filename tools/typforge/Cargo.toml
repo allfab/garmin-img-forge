@@ -15,6 +15,7 @@ required-features = ["ui"]
 [dependencies]
 slint = { version = "1.8", optional = true }
 rfd = { version = "0.15", optional = true }
+quick-xml = "0.39"
 encoding_rs = "0.8"
 byteorder = "1.5"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

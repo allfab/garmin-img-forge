@@ -4843,6 +4843,7 @@ dependencies = [
  "byteorder",
  "encoding_rs",
  "image",
+ "quick-xml",
  "rfd",
  "slint",
  "slint-build",

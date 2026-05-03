@@ -53,6 +53,7 @@ export component AppWindow inherits Window {
     callback open-file();
     callback save-file();
     callback export-typ();
+    callback import-qml();
     callback quit();
 
     // Callbacks éléments
@@ -201,6 +202,11 @@ export component AppWindow inherits Window {
                     text: "Enregistrer .TYP";
                     height: 28px;
                     clicked => { root.export-typ(); }
+                }
+                Button {
+                    text: "Importer QML";
+                    height: 28px;
+                    clicked => { root.import-qml(); }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 Button {

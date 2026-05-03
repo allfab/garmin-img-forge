@@ -70,8 +70,42 @@ export component Gallery inherits Rectangle {
             }
         }
 
-        // Contenu galerie
-        ScrollView {
+        // Contenu galerie — mode Text (liste compacte)
+        if root.gallery-tab == 0 : ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 4px;
+                spacing: 1px;
+                alignment: start;
+
+                for item in root.items: Rectangle {
+                    height: 28px;
+                    border-width: 1px;
+                    border-color: root.selected-index == item.index ? #3080ff : Palette.border;
+                    background: cell-ta-text.has-hover ? Palette.alternate-background : (root.selected-index == item.index ? #d0e8ff : Palette.background);
+
+                    cell-ta-text := TouchArea {
+                        clicked => {
+                            root.selected-index = item.index;
+                            root.gallery-item-selected(item.kind, item.index);
+                        }
+                    }
+
+                    Text {
+                        x: 8px;
+                        text: item.name;
+                        vertical-alignment: center;
+                        font-size: 11px;
+                        overflow: elide;
+                        color: root.selected-index == item.index ? #3080ff : Palette.foreground;
+                    }
+                }
+            }
+        }
+
+        // Contenu galerie — mode Icons (vignettes)
+        if root.gallery-tab == 1 : ScrollView {
             vertical-stretch: 1;
 
             VerticalLayout {
@@ -83,9 +117,9 @@ export component Gallery inherits Rectangle {
                     height: 76px;
                     border-width: 1px;
                     border-color: root.selected-index == item.index ? #3080ff : Palette.border;
-                    background: cell-ta.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : Palette.background);
+                    background: cell-ta-icon.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : Palette.background);
 
-                    cell-ta := TouchArea {
+                    cell-ta-icon := TouchArea {
                         clicked => {
                             root.selected-index = item.index;
                             root.gallery-item-selected(item.kind, item.index);

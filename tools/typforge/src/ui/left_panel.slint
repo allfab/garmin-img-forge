@@ -57,12 +57,21 @@ export component LeftPanel inherits Rectangle {
                 LineEdit { text <=> root.meta-header-str; }
             }
 
+            Rectangle { height: 6px; }
+            Rectangle { height: 1px; background: Palette.border; }
             Rectangle { height: 4px; }
 
             // ── Polygones ────────────────────────────────
             Rectangle {
-                height: 20px; background: #b8d4f0; border-radius: 2px;
-                Text { text: "Polygones"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
+                height: 22px;
+                background: Palette.accent-background;
+                border-radius: 3px;
+                border-width: 1px;
+                border-color: Palette.border;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Text { text: "Polygones"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
+                }
             }
             poly-list := StandardListView {
                 height: 100px;
@@ -75,12 +84,21 @@ export component LeftPanel inherits Rectangle {
                 Button { text: "×"; height: 22px; clicked => { root.delete-element(0, poly-list.current-item); } }
             }
 
+            Rectangle { height: 6px; }
+            Rectangle { height: 1px; background: Palette.border; }
             Rectangle { height: 4px; }
 
             // ── Polylignes ────────────────────────────────
             Rectangle {
-                height: 20px; background: #b8f0c0; border-radius: 2px;
-                Text { text: "Polylignes"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
+                height: 22px;
+                background: Palette.accent-background;
+                border-radius: 3px;
+                border-width: 1px;
+                border-color: Palette.border;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Text { text: "Polylignes"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
+                }
             }
             line-list := StandardListView {
                 height: 100px;
@@ -93,12 +111,21 @@ export component LeftPanel inherits Rectangle {
                 Button { text: "×"; height: 22px; clicked => { root.delete-element(1, line-list.current-item); } }
             }
 
+            Rectangle { height: 6px; }
+            Rectangle { height: 1px; background: Palette.border; }
             Rectangle { height: 4px; }
 
             // ── POIs ─────────────────────────────────────
             Rectangle {
-                height: 20px; background: #f0d8b8; border-radius: 2px;
-                Text { text: "POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
+                height: 22px;
+                background: Palette.accent-background;
+                border-radius: 3px;
+                border-width: 1px;
+                border-color: Palette.border;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Text { text: "POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
+                }
             }
             point-list := StandardListView {
                 height: 100px;
@@ -111,12 +138,21 @@ export component LeftPanel inherits Rectangle {
                 Button { text: "×"; height: 22px; clicked => { root.delete-element(2, point-list.current-item); } }
             }
 
+            Rectangle { height: 6px; }
+            Rectangle { height: 1px; background: Palette.border; }
             Rectangle { height: 4px; }
 
             // ── Extra POIs ───────────────────────────────
             Rectangle {
-                height: 20px; background: #e8c8e8; border-radius: 2px;
-                Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: #000000; }
+                height: 22px;
+                background: Palette.accent-background;
+                border-radius: 3px;
+                border-width: 1px;
+                border-color: Palette.border;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
+                }
             }
             icon-list := StandardListView {
                 height: 80px;
@@ -129,12 +165,21 @@ export component LeftPanel inherits Rectangle {
                 Button { text: "×"; height: 22px; clicked => { root.delete-element(3, icon-list.current-item); } }
             }
 
+            Rectangle { height: 6px; }
+            Rectangle { height: 1px; background: Palette.border; }
             Rectangle { height: 4px; }
 
             // ── DrawOrder ────────────────────────────────
             Rectangle {
-                height: 20px; background: Palette.control-background; border-radius: 2px;
-                Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: Palette.foreground; }
+                height: 22px;
+                background: Palette.control-background;
+                border-radius: 3px;
+                border-width: 1px;
+                border-color: Palette.border;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.foreground; }
+                }
             }
             StandardListView {
                 height: 70px;
