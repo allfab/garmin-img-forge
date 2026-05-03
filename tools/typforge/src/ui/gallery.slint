@@ -15,6 +15,7 @@ export component Gallery inherits Rectangle {
     in-out property <int> selected-index: -1;
 
     callback gallery-item-selected(int, int);
+    callback gallery-item-edit-requested(int, int);
     callback gallery-tab-changed(int);
 
     VerticalLayout {
@@ -90,6 +91,11 @@ export component Gallery inherits Rectangle {
                             root.selected-index = item.index;
                             root.gallery-item-selected(item.kind, item.index);
                         }
+                        double-clicked => {
+                            root.selected-index = item.index;
+                            root.gallery-item-selected(item.kind, item.index);
+                            root.gallery-item-edit-requested(item.kind, item.index);
+                        }
                     }
 
                     Text {
@@ -123,6 +129,11 @@ export component Gallery inherits Rectangle {
                         clicked => {
                             root.selected-index = item.index;
                             root.gallery-item-selected(item.kind, item.index);
+                        }
+                        double-clicked => {
+                            root.selected-index = item.index;
+                            root.gallery-item-selected(item.kind, item.index);
+                            root.gallery-item-edit-requested(item.kind, item.index);
                         }
                     }
 

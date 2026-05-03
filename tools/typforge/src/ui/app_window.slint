@@ -333,6 +333,7 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 items: root.gallery-items;
                 gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
+                gallery-item-edit-requested(kind, idx) => { root.edit-element(kind, idx); }
                 gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
             }
 

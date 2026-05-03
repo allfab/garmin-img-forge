@@ -17,6 +17,12 @@ export component LeftPanel inherits Rectangle {
 
     in-out property <int> active-list-selection: -1;
 
+    // Sélection courante par liste (pour boutons Éditer/Supprimer et double-clic)
+    private property <int> poly-sel: -1;
+    private property <int> line-sel: -1;
+    private property <int> point-sel: -1;
+    private property <int> icon-sel: -1;
+
     callback add-element(int);
     callback edit-element(int, int);
     callback delete-element(int, int);
@@ -73,15 +79,42 @@ export component LeftPanel inherits Rectangle {
                     Text { text: "Polygones"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
                 }
             }
-            poly-list := StandardListView {
+            ScrollView {
                 height: 100px;
-                model: root.polygons-model;
-                current-item-changed(idx) => { root.element-selected(0, idx); }
+                VerticalLayout {
+                    alignment: start;
+                    for item[idx] in root.polygons-model: Rectangle {
+                        height: 22px;
+                        background: poly-row-ta.has-hover ? Palette.alternate-background
+                                  : (poly-sel == idx ? #d0e8ff : Palette.background);
+                        border-width: 1px;
+                        border-color: poly-sel == idx ? #3080ff : Palette.border;
+                        poly-row-ta := TouchArea {
+                            clicked => {
+                                poly-sel = idx;
+                                root.element-selected(0, idx);
+                            }
+                            double-clicked => {
+                                poly-sel = idx;
+                                root.element-selected(0, idx);
+                                root.edit-element(0, idx);
+                            }
+                        }
+                        Text {
+                            x: 6px;
+                            text: item.text;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                            overflow: elide;
+                            color: poly-sel == idx ? #3080ff : Palette.foreground;
+                        }
+                    }
+                }
             }
             HorizontalLayout { spacing: 2px;
                 Button { text: "+"; height: 22px; clicked => { root.add-element(0); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(0, poly-list.current-item); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(0, poly-list.current-item); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(0, poly-sel); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(0, poly-sel); } }
             }
 
             Rectangle { height: 6px; }
@@ -100,15 +133,42 @@ export component LeftPanel inherits Rectangle {
                     Text { text: "Polylignes"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
                 }
             }
-            line-list := StandardListView {
+            ScrollView {
                 height: 100px;
-                model: root.lines-model;
-                current-item-changed(idx) => { root.element-selected(1, idx); }
+                VerticalLayout {
+                    alignment: start;
+                    for item[idx] in root.lines-model: Rectangle {
+                        height: 22px;
+                        background: line-row-ta.has-hover ? Palette.alternate-background
+                                  : (line-sel == idx ? #d0e8ff : Palette.background);
+                        border-width: 1px;
+                        border-color: line-sel == idx ? #3080ff : Palette.border;
+                        line-row-ta := TouchArea {
+                            clicked => {
+                                line-sel = idx;
+                                root.element-selected(1, idx);
+                            }
+                            double-clicked => {
+                                line-sel = idx;
+                                root.element-selected(1, idx);
+                                root.edit-element(1, idx);
+                            }
+                        }
+                        Text {
+                            x: 6px;
+                            text: item.text;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                            overflow: elide;
+                            color: line-sel == idx ? #3080ff : Palette.foreground;
+                        }
+                    }
+                }
             }
             HorizontalLayout { spacing: 2px;
                 Button { text: "+"; height: 22px; clicked => { root.add-element(1); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(1, line-list.current-item); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(1, line-list.current-item); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(1, line-sel); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(1, line-sel); } }
             }
 
             Rectangle { height: 6px; }
@@ -127,15 +187,42 @@ export component LeftPanel inherits Rectangle {
                     Text { text: "POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
                 }
             }
-            point-list := StandardListView {
+            ScrollView {
                 height: 100px;
-                model: root.points-model;
-                current-item-changed(idx) => { root.element-selected(2, idx); }
+                VerticalLayout {
+                    alignment: start;
+                    for item[idx] in root.points-model: Rectangle {
+                        height: 22px;
+                        background: point-row-ta.has-hover ? Palette.alternate-background
+                                  : (point-sel == idx ? #d0e8ff : Palette.background);
+                        border-width: 1px;
+                        border-color: point-sel == idx ? #3080ff : Palette.border;
+                        point-row-ta := TouchArea {
+                            clicked => {
+                                point-sel = idx;
+                                root.element-selected(2, idx);
+                            }
+                            double-clicked => {
+                                point-sel = idx;
+                                root.element-selected(2, idx);
+                                root.edit-element(2, idx);
+                            }
+                        }
+                        Text {
+                            x: 6px;
+                            text: item.text;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                            overflow: elide;
+                            color: point-sel == idx ? #3080ff : Palette.foreground;
+                        }
+                    }
+                }
             }
             HorizontalLayout { spacing: 2px;
                 Button { text: "+"; height: 22px; clicked => { root.add-element(2); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(2, point-list.current-item); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(2, point-list.current-item); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(2, point-sel); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(2, point-sel); } }
             }
 
             Rectangle { height: 6px; }
@@ -154,15 +241,42 @@ export component LeftPanel inherits Rectangle {
                     Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
                 }
             }
-            icon-list := StandardListView {
+            ScrollView {
                 height: 80px;
-                model: root.extra-pois-model;
-                current-item-changed(idx) => { root.element-selected(3, idx); }
+                VerticalLayout {
+                    alignment: start;
+                    for item[idx] in root.extra-pois-model: Rectangle {
+                        height: 22px;
+                        background: icon-row-ta.has-hover ? Palette.alternate-background
+                                  : (icon-sel == idx ? #d0e8ff : Palette.background);
+                        border-width: 1px;
+                        border-color: icon-sel == idx ? #3080ff : Palette.border;
+                        icon-row-ta := TouchArea {
+                            clicked => {
+                                icon-sel = idx;
+                                root.element-selected(3, idx);
+                            }
+                            double-clicked => {
+                                icon-sel = idx;
+                                root.element-selected(3, idx);
+                                root.edit-element(3, idx);
+                            }
+                        }
+                        Text {
+                            x: 6px;
+                            text: item.text;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                            overflow: elide;
+                            color: icon-sel == idx ? #3080ff : Palette.foreground;
+                        }
+                    }
+                }
             }
             HorizontalLayout { spacing: 2px;
                 Button { text: "+"; height: 22px; clicked => { root.add-element(3); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(3, icon-list.current-item); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(3, icon-list.current-item); } }
+                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(3, icon-sel); } }
+                Button { text: "×"; height: 22px; clicked => { root.delete-element(3, icon-sel); } }
             }
 
             Rectangle { height: 6px; }
