@@ -162,6 +162,18 @@ export component AppWindow inherits Window {
     callback poi-zoom-changed(int);
     callback poi-tool-changed(int);
 
+    // Color picker callbacks
+    callback pick-ep-day-color();
+    callback pick-ep-night-color();
+    callback pick-el-day-color();
+    callback pick-el-night-color();
+    callback pick-poi-new-color();
+    callback pick-poi-font-day-color();
+    callback pick-poi-font-night-color();
+    in-out property <color> poi-font-color-day: #000000;
+    in-out property <color> poi-font-color-night: #000000;
+    in-out property <color> poi-new-color-preview: #000000;
+
     VerticalLayout {
         // ── Barre d'outils ──────────────────────────────
         Rectangle {
@@ -355,6 +367,9 @@ export component AppWindow inherits Window {
         font-style-idx <=> root.poi-font-style-idx;
         font-color-day-text <=> root.poi-font-color-day-text;
         font-color-night-text <=> root.poi-font-color-night-text;
+        font-color-day <=> root.poi-font-color-day;
+        font-color-night <=> root.poi-font-color-night;
+        new-color-preview <=> root.poi-new-color-preview;
         lang-labels: root.poi-lang-labels;
         selected-lang <=> root.poi-selected-lang;
         selected-lang-name <=> root.poi-selected-lang-name;
@@ -378,6 +393,9 @@ export component AppWindow inherits Window {
         editor-cancel => { root.poi-editor-cancel(); }
         zoom-changed(v) => { root.poi-zoom-changed(v); }
         tool-changed(t) => { root.poi-tool-changed(t); }
+        pick-new-color => { root.pick-poi-new-color(); }
+        pick-font-day-color => { root.pick-poi-font-day-color(); }
+        pick-font-night-color => { root.pick-poi-font-night-color(); }
     }
 
     // ── Overlay éditeur polygone/ligne ───────────────────
@@ -424,7 +442,10 @@ export component AppWindow inherits Window {
                                     text <=> root.ep-day-fill-text; width: 90px;
                                     edited(v) => { root.ep-xpm-text = ""; root.editor-error = ""; }
                                 }
-                                Rectangle { width: 28px; height: 24px; background: root.ep-day-fill-color; border-width: 1px; border-color: #888; }
+                                Rectangle {
+                                    width: 28px; height: 24px; background: root.ep-day-fill-color; border-width: 1px; border-color: #888;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-ep-day-color(); } }
+                                }
                             }
 
                             HorizontalLayout { spacing: 6px; alignment: start;
@@ -433,7 +454,10 @@ export component AppWindow inherits Window {
                                     text <=> root.ep-night-fill-text; width: 90px;
                                     edited(v) => { root.ep-night-xpm-text = ""; root.editor-error = ""; }
                                 }
-                                Rectangle { width: 28px; height: 24px; background: root.ep-night-fill-color; border-width: 1px; border-color: #888; }
+                                Rectangle {
+                                    width: 28px; height: 24px; background: root.ep-night-fill-color; border-width: 1px; border-color: #888;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-ep-night-color(); } }
+                                }
                             }
 
                             HorizontalLayout { spacing: 6px; alignment: start;
@@ -463,7 +487,10 @@ export component AppWindow inherits Window {
                                     text <=> root.el-day-text; width: 90px;
                                     edited(v) => { root.el-xpm-text = ""; root.editor-error = ""; }
                                 }
-                                Rectangle { width: 28px; height: 24px; background: root.el-day-color; border-width: 1px; border-color: #888; }
+                                Rectangle {
+                                    width: 28px; height: 24px; background: root.el-day-color; border-width: 1px; border-color: #888;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-el-day-color(); } }
+                                }
                             }
 
                             HorizontalLayout { spacing: 6px; alignment: start;
@@ -472,7 +499,10 @@ export component AppWindow inherits Window {
                                     text <=> root.el-night-text; width: 90px;
                                     edited(v) => { root.el-night-xpm-text = ""; root.editor-error = ""; }
                                 }
-                                Rectangle { width: 28px; height: 24px; background: root.el-night-color; border-width: 1px; border-color: #888; }
+                                Rectangle {
+                                    width: 28px; height: 24px; background: root.el-night-color; border-width: 1px; border-color: #888;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-el-night-color(); } }
+                                }
                             }
 
                             HorizontalLayout { spacing: 6px; alignment: start;

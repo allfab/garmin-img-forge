@@ -310,6 +310,75 @@ fn hex_to_rgb(s: &str) -> Option<Rgb> {
     }
 }
 
+fn hex_to_slint_color(hex: &str) -> slint::Color {
+    if let Some(rgb) = hex_to_rgb(hex) {
+        slint::Color::from_rgb_u8(rgb.r, rgb.g, rgb.b)
+    } else {
+        slint::Color::from_rgb_u8(0, 0, 0)
+    }
+}
+
+fn normalize_color_string(s: &str) -> Option<String> {
+    let s = s.trim();
+    // "#RRGGBB" ou "#RRGGBBAA" — l'alpha zenity est toujours en fin, on prend les 6 premiers
+    if let Some(hex) = s.strip_prefix('#') {
+        let hex6 = if hex.len() >= 8 { &hex[..6] } else { hex };
+        if hex6.len() == 6 && hex6.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(format!("#{}", hex6.to_lowercase()));
+        }
+    }
+    // "rgb(R,G,B)" ou "rgba(R,G,B,A)" — GTK3 émet 0-255, GTK4 émet 0-65535
+    let inner_opt = s.strip_prefix("rgba(")
+        .or_else(|| s.strip_prefix("rgb("))
+        .and_then(|t| t.strip_suffix(')'));
+    if let Some(inner) = inner_opt {
+        let parts: Vec<&str> = inner.split(',').collect();
+        if parts.len() >= 3 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                parts[0].trim().parse::<u32>(),
+                parts[1].trim().parse::<u32>(),
+                parts[2].trim().parse::<u32>(),
+            ) {
+                // GTK4 utilise la plage 0-65535 ; diviser par 257 ramène à 0-255
+                let scale = if r > 255 || g > 255 || b > 255 { 257u32 } else { 1u32 };
+                return Some(format!(
+                    "#{:02x}{:02x}{:02x}",
+                    (r / scale) as u8,
+                    (g / scale) as u8,
+                    (b / scale) as u8,
+                ));
+            }
+        }
+    }
+    None
+}
+
+fn pick_color(current_hex: &str) -> Option<String> {
+    // Valider la couleur initiale pour éviter le bruit stderr dans zenity/kdialog
+    let initial = if hex_to_rgb(current_hex).is_some() { current_hex } else { "#000000" };
+    // zenity (GNOME / GTK) — distinguer "non trouvé" (Err) de "annulé" (Ok non-success)
+    match std::process::Command::new("zenity")
+        .args(["--color-selection", "--color", initial, "--title=Choisir une couleur"])
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            return normalize_color_string(&String::from_utf8_lossy(&out.stdout));
+        }
+        Ok(_) => return None,   // zenity présent, dialog annulé
+        Err(_) => {}            // zenity absent → essayer kdialog
+    }
+    // kdialog (KDE / Qt)
+    match std::process::Command::new("kdialog")
+        .args(["--getcolor", "--default", initial])
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            normalize_color_string(&String::from_utf8_lossy(&out.stdout))
+        }
+        _ => None,
+    }
+}
+
 /// Crée ou met à jour la première entrée opaque de la palette XPM avec `color`.
 /// Si la palette est entièrement transparente, remplace l'XPM par un 1×1 solide.
 fn set_xpm_fill_color(xpm: &mut Option<Xpm>, color: Rgb) {
@@ -719,14 +788,17 @@ fn push_poi_state_to_window(state: &PoiEditorState, window: &AppWindow, type_inf
     window.set_poi_has_night_bmp(state.has_night_bmp);
     window.set_poi_extended_labels(state.extended_labels);
     window.set_poi_font_style_idx(font_style_to_int(state.font_style));
-    window.set_poi_font_color_day_text(
-        state.day_font_colour.map(|c| format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b))
-            .unwrap_or_else(|| "#000000".to_string()).into()
-    );
-    window.set_poi_font_color_night_text(
-        state.night_font_colour.map(|c| format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b))
-            .unwrap_or_else(|| "#000000".to_string()).into()
-    );
+    let day_fc_str = state.day_font_colour
+        .map(|c| format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b))
+        .unwrap_or_else(|| "#000000".to_string());
+    let night_fc_str = state.night_font_colour
+        .map(|c| format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b))
+        .unwrap_or_else(|| "#000000".to_string());
+    window.set_poi_font_color_day_text(day_fc_str.clone().into());
+    window.set_poi_font_color_night_text(night_fc_str.clone().into());
+    window.set_poi_font_color_day(hex_to_slint_color(&day_fc_str));
+    window.set_poi_font_color_night(hex_to_slint_color(&night_fc_str));
+    window.set_poi_new_color_preview(slint::Color::from_rgb_u8(0, 0, 0));
     window.set_poi_lang_labels(build_lang_entries(&state.labels));
 
     let active_xpm = if state.editing_night { state.night_xpm.as_ref() } else { state.day_xpm.as_ref() };
@@ -1558,6 +1630,147 @@ fn main() -> anyhow::Result<()> {
             if let Some(w) = ww.upgrade() {
                 w.set_poi_editor_visible(false);
             }
+        });
+    }
+
+    // ── Color picker callbacks ────────────────────────────────────
+    // Les subprocessus zenity/kdialog sont lancés dans un thread dédié pour
+    // ne pas bloquer la boucle événementielle Slint pendant que la dialog est ouverte.
+
+    {
+        let ww = window.as_weak();
+        window.on_pick_ep_day_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_ep_day_fill_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_ep_day_fill_color(hex_to_slint_color(&hex));
+                            w.set_ep_day_fill_text(hex.into());
+                            w.set_ep_xpm_text("".into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_ep_night_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_ep_night_fill_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_ep_night_fill_color(hex_to_slint_color(&hex));
+                            w.set_ep_night_fill_text(hex.into());
+                            w.set_ep_night_xpm_text("".into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_el_day_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_el_day_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_el_day_color(hex_to_slint_color(&hex));
+                            w.set_el_day_text(hex.into());
+                            w.set_el_xpm_text("".into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_el_night_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_el_night_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_el_night_color(hex_to_slint_color(&hex));
+                            w.set_el_night_text(hex.into());
+                            w.set_el_night_xpm_text("".into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_poi_new_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_poi_new_color_hex().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_poi_new_color_preview(hex_to_slint_color(&hex));
+                            w.set_poi_new_color_hex(hex.into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_poi_font_day_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_poi_font_color_day_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_poi_font_color_day(hex_to_slint_color(&hex));
+                            w.set_poi_font_color_day_text(hex.into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_pick_poi_font_night_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_poi_font_color_night_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_poi_font_color_night(hex_to_slint_color(&hex));
+                            w.set_poi_font_color_night_text(hex.into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
         });
     }
 
