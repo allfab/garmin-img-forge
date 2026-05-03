@@ -2,8 +2,9 @@ import { Button, HorizontalBox, CheckBox, TextEdit, SpinBox, LineEdit, ComboBox,
 import { LeftPanel } from "left_panel.slint";
 import { Gallery, GalleryItem } from "gallery.slint";
 import { PreviewPanel } from "preview_panel.slint";
+import { PoiEditor, PaletteEntry, LangEntry } from "poi_editor.slint";
 
-export { GalleryItem }
+export { GalleryItem, PaletteEntry, LangEntry }
 
 export component AppWindow inherits Window {
     title: "typforge — TYP Editor";
@@ -40,6 +41,14 @@ export component AppWindow inherits Window {
     // Onglet nav actif (0=Poly 1=Line 2=Point 3=Extra)
     in-out property <int> active-nav-tab: 0;
 
+    // Sélection courante (pour re-rendre la preview quand le mode change)
+    in-out property <int> selected-kind: -1;
+    in-out property <int> selected-idx: -1;
+
+    // Mode preview : 0=Single 1=Mosaic 2=Superposition
+    in-out property <int> preview-mode: 0;
+    changed preview-mode => { root.preview-mode-changed(root.preview-mode); }
+
     // Callbacks fichiers
     callback open-file();
     callback save-file();
@@ -52,6 +61,19 @@ export component AppWindow inherits Window {
     callback delete-element(int, int);
     callback element-selected(int, int);
     callback edit-draworder();
+    callback preview-mode-changed(int);
+
+    // DrawOrder editor
+    in-out property <bool>   do-editor-visible: false;
+    in-out property <int>    do-selected-idx: -1;
+    in-out property <string> do-new-level-text: "0";
+    in-out property <string> do-new-type-text: "0x00";
+    in-out property <string> do-new-subtype-text: "0x00";
+    callback do-add();
+    callback do-delete(int);
+    callback do-move-up(int);
+    callback do-move-down(int);
+    callback do-cancel();
 
     // Callbacks galerie
     callback gallery-item-selected(int, int);
@@ -92,6 +114,53 @@ export component AppWindow inherits Window {
     callback editor-apply();
     callback editor-cancel();
     in-out property <string> editor-error: "";
+
+    // ── Éditeur POI ──────────────────────────────────────────
+    in-out property <bool>   poi-editor-visible: false;
+    in property <string>     poi-type-info: "";
+    in property <int>        poi-bmp-width: 16;
+    in property <int>        poi-bmp-height: 16;
+    in property <int>        poi-colour-count: 0;
+    in-out property <int>    poi-colormode: 16;
+    in property <[PaletteEntry]> poi-palette: [];
+    in-out property <int>    poi-active-palette-idx: 0;
+    in-out property <string> poi-new-color-hex: "#000000";
+    in property <image>      poi-grid-image;
+    in-out property <int>    poi-zoom: 12;
+    in-out property <int>    poi-active-tool: 0;
+    in-out property <int>    poi-brush-size: 1;
+    in property <image>      poi-preview-day;
+    in property <image>      poi-preview-night;
+    in-out property <bool>   poi-has-night-bmp: false;
+    in-out property <bool>   poi-editing-night: false;
+    in-out property <bool>   poi-extended-labels: false;
+    in-out property <int>    poi-font-style-idx: 0;
+    in-out property <string> poi-font-color-day-text: "#000000";
+    in-out property <string> poi-font-color-night-text: "#000000";
+    in property <[LangEntry]> poi-lang-labels: [];
+    in-out property <int>    poi-selected-lang: -1;
+    in-out property <string> poi-selected-lang-name: "";
+    in-out property <string> poi-selected-lang-text: "";
+    in-out property <string> poi-resize-width-text: "16";
+    in-out property <string> poi-resize-height-text: "16";
+
+    callback poi-grid-clicked(float, float, int);
+    callback poi-palette-selected(int);
+    callback poi-palette-add();
+    callback poi-palette-remove();
+    callback poi-resize-bmp(int, int);
+    callback poi-import-image();
+    callback poi-trim-colours();
+    callback poi-garmin-colours();
+    callback poi-copy-day-to-night();
+    callback poi-toggle-night-edit();
+    callback poi-lang-selected(int);
+    callback poi-lang-text-changed(string);
+    callback poi-set-as-default();
+    callback poi-editor-apply();
+    callback poi-editor-cancel();
+    callback poi-zoom-changed(int);
+    callback poi-tool-changed(int);
 
     VerticalLayout {
         // ── Barre d'outils ──────────────────────────────
@@ -257,8 +326,58 @@ export component AppWindow inherits Window {
                 width: 224px;
                 preview-day: root.preview-day;
                 preview-night: root.preview-night;
+                preview-mode <=> root.preview-mode;
             }
         }
+    }
+
+    // ── Overlay éditeur POI ──────────────────────────────
+    if root.poi-editor-visible : PoiEditor {
+        x: 0; y: 0;
+        width: root.width; height: root.height;
+        type-info: root.poi-type-info;
+        bmp-width: root.poi-bmp-width;
+        bmp-height: root.poi-bmp-height;
+        colour-count: root.poi-colour-count;
+        colormode <=> root.poi-colormode;
+        palette: root.poi-palette;
+        active-palette-idx <=> root.poi-active-palette-idx;
+        new-color-hex <=> root.poi-new-color-hex;
+        grid-image: root.poi-grid-image;
+        zoom <=> root.poi-zoom;
+        active-tool <=> root.poi-active-tool;
+        brush-size <=> root.poi-brush-size;
+        preview-day: root.poi-preview-day;
+        preview-night: root.poi-preview-night;
+        has-night-bmp <=> root.poi-has-night-bmp;
+        editing-night <=> root.poi-editing-night;
+        extended-labels <=> root.poi-extended-labels;
+        font-style-idx <=> root.poi-font-style-idx;
+        font-color-day-text <=> root.poi-font-color-day-text;
+        font-color-night-text <=> root.poi-font-color-night-text;
+        lang-labels: root.poi-lang-labels;
+        selected-lang <=> root.poi-selected-lang;
+        selected-lang-name <=> root.poi-selected-lang-name;
+        selected-lang-text <=> root.poi-selected-lang-text;
+        resize-width-text <=> root.poi-resize-width-text;
+        resize-height-text <=> root.poi-resize-height-text;
+        grid-clicked(fx, fy, btn) => { root.poi-grid-clicked(fx, fy, btn); }
+        palette-selected(i) => { root.poi-palette-selected(i); }
+        palette-add => { root.poi-palette-add(); }
+        palette-remove => { root.poi-palette-remove(); }
+        resize-bmp(w, h) => { root.poi-resize-bmp(w, h); }
+        import-image => { root.poi-import-image(); }
+        trim-colours => { root.poi-trim-colours(); }
+        garmin-colours => { root.poi-garmin-colours(); }
+        copy-day-to-night => { root.poi-copy-day-to-night(); }
+        toggle-night-edit => { root.poi-toggle-night-edit(); }
+        lang-selected(c) => { root.poi-lang-selected(c); }
+        lang-text-changed(t) => { root.poi-lang-text-changed(t); }
+        set-as-default => { root.poi-set-as-default(); }
+        editor-apply => { root.poi-editor-apply(); }
+        editor-cancel => { root.poi-editor-cancel(); }
+        zoom-changed(v) => { root.poi-zoom-changed(v); }
+        tool-changed(t) => { root.poi-tool-changed(t); }
     }
 
     // ── Overlay éditeur polygone/ligne ───────────────────
@@ -412,6 +531,74 @@ export component AppWindow inherits Window {
                         padding: 8px; spacing: 8px; alignment: end;
                         Button { text: "Annuler"; height: 30px; clicked => { root.editor-cancel(); } }
                         Button { text: "Appliquer"; height: 30px; clicked => { root.editor-apply(); } }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Overlay éditeur DrawOrder ────────────────────────────────
+    if root.do-editor-visible : Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #00000055;
+
+        Rectangle {
+            x: (parent.width - 500px) / 2;
+            y: (parent.height - 380px) / 2;
+            width: 500px; height: 380px;
+            background: Palette.background;
+            border-width: 1px; border-color: #888888;
+
+            VerticalLayout { padding: 0px;
+                // Titre
+                Rectangle {
+                    height: 36px; background: #2060b0;
+                    Text { text: "DrawOrder"; color: #ffffff; font-size: 13px; font-weight: 700;
+                        horizontal-alignment: center; vertical-alignment: center; }
+                }
+
+                // Corps
+                HorizontalLayout { vertical-stretch: 1; padding: 8px; spacing: 10px;
+                    // Gauche : liste + boutons Monter/Descendre/Supprimer
+                    VerticalLayout { horizontal-stretch: 1; spacing: 4px;
+                        do-list := StandardListView {
+                            vertical-stretch: 1;
+                            model: root.draworder;
+                            current-item <=> root.do-selected-idx;
+                        }
+                        HorizontalLayout { spacing: 4px;
+                            Button { text: "↑"; height: 26px; clicked => { root.do-move-up(root.do-selected-idx); } }
+                            Button { text: "↓"; height: 26px; clicked => { root.do-move-down(root.do-selected-idx); } }
+                            Rectangle { horizontal-stretch: 1; }
+                            Button { text: "Supprimer"; height: 26px; clicked => { root.do-delete(root.do-selected-idx); } }
+                        }
+                    }
+
+                    // Droite : formulaire ajout nouvelle entrée
+                    VerticalLayout { width: 190px; spacing: 6px; alignment: start;
+                        Text { text: "Nouvelle entrée"; font-size: 11px; font-weight: 700; color: Palette.foreground; }
+                        HorizontalLayout { spacing: 4px;
+                            Text { text: "Level:"; font-size: 11px; width: 60px; vertical-alignment: center; }
+                            LineEdit { text <=> root.do-new-level-text; }
+                        }
+                        HorizontalLayout { spacing: 4px;
+                            Text { text: "Type (hex):"; font-size: 11px; width: 60px; vertical-alignment: center; }
+                            LineEdit { text <=> root.do-new-type-text; }
+                        }
+                        HorizontalLayout { spacing: 4px;
+                            Text { text: "SubType:"; font-size: 11px; width: 60px; vertical-alignment: center; }
+                            LineEdit { text <=> root.do-new-subtype-text; }
+                        }
+                        Button { text: "Ajouter"; height: 26px; clicked => { root.do-add(); } }
+                    }
+                }
+
+                // Pied de fenêtre
+                Rectangle {
+                    height: 46px; background: Palette.control-background;
+                    border-width: 1px; border-color: Palette.border;
+                    HorizontalLayout { padding: 8px; spacing: 8px; alignment: end;
+                        Button { text: "Fermer"; height: 30px; clicked => { root.do-cancel(); } }
                     }
                 }
             }

@@ -1,0 +1,572 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Slider, Palette } from "std-widgets.slint";
+
+export struct PaletteEntry {
+    hex: string,          // "#RRGGBB" ou "transparent"
+    r: int,
+    g: int,
+    b: int,
+    is-transparent: bool,
+}
+
+export struct LangEntry {
+    code: int,
+    code-hex: string,     // "0x00" etc.
+    name: string,
+    has-label: bool,
+}
+
+export component PoiEditor inherits Rectangle {
+    background: #00000066;
+
+    in property <string>  type-info: "Type=0x00 / SubType=0x00";
+    in property <int>     bmp-width: 16;
+    in property <int>     bmp-height: 16;
+    in property <int>     colour-count: 0;
+    in-out property <int> colormode: 16;
+
+    in property <[PaletteEntry]> palette: [];
+    in-out property <int>    active-palette-idx: 0;
+    in-out property <string> new-color-hex: "#000000";
+
+    in property <image>   grid-image;
+    in-out property <int> zoom: 12;
+    in-out property <int> active-tool: 0;
+    in-out property <int> brush-size: 1;
+
+    in property <image>    preview-day;
+    in property <image>    preview-night;
+    in-out property <bool> has-night-bmp: false;
+    in-out property <bool> editing-night: false;
+
+    in-out property <bool>   extended-labels: false;
+    in-out property <int>    font-style-idx: 0;
+    in-out property <string> font-color-day-text: "#000000";
+    in-out property <string> font-color-night-text: "#000000";
+
+    in property <[LangEntry]> lang-labels: [];
+    in-out property <int>    selected-lang: -1;
+    in-out property <string> selected-lang-name: "";
+    in-out property <string> selected-lang-text: "";
+
+    in-out property <string> resize-width-text: "16";
+    in-out property <string> resize-height-text: "16";
+
+    callback grid-clicked(float, float, int);
+    callback palette-selected(int);
+    callback palette-add();
+    callback palette-remove();
+    callback resize-bmp(int, int);
+    callback import-image();
+    callback trim-colours();
+    callback garmin-colours();
+    callback copy-day-to-night();
+    callback toggle-night-edit();
+    callback lang-selected(int);
+    callback lang-text-changed(string);
+    callback set-as-default();
+    callback editor-apply();
+    callback editor-cancel();
+    callback zoom-changed(int);
+    callback tool-changed(int);
+
+    // ── Dialog centré ──────────────────────────────────────────
+    Rectangle {
+        x: (parent.width  - self.width)  / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width  - 32px, 1100px);
+        height: min(parent.height - 32px, 760px);
+        background: Palette.background;
+        border-width: 1px;
+        border-color: #555555;
+
+        VerticalLayout {
+            padding: 0px;
+
+            // Titre
+            Rectangle {
+                height: 36px;
+                background: #1a4a9a;
+                HorizontalLayout {
+                    padding-left: 12px; padding-right: 8px;
+                    Text {
+                        text: "Éditeur POI — " + root.type-info;
+                        color: #ffffff; font-size: 13px; font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Rectangle {
+                        width: 28px; height: 28px;
+                        background: close-ta.has-hover ? #cc3333 : transparent;
+                        border-radius: 3px;
+                        Text { text: "X"; color: #ffffff; font-size: 13px;
+                               horizontal-alignment: center; vertical-alignment: center; }
+                        close-ta := TouchArea { clicked => { root.editor-cancel(); } }
+                    }
+                }
+            }
+
+            // 3 panneaux
+            HorizontalLayout {
+                vertical-stretch: 1;
+
+                // ═══ PANNEAU GAUCHE ═══════════════════════════
+                ScrollView {
+                    width: 214px;
+
+                    VerticalLayout {
+                        padding: 8px; spacing: 6px; alignment: start;
+                        width: 206px;
+
+                        Text { text: root.type-info; font-size: 10px; wrap: word-wrap; }
+
+                        // Colormode
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Mode :"; font-size: 10px; width: 38px; vertical-alignment: center; }
+                            Rectangle {
+                                width: 38px; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: root.colormode == 16 ? #3080ff : Palette.control-background;
+                                Text { text: "16"; font-size: 10px; color: root.colormode == 16 ? #fff : Palette.foreground;
+                                       horizontal-alignment: center; vertical-alignment: center; }
+                                TouchArea { clicked => { root.colormode = 16; } }
+                            }
+                            Rectangle {
+                                width: 38px; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: root.colormode == 32 ? #3080ff : Palette.control-background;
+                                Text { text: "32"; font-size: 10px; color: root.colormode == 32 ? #fff : Palette.foreground;
+                                       horizontal-alignment: center; vertical-alignment: center; }
+                                TouchArea { clicked => { root.colormode = 32; } }
+                            }
+                        }
+
+                        // Taille + Resize
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "W:"; font-size: 10px; width: 14px; vertical-alignment: center; }
+                            LineEdit { text <=> root.resize-width-text; width: 36px; font-size: 10px; }
+                            Text { text: "H:"; font-size: 10px; width: 14px; vertical-alignment: center; }
+                            LineEdit { text <=> root.resize-height-text; width: 36px; font-size: 10px; }
+                            Rectangle {
+                                width: 48px; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: resize-ta.has-hover ? #e0e8f0 : Palette.control-background;
+                                Text { text: "Resize"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                                resize-ta := TouchArea {
+                                    clicked => {
+                                        root.resize-bmp(
+                                            root.resize-width-text.to-float() > 0 ? root.resize-width-text.to-float() : 16,
+                                            root.resize-height-text.to-float() > 0 ? root.resize-height-text.to-float() : 16
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        // Import
+                        Rectangle {
+                            height: 26px; border-radius: 3px; border-width: 1px; border-color: #888;
+                            background: imp-ta.has-hover ? #d0e8ff : Palette.control-background;
+                            Text { text: "Importer PNG/JPG"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                            imp-ta := TouchArea { clicked => { root.import-image(); } }
+                        }
+
+                        // Trim / Garmin
+                        HorizontalLayout { spacing: 4px;
+                            Rectangle {
+                                horizontal-stretch: 1; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: trim-ta.has-hover ? #e0ffe0 : Palette.control-background;
+                                Text { text: "Trim"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                                trim-ta := TouchArea { clicked => { root.trim-colours(); } }
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: garm-ta.has-hover ? #ffe0c0 : Palette.control-background;
+                                Text { text: "Garmin 16"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                                garm-ta := TouchArea { clicked => { root.garmin-colours(); } }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #aaaaaa; }
+
+                        HorizontalLayout { alignment: space-between;
+                            Text { text: "Palette"; font-size: 10px; font-weight: 700; vertical-alignment: center; }
+                            Text { text: root.colour-count + " couleurs"; font-size: 9px; vertical-alignment: center; }
+                        }
+
+                        // Liste palette
+                        Rectangle {
+                            height: 120px;
+                            border-width: 1px; border-color: #aaaaaa;
+                            background: Palette.background;
+                            clip: true;
+                            ScrollView {
+                                VerticalLayout {
+                                    padding: 2px; spacing: 2px; alignment: start;
+                                    for entry[i] in root.palette : Rectangle {
+                                        height: 20px;
+                                        background: root.active-palette-idx == i
+                                            ? #3080ff
+                                            : (pal-ta.has-hover ? #d0d8f0 : Palette.background);
+                                        border-radius: 2px;
+                                        HorizontalLayout {
+                                            padding: 2px; spacing: 4px;
+                                            Rectangle {
+                                                width: 16px; height: 16px;
+                                                border-width: 1px; border-color: #666;
+                                                background: entry.is-transparent
+                                                    ? transparent
+                                                    : rgb(entry.r, entry.g, entry.b);
+                                            }
+                                            Text {
+                                                text: entry.hex;
+                                                font-size: 9px;
+                                                vertical-alignment: center;
+                                                color: root.active-palette-idx == i ? #ffffff : Palette.foreground;
+                                            }
+                                        }
+                                        pal-ta := TouchArea {
+                                            clicked => {
+                                                root.active-palette-idx = i;
+                                                root.palette-selected(i);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Ajouter / Supprimer
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            LineEdit {
+                                text <=> root.new-color-hex;
+                                width: 72px; font-size: 9px;
+                                placeholder-text: "#RRGGBB";
+                            }
+                            Rectangle {
+                                width: 28px; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: add-ta.has-hover ? #c0ffc0 : Palette.control-background;
+                                Text { text: "+"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                                add-ta := TouchArea { clicked => { root.palette-add(); } }
+                            }
+                            Rectangle {
+                                width: 28px; height: 22px; border-radius: 3px; border-width: 1px; border-color: #888;
+                                background: rem-ta.has-hover ? #ffc0c0 : Palette.control-background;
+                                Text { text: "-"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                                rem-ta := TouchArea { clicked => { root.palette-remove(); } }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #aaaaaa; }
+
+                        // Outils
+                        Text { text: "Outils dessin"; font-size: 10px; font-weight: 700; }
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            for lbl[ti] in ["P", "E", "F", "I", "L"] : Rectangle {
+                                width: 28px; height: 28px; border-radius: 3px;
+                                border-width: 1px; border-color: #888;
+                                background: root.active-tool == ti ? #3080ff
+                                    : (t-touch.has-hover ? #d0e0f0 : Palette.control-background);
+                                Text {
+                                    text: lbl;
+                                    font-size: 11px; font-weight: 700;
+                                    color: root.active-tool == ti ? #ffffff : Palette.foreground;
+                                    horizontal-alignment: center; vertical-alignment: center;
+                                }
+                                t-touch := TouchArea {
+                                    clicked => {
+                                        root.active-tool = ti;
+                                        root.tool-changed(ti);
+                                    }
+                                }
+                            }
+                        }
+                        // Légende outils
+                        Text { text: "P=Crayon E=Gomme F=Fill I=Pipette L=Ligne"; font-size: 8px; color: #888888; wrap: word-wrap; }
+
+                        // Brush size
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Brush :"; font-size: 10px; vertical-alignment: center; }
+                            for sz[si] in [1, 2, 3] : Rectangle {
+                                width: 26px; height: 22px; border-radius: 3px;
+                                border-width: 1px; border-color: #888;
+                                background: root.brush-size == sz ? #3080ff : Palette.control-background;
+                                Text {
+                                    text: sz;
+                                    font-size: 10px;
+                                    color: root.brush-size == sz ? #ffffff : Palette.foreground;
+                                    horizontal-alignment: center; vertical-alignment: center;
+                                }
+                                TouchArea { clicked => { root.brush-size = sz; } }
+                            }
+                        }
+                    }
+                }
+
+                // Séparateur vertical
+                Rectangle { width: 1px; background: #888888; }
+
+                // ═══ PANNEAU CENTRE ════════════════════════════
+                VerticalLayout {
+                    horizontal-stretch: 1;
+
+                    // Barre zoom
+                    Rectangle {
+                        height: 32px;
+                        background: Palette.control-background;
+                        HorizontalLayout {
+                            padding: 6px; spacing: 8px; alignment: start;
+                            Text { text: "Zoom :"; font-size: 10px; vertical-alignment: center; }
+                            Slider {
+                                minimum: 4; maximum: 32; value: root.zoom;
+                                width: 110px;
+                                changed(v) => {
+                                    root.zoom = v;
+                                    root.zoom-changed(v);
+                                }
+                            }
+                            Text { text: root.zoom + "px"; font-size: 10px; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            Text { text: root.bmp-width + "×" + root.bmp-height; font-size: 10px; vertical-alignment: center; }
+                        }
+                    }
+                    Rectangle { height: 1px; background: #aaaaaa; }
+
+                    // Pixel-grid
+                    ScrollView {
+                        vertical-stretch: 1;
+                        horizontal-stretch: 1;
+
+                        Image {
+                            source: root.grid-image;
+                            image-fit: fill;
+                            width: (root.bmp-width * (root.zoom + 1) + 1) * 1px;
+                            height: (root.bmp-height * (root.zoom + 1) + 1) * 1px;
+
+                            grid-ta := TouchArea {
+                                moved => {
+                                    if self.pressed {
+                                        root.grid-clicked(
+                                            self.mouse-x / ((root.zoom + 1) * 1px),
+                                            self.mouse-y / ((root.zoom + 1) * 1px),
+                                            0
+                                        );
+                                    }
+                                }
+                                pointer-event(e) => {
+                                    if e.kind == PointerEventKind.down {
+                                        if e.button == PointerEventButton.left {
+                                            root.grid-clicked(
+                                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                                0
+                                            );
+                                        } else if e.button == PointerEventButton.right {
+                                            root.grid-clicked(
+                                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                                1
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Séparateur
+                    Rectangle { height: 1px; background: #aaaaaa; }
+
+                    // Labels multilingues
+                    Rectangle {
+                        height: 200px;
+                        background: Palette.background;
+
+                        VerticalLayout {
+                            padding: 6px; spacing: 4px;
+
+                            Text { text: "Labels multilingues"; font-size: 10px; font-weight: 700; }
+
+                            // Liste codes langue
+                            Rectangle {
+                                height: 118px;
+                                border-width: 1px; border-color: #aaaaaa;
+                                clip: true;
+                                ScrollView {
+                                    VerticalLayout {
+                                        padding: 2px; spacing: 2px; alignment: start;
+                                        for entry in root.lang-labels : Rectangle {
+                                            height: 20px;
+                                            HorizontalLayout {
+                                                padding: 0px; spacing: 4px; alignment: start;
+                                                Rectangle {
+                                                    width: 36px; height: 18px;
+                                                    border-radius: 2px;
+                                                    border-width: 1px;
+                                                    border-color: entry.has-label ? #3080ff : #bbbbbb;
+                                                    background: root.selected-lang == entry.code
+                                                        ? #3080ff
+                                                        : (entry.has-label
+                                                            ? #d0e8ff
+                                                            : (li-ta.has-hover ? #e8e8e8 : Palette.control-background));
+                                                    Text {
+                                                        text: entry.code-hex;
+                                                        font-size: 8px;
+                                                        color: root.selected-lang == entry.code ? #ffffff : Palette.foreground;
+                                                        horizontal-alignment: center; vertical-alignment: center;
+                                                    }
+                                                    li-ta := TouchArea {
+                                                        clicked => {
+                                                            root.selected-lang = entry.code;
+                                                            root.selected-lang-name = entry.name;
+                                                            root.lang-selected(entry.code);
+                                                        }
+                                                    }
+                                                }
+                                                Text {
+                                                    text: entry.name;
+                                                    font-size: 9px;
+                                                    vertical-alignment: center;
+                                                    color: entry.has-label ? #2060a0 : Palette.foreground;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                if entry.has-label : Text {
+                                                    text: "●";
+                                                    font-size: 8px;
+                                                    color: #3080ff;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Champ édition label
+                            HorizontalLayout { spacing: 6px; alignment: start;
+                                Text {
+                                    text: root.selected-lang >= 0 ? root.selected-lang-name : "(aucun)";
+                                    font-size: 10px; font-weight: 700; width: 72px; vertical-alignment: center;
+                                }
+                                LineEdit {
+                                    text <=> root.selected-lang-text;
+                                    horizontal-stretch: 1; font-size: 10px;
+                                    enabled: root.selected-lang >= 0;
+                                    edited(v) => { root.lang-text-changed(v); }
+                                }
+                                Rectangle {
+                                    width: 54px; height: 22px; border-radius: 3px;
+                                    border-width: 1px; border-color: #888;
+                                    background: def-ta.has-hover ? #ffe0a0 : Palette.control-background;
+                                    Text { text: "Défaut"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                                    def-ta := TouchArea { clicked => { root.set-as-default(); } }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Séparateur vertical
+                Rectangle { width: 1px; background: #888888; }
+
+                // ═══ PANNEAU DROIT ═════════════════════════════
+                ScrollView {
+                    width: 204px;
+
+                    VerticalLayout {
+                        padding: 8px; spacing: 6px; alignment: start;
+                        width: 196px;
+
+                        // Preview Jour
+                        Text { text: "Aperçu Jour"; font-size: 10px; font-weight: 700; }
+                        Rectangle {
+                            width: 82px; height: 82px;
+                            border-width: 1px; border-color: #aaaaaa;
+                            Image {
+                                source: root.preview-day;
+                                width: 80px; height: 80px;
+                                image-fit: contain;
+                            }
+                        }
+
+                        // Preview Nuit
+                        Text { text: "Aperçu Nuit"; font-size: 10px; font-weight: 700; }
+                        Rectangle {
+                            width: 82px; height: 82px;
+                            background: #333333;
+                            border-width: 1px; border-color: #aaaaaa;
+                            Image {
+                                source: root.preview-night;
+                                width: 80px; height: 80px;
+                                image-fit: contain;
+                            }
+                        }
+
+                        // Night BMP + Copy
+                        CheckBox {
+                            text: "Has Night BMP";
+                            checked <=> root.has-night-bmp;
+                        }
+
+                        Rectangle {
+                            height: 24px; border-radius: 3px; border-width: 1px; border-color: #888;
+                            background: copy-ta.has-hover ? #d0d0ff : Palette.control-background;
+                            Text { text: "Copier Jour → Nuit"; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
+                            copy-ta := TouchArea { clicked => { root.copy-day-to-night(); } }
+                        }
+
+                        // Toggle nuit
+                        Rectangle {
+                            height: 24px; border-radius: 3px; border-width: 1px; border-color: #888;
+                            background: root.editing-night ? #4060c0 : (night-ta.has-hover ? #d8d8ff : Palette.control-background);
+                            Text {
+                                text: root.editing-night ? "Mode : NUIT" : "Mode : JOUR";
+                                font-size: 9px; font-weight: 700;
+                                color: root.editing-night ? #ffffff : Palette.foreground;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
+                            night-ta := TouchArea { clicked => { root.toggle-night-edit(); } }
+                        }
+
+                        Rectangle { height: 1px; background: #aaaaaa; }
+
+                        // Typographie
+                        Text { text: "Typographie"; font-size: 10px; font-weight: 700; }
+
+                        CheckBox {
+                            text: "Extended Labels";
+                            checked <=> root.extended-labels;
+                        }
+
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Style :"; font-size: 10px; width: 38px; vertical-alignment: center; }
+                            ComboBox {
+                                model: ["Default", "NoLabel", "Small", "Normal", "Large"];
+                                current-index <=> root.font-style-idx;
+                                width: 110px;
+                            }
+                        }
+
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Font J :"; font-size: 10px; width: 44px; vertical-alignment: center; }
+                            LineEdit { text <=> root.font-color-day-text; width: 88px; font-size: 9px; }
+                        }
+
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Font N :"; font-size: 10px; width: 44px; vertical-alignment: center; }
+                            LineEdit { text <=> root.font-color-night-text; width: 88px; font-size: 9px; }
+                        }
+                    }
+                }
+            }
+
+            // Barre actions
+            Rectangle {
+                height: 46px;
+                background: Palette.control-background;
+                border-width: 1px; border-color: #aaaaaa;
+                HorizontalLayout {
+                    padding: 8px; spacing: 8px; alignment: end;
+                    Button { text: "Annuler"; height: 30px; clicked => { root.editor-cancel(); } }
+                    Button { text: "Appliquer"; height: 30px; clicked => { root.editor-apply(); } }
+                }
+            }
+        }
+    }
+}
