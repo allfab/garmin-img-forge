@@ -37,6 +37,27 @@ fn solid_buf(r: u8, g: u8, b: u8, size: u32) -> SharedPixelBuffer<Rgb8Pixel> {
     buf
 }
 
+/// Applique un motif XPM en tile sur `pixels` (size×size).
+/// Seuls les pixels opaques sont peints ; les pixels transparents laissent le fond intact.
+fn tile_xpm_on_buf(pixels: &mut [Rgb8Pixel], size: u32, xpm: &Xpm) {
+    let xw = xpm.width as u32;
+    let xh = xpm.height as u32;
+    if xw == 0 || xh == 0 { return; }
+    for y in 0..size {
+        for x in 0..size {
+            let xi = (x % xw) as usize;
+            let yi = (y % xh) as usize;
+            if let Some(c_idx) = xpm.pixels.get(yi).and_then(|row| row.get(xi)) {
+                if let Some((_, c)) = xpm.palette.get(*c_idx) {
+                    if !c.is_transparent() {
+                        pixels[(y * size + x) as usize] = Rgb8Pixel { r: c.r, g: c.g, b: c.b };
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn tile_3x3(src: &SharedPixelBuffer<Rgb8Pixel>) -> slint::Image {
     let sz = src.width();
     debug_assert_eq!(src.height(), sz, "tile_3x3 : le buffer source doit être carré");
@@ -64,14 +85,15 @@ fn render_element_buf(doc: &TypDocument, kind: i32, idx: usize, size: u32, night
         0 => match doc.polygons.get(idx) {
             Some(p) => {
                 let xpm = if night && p.night_xpm.is_some() { p.night_xpm.as_ref() } else { p.day_xpm.as_ref() };
-                let fill = first_opaque(xpm).unwrap_or(if night { (0x44, 0x44, 0x44) } else { (0x88, 0x88, 0x88) });
+                let bg: u8 = if night { 0x33 } else { 0xd0 };
                 let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
                 let pixels = buf.make_mut_slice();
+                for px in pixels.iter_mut() { *px = Rgb8Pixel { r: bg, g: bg, b: bg }; }
+                if let Some(xpm) = xpm { tile_xpm_on_buf(pixels, size, xpm); }
                 for y in 0..size { for x in 0..size {
-                    let on_border = x == 0 || y == 0 || x == size - 1 || y == size - 1;
-                    pixels[(y * size + x) as usize] = if on_border {
-                        Rgb8Pixel { r: 0, g: 0, b: 0 }
-                    } else { Rgb8Pixel { r: fill.0, g: fill.1, b: fill.2 } };
+                    if x == 0 || y == 0 || x == size - 1 || y == size - 1 {
+                        pixels[(y * size + x) as usize] = Rgb8Pixel { r: 0, g: 0, b: 0 };
+                    }
                 }}
                 buf
             }
@@ -139,13 +161,12 @@ fn render_superposition(doc: &TypDocument, size: u32, night: bool) -> slint::Ima
     let pixels = buf.make_mut_slice();
     for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
 
-    // Couche 1 : polygone (fond)
+    // Couche 1 : polygone (fond) — motif XPM tuilé, fond déjà initialisé ci-dessus
     if let Some(poly) = doc.polygons.first() {
         let xpm = if night && poly.night_xpm.is_some() { poly.night_xpm.as_ref() } else { poly.day_xpm.as_ref() };
-        let fill = first_opaque(xpm).unwrap_or(if night { (0x44, 0x44, 0x44) } else { (0xd0, 0xd0, 0xd0) });
-        for y in 1..size - 1 { for x in 1..size - 1 {
-            pixels[(y * size + x) as usize] = Rgb8Pixel { r: fill.0, g: fill.1, b: fill.2 };
-        }}
+        if let Some(xpm) = xpm {
+            tile_xpm_on_buf(pixels, size, xpm);
+        }
         for y in 0..size { for x in 0..size {
             if x == 0 || y == 0 || x == size - 1 || y == size - 1 {
                 pixels[(y * size + x) as usize] = Rgb8Pixel { r: 0, g: 0, b: 0 };
@@ -196,19 +217,23 @@ fn render_superposition(doc: &TypDocument, size: u32, night: bool) -> slint::Ima
 }
 
 fn render_polygon_thumb(poly: &TypPolygon, size: u32) -> slint::Image {
-    let fill = first_opaque(poly.day_xpm.as_ref()).unwrap_or((0x88, 0x88, 0x88));
+    render_polygon_thumb_xpm(poly.day_xpm.as_ref(), size, false)
+}
+
+fn render_polygon_thumb_xpm(xpm: Option<&Xpm>, size: u32, night: bool) -> slint::Image {
+    let bg: u8 = if night { 0x33 } else { 0xd0 };
     let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
     let pixels = buf.make_mut_slice();
-    for y in 0..size {
-        for x in 0..size {
-            let on_border = x == 0 || y == 0 || x == size - 1 || y == size - 1;
-            pixels[(y * size + x) as usize] = if on_border {
-                Rgb8Pixel { r: 0, g: 0, b: 0 }
-            } else {
-                Rgb8Pixel { r: fill.0, g: fill.1, b: fill.2 }
-            };
-        }
+    for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
+    if let Some(xpm) = xpm {
+        tile_xpm_on_buf(pixels, size, xpm);
     }
+    // Bordure noire
+    for y in 0..size { for x in 0..size {
+        if x == 0 || y == 0 || x == size - 1 || y == size - 1 {
+            pixels[(y * size + x) as usize] = Rgb8Pixel { r: 0, g: 0, b: 0 };
+        }
+    }}
     slint::Image::from_rgb8(buf)
 }
 
@@ -518,11 +543,9 @@ fn render_preview(doc: &TypDocument, kind: i32, idx: usize) -> (slint::Image, sl
         0 => match doc.polygons.get(idx) {
             Some(p) => {
                 let day = render_polygon_thumb(p, SZ);
-                let night = if let Some((r, g, b)) = first_opaque(p.night_xpm.as_ref()) {
-                    solid_thumb(r, g, b, SZ)
-                } else {
-                    render_polygon_thumb(p, SZ)
-                };
+                let night = render_polygon_thumb_xpm(
+                    p.night_xpm.as_ref().or(p.day_xpm.as_ref()), SZ, true,
+                );
                 (day, night)
             }
             None => (blank.clone(), blank),
