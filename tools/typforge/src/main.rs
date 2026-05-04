@@ -1401,6 +1401,7 @@ fn main() -> anyhow::Result<()> {
         let ww = window.as_weak();
         window.on_editor_cancel(move || {
             if let Some(w) = ww.upgrade() {
+                w.set_editor_error("".into());
                 w.set_editor_visible(false);
             }
         });
@@ -1441,6 +1442,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_ep_font_style(font_style_to_int(p.font_style));
                             w.set_ep_xpm_text(xpm_to_text_opt(p.day_xpm.as_ref()));
                             w.set_ep_night_xpm_text(xpm_to_text_opt(p.night_xpm.as_ref()));
+                            w.set_editor_error("".into());
                             w.set_editor_kind(0);
                             w.set_editor_idx(idx);
                             w.set_editor_visible(true);
@@ -1464,6 +1466,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_el_font_style(font_style_to_int(l.font_style));
                             w.set_el_xpm_text(xpm_to_text_opt(l.day_xpm.as_ref()));
                             w.set_el_night_xpm_text(xpm_to_text_opt(l.night_xpm.as_ref()));
+                            w.set_editor_error("".into());
                             w.set_editor_kind(1);
                             w.set_editor_idx(idx);
                             w.set_editor_visible(true);
@@ -2077,6 +2080,41 @@ fn main() -> anyhow::Result<()> {
                     });
                 }
             });
+        });
+    }
+
+    // ── Callbacks preview live hex → couleur ─────────────────────
+    // Mis à jour quand l'utilisateur tape un code hex valide dans les champs éditeur.
+    {
+        let ww = window.as_weak();
+        window.on_ep_day_text_changed(move |s| {
+            if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
+                w.set_ep_day_fill_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_ep_night_text_changed(move |s| {
+            if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
+                w.set_ep_night_fill_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_day_text_changed(move |s| {
+            if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
+                w.set_el_day_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_night_text_changed(move |s| {
+            if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
+                w.set_el_night_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+            }
         });
     }
 

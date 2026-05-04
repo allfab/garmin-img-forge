@@ -1,0 +1,356 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit, Palette } from "std-widgets.slint";
+
+export component PolygonEditor inherits Rectangle {
+    background: #00000066;
+
+    in-out property <string> title-text: "Polygone";
+
+    // Identité
+    in-out property <string> type-code-text: "0x00";
+    in-out property <string> sub-type-text:  "0x00";
+
+    // Style couleur
+    in-out property <color>  day-fill-color:   #888888;
+    in-out property <string> day-fill-text:    "#888888";
+    in-out property <color>  night-fill-color: #888888;
+    in-out property <string> night-fill-text:  "#888888";
+
+    // Typographie
+    in-out property <bool>   extended-labels: false;
+    in-out property <int>    font-style: 0;
+
+    // XPM brut (section avancée)
+    in-out property <string> xpm-text:       "";
+    in-out property <string> night-xpm-text: "";
+
+    // État
+    in-out property <string> error-msg: "";
+
+    // Callbacks
+    callback day-text-changed(string);
+    callback night-text-changed(string);
+    callback pick-day-color();
+    callback pick-night-color();
+    callback apply();
+    callback cancel();
+
+    // ── Dialog centré ──────────────────────────────────────────────
+    Rectangle {
+        x: (parent.width  - self.width)  / 2;
+        y: (parent.height - self.height) / 2;
+        width:  min(parent.width  - 32px, 740px);
+        height: min(parent.height - 32px, 540px);
+        background: Palette.background;
+        border-width: 1px;
+        border-color: #444444;
+        border-radius: 6px;
+        clip: true;
+
+        VerticalLayout {
+            padding: 0px;
+
+            // ── Header ──────────────────────────────────────────
+            Rectangle {
+                height: 42px;
+                background: #1e5aa8;
+                HorizontalLayout {
+                    padding-left: 18px; padding-right: 8px;
+                    Text {
+                        text: root.title-text;
+                        color: #ffffff; font-size: 14px; font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Rectangle {
+                        width: 34px; height: 34px;
+                        background: close-ta.has-hover ? #cc3333 : transparent;
+                        border-radius: 4px;
+                        Text {
+                            text: "✕"; color: #ffffff; font-size: 14px;
+                            horizontal-alignment: center; vertical-alignment: center;
+                        }
+                        close-ta := TouchArea { clicked => { root.cancel(); } }
+                    }
+                }
+            }
+
+            // ── Corps 2 colonnes ────────────────────────────────
+            HorizontalLayout {
+                vertical-stretch: 1;
+
+                // ═══ FORMULAIRE GAUCHE ════════════════════════
+                ScrollView {
+                    width: 400px;
+
+                    VerticalLayout {
+                        padding: 20px; spacing: 0px; alignment: start;
+                        width: 380px;
+
+                        // ─ Section Identité ──────────────────
+                        Text {
+                            text: "IDENTITÉ";
+                            font-size: 10px; font-weight: 700;
+                            color: #5a80c0; letter-spacing: 1px;
+                        }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 10px; }
+
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Type :"; font-size: 12px; width: 100px;
+                                vertical-alignment: center; color: Palette.foreground;
+                            }
+                            LineEdit { text <=> root.type-code-text; width: 100px; font-size: 12px; }
+                        }
+                        Rectangle { height: 8px; }
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Sous-type :"; font-size: 12px; width: 100px;
+                                vertical-alignment: center; color: Palette.foreground;
+                            }
+                            LineEdit { text <=> root.sub-type-text; width: 100px; font-size: 12px; }
+                        }
+                        Rectangle { height: 20px; }
+
+                        // ─ Section Style ─────────────────────
+                        Text {
+                            text: "STYLE";
+                            font-size: 10px; font-weight: 700;
+                            color: #5a80c0; letter-spacing: 1px;
+                        }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 10px; }
+
+                        // Couleur Jour
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Couleur Jour :"; font-size: 12px; width: 120px;
+                                vertical-alignment: center;
+                            }
+                            LineEdit {
+                                text <=> root.day-fill-text; width: 90px; font-size: 12px;
+                                edited(v) => {
+                                    root.xpm-text = "";
+                                    root.error-msg = "";
+                                    root.day-text-changed(v);
+                                }
+                            }
+                            Rectangle {
+                                width: 34px; height: 30px;
+                                background: root.day-fill-color;
+                                border-width: 1px; border-color: #888888;
+                                border-radius: 4px;
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.pick-day-color(); }
+                                }
+                            }
+                        }
+                        Rectangle { height: 8px; }
+
+                        // Couleur Nuit
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Couleur Nuit :"; font-size: 12px; width: 120px;
+                                vertical-alignment: center;
+                            }
+                            LineEdit {
+                                text <=> root.night-fill-text; width: 90px; font-size: 12px;
+                                edited(v) => {
+                                    root.night-xpm-text = "";
+                                    root.error-msg = "";
+                                    root.night-text-changed(v);
+                                }
+                            }
+                            Rectangle {
+                                width: 34px; height: 30px;
+                                background: root.night-fill-color;
+                                border-width: 1px; border-color: #888888;
+                                border-radius: 4px;
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.pick-night-color(); }
+                                }
+                            }
+                        }
+                        Rectangle { height: 8px; }
+
+                        // FontStyle
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Style police :"; font-size: 12px; width: 120px;
+                                vertical-alignment: center;
+                            }
+                            ComboBox {
+                                model: ["Défaut", "Sans label", "Petit", "Normal", "Grand"];
+                                current-index <=> root.font-style;
+                                width: 160px;
+                            }
+                        }
+                        Rectangle { height: 8px; }
+
+                        // ExtendedLabels
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Labels étendus :"; font-size: 12px; width: 120px;
+                                vertical-alignment: center;
+                            }
+                            CheckBox { checked <=> root.extended-labels; }
+                        }
+                        Rectangle { height: 20px; }
+
+                        // ─ Section XPM avancé ────────────────
+                        Text {
+                            text: "MOTIF XPM (AVANCÉ)";
+                            font-size: 10px; font-weight: 700;
+                            color: #5a80c0; letter-spacing: 1px;
+                        }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 10px; }
+
+                        Text {
+                            text: "Motif Jour (XPM brut) :";
+                            font-size: 11px; color: Palette.foreground;
+                        }
+                        Rectangle { height: 4px; }
+                        TextEdit {
+                            height: 90px; text <=> root.xpm-text; font-size: 10px;
+                        }
+                        Rectangle { height: 10px; }
+
+                        Text {
+                            text: "Motif Nuit (XPM brut) :";
+                            font-size: 11px; color: Palette.foreground;
+                        }
+                        Rectangle { height: 4px; }
+                        TextEdit {
+                            height: 70px; text <=> root.night-xpm-text; font-size: 10px;
+                        }
+                    }
+                }
+
+                // Séparateur vertical
+                Rectangle { width: 1px; background: Palette.border; }
+
+                // ═══ PANNEAU APERÇU DROIT ═════════════════════
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    padding: 20px; spacing: 0px; alignment: start;
+
+                    Text {
+                        text: "APERÇU EN DIRECT";
+                        font-size: 10px; font-weight: 700;
+                        color: #5a80c0; letter-spacing: 1px;
+                    }
+                    Rectangle { height: 1px; background: #5a80c040; }
+                    Rectangle { height: 16px; }
+
+                    // Aperçu Jour
+                    Text {
+                        text: "Jour"; font-size: 12px; font-weight: 700;
+                        color: Palette.foreground;
+                    }
+                    Rectangle { height: 8px; }
+                    Rectangle {
+                        height: 130px;
+                        background: #c8ccb4;
+                        border-radius: 6px;
+                        border-width: 1px; border-color: Palette.border;
+                        clip: true;
+
+                        // Preview couleur (live via day-fill-color)
+                        Rectangle {
+                            x: 6px; y: 6px;
+                            width: parent.width - 12px; height: parent.height - 12px;
+                            background: root.day-fill-color;
+                            border-radius: 3px;
+                            border-width: 1px; border-color: #00000044;
+                        }
+                        // Badge XPM (si motif XPM présent)
+                        if root.xpm-text != "" : Rectangle {
+                            x: parent.width - 46px; y: parent.height - 22px;
+                            width: 40px; height: 16px;
+                            background: #00000080; border-radius: 3px;
+                            Text {
+                                text: "XPM";
+                                font-size: 9px; color: #ffffff;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Rectangle { height: 16px; }
+
+                    // Aperçu Nuit
+                    Text {
+                        text: "Nuit"; font-size: 12px; font-weight: 700;
+                        color: Palette.foreground;
+                    }
+                    Rectangle { height: 8px; }
+                    Rectangle {
+                        height: 130px;
+                        background: #1e2530;
+                        border-radius: 6px;
+                        border-width: 1px; border-color: #555555;
+                        clip: true;
+
+                        Rectangle {
+                            x: 6px; y: 6px;
+                            width: parent.width - 12px; height: parent.height - 12px;
+                            background: root.night-fill-color;
+                            border-radius: 3px;
+                            border-width: 1px; border-color: #ffffff22;
+                        }
+                        if root.night-xpm-text != "" : Rectangle {
+                            x: parent.width - 46px; y: parent.height - 22px;
+                            width: 40px; height: 16px;
+                            background: #ffffff20; border-radius: 3px;
+                            Text {
+                                text: "XPM";
+                                font-size: 9px; color: #aaaaaa;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Rectangle { height: 16px; }
+
+                    // Aide
+                    Text {
+                        text: "Cliquer sur le swatch pour\nouvrir le sélecteur de couleur.";
+                        font-size: 10px; color: #888888; wrap: word-wrap;
+                    }
+                }
+            }
+
+            // ── Barre erreur ────────────────────────────────────
+            if root.error-msg != "" : Rectangle {
+                height: 32px;
+                background: #ffdddd;
+                border-width: 1px; border-color: #cc4444;
+                Text {
+                    text: root.error-msg;
+                    color: #cc0000; font-size: 11px;
+                    horizontal-alignment: center; vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            // ── Footer ──────────────────────────────────────────
+            Rectangle {
+                height: 52px;
+                background: Palette.control-background;
+                border-width: 1px; border-color: Palette.border;
+                HorizontalLayout {
+                    padding: 10px; spacing: 10px; alignment: end;
+                    Button {
+                        text: "Annuler"; height: 34px;
+                        clicked => { root.cancel(); }
+                    }
+                    Button {
+                        text: "Appliquer"; height: 34px;
+                        clicked => { root.apply(); }
+                    }
+                }
+            }
+        }
+    }
+}

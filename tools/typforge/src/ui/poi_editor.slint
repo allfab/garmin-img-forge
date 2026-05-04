@@ -92,22 +92,24 @@ export component PoiEditor inherits Rectangle {
 
             // Titre
             Rectangle {
-                height: 36px;
-                background: #1a4a9a;
+                height: 42px;
+                background: #1e5aa8;
                 HorizontalLayout {
-                    padding-left: 12px; padding-right: 8px;
+                    padding-left: 18px; padding-right: 8px;
                     Text {
-                        text: "Éditeur POI — " + root.type-code-text + "/" + root.sub-type-text;
-                        color: #ffffff; font-size: 13px; font-weight: 700;
+                        text: "POI — " + root.type-code-text + "/" + root.sub-type-text;
+                        color: #ffffff; font-size: 14px; font-weight: 700;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
                     Rectangle {
-                        width: 28px; height: 28px;
+                        width: 34px; height: 34px;
                         background: close-ta.has-hover ? #cc3333 : transparent;
-                        border-radius: 3px;
-                        Text { text: "X"; color: #ffffff; font-size: 13px;
-                               horizontal-alignment: center; vertical-alignment: center; }
+                        border-radius: 4px;
+                        Text {
+                            text: "✕"; color: #ffffff; font-size: 14px;
+                            horizontal-alignment: center; vertical-alignment: center;
+                        }
                         close-ta := TouchArea { clicked => { root.editor-cancel(); } }
                     }
                 }
@@ -528,26 +530,37 @@ export component PoiEditor inherits Rectangle {
                         width: 196px;
 
                         // Preview Jour
-                        Text { text: "Aperçu Jour"; font-size: 10px; font-weight: 700; }
+                        Text { text: "APERÇU"; font-size: 10px; font-weight: 700; color: #5a80c0; letter-spacing: 1px; }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 6px; }
+                        Text { text: "Jour"; font-size: 11px; font-weight: 700; }
+                        Rectangle { height: 4px; }
                         Rectangle {
-                            width: 82px; height: 82px;
+                            width: 130px; height: 130px;
+                            background: #c8ccb4;
+                            border-radius: 6px;
                             border-width: 1px; border-color: #aaaaaa;
                             Image {
                                 source: root.preview-day;
-                                width: 80px; height: 80px;
+                                x: 5px; y: 5px;
+                                width: 120px; height: 120px;
                                 image-fit: contain;
                             }
                         }
+                        Rectangle { height: 8px; }
 
                         // Preview Nuit
-                        Text { text: "Aperçu Nuit"; font-size: 10px; font-weight: 700; }
+                        Text { text: "Nuit"; font-size: 11px; font-weight: 700; }
+                        Rectangle { height: 4px; }
                         Rectangle {
-                            width: 82px; height: 82px;
-                            background: #333333;
-                            border-width: 1px; border-color: #aaaaaa;
+                            width: 130px; height: 130px;
+                            background: #1e2530;
+                            border-radius: 6px;
+                            border-width: 1px; border-color: #555555;
                             Image {
                                 source: root.preview-night;
-                                width: 80px; height: 80px;
+                                x: 5px; y: 5px;
+                                width: 120px; height: 120px;
                                 image-fit: contain;
                             }
                         }
@@ -643,13 +656,13 @@ export component PoiEditor inherits Rectangle {
 
             // Barre actions
             Rectangle {
-                height: 46px;
+                height: 52px;
                 background: Palette.control-background;
-                border-width: 1px; border-color: #aaaaaa;
+                border-width: 1px; border-color: Palette.border;
                 HorizontalLayout {
-                    padding: 8px; spacing: 8px; alignment: end;
-                    Button { text: "Annuler"; height: 30px; clicked => { root.editor-cancel(); } }
-                    Button { text: "Appliquer"; height: 30px; clicked => { root.editor-apply(); } }
+                    padding: 10px; spacing: 10px; alignment: end;
+                    Button { text: "Annuler"; height: 34px; clicked => { root.editor-cancel(); } }
+                    Button { text: "Appliquer"; height: 34px; clicked => { root.editor-apply(); } }
                 }
             }
         }
