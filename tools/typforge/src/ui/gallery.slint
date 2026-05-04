@@ -16,6 +16,11 @@ export component Gallery inherits Rectangle {
     callback gallery-item-selected(int, int);
     callback gallery-item-edit-requested(int, int);
 
+    // Largeur de colonne calculée une seule fois pour toutes les cellules.
+    // Évite les réévaluations indépendantes de visible-width dans la boucle for
+    // (qui peuvent diverger d'1 px si la scrollbar apparaît en cours de layout).
+    private property <length> cell-width: icon-scroll.visible-width / 5;
+
     VerticalLayout {
         // ── Header : titre ───────────────────────────────
         Rectangle {
@@ -49,9 +54,9 @@ export component Gallery inherits Rectangle {
                 height: icon-scroll.viewport-height;
 
                 for item[idx] in root.items : Rectangle {
-                    x: mod(idx, 5) * (icon-scroll.visible-width / 5);
-                    y: (idx / 5) * 96px + 4px;
-                    width: icon-scroll.visible-width / 5 - 1px;
+                    x: mod(idx, 5) * root.cell-width;
+                    y: floor(idx / 5) * 96px + 4px;
+                    width: root.cell-width - 1px;
                     height: 92px;
 
                     border-width: root.selected-index == item.index ? 2px : 1px;
