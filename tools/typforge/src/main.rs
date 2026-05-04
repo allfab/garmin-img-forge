@@ -126,7 +126,6 @@ fn render_element_buf(doc: &TypDocument, kind: i32, idx: usize, size: u32, night
                 let xpm = if night && l.night_xpm.is_some() { l.night_xpm.as_ref() } else { l.day_xpm.as_ref() };
                 let lc = first_opaque(xpm).unwrap_or(if night { (0xcc, 0xcc, 0xcc) } else { (0, 0, 0) });
                 let bg: u8 = if night { 0x33 } else { 0xe0 };
-                let lw = (l.line_width as u32).clamp(1, size / 4);
                 let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
                 let pixels = buf.make_mut_slice();
                 for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
@@ -2241,6 +2240,9 @@ fn main() -> anyhow::Result<()> {
                 xpm.push('\n');
             }
             w.set_el_xpm_text(xpm.into());
+            // Synchronise le SpinBox épaisseur avec la hauteur effective de l'XPM
+            // (line_w peut diverger de el_line_width si la ligne était un bitmap width=0)
+            w.set_el_line_width(line_w as i32);
         });
     }
 
