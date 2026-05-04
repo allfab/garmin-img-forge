@@ -40,6 +40,9 @@ export component LineEditor inherits Rectangle {
     callback apply();
     callback cancel();
 
+    // Capture tous les clics sur le fond semi-transparent (empêche le click-through vers la galerie)
+    TouchArea {}
+
     // ── Dialog centré ──────────────────────────────────────────────
     Rectangle {
         x: (parent.width  - self.width)  / 2;
@@ -300,11 +303,17 @@ export component LineEditor inherits Rectangle {
 
                         Text { text: "Motif Jour (XPM brut) :"; font-size: 11px; }
                         Rectangle { height: 4px; }
-                        TextEdit { height: 80px; text <=> root.xpm-text; font-size: 10px; }
+                        TextEdit {
+                            height: 80px; text: root.xpm-text; font-size: 10px;
+                            edited(v) => { root.xpm-text = v; }
+                        }
                         Rectangle { height: 10px; }
                         Text { text: "Motif Nuit (XPM brut) :"; font-size: 11px; }
                         Rectangle { height: 4px; }
-                        TextEdit { height: 60px; text <=> root.night-xpm-text; font-size: 10px; }
+                        TextEdit {
+                            height: 60px; text: root.night-xpm-text; font-size: 10px;
+                            edited(v) => { root.night-xpm-text = v; }
+                        }
                     }
                 }
 

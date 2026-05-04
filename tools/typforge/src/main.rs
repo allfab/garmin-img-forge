@@ -58,6 +58,28 @@ fn tile_xpm_on_buf(pixels: &mut [Rgb8Pixel], size: u32, xpm: &Xpm) {
     }
 }
 
+/// Dessine une bande horizontale en tuilant le motif XPM (lignes en tirets).
+/// Seuls les pixels opaques du XPM remplacent le fond — les pixels transparents sont ignorés.
+fn draw_line_xpm(pixels: &mut [Rgb8Pixel], img_w: u32, y_start: u32, lw: u32, x0: u32, x1: u32, xpm: &Xpm) {
+    let xw = xpm.width as u32;
+    let xh = xpm.height as u32;
+    if xw == 0 || xh == 0 { return; }
+    for dy in 0..lw {
+        let y = y_start + dy;
+        let xpm_row = dy % xh;
+        for x in x0..x1 {
+            let xpm_col = x % xw;
+            if let Some(c_idx) = xpm.pixels.get(xpm_row as usize).and_then(|r| r.get(xpm_col as usize)) {
+                if let Some((_, c)) = xpm.palette.get(*c_idx) {
+                    if !c.is_transparent() {
+                        pixels[(y * img_w + x) as usize] = Rgb8Pixel { r: c.r, g: c.g, b: c.b };
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn tile_3x3(src: &SharedPixelBuffer<Rgb8Pixel>) -> slint::Image {
     let sz = src.width();
     debug_assert_eq!(src.height(), sz, "tile_3x3 : le buffer source doit être carré");
@@ -108,12 +130,22 @@ fn render_element_buf(doc: &TypDocument, kind: i32, idx: usize, size: u32, night
                 let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
                 let pixels = buf.make_mut_slice();
                 for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
+                let xpm_tiled = xpm.filter(|x| x.width > 0 && x.height > 0);
+                let lw = if let Some(x) = xpm_tiled {
+                    (x.height as u32).clamp(1, size / 4)
+                } else {
+                    (l.line_width as u32).clamp(1, size / 4)
+                };
                 let y_start = (size / 2).saturating_sub(lw / 2);
-                for dy in 0..lw {
-                    let y = y_start + dy;
-                    if y < size {
-                        for x in 2..size.saturating_sub(2) {
-                            pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+                if let Some(xpm) = xpm_tiled {
+                    draw_line_xpm(pixels, size, y_start, lw, 2, size.saturating_sub(2), xpm);
+                } else {
+                    for dy in 0..lw {
+                        let y = y_start + dy;
+                        if y < size {
+                            for x in 2..size.saturating_sub(2) {
+                                pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+                            }
                         }
                     }
                 }
@@ -178,13 +210,22 @@ fn render_superposition(doc: &TypDocument, size: u32, night: bool) -> slint::Ima
     if let Some(line) = doc.lines.first() {
         let xpm = if night && line.night_xpm.is_some() { line.night_xpm.as_ref() } else { line.day_xpm.as_ref() };
         let lc = first_opaque(xpm).unwrap_or(if night { (0xcc, 0xcc, 0xcc) } else { (0, 0, 0) });
-        let lw = (line.line_width as u32).clamp(1, size / 8);
+        let xpm_tiled = xpm.filter(|x| x.width > 0 && x.height > 0);
+        let lw = if let Some(x) = xpm_tiled {
+            (x.height as u32).clamp(1, size / 8)
+        } else {
+            (line.line_width as u32).clamp(1, size / 8)
+        };
         let y_start = size / 2;
-        for dy in 0..lw {
-            let y = y_start + dy;
-            if y < size {
-                for x in 4..size.saturating_sub(4) {
-                    pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+        if let Some(xpm) = xpm_tiled {
+            draw_line_xpm(pixels, size, y_start, lw, 4, size.saturating_sub(4), xpm);
+        } else {
+            for dy in 0..lw {
+                let y = y_start + dy;
+                if y < size {
+                    for x in 4..size.saturating_sub(4) {
+                        pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+                    }
                 }
             }
         }
@@ -238,19 +279,29 @@ fn render_polygon_thumb_xpm(xpm: Option<&Xpm>, size: u32, night: bool) -> slint:
 }
 
 fn render_line_thumb(line: &TypLine, size: u32) -> slint::Image {
-    let lc = first_opaque(line.day_xpm.as_ref()).unwrap_or((0, 0, 0));
-    let lw = (line.line_width as u32).clamp(1, size / 4);
+    let xpm = line.day_xpm.as_ref();
+    let lc = first_opaque(xpm).unwrap_or((0, 0, 0));
+    let xpm_tiled = xpm.filter(|x| x.width > 0 && x.height > 0);
+    let lw = if let Some(x) = xpm_tiled {
+        (x.height as u32).clamp(1, size / 4)
+    } else {
+        (line.line_width as u32).clamp(1, size / 4)
+    };
     let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
     let pixels = buf.make_mut_slice();
     for p in pixels.iter_mut() {
         *p = Rgb8Pixel { r: 0xe0, g: 0xe0, b: 0xe0 };
     }
     let y_start = (size / 2).saturating_sub(lw / 2);
-    for dy in 0..lw {
-        let y = y_start + dy;
-        if y < size {
-            for x in 4..size - 4 {
-                pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+    if let Some(xpm) = xpm_tiled {
+        draw_line_xpm(pixels, size, y_start, lw, 4, size - 4, xpm);
+    } else {
+        for dy in 0..lw {
+            let y = y_start + dy;
+            if y < size {
+                for x in 4..size - 4 {
+                    pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+                }
             }
         }
     }

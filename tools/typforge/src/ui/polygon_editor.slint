@@ -41,6 +41,9 @@ export component PolygonEditor inherits Rectangle {
     callback apply();
     callback cancel();
 
+    // Capture tous les clics sur le fond semi-transparent (empêche le click-through vers la galerie)
+    TouchArea {}
+
     // ── Dialog centré ──────────────────────────────────────────────
     Rectangle {
         x: (parent.width  - self.width)  / 2;
@@ -248,7 +251,8 @@ export component PolygonEditor inherits Rectangle {
                         }
                         Rectangle { height: 4px; }
                         TextEdit {
-                            height: 90px; text <=> root.xpm-text; font-size: 10px;
+                            height: 90px; text: root.xpm-text; font-size: 10px;
+                            edited(v) => { root.xpm-text = v; }
                         }
                         Rectangle { height: 10px; }
 
@@ -258,7 +262,8 @@ export component PolygonEditor inherits Rectangle {
                         }
                         Rectangle { height: 4px; }
                         TextEdit {
-                            height: 70px; text <=> root.night-xpm-text; font-size: 10px;
+                            height: 70px; text: root.night-xpm-text; font-size: 10px;
+                            edited(v) => { root.night-xpm-text = v; }
                         }
                     }
                 }
