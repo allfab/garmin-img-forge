@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-01T22:09:05Z",
+  "generated_at": "2026-05-04T21:21:24Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,9 +9,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-01T21:19:19Z",
-          "size_bytes": 177025024,
-          "sha256": "727688079cd9f74f2b9b90c8707cfcb5024df8a701193cfc76a895d5d287b7e8",
+          "published_at": "2026-05-04T21:21:24Z",
+          "size_bytes": 177012736,
+          "sha256": "c4f67815cf69d6b09e40d41f3a22f34cb38f5f710310d9efd20213a2c6f19cf6",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
