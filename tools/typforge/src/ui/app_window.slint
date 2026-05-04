@@ -9,6 +9,7 @@ export { GalleryItem, PaletteEntry, LangEntry }
 
 export component AppWindow inherits Window {
     title: "typforge — TYP Editor";
+    icon: @image-url("../../favicon.png");
     min-width: 960px;
     min-height: 640px;
     preferred-width: 1280px;
@@ -327,7 +328,7 @@ export component AppWindow inherits Window {
                     background: root.active-nav-tab == 0 ? #3080ff : Palette.control-background;
                     Text {
                         text: "Polygones [" + root.poly-count + "]";
-                        color: root.active-nav-tab == 0 ? #ffffff : #333333;
+                        color: root.active-nav-tab == 0 ? #ffffff : Palette.foreground;
                         font-size: 12px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -412,11 +413,16 @@ export component AppWindow inherits Window {
                 line-count: root.line-count;
                 point-count: root.point-count;
                 poi-count: root.poi-count;
+                active-kind: root.active-nav-tab;
                 add-element(kind) => { root.add-element(kind); }
                 edit-element(kind, idx) => { root.edit-element(kind, idx); }
                 delete-element(kind, idx) => { root.delete-element(kind, idx); }
                 element-selected(kind, idx) => { root.element-selected(kind, idx); }
                 edit-draworder => { root.edit-draworder(); }
+                nav-requested(kind) => {
+                    root.active-nav-tab = kind;
+                    root.nav-tab-changed(kind);
+                }
             }
 
             // Séparateur gauche (draggable)
@@ -434,14 +440,33 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Galerie centrale
-            gallery := Gallery {
+            // Panneau central : galerie + code TXT (sous la galerie)
+            VerticalLayout {
                 horizontal-stretch: 1;
-                items: root.gallery-items;
-                gallery-tab <=> root.gallery-display-tab;
-                gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
-                gallery-item-edit-requested(kind, idx) => { root.edit-element(kind, idx); }
-                gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
+
+                gallery := Gallery {
+                    vertical-stretch: 1;
+                    items: root.gallery-items;
+                    gallery-tab <=> root.gallery-display-tab;
+                    gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
+                    gallery-item-edit-requested(kind, idx) => { root.edit-element(kind, idx); }
+                    gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
+                }
+
+                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : Rectangle {
+                    height: 1px;
+                    background: #aaaaaa;
+                }
+
+                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : TxtCodePanel {
+                    height: 220px;
+                    txt-code: root.selected-txt-code;
+                    edit-mode <=> root.txt-edit-mode;
+                    edit-buffer <=> root.txt-edit-buffer;
+                    error-msg: root.txt-edit-error;
+                    edit-apply(s) => { root.txt-edit-apply(s); }
+                    edit-cancel => { root.txt-edit-cancel(); }
+                }
             }
 
             // Séparateur droit (draggable)
@@ -459,31 +484,12 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Zone droite : preview + code TXT
-            VerticalLayout {
+            // Panneau droit : preview uniquement
+            PreviewPanel {
                 width: root.right-panel-width;
-
-                PreviewPanel {
-                    vertical-stretch: 1;
-                    preview-day: root.preview-day;
-                    preview-night: root.preview-night;
-                    preview-mode <=> root.preview-mode;
-                }
-
-                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : Rectangle {
-                    height: 1px;
-                    background: #aaaaaa;
-                }
-
-                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : TxtCodePanel {
-                    vertical-stretch: 1;
-                    txt-code: root.selected-txt-code;
-                    edit-mode <=> root.txt-edit-mode;
-                    edit-buffer <=> root.txt-edit-buffer;
-                    error-msg: root.txt-edit-error;
-                    edit-apply(s) => { root.txt-edit-apply(s); }
-                    edit-cancel => { root.txt-edit-cancel(); }
-                }
+                preview-day: root.preview-day;
+                preview-night: root.preview-night;
+                preview-mode <=> root.preview-mode;
             }
         }
     }

@@ -1,0 +1,97 @@
+import { Button, TextEdit, Palette } from "std-widgets.slint";
+
+export component TxtCodePanel inherits Rectangle {
+    background: Palette.background;
+    min-height: 150px;
+
+    in property <string> txt-code: "";
+    in-out property <bool> edit-mode: false;
+    in-out property <string> edit-buffer: "";
+    in-out property <string> error-msg: "";
+
+    callback edit-apply(string);
+    callback edit-cancel();
+
+    VerticalLayout {
+        // En-tête
+        Rectangle {
+            height: 30px;
+            background: Palette.control-background;
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 4px;
+
+                Text {
+                    text: "Code TXT";
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    color: Palette.foreground;
+                }
+
+                if !root.edit-mode : Button {
+                    text: "Éditer";
+                    height: 22px;
+                    clicked => {
+                        root.edit-buffer = root.txt-code;
+                        root.edit-mode = true;
+                    }
+                }
+            }
+        }
+
+        // Lecture seule
+        if !root.edit-mode : TextEdit {
+            vertical-stretch: 1;
+            text: root.txt-code;
+            read-only: true;
+            font-size: 10px;
+            wrap: no-wrap;
+        }
+
+        // Édition
+        if root.edit-mode : TextEdit {
+            vertical-stretch: 1;
+            text <=> root.edit-buffer;
+            font-size: 10px;
+            wrap: no-wrap;
+            edited(v) => { root.error-msg = ""; }
+        }
+
+        // Barre d'erreur
+        if root.error-msg != "" : Rectangle {
+            height: 28px;
+            background: #ffdddd;
+            border-color: #cc4444;
+            border-width: 1px;
+            Text {
+                text: root.error-msg;
+                color: #cc0000;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        // Pied de page (mode édition uniquement)
+        if root.edit-mode : Rectangle {
+            height: 36px;
+            background: Palette.control-background;
+            border-color: Palette.border;
+            border-width: 1px;
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: end;
+                Button { text: "Annuler"; height: 26px; clicked => { root.edit-cancel(); } }
+                Button { text: "Appliquer"; height: 26px; clicked => { root.edit-apply(root.edit-buffer); } }
+            }
+        }
+    }
+}
