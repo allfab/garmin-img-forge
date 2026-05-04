@@ -1035,6 +1035,15 @@ fn main() -> anyhow::Result<()> {
         window.on_nav_tab_changed(move |tab| {
             let a = app_c.borrow();
             if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
+                let current_kind = w.get_selected_kind();
+                if current_kind >= 0 && current_kind != tab {
+                    w.set_selected_kind(-1);
+                    w.set_selected_idx(-1);
+                    w.set_selected_txt_code("".into());
+                    w.set_txt_edit_mode(false);
+                    w.set_txt_edit_buffer("".into());
+                    w.set_txt_edit_error("".into());
+                }
                 rebuild_gallery(doc, &w, tab);
             }
         });
@@ -1352,6 +1361,8 @@ fn main() -> anyhow::Result<()> {
                         let (day, night) = render_preview(doc, kind, idx);
                         w.set_preview_day(day);
                         w.set_preview_night(night);
+                        let new_txt = crate::typ::text_writer::element_to_display_txt(doc, kind, idx);
+                        w.set_selected_txt_code(new_txt.into());
                     }
                 }
             }
@@ -1884,6 +1895,8 @@ fn main() -> anyhow::Result<()> {
                 let (day_img, night_img) = render_preview(doc, 2, doc_idx);
                 w.set_preview_day(day_img);
                 w.set_preview_night(night_img);
+                let new_txt = crate::typ::text_writer::element_to_display_txt(doc, 2, doc_idx);
+                w.set_selected_txt_code(new_txt.into());
             }
 
             *poi_c.borrow_mut() = None;
