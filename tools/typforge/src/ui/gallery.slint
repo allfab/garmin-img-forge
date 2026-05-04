@@ -1,4 +1,4 @@
-import { ScrollView, HorizontalBox, VerticalBox, Palette } from "std-widgets.slint";
+import { ScrollView, Palette } from "std-widgets.slint";
 
 export struct GalleryItem {
     thumb: image,
@@ -19,72 +19,67 @@ export component Gallery inherits Rectangle {
     callback gallery-tab-changed(int);
 
     VerticalLayout {
-        // Onglets Text / Icons
+        // ── Header : titre + bouton toggle ──────────────
         Rectangle {
             height: 32px;
             background: Palette.control-background;
+            border-color: Palette.border;
+            border-width: 1px;
 
             HorizontalLayout {
-                padding-left: 4px;
-                padding-right: 4px;
-                spacing: 2px;
+                padding-left: 8px;
+                padding-right: 6px;
+                spacing: 8px;
 
-                text-tab := Rectangle {
-                    width: 70px;
-                    background: root.gallery-tab == 0 ? Palette.background : Palette.alternate-background;
+                Text {
+                    text: "Visualisation";
+                    vertical-alignment: center;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    color: Palette.foreground;
+                }
+
+                toggle-rect := Rectangle {
+                    width: 104px;
+                    height: 22px;
+                    border-radius: 3px;
                     border-width: 1px;
                     border-color: Palette.border;
+                    background: toggle-ta.has-hover ? Palette.alternate-background : Palette.background;
+
                     Text {
-                        text: "Text";
+                        text: "Texte / Icônes";
                         horizontal-alignment: center;
                         vertical-alignment: center;
-                        font-size: 12px;
+                        font-size: 11px;
+                        color: Palette.foreground;
                     }
-                    TouchArea {
+                    toggle-ta := TouchArea {
                         clicked => {
-                            root.gallery-tab = 0;
-                            root.gallery-tab-changed(0);
+                            root.gallery-tab = root.gallery-tab == 0 ? 1 : 0;
+                            root.gallery-tab-changed(root.gallery-tab);
                         }
                     }
                 }
-
-                icons-tab := Rectangle {
-                    width: 70px;
-                    background: root.gallery-tab == 1 ? Palette.background : Palette.alternate-background;
-                    border-width: 1px;
-                    border-color: Palette.border;
-                    Text {
-                        text: "Icons";
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        font-size: 12px;
-                    }
-                    TouchArea {
-                        clicked => {
-                            root.gallery-tab = 1;
-                            root.gallery-tab-changed(1);
-                        }
-                    }
-                }
-
-                Rectangle { horizontal-stretch: 1; }
             }
         }
 
-        // Contenu galerie — mode Text (liste compacte)
+        // ── Mode Texte (liste compacte) ──────────────────
         if root.gallery-tab == 0 : ScrollView {
             vertical-stretch: 1;
 
             VerticalLayout {
-                padding: 4px;
+                padding: 2px;
                 spacing: 1px;
                 alignment: start;
 
                 for item in root.items: Rectangle {
-                    height: 28px;
-                    border-width: 1px;
-                    border-color: root.selected-index == item.index ? #3080ff : Palette.border;
-                    background: cell-ta-text.has-hover ? Palette.alternate-background : (root.selected-index == item.index ? #d0e8ff : Palette.background);
+                    height: 22px;
+                    border-width: root.selected-index == item.index ? 2px : 1px;
+                    border-color: root.selected-index == item.index ? #cc0000 : Palette.border;
+                    background: cell-ta-text.has-hover ? Palette.alternate-background
+                              : (root.selected-index == item.index ? #ffe8e8 : Palette.background);
 
                     cell-ta-text := TouchArea {
                         clicked => {
@@ -104,26 +99,31 @@ export component Gallery inherits Rectangle {
                         vertical-alignment: center;
                         font-size: 11px;
                         overflow: elide;
-                        color: root.selected-index == item.index ? #3080ff : Palette.foreground;
+                        color: root.selected-index == item.index ? #aa0000 : Palette.foreground;
                     }
                 }
             }
         }
 
-        // Contenu galerie — mode Icons (vignettes)
-        if root.gallery-tab == 1 : ScrollView {
+        // ── Mode Icônes (grille 5 colonnes) ─────────────
+        if root.gallery-tab == 1 : icon-scroll := ScrollView {
             vertical-stretch: 1;
+            viewport-width: self.visible-width;
+            viewport-height: ((root.items.length + 4) / 5) * 96px + 8px;
 
-            VerticalLayout {
-                padding: 4px;
-                spacing: 2px;
-                alignment: start;
+            Rectangle {
+                width: icon-scroll.visible-width;
+                height: ((root.items.length + 4) / 5) * 96px + 8px;
 
-                for item in root.items: Rectangle {
-                    height: 76px;
-                    border-width: 1px;
-                    border-color: root.selected-index == item.index ? #3080ff : Palette.border;
-                    background: cell-ta-icon.has-hover ? #e8f4ff : (root.selected-index == item.index ? #d0e8ff : Palette.background);
+                for item[idx] in root.items : Rectangle {
+                    x: mod(idx, 5) * (icon-scroll.visible-width / 5);
+                    y: (idx / 5) * 96px + 4px;
+                    width: icon-scroll.visible-width / 5 - 1px;
+                    height: 92px;
+
+                    border-width: root.selected-index == item.index ? 3px : 1px;
+                    border-color: root.selected-index == item.index ? #cc0000 : Palette.border;
+                    background: cell-ta-icon.has-hover ? Palette.alternate-background : Palette.background;
 
                     cell-ta-icon := TouchArea {
                         clicked => {
@@ -137,22 +137,25 @@ export component Gallery inherits Rectangle {
                         }
                     }
 
-                    HorizontalLayout {
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
                         padding: 6px;
-                        spacing: 8px;
 
                         Image {
                             source: item.thumb;
-                            width: 56px;
-                            height: 56px;
+                            width: 64px;
+                            height: 64px;
                             image-fit: contain;
+                            horizontal-alignment: center;
                         }
 
                         Text {
                             text: item.name;
-                            vertical-alignment: center;
-                            font-size: 11px;
+                            font-size: 9px;
+                            horizontal-alignment: center;
                             overflow: elide;
+                            wrap: no-wrap;
                         }
                     }
                 }

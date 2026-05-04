@@ -1,13 +1,7 @@
-import { ScrollView, Button, LineEdit, ComboBox, StandardListView, Palette } from "std-widgets.slint";
+import { ScrollView, Button, StandardListView, Palette } from "std-widgets.slint";
 
 export component LeftPanel inherits Rectangle {
-    width: 260px;
     background: Palette.alternate-background;
-
-    in-out property <string> meta-family-id: "0";
-    in-out property <string> meta-product-code: "1";
-    in-out property <string> meta-header-str: "";
-    in-out property <int>    meta-codepage: 1252;
 
     in property <[StandardListViewItem]> polygons-model: [];
     in property <[StandardListViewItem]> lines-model: [];
@@ -15,9 +9,13 @@ export component LeftPanel inherits Rectangle {
     in property <[StandardListViewItem]> extra-pois-model: [];
     in property <[StandardListViewItem]> draworder-model: [];
 
+    in property <int> poly-count: 0;
+    in property <int> line-count: 0;
+    in property <int> point-count: 0;
+    in property <int> poi-count: 0;
+
     in-out property <int> active-list-selection: -1;
 
-    // Sélection courante par liste (pour boutons Éditer/Supprimer et double-clic)
     private property <int> poly-sel: -1;
     private property <int> line-sel: -1;
     private property <int> point-sel: -1;
@@ -29,283 +27,233 @@ export component LeftPanel inherits Rectangle {
     callback element-selected(int, int);
     callback edit-draworder();
 
-    ScrollView {
-        VerticalLayout {
-            padding: 4px;
-            spacing: 4px;
-            alignment: start;
+    VerticalLayout {
+        padding: 4px;
+        spacing: 3px;
 
-            // ── Métadonnées ──────────────────────────────
-            Rectangle {
-                height: 20px;
-                background: Palette.control-background;
-                border-radius: 2px;
-                Text { text: "Métadonnées [_id]"; font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center; color: Palette.foreground; }
+        // ── Polygones ───────────────────────────────────
+        Rectangle {
+            height: 18px;
+            background: Palette.control-background;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: Palette.border;
+            Text {
+                text: "Liste des polygones (" + root.poly-count + ")";
+                font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center;
             }
-            HorizontalLayout { spacing: 4px;
-                Text { text: "FID:"; font-size: 11px; width: 70px; vertical-alignment: center; }
-                LineEdit { text <=> root.meta-family-id; }
-            }
-            HorizontalLayout { spacing: 4px;
-                Text { text: "Product:"; font-size: 11px; width: 70px; vertical-alignment: center; }
-                LineEdit { text <=> root.meta-product-code; }
-            }
-            HorizontalLayout { spacing: 4px;
-                Text { text: "CodePage:"; font-size: 11px; width: 70px; vertical-alignment: center; }
-                ComboBox {
-                    model: ["1252 (CP1252)", "65001 (UTF-8)"];
-                    current-index: root.meta-codepage == 65001 ? 1 : 0;
-                    selected(v) => { root.meta-codepage = v == "65001 (UTF-8)" ? 65001 : 1252; }
-                }
-            }
-            HorizontalLayout { spacing: 4px;
-                Text { text: "En-tête:"; font-size: 11px; width: 70px; vertical-alignment: center; }
-                LineEdit { text <=> root.meta-header-str; }
-            }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            min-height: 100px;
+            vertical-stretch: 1;
 
-            Rectangle { height: 6px; }
-            Rectangle { height: 1px; background: Palette.border; }
-            Rectangle { height: 4px; }
-
-            // ── Polygones ────────────────────────────────
-            Rectangle {
-                height: 22px;
-                background: Palette.accent-background;
-                border-radius: 3px;
-                border-width: 1px;
-                border-color: Palette.border;
-                HorizontalLayout {
-                    padding-left: 6px;
-                    Text { text: "Polygones"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
-                }
-            }
             ScrollView {
-                height: 100px;
+                horizontal-stretch: 1;
                 VerticalLayout {
                     alignment: start;
                     for item[idx] in root.polygons-model: Rectangle {
-                        height: 22px;
+                        height: 20px;
                         background: poly-row-ta.has-hover ? Palette.alternate-background
-                                  : (poly-sel == idx ? #d0e8ff : Palette.background);
+                                  : (poly-sel == idx ? #c8deff : Palette.background);
                         border-width: 1px;
-                        border-color: poly-sel == idx ? #3080ff : Palette.border;
+                        border-color: poly-sel == idx ? #3060cc : Palette.border;
                         poly-row-ta := TouchArea {
-                            clicked => {
-                                poly-sel = idx;
-                                root.element-selected(0, idx);
-                            }
-                            double-clicked => {
-                                poly-sel = idx;
-                                root.element-selected(0, idx);
-                                root.edit-element(0, idx);
-                            }
+                            clicked => { poly-sel = idx; root.element-selected(0, idx); }
+                            double-clicked => { poly-sel = idx; root.element-selected(0, idx); root.edit-element(0, idx); }
                         }
                         Text {
-                            x: 6px;
-                            text: item.text;
-                            vertical-alignment: center;
-                            font-size: 11px;
-                            overflow: elide;
-                            color: poly-sel == idx ? #3080ff : Palette.foreground;
+                            x: 6px; text: item.text; vertical-alignment: center;
+                            font-size: 11px; overflow: elide;
+                            color: poly-sel == idx ? #0040cc : Palette.foreground;
                         }
                     }
                 }
             }
-            HorizontalLayout { spacing: 2px;
-                Button { text: "+"; height: 22px; clicked => { root.add-element(0); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(0, poly-sel); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(0, poly-sel); } }
+            VerticalLayout {
+                width: 65px; spacing: 2px; alignment: start;
+                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(0); } }
+                Button { text: "Modifier"; height: 24px; enabled: poly-sel >= 0; clicked => { root.edit-element(0, poly-sel); } }
+                Button { text: "Supprimer"; height: 24px; enabled: poly-sel >= 0; clicked => { root.delete-element(0, poly-sel); } }
             }
+        }
 
-            Rectangle { height: 6px; }
-            Rectangle { height: 1px; background: Palette.border; }
-            Rectangle { height: 4px; }
+        Rectangle { height: 1px; background: Palette.border; }
 
-            // ── Polylignes ────────────────────────────────
-            Rectangle {
-                height: 22px;
-                background: Palette.accent-background;
-                border-radius: 3px;
-                border-width: 1px;
-                border-color: Palette.border;
-                HorizontalLayout {
-                    padding-left: 6px;
-                    Text { text: "Polylignes"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
-                }
+        // ── Polylignes ──────────────────────────────────
+        Rectangle {
+            height: 18px;
+            background: Palette.control-background;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: Palette.border;
+            Text {
+                text: "Liste des polylignes (" + root.line-count + ")";
+                font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center;
             }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            min-height: 100px;
+            vertical-stretch: 1;
+
             ScrollView {
-                height: 100px;
+                horizontal-stretch: 1;
                 VerticalLayout {
                     alignment: start;
                     for item[idx] in root.lines-model: Rectangle {
-                        height: 22px;
+                        height: 20px;
                         background: line-row-ta.has-hover ? Palette.alternate-background
-                                  : (line-sel == idx ? #d0e8ff : Palette.background);
+                                  : (line-sel == idx ? #c8deff : Palette.background);
                         border-width: 1px;
-                        border-color: line-sel == idx ? #3080ff : Palette.border;
+                        border-color: line-sel == idx ? #3060cc : Palette.border;
                         line-row-ta := TouchArea {
-                            clicked => {
-                                line-sel = idx;
-                                root.element-selected(1, idx);
-                            }
-                            double-clicked => {
-                                line-sel = idx;
-                                root.element-selected(1, idx);
-                                root.edit-element(1, idx);
-                            }
+                            clicked => { line-sel = idx; root.element-selected(1, idx); }
+                            double-clicked => { line-sel = idx; root.element-selected(1, idx); root.edit-element(1, idx); }
                         }
                         Text {
-                            x: 6px;
-                            text: item.text;
-                            vertical-alignment: center;
-                            font-size: 11px;
-                            overflow: elide;
-                            color: line-sel == idx ? #3080ff : Palette.foreground;
+                            x: 6px; text: item.text; vertical-alignment: center;
+                            font-size: 11px; overflow: elide;
+                            color: line-sel == idx ? #0040cc : Palette.foreground;
                         }
                     }
                 }
             }
-            HorizontalLayout { spacing: 2px;
-                Button { text: "+"; height: 22px; clicked => { root.add-element(1); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(1, line-sel); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(1, line-sel); } }
+            VerticalLayout {
+                width: 65px; spacing: 2px; alignment: start;
+                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(1); } }
+                Button { text: "Modifier"; height: 24px; enabled: line-sel >= 0; clicked => { root.edit-element(1, line-sel); } }
+                Button { text: "Supprimer"; height: 24px; enabled: line-sel >= 0; clicked => { root.delete-element(1, line-sel); } }
             }
+        }
 
-            Rectangle { height: 6px; }
-            Rectangle { height: 1px; background: Palette.border; }
-            Rectangle { height: 4px; }
+        Rectangle { height: 1px; background: Palette.border; }
 
-            // ── POIs ─────────────────────────────────────
-            Rectangle {
-                height: 22px;
-                background: Palette.accent-background;
-                border-radius: 3px;
-                border-width: 1px;
-                border-color: Palette.border;
-                HorizontalLayout {
-                    padding-left: 6px;
-                    Text { text: "POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
-                }
+        // ── POIs ────────────────────────────────────────
+        Rectangle {
+            height: 18px;
+            background: Palette.control-background;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: Palette.border;
+            Text {
+                text: "Liste des POI (" + root.point-count + ")";
+                font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center;
             }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            min-height: 100px;
+            vertical-stretch: 1;
+
             ScrollView {
-                height: 100px;
+                horizontal-stretch: 1;
                 VerticalLayout {
                     alignment: start;
                     for item[idx] in root.points-model: Rectangle {
-                        height: 22px;
+                        height: 20px;
                         background: point-row-ta.has-hover ? Palette.alternate-background
-                                  : (point-sel == idx ? #d0e8ff : Palette.background);
+                                  : (point-sel == idx ? #c8deff : Palette.background);
                         border-width: 1px;
-                        border-color: point-sel == idx ? #3080ff : Palette.border;
+                        border-color: point-sel == idx ? #3060cc : Palette.border;
                         point-row-ta := TouchArea {
-                            clicked => {
-                                point-sel = idx;
-                                root.element-selected(2, idx);
-                            }
-                            double-clicked => {
-                                point-sel = idx;
-                                root.element-selected(2, idx);
-                                root.edit-element(2, idx);
-                            }
+                            clicked => { point-sel = idx; root.element-selected(2, idx); }
+                            double-clicked => { point-sel = idx; root.element-selected(2, idx); root.edit-element(2, idx); }
                         }
                         Text {
-                            x: 6px;
-                            text: item.text;
-                            vertical-alignment: center;
-                            font-size: 11px;
-                            overflow: elide;
-                            color: point-sel == idx ? #3080ff : Palette.foreground;
+                            x: 6px; text: item.text; vertical-alignment: center;
+                            font-size: 11px; overflow: elide;
+                            color: point-sel == idx ? #0040cc : Palette.foreground;
                         }
                     }
                 }
             }
-            HorizontalLayout { spacing: 2px;
-                Button { text: "+"; height: 22px; clicked => { root.add-element(2); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(2, point-sel); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(2, point-sel); } }
+            VerticalLayout {
+                width: 65px; spacing: 2px; alignment: start;
+                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(2); } }
+                Button { text: "Modifier"; height: 24px; enabled: point-sel >= 0; clicked => { root.edit-element(2, point-sel); } }
+                Button { text: "Supprimer"; height: 24px; enabled: point-sel >= 0; clicked => { root.delete-element(2, point-sel); } }
             }
+        }
 
-            Rectangle { height: 6px; }
-            Rectangle { height: 1px; background: Palette.border; }
-            Rectangle { height: 4px; }
+        Rectangle { height: 1px; background: Palette.border; }
 
-            // ── Extra POIs ───────────────────────────────
-            Rectangle {
-                height: 22px;
-                background: Palette.accent-background;
-                border-radius: 3px;
-                border-width: 1px;
-                border-color: Palette.border;
-                HorizontalLayout {
-                    padding-left: 6px;
-                    Text { text: "Extra POIs"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.accent-foreground; }
-                }
+        // ── POI additionnels ─────────────────────────────
+        Rectangle {
+            height: 18px;
+            background: Palette.control-background;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: Palette.border;
+            Text {
+                text: "Liste des POI additionnels";
+                font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center;
             }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            min-height: 80px;
+            vertical-stretch: 0.5;
+
             ScrollView {
-                height: 80px;
+                horizontal-stretch: 1;
                 VerticalLayout {
                     alignment: start;
                     for item[idx] in root.extra-pois-model: Rectangle {
-                        height: 22px;
+                        height: 20px;
                         background: icon-row-ta.has-hover ? Palette.alternate-background
-                                  : (icon-sel == idx ? #d0e8ff : Palette.background);
+                                  : (icon-sel == idx ? #c8deff : Palette.background);
                         border-width: 1px;
-                        border-color: icon-sel == idx ? #3080ff : Palette.border;
+                        border-color: icon-sel == idx ? #3060cc : Palette.border;
                         icon-row-ta := TouchArea {
-                            clicked => {
-                                icon-sel = idx;
-                                root.element-selected(3, idx);
-                            }
-                            double-clicked => {
-                                icon-sel = idx;
-                                root.element-selected(3, idx);
-                                root.edit-element(3, idx);
-                            }
+                            clicked => { icon-sel = idx; root.element-selected(3, idx); }
+                            double-clicked => { icon-sel = idx; root.element-selected(3, idx); root.edit-element(3, idx); }
                         }
                         Text {
-                            x: 6px;
-                            text: item.text;
-                            vertical-alignment: center;
-                            font-size: 11px;
-                            overflow: elide;
-                            color: icon-sel == idx ? #3080ff : Palette.foreground;
+                            x: 6px; text: item.text; vertical-alignment: center;
+                            font-size: 11px; overflow: elide;
+                            color: icon-sel == idx ? #0040cc : Palette.foreground;
                         }
                     }
                 }
             }
-            HorizontalLayout { spacing: 2px;
-                Button { text: "+"; height: 22px; clicked => { root.add-element(3); } }
-                Button { text: "Éditer"; height: 22px; clicked => { root.edit-element(3, icon-sel); } }
-                Button { text: "×"; height: 22px; clicked => { root.delete-element(3, icon-sel); } }
+            VerticalLayout {
+                width: 65px; spacing: 2px; alignment: start;
+                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(3); } }
+                Button { text: "Modifier"; height: 24px; enabled: icon-sel >= 0; clicked => { root.edit-element(3, icon-sel); } }
+                Button { text: "Supprimer"; height: 24px; enabled: icon-sel >= 0; clicked => { root.delete-element(3, icon-sel); } }
             }
+        }
 
-            Rectangle { height: 6px; }
-            Rectangle { height: 1px; background: Palette.border; }
-            Rectangle { height: 4px; }
+        Rectangle { height: 1px; background: Palette.border; }
 
-            // ── DrawOrder ────────────────────────────────
-            Rectangle {
-                height: 22px;
-                background: Palette.control-background;
-                border-radius: 3px;
-                border-width: 1px;
-                border-color: Palette.border;
-                HorizontalLayout {
-                    padding-left: 6px;
-                    Text { text: "DrawOrder"; font-size: 11px; font-weight: 700; vertical-alignment: center; color: Palette.foreground; }
-                }
+        // ── DrawOrder ───────────────────────────────────
+        Rectangle {
+            height: 18px;
+            background: Palette.control-background;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: Palette.border;
+            Text {
+                text: "DrawOrder (" + root.draworder-model.length + ")";
+                font-size: 11px; font-weight: 700; x: 4px; vertical-alignment: center;
             }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            min-height: 80px;
+            vertical-stretch: 0.5;
+
             StandardListView {
-                height: 70px;
+                horizontal-stretch: 1;
                 model: root.draworder-model;
             }
-            Button {
-                text: "Modifier DrawOrder";
-                height: 24px;
-                clicked => { root.edit-draworder(); }
+            VerticalLayout {
+                width: 65px; alignment: start;
+                Button { text: "Modifier"; height: 24px; clicked => { root.edit-draworder(); } }
             }
-
-            Rectangle { height: 8px; }
         }
+
+        Rectangle { height: 4px; }
     }
 }

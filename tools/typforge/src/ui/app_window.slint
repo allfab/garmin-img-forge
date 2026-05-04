@@ -3,6 +3,7 @@ import { LeftPanel } from "left_panel.slint";
 import { Gallery, GalleryItem } from "gallery.slint";
 import { PreviewPanel } from "preview_panel.slint";
 import { PoiEditor, PaletteEntry, LangEntry } from "poi_editor.slint";
+import { TxtCodePanel } from "txt_code_panel.slint";
 
 export { GalleryItem, PaletteEntry, LangEntry }
 
@@ -10,6 +11,8 @@ export component AppWindow inherits Window {
     title: "typforge — TYP Editor";
     min-width: 960px;
     min-height: 640px;
+    preferred-width: 1280px;
+    preferred-height: 800px;
     background: Palette.background;
 
     // Métadonnées (bi-directionnelles avec panneau gauche)
@@ -48,6 +51,25 @@ export component AppWindow inherits Window {
     // Mode preview : 0=Single 1=Mosaic 2=Superposition
     in-out property <int> preview-mode: 0;
     changed preview-mode => { root.preview-mode-changed(root.preview-mode); }
+
+    // Panneau code TXT
+    in property <string> selected-txt-code: "";
+    in-out property <bool> txt-edit-mode: false;
+    in-out property <string> txt-edit-buffer: "";
+    in-out property <string> txt-edit-error: "";
+    in-out property <int> gallery-display-tab: 0;
+    callback txt-edit-apply(string);
+    callback txt-edit-cancel();
+
+    // Dialog À propos
+    in-out property <bool> about-visible: false;
+
+    // Menu ouvert : 0=aucun 1=Fichier 2=Outils 3=Aide
+    private property <int> open-menu: 0;
+
+    // Largeurs des panneaux latéraux (redimensionnables)
+    private property <length> left-panel-width: 264px;
+    private property <length> right-panel-width: 224px;
 
     // Callbacks fichiers
     callback open-file();
@@ -182,6 +204,44 @@ export component AppWindow inherits Window {
     in-out property <color> poi-new-color-preview: #000000;
 
     VerticalLayout {
+        // ── Barre de menu ────────────────────────────────
+        Rectangle {
+            height: 22px;
+            background: Palette.control-background;
+
+            HorizontalLayout {
+                alignment: start;
+                padding: 0px;
+
+                Rectangle {
+                    width: 60px; height: 22px;
+                    background: (root.open-menu == 1 || fichier-ta.has-hover) ? Palette.selection-background : transparent;
+                    Text { text: "Fichier"; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                    fichier-ta := TouchArea {
+                        clicked => { root.open-menu = root.open-menu == 1 ? 0 : 1; }
+                    }
+                }
+                Rectangle {
+                    width: 60px; height: 22px;
+                    background: (root.open-menu == 2 || outils-ta.has-hover) ? Palette.selection-background : transparent;
+                    Text { text: "Outils"; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                    outils-ta := TouchArea {
+                        clicked => { root.open-menu = root.open-menu == 2 ? 0 : 2; }
+                    }
+                }
+                Rectangle {
+                    width: 60px; height: 22px;
+                    background: (root.open-menu == 3 || aide-ta.has-hover) ? Palette.selection-background : transparent;
+                    Text { text: "Aide"; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                    aide-ta := TouchArea {
+                        clicked => { root.open-menu = root.open-menu == 3 ? 0 : 3; }
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Palette.border; }
+
         // ── Barre d'outils ──────────────────────────────
         Rectangle {
             height: 38px;
@@ -222,6 +282,34 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
+        // ── Métadonnées (bande pleine largeur) ──────────
+        Rectangle {
+            height: 30px;
+            background: Palette.alternate-background;
+
+            HorizontalLayout {
+                padding: 4px; spacing: 8px; alignment: start;
+                Text { text: "FID:"; font-size: 11px; width: 28px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-family-id; width: 60px; }
+                Rectangle { width: 1px; background: Palette.border; }
+                Text { text: "Produit:"; font-size: 11px; width: 50px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-product-code; width: 50px; }
+                Rectangle { width: 1px; background: Palette.border; }
+                Text { text: "CodePage:"; font-size: 11px; width: 62px; vertical-alignment: center; }
+                ComboBox {
+                    model: ["1252 (CP1252)", "65001 (UTF-8)"];
+                    current-index: root.meta-codepage == 65001 ? 1 : 0;
+                    selected(v) => { root.meta-codepage = v == "65001 (UTF-8)" ? 65001 : 1252; }
+                    width: 130px;
+                }
+                Rectangle { width: 1px; background: Palette.border; }
+                Text { text: "En-tête:"; font-size: 11px; width: 50px; vertical-alignment: center; }
+                LineEdit { text <=> root.meta-header-str; horizontal-stretch: 1; }
+            }
+        }
+
+        Rectangle { height: 1px; background: Palette.border; }
 
         // ── Barre navigation ────────────────────────────
         Rectangle {
@@ -314,16 +402,16 @@ export component AppWindow inherits Window {
 
             // Panneau gauche
             left := LeftPanel {
-                width: 264px;
-                meta-family-id <=> root.meta-family-id;
-                meta-product-code <=> root.meta-product-code;
-                meta-header-str <=> root.meta-header-str;
-                meta-codepage <=> root.meta-codepage;
+                width: root.left-panel-width;
                 polygons-model: root.polygons;
                 lines-model: root.lines;
                 points-model: root.points;
                 extra-pois-model: root.extra-pois;
                 draworder-model: root.draworder;
+                poly-count: root.poly-count;
+                line-count: root.line-count;
+                point-count: root.point-count;
+                poi-count: root.poi-count;
                 add-element(kind) => { root.add-element(kind); }
                 edit-element(kind, idx) => { root.edit-element(kind, idx); }
                 delete-element(kind, idx) => { root.delete-element(kind, idx); }
@@ -331,27 +419,71 @@ export component AppWindow inherits Window {
                 edit-draworder => { root.edit-draworder(); }
             }
 
-            // Séparateur vertical
-            Rectangle { width: 1px; background: #aaaaaa; }
+            // Séparateur gauche (draggable)
+            Rectangle {
+                width: 5px;
+                background: left-spl-ta.has-hover || left-spl-ta.pressed ? #5090ff : #aaaaaa;
+                left-spl-ta := TouchArea {
+                    mouse-cursor: col-resize;
+                    moved => {
+                        root.left-panel-width = clamp(
+                            root.left-panel-width + self.mouse-x - 2.5px,
+                            120px, 500px
+                        );
+                    }
+                }
+            }
 
             // Galerie centrale
             gallery := Gallery {
                 horizontal-stretch: 1;
                 items: root.gallery-items;
+                gallery-tab <=> root.gallery-display-tab;
                 gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
                 gallery-item-edit-requested(kind, idx) => { root.edit-element(kind, idx); }
                 gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
             }
 
-            // Séparateur vertical
-            Rectangle { width: 1px; background: #aaaaaa; }
+            // Séparateur droit (draggable)
+            Rectangle {
+                width: 5px;
+                background: right-spl-ta.has-hover || right-spl-ta.pressed ? #5090ff : #aaaaaa;
+                right-spl-ta := TouchArea {
+                    mouse-cursor: col-resize;
+                    moved => {
+                        root.right-panel-width = clamp(
+                            root.right-panel-width + 2.5px - self.mouse-x,
+                            120px, 500px
+                        );
+                    }
+                }
+            }
 
-            // Panneau droit preview
-            PreviewPanel {
-                width: 224px;
-                preview-day: root.preview-day;
-                preview-night: root.preview-night;
-                preview-mode <=> root.preview-mode;
+            // Zone droite : preview + code TXT
+            VerticalLayout {
+                width: root.right-panel-width;
+
+                PreviewPanel {
+                    vertical-stretch: 1;
+                    preview-day: root.preview-day;
+                    preview-night: root.preview-night;
+                    preview-mode <=> root.preview-mode;
+                }
+
+                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : Rectangle {
+                    height: 1px;
+                    background: #aaaaaa;
+                }
+
+                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : TxtCodePanel {
+                    vertical-stretch: 1;
+                    txt-code: root.selected-txt-code;
+                    edit-mode <=> root.txt-edit-mode;
+                    edit-buffer <=> root.txt-edit-buffer;
+                    error-msg: root.txt-edit-error;
+                    edit-apply(s) => { root.txt-edit-apply(s); }
+                    edit-cancel => { root.txt-edit-cancel(); }
+                }
             }
         }
     }
@@ -602,6 +734,51 @@ export component AppWindow inherits Window {
         }
     }
 
+    // ── Overlay À propos ─────────────────────────────────────────
+    if root.about-visible : Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #00000055;
+
+        Rectangle {
+            x: (parent.width - 360px) / 2;
+            y: (parent.height - 200px) / 2;
+            width: 360px; height: 200px;
+            background: Palette.background;
+            border-width: 1px; border-color: #888888;
+
+            VerticalLayout {
+                padding: 0px;
+                Rectangle {
+                    height: 36px; background: #2060b0;
+                    Text {
+                        text: "À propos de TypForge";
+                        color: #ffffff; font-size: 13px; font-weight: 700;
+                        horizontal-alignment: center; vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    vertical-stretch: 1; padding: 16px; spacing: 6px; alignment: center;
+                    Text {
+                        text: "TypForge — Éditeur de fichiers TYP Garmin";
+                        font-size: 12px; horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Version 0.1.0";
+                        font-size: 11px; color: Palette.foreground;
+                        horizontal-alignment: center;
+                    }
+                }
+                Rectangle {
+                    height: 46px; background: Palette.control-background;
+                    border-width: 1px; border-color: Palette.border;
+                    HorizontalLayout { padding: 8px; alignment: end;
+                        Button { text: "OK"; height: 30px; clicked => { root.about-visible = false; } }
+                    }
+                }
+            }
+        }
+    }
+
     // ── Overlay éditeur DrawOrder ────────────────────────────────
     if root.do-editor-visible : Rectangle {
         x: 0; y: 0; width: root.width; height: root.height;
@@ -666,6 +843,97 @@ export component AppWindow inherits Window {
                         Button { text: "Fermer"; height: 30px; clicked => { root.do-cancel(); } }
                     }
                 }
+            }
+        }
+    }
+
+    // ── Fermeture menu sur clic en dehors ────────────────
+    if root.open-menu != 0 : TouchArea {
+        x: 0; y: 0; width: root.width; height: root.height;
+        clicked => { root.open-menu = 0; }
+    }
+
+    // ── Dropdown Fichier ─────────────────────────────────
+    if root.open-menu == 1 : Rectangle {
+        x: 0px; y: 23px;
+        width: 210px; height: 126px;
+        background: Palette.background;
+        border-width: 1px; border-color: #888888;
+
+        VerticalLayout {
+            padding: 0px; spacing: 0px;
+            Rectangle {
+                height: 24px;
+                background: mi-ouvrir-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "Ouvrir…"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-ouvrir-ta := TouchArea { clicked => { root.open-file(); root.open-menu = 0; } }
+            }
+            Rectangle {
+                height: 24px;
+                background: mi-save-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "Enregistrer"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-save-ta := TouchArea { clicked => { root.save-file(); root.open-menu = 0; } }
+            }
+            Rectangle {
+                height: 24px;
+                background: mi-typ-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "Enregistrer .TYP"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-typ-ta := TouchArea { clicked => { root.export-typ(); root.open-menu = 0; } }
+            }
+            Rectangle { height: 1px; background: Palette.border; }
+            Rectangle {
+                height: 24px;
+                background: mi-quit-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "Quitter"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-quit-ta := TouchArea { clicked => { root.quit(); } }
+            }
+        }
+    }
+
+    // ── Dropdown Outils ──────────────────────────────────
+    if root.open-menu == 2 : Rectangle {
+        x: 60px; y: 23px;
+        width: 180px; height: 26px;
+        background: Palette.background;
+        border-width: 1px; border-color: #888888;
+
+        VerticalLayout {
+            padding: 0px;
+            Rectangle {
+                height: 24px;
+                background: mi-qml-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "Importer QML"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-qml-ta := TouchArea { clicked => { root.import-qml(); root.open-menu = 0; } }
+            }
+        }
+    }
+
+    // ── Dropdown Aide ────────────────────────────────────
+    if root.open-menu == 3 : Rectangle {
+        x: 120px; y: 23px;
+        width: 200px; height: 26px;
+        background: Palette.background;
+        border-width: 1px; border-color: #888888;
+
+        VerticalLayout {
+            padding: 0px;
+            Rectangle {
+                height: 24px;
+                background: mi-about-ta.has-hover ? Palette.selection-background : transparent;
+                HorizontalLayout { padding-left: 10px; alignment: start;
+                    Text { text: "À propos de TypForge"; font-size: 11px; vertical-alignment: center; }
+                }
+                mi-about-ta := TouchArea { clicked => { root.about-visible = true; root.open-menu = 0; } }
             }
         }
     }

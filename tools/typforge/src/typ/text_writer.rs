@@ -213,6 +213,18 @@ fn emit_xpm(s: &mut String, xpm: &Xpm, key: &str) {
     }
 }
 
+/// Sérialise un seul élément (polygone/ligne/POI) en texte TXT pour affichage (LF).
+pub fn element_to_display_txt(doc: &super::model::TypDocument, kind: i32, idx: usize) -> String {
+    let mut s = String::new();
+    match kind {
+        0 => { if let Some(p) = doc.polygons.get(idx) { emit_polygon(&mut s, p); } }
+        1 => { if let Some(l) = doc.lines.get(idx)    { emit_line(&mut s, l); } }
+        2 => { if let Some(p) = doc.points.get(idx)   { emit_point(&mut s, p); } }
+        _ => {}
+    }
+    s.replace("\r\n", "\n").trim_end().to_string()
+}
+
 /// Formate un [`Xpm`] en texte brut multi-lignes (sans clé ni guillemets).
 pub fn xpm_to_text(xpm: &Xpm) -> String {
     let cpp = xpm.palette.first().map(|(tag, _)| tag.chars().count()).unwrap_or(1);
@@ -248,6 +260,31 @@ pub fn xpm_to_text(xpm: &Xpm) -> String {
 mod tests {
     use super::*;
     use super::super::text_reader::parse;
+
+    #[test]
+    fn element_to_display_txt_polygon() {
+        let mut doc = TypDocument::default();
+        doc.param = TypParam { family_id: 1, product_id: 1, codepage: 1252, header_str: String::new() };
+        doc.polygons.push(TypPolygon {
+            type_code: 0x03,
+            sub_type: 0,
+            font_style: FontStyle::NoLabel,
+            extended_labels: true,
+            ..TypPolygon::default()
+        });
+        let txt = element_to_display_txt(&doc, 0, 0);
+        assert!(txt.starts_with("[_polygon]"), "doit commencer par [_polygon]");
+        assert!(txt.contains("Type=0x3"), "doit contenir le type");
+        assert!(txt.ends_with("[end]"), "doit finir par [end]");
+        assert!(!txt.contains('\r'), "LF seulement (pas de CRLF)");
+    }
+
+    #[test]
+    fn element_to_display_txt_out_of_bounds() {
+        let doc = TypDocument::default();
+        assert_eq!(element_to_display_txt(&doc, 0, 99), "");
+        assert_eq!(element_to_display_txt(&doc, 99, 0), "");
+    }
 
     #[test]
     fn round_trip_id() {

@@ -861,6 +861,32 @@ fn refresh_poi_grid(state: &PoiEditorState, window: &AppWindow) {
     window.set_poi_preview_night(render_poi_xpm_preview(state.night_xpm.as_ref(), 80, true));
 }
 
+// ─── Helpers édition TXT ─────────────────────────────────────────
+
+fn apply_txt_edit(doc: &mut typ::TypDocument, kind: i32, idx: usize, txt: &str) -> Result<(), String> {
+    let full = format!("[_id]\nFID=1\nProductCode=1\nCodePage=1252\n[end]\n\n{}\n", txt);
+    let parsed = crate::typ::text_reader::parse(full.as_bytes()).map_err(|e| e.to_string())?;
+    match kind {
+        0 => {
+            let elem = parsed.polygons.into_iter().next()
+                .ok_or_else(|| "Aucun polygone trouvé dans le TXT édité".to_string())?;
+            *doc.polygons.get_mut(idx).ok_or("Index invalide")? = elem;
+        }
+        1 => {
+            let elem = parsed.lines.into_iter().next()
+                .ok_or_else(|| "Aucune ligne trouvée dans le TXT édité".to_string())?;
+            *doc.lines.get_mut(idx).ok_or("Index invalide")? = elem;
+        }
+        2 => {
+            let elem = parsed.points.into_iter().next()
+                .ok_or_else(|| "Aucun POI trouvé dans le TXT édité".to_string())?;
+            *doc.points.get_mut(idx).ok_or("Index invalide")? = elem;
+        }
+        _ => return Err("Type d'élément inconnu".to_string()),
+    }
+    Ok(())
+}
+
 // ─── main ────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -1039,6 +1065,11 @@ fn main() -> anyhow::Result<()> {
                 let (day, night) = render_preview_with_mode(doc, kind, idx as usize, mode);
                 w.set_preview_day(day);
                 w.set_preview_night(night);
+                let txt = crate::typ::text_writer::element_to_display_txt(doc, kind, idx as usize);
+                w.set_selected_txt_code(txt.into());
+                w.set_txt_edit_mode(false);
+                w.set_txt_edit_buffer("".into());
+                w.set_txt_edit_error("".into());
             }
         });
     }
@@ -1057,6 +1088,11 @@ fn main() -> anyhow::Result<()> {
                 let (day, night) = render_preview_with_mode(doc, kind, idx as usize, mode);
                 w.set_preview_day(day);
                 w.set_preview_night(night);
+                let txt = crate::typ::text_writer::element_to_display_txt(doc, kind, idx as usize);
+                w.set_selected_txt_code(txt.into());
+                w.set_txt_edit_mode(false);
+                w.set_txt_edit_buffer("".into());
+                w.set_txt_edit_error("".into());
             }
         });
     }
@@ -1075,6 +1111,57 @@ fn main() -> anyhow::Result<()> {
                     w.set_preview_day(day);
                     w.set_preview_night(night);
                 }
+            }
+        });
+    }
+
+    // on_txt_edit_apply — applique un bloc TXT édité à la main
+    {
+        let app_c = Rc::clone(&app);
+        let ww = window.as_weak();
+        window.on_txt_edit_apply(move |text| {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let kind = w.get_selected_kind();
+            let idx  = w.get_selected_idx();
+            if kind < 0 || idx < 0 { return; }
+            let result = {
+                let mut a = app_c.borrow_mut();
+                if let Some(doc) = &mut a.doc {
+                    apply_txt_edit(doc, kind, idx as usize, text.as_str())
+                } else {
+                    Err("Aucun document ouvert".to_string())
+                }
+            };
+            match result {
+                Ok(()) => {
+                    w.set_txt_edit_error("".into());
+                    w.set_txt_edit_mode(false);
+                    let a = app_c.borrow();
+                    if let Some(doc) = &a.doc {
+                        let new_txt = crate::typ::text_writer::element_to_display_txt(doc, kind, idx as usize);
+                        w.set_selected_txt_code(new_txt.into());
+                        let mode = w.get_preview_mode();
+                        let (day, night) = render_preview_with_mode(doc, kind, idx as usize, mode);
+                        w.set_preview_day(day);
+                        w.set_preview_night(night);
+                        let nav = w.get_active_nav_tab();
+                        rebuild_gallery(doc, &w, nav);
+                    }
+                }
+                Err(e) => {
+                    w.set_txt_edit_error(e.into());
+                }
+            }
+        });
+    }
+
+    // on_txt_edit_cancel
+    {
+        let ww = window.as_weak();
+        window.on_txt_edit_cancel(move || {
+            if let Some(w) = ww.upgrade() {
+                w.set_txt_edit_mode(false);
+                w.set_txt_edit_error("".into());
             }
         });
     }
