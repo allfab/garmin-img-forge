@@ -3427,7 +3427,7 @@ rulesets:
       - match:
           natural: "*"
         set:
-          Type: "0x15300"
+          Type: "0x15301"
           EndLevel: "2"
           Label: "${name}"
 
@@ -3443,7 +3443,7 @@ rulesets:
       - match:
           tourism: "viewpoint"
         set:
-          Type: "0x16"
+          Type: "0x15300"
           EndLevel: "2"
           Label: "${name}"
 
