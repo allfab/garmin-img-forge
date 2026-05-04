@@ -93,6 +93,16 @@ pub struct TypParam {
     pub header_str: String,
 }
 
+/// Couleur de contour d'un polygone TYP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ContourColor {
+    /// Pas de contour visible (`ContourColor=No`).
+    #[default]
+    No,
+    /// Contour solide d'une couleur donnée.
+    Solid(Rgb),
+}
+
 /// Polygone TYP (surface).
 #[derive(Debug, Clone, Default)]
 pub struct TypPolygon {
@@ -105,6 +115,7 @@ pub struct TypPolygon {
     pub day_font_colour: Option<Rgb>,
     pub night_font_colour: Option<Rgb>,
     pub extended_labels: bool,
+    pub contour_color: ContourColor,
 }
 
 /// Polyligne TYP.

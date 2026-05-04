@@ -36,6 +36,7 @@ export component LineEditor inherits Rectangle {
     callback night-text-changed(string);
     callback pick-day-color();
     callback pick-night-color();
+    callback dash-preset(int);
     callback apply();
     callback cancel();
 
@@ -247,6 +248,46 @@ export component LineEditor inherits Rectangle {
                             CheckBox { checked <=> root.extended-labels; }
                         }
                         Rectangle { height: 20px; }
+
+                        // ─ Section Pointillés rapides ────────
+                        Text {
+                            text: "POINTILLÉS RAPIDES";
+                            font-size: 10px; font-weight: 700;
+                            color: #5a80c0; letter-spacing: 1px;
+                        }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 8px; }
+                        Text {
+                            text: "Génère un motif XPM (jour). Ajuste la couleur\net l'épaisseur avant d'appliquer.";
+                            font-size: 10px; color: #888888; wrap: word-wrap;
+                        }
+                        Rectangle { height: 6px; }
+                        HorizontalLayout { spacing: 6px; alignment: start;
+                            Button {
+                                text: "— — —"; height: 28px; width: 70px;
+                                clicked => { root.dash-preset(0); }
+                            }
+                            Button {
+                                text: "– – –"; height: 28px; width: 70px;
+                                clicked => { root.dash-preset(1); }
+                            }
+                            Button {
+                                text: "· · ·"; height: 28px; width: 70px;
+                                clicked => { root.dash-preset(2); }
+                            }
+                            Button {
+                                text: "—·—"; height: 28px; width: 70px;
+                                clicked => { root.dash-preset(3); }
+                            }
+                        }
+                        Rectangle { height: 4px; }
+                        HorizontalLayout { spacing: 6px; alignment: start;
+                            Text { text: "Longs"; font-size: 9px; color: #888888; width: 70px; horizontal-alignment: center; }
+                            Text { text: "Courts"; font-size: 9px; color: #888888; width: 70px; horizontal-alignment: center; }
+                            Text { text: "Points"; font-size: 9px; color: #888888; width: 70px; horizontal-alignment: center; }
+                            Text { text: "Tiret·pt"; font-size: 9px; color: #888888; width: 70px; horizontal-alignment: center; }
+                        }
+                        Rectangle { height: 16px; }
 
                         // ─ Section XPM avancé ────────────────
                         Text {

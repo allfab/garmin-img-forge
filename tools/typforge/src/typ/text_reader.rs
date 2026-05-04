@@ -114,6 +114,7 @@ struct ElementAcc {
     border_width: u8,
     use_orientation: Option<bool>,
     extended_labels: bool,
+    contour_color: ContourColor,
     pending: Option<PendingXpm>,
     xpms: Vec<Xpm>,
 }
@@ -269,6 +270,16 @@ fn parse_element_field(acc: &mut ElementAcc, key: &str, value: &str, line: usize
             let v = value.trim();
             acc.extended_labels =
                 v.eq_ignore_ascii_case("y") || v == "1" || v.eq_ignore_ascii_case("true");
+        }
+        "contourcolor" => {
+            let v = value.trim();
+            acc.contour_color = if v.eq_ignore_ascii_case("no") || v.eq_ignore_ascii_case("none") {
+                ContourColor::No
+            } else if let Some(c) = parse_color_rgb(v) {
+                ContourColor::Solid(c)
+            } else {
+                ContourColor::No
+            };
         }
         k if k.starts_with("string") => {
             acc.labels.push(parse_label(value, line)?);
@@ -536,6 +547,7 @@ fn flush(doc: &mut TypDocument, state: ParseState, acc: &mut ElementAcc) {
                     day_font_colour: acc.day_font_colour,
                     night_font_colour: acc.night_font_colour,
                     extended_labels: acc.extended_labels,
+                    contour_color: acc.contour_color,
                 });
             }
         }

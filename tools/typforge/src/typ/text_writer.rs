@@ -78,6 +78,10 @@ fn emit_polygon(s: &mut String, p: &TypPolygon) {
         crlf(s, "ExtendedLabels=Y");
     }
     emit_font_style(s, p.font_style);
+    match p.contour_color {
+        ContourColor::No => crlf(s, "ContourColor=No"),
+        ContourColor::Solid(c) => crlf(s, &format!("ContourColor=#{:02X}{:02X}{:02X}", c.r, c.g, c.b)),
+    }
     if let Some(x) = &p.day_xpm {
         emit_xpm(s, x, "Xpm");
     }
@@ -314,5 +318,30 @@ mod tests {
         assert_eq!(doc2.polygons[0].type_code, 0x01);
         assert_eq!(doc2.polygons[0].font_style, FontStyle::NoLabel);
         assert!(doc2.polygons[0].extended_labels);
+        assert_eq!(doc2.polygons[0].contour_color, ContourColor::No);
+    }
+
+    #[test]
+    fn round_trip_contour_color_solid() {
+        let mut doc = TypDocument::default();
+        doc.param = TypParam { family_id: 1, product_id: 1, codepage: 1252, header_str: String::new() };
+        doc.polygons.push(TypPolygon {
+            type_code: 0x05,
+            contour_color: ContourColor::Solid(Rgb { r: 0xFF, g: 0x33, b: 0x00 }),
+            ..TypPolygon::default()
+        });
+        let bytes = write(&doc).unwrap();
+        let doc2 = parse(&bytes).unwrap();
+        assert_eq!(doc2.polygons[0].contour_color, ContourColor::Solid(Rgb { r: 0xFF, g: 0x33, b: 0x00 }));
+    }
+
+    #[test]
+    fn round_trip_contour_color_no() {
+        let input = b"[_polygon]\nType=0x02\nContourColor=No\n[end]\n";
+        let doc = parse(input).unwrap();
+        assert_eq!(doc.polygons[0].contour_color, ContourColor::No);
+        let bytes = write(&doc).unwrap();
+        let txt = String::from_utf8_lossy(&bytes);
+        assert!(txt.contains("ContourColor=No"));
     }
 }

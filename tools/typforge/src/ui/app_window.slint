@@ -120,6 +120,9 @@ export component AppWindow inherits Window {
     in-out property <string> ep-day-fill-text: "#888888";
     in-out property <color>  ep-night-fill-color: #888888;
     in-out property <string> ep-night-fill-text: "#888888";
+    in-out property <bool>   ep-contour-enabled: false;
+    in-out property <color>  ep-contour-color: #000000;
+    in-out property <string> ep-contour-text: "#000000";
     in-out property <bool>   ep-extended-labels: false;
     in-out property <int>    ep-font-style: 0;
     in-out property <string> ep-xpm-text: "";
@@ -196,6 +199,7 @@ export component AppWindow inherits Window {
     // Color picker callbacks
     callback pick-ep-day-color();
     callback pick-ep-night-color();
+    callback pick-ep-contour-color();
     callback pick-el-day-color();
     callback pick-el-night-color();
     callback pick-poi-new-color();
@@ -205,8 +209,10 @@ export component AppWindow inherits Window {
     // Callbacks live hex → couleur pour preview instantanée dans les éditeurs
     callback ep-day-text-changed(string);
     callback ep-night-text-changed(string);
+    callback ep-contour-text-changed(string);
     callback el-day-text-changed(string);
     callback el-night-text-changed(string);
+    callback el-dash-preset(int);
     in-out property <color> poi-font-color-day: #000000;
     in-out property <color> poi-font-color-night: #000000;
     in-out property <color> poi-new-color-preview: #000000;
@@ -576,15 +582,20 @@ export component AppWindow inherits Window {
         day-fill-text    <=> root.ep-day-fill-text;
         night-fill-color <=> root.ep-night-fill-color;
         night-fill-text  <=> root.ep-night-fill-text;
+        contour-enabled  <=> root.ep-contour-enabled;
+        contour-color    <=> root.ep-contour-color;
+        contour-text     <=> root.ep-contour-text;
         extended-labels <=> root.ep-extended-labels;
         font-style      <=> root.ep-font-style;
         xpm-text        <=> root.ep-xpm-text;
         night-xpm-text  <=> root.ep-night-xpm-text;
         error-msg       <=> root.editor-error;
-        day-text-changed(v)   => { root.ep-day-text-changed(v); }
-        night-text-changed(v) => { root.ep-night-text-changed(v); }
-        pick-day-color   => { root.pick-ep-day-color(); }
-        pick-night-color => { root.pick-ep-night-color(); }
+        day-text-changed(v)     => { root.ep-day-text-changed(v); }
+        night-text-changed(v)   => { root.ep-night-text-changed(v); }
+        contour-text-changed(v) => { root.ep-contour-text-changed(v); }
+        pick-day-color     => { root.pick-ep-day-color(); }
+        pick-night-color   => { root.pick-ep-night-color(); }
+        pick-contour-color => { root.pick-ep-contour-color(); }
         apply  => { root.editor-apply(); }
         cancel => { root.editor-cancel(); }
     }
@@ -611,6 +622,7 @@ export component AppWindow inherits Window {
         night-text-changed(v) => { root.el-night-text-changed(v); }
         pick-day-color   => { root.pick-el-day-color(); }
         pick-night-color => { root.pick-el-night-color(); }
+        dash-preset(p)   => { root.el-dash-preset(p); }
         apply  => { root.editor-apply(); }
         cancel => { root.editor-cancel(); }
     }

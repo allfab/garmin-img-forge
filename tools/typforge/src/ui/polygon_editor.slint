@@ -15,6 +15,11 @@ export component PolygonEditor inherits Rectangle {
     in-out property <color>  night-fill-color: #888888;
     in-out property <string> night-fill-text:  "#888888";
 
+    // Contour
+    in-out property <bool>   contour-enabled: false;
+    in-out property <color>  contour-color:   #000000;
+    in-out property <string> contour-text:    "#000000";
+
     // Typographie
     in-out property <bool>   extended-labels: false;
     in-out property <int>    font-style: 0;
@@ -29,8 +34,10 @@ export component PolygonEditor inherits Rectangle {
     // Callbacks
     callback day-text-changed(string);
     callback night-text-changed(string);
+    callback contour-text-changed(string);
     callback pick-day-color();
     callback pick-night-color();
+    callback pick-contour-color();
     callback apply();
     callback cancel();
 
@@ -175,6 +182,33 @@ export component PolygonEditor inherits Rectangle {
                         }
                         Rectangle { height: 8px; }
 
+                        // Couleur Contour
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text {
+                                text: "Contour :"; font-size: 12px; width: 120px;
+                                vertical-alignment: center;
+                            }
+                            CheckBox {
+                                checked <=> root.contour-enabled;
+                                text: root.contour-enabled ? "Couleur" : "Aucun";
+                            }
+                            if root.contour-enabled : LineEdit {
+                                text <=> root.contour-text; width: 80px; font-size: 12px;
+                                edited(v) => { root.contour-text-changed(v); }
+                            }
+                            if root.contour-enabled : Rectangle {
+                                width: 34px; height: 30px;
+                                background: root.contour-color;
+                                border-width: 1px; border-color: #888888;
+                                border-radius: 4px;
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.pick-contour-color(); }
+                                }
+                            }
+                        }
+                        Rectangle { height: 8px; }
+
                         // FontStyle
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text {
@@ -264,7 +298,8 @@ export component PolygonEditor inherits Rectangle {
                             width: parent.width - 12px; height: parent.height - 12px;
                             background: root.day-fill-color;
                             border-radius: 3px;
-                            border-width: 1px; border-color: #00000044;
+                            border-width: root.contour-enabled ? 3px : 1px;
+                            border-color: root.contour-enabled ? root.contour-color : #00000044;
                         }
                         // Badge XPM (si motif XPM présent)
                         if root.xpm-text != "" : Rectangle {
@@ -298,7 +333,8 @@ export component PolygonEditor inherits Rectangle {
                             width: parent.width - 12px; height: parent.height - 12px;
                             background: root.night-fill-color;
                             border-radius: 3px;
-                            border-width: 1px; border-color: #ffffff22;
+                            border-width: root.contour-enabled ? 3px : 1px;
+                            border-color: root.contour-enabled ? root.contour-color : #ffffff22;
                         }
                         if root.night-xpm-text != "" : Rectangle {
                             x: parent.width - 46px; y: parent.height - 22px;

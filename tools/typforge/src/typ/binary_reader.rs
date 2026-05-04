@@ -255,6 +255,7 @@ fn parse_polygon(bytes: &[u8], type_code: u16, sub_type: u8, cp: u16) -> Result<
         day_font_colour: day_c.map(rgba_to_rgb),
         night_font_colour: night_c.map(rgba_to_rgb),
         extended_labels: false,
+        contour_color: ContourColor::No,
     })
 }
 

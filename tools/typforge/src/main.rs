@@ -8,7 +8,7 @@ slint::include_modules!();
 use std::rc::Rc;
 use std::cell::RefCell;
 use slint::{ModelRc, VecModel, StandardListViewItem, SharedPixelBuffer, Rgb8Pixel};
-use typ::{TypDocument, TypPolygon, TypLine, TypPoint, TypIconSet, DrawOrderEntry, TypLabel, Xpm, Rgb, Rgba, ColorMode, FontStyle};
+use typ::{TypDocument, TypPolygon, TypLine, TypPoint, TypIconSet, DrawOrderEntry, TypLabel, Xpm, Rgb, Rgba, ColorMode, FontStyle, ContourColor};
 use app::App;
 
 // ─── Render helpers ──────────────────────────────────────────────
@@ -1280,6 +1280,13 @@ fn main() -> anyhow::Result<()> {
                                     p.night_xpm = new_night_xpm;
                                     p.extended_labels = w.get_ep_extended_labels();
                                     p.font_style = int_to_font_style(w.get_ep_font_style());
+                                    p.contour_color = if w.get_ep_contour_enabled() {
+                                        hex_to_rgb(w.get_ep_contour_text().as_str())
+                                            .map(ContourColor::Solid)
+                                            .unwrap_or(ContourColor::No)
+                                    } else {
+                                        ContourColor::No
+                                    };
                                 }
                             }
                         }
@@ -1438,6 +1445,19 @@ fn main() -> anyhow::Result<()> {
                             w.set_ep_day_fill_color(day_color);
                             w.set_ep_night_fill_text(night_text);
                             w.set_ep_night_fill_color(night_color);
+                            match p.contour_color {
+                                ContourColor::No => {
+                                    w.set_ep_contour_enabled(false);
+                                    w.set_ep_contour_text("#000000".into());
+                                    w.set_ep_contour_color(slint::Color::from_rgb_u8(0, 0, 0));
+                                }
+                                ContourColor::Solid(c) => {
+                                    w.set_ep_contour_enabled(true);
+                                    let hex = format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b);
+                                    w.set_ep_contour_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+                                    w.set_ep_contour_text(hex.into());
+                                }
+                            }
                             w.set_ep_extended_labels(p.extended_labels);
                             w.set_ep_font_style(font_style_to_int(p.font_style));
                             w.set_ep_xpm_text(xpm_to_text_opt(p.day_xpm.as_ref()));
@@ -1988,6 +2008,25 @@ fn main() -> anyhow::Result<()> {
     }
     {
         let ww = window.as_weak();
+        window.on_pick_ep_contour_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let current = w.get_ep_contour_text().to_string();
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = ww2.upgrade() {
+                            w.set_ep_contour_color(hex_to_slint_color(&hex));
+                            w.set_ep_contour_text(hex.into());
+                            w.set_editor_error("".into());
+                        }
+                    });
+                }
+            });
+        });
+    }
+    {
+        let ww = window.as_weak();
         window.on_pick_el_day_color(move || {
             let w = match ww.upgrade() { Some(w) => w, None => return };
             let current = w.get_el_day_text().to_string();
@@ -2103,6 +2142,14 @@ fn main() -> anyhow::Result<()> {
     }
     {
         let ww = window.as_weak();
+        window.on_ep_contour_text_changed(move |s| {
+            if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
+                w.set_ep_contour_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
         window.on_el_day_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_day_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
@@ -2115,6 +2162,34 @@ fn main() -> anyhow::Result<()> {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_night_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
             }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_dash_preset(move |preset| {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let line_w = w.get_el_line_width().max(1) as u32;
+            let color_hex = w.get_el_day_text().to_string();
+            let color = if hex_to_rgb(&color_hex).is_some() {
+                color_hex.to_uppercase()
+            } else {
+                "#000000".to_string()
+            };
+            let (on, off): (u32, u32) = match preset {
+                0 => (8, 4),
+                1 => (4, 4),
+                2 => (2, 4),
+                3 => (6, 2),
+                _ => (4, 4),
+            };
+            let w_total = on + off;
+            let row: String = "a".repeat(on as usize) + &".".repeat(off as usize);
+            let mut xpm = format!("{} {} 2 1\na  c {}\n.  c none\n", w_total, line_w, color);
+            for _ in 0..line_w {
+                xpm.push_str(&row);
+                xpm.push('\n');
+            }
+            w.set_el_xpm_text(xpm.into());
         });
     }
 
@@ -2178,6 +2253,9 @@ fn main() -> anyhow::Result<()> {
                         w.set_ep_sub_type_text(format!("0x{:02X}", p.sub_type).into());
                         w.set_ep_day_fill_text(day_text); w.set_ep_day_fill_color(day_color);
                         w.set_ep_night_fill_text(night_text); w.set_ep_night_fill_color(night_color);
+                        w.set_ep_contour_enabled(false);
+                        w.set_ep_contour_text("#000000".into());
+                        w.set_ep_contour_color(slint::Color::from_rgb_u8(0, 0, 0));
                         w.set_ep_extended_labels(false); w.set_ep_font_style(0);
                         w.set_ep_xpm_text("".into()); w.set_ep_night_xpm_text("".into());
                         w.set_editor_kind(0); w.set_editor_idx(idx as i32);
