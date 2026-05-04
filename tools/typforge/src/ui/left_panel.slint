@@ -1,5 +1,33 @@
 import { ScrollView, Button, StandardListView, Palette } from "std-widgets.slint";
 
+component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    width: 26px; height: 24px;
+    border-radius: 4px; border-width: 1px;
+    border-color: Palette.border;
+    background: ta.pressed ? Palette.selection-background
+              : (ta.has-hover && root.enabled) ? Palette.alternate-background
+              : Palette.control-background;
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.icon;
+        font-family: "Segoe UI Symbol";
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: Palette.foreground;
+        opacity: root.enabled ? 1.0 : 0.4;
+    }
+}
+
 export component LeftPanel inherits Rectangle {
     background: Palette.alternate-background;
 
@@ -74,10 +102,10 @@ export component LeftPanel inherits Rectangle {
                 }
             }
             VerticalLayout {
-                width: 65px; spacing: 2px; alignment: start;
-                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(0); } }
-                Button { text: "Modifier"; height: 24px; enabled: root.active-kind == 0 && poly-sel >= 0; clicked => { root.edit-element(0, poly-sel); } }
-                Button { text: "Supprimer"; height: 24px; enabled: root.active-kind == 0 && poly-sel >= 0; clicked => { root.delete-element(0, poly-sel); } }
+                width: 28px; spacing: 2px; alignment: start;
+                IconButton { icon: "+"; clicked => { root.add-element(0); } }
+                IconButton { icon: "✎"; enabled: root.active-kind == 0 && poly-sel >= 0; clicked => { root.edit-element(0, poly-sel); } }
+                IconButton { icon: "✕"; enabled: root.active-kind == 0 && poly-sel >= 0; clicked => { root.delete-element(0, poly-sel); } }
             }
         }
 
@@ -123,10 +151,10 @@ export component LeftPanel inherits Rectangle {
                 }
             }
             VerticalLayout {
-                width: 65px; spacing: 2px; alignment: start;
-                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(1); } }
-                Button { text: "Modifier"; height: 24px; enabled: root.active-kind == 1 && line-sel >= 0; clicked => { root.edit-element(1, line-sel); } }
-                Button { text: "Supprimer"; height: 24px; enabled: root.active-kind == 1 && line-sel >= 0; clicked => { root.delete-element(1, line-sel); } }
+                width: 28px; spacing: 2px; alignment: start;
+                IconButton { icon: "+"; clicked => { root.add-element(1); } }
+                IconButton { icon: "✎"; enabled: root.active-kind == 1 && line-sel >= 0; clicked => { root.edit-element(1, line-sel); } }
+                IconButton { icon: "✕"; enabled: root.active-kind == 1 && line-sel >= 0; clicked => { root.delete-element(1, line-sel); } }
             }
         }
 
@@ -172,10 +200,10 @@ export component LeftPanel inherits Rectangle {
                 }
             }
             VerticalLayout {
-                width: 65px; spacing: 2px; alignment: start;
-                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(2); } }
-                Button { text: "Modifier"; height: 24px; enabled: root.active-kind == 2 && point-sel >= 0; clicked => { root.edit-element(2, point-sel); } }
-                Button { text: "Supprimer"; height: 24px; enabled: root.active-kind == 2 && point-sel >= 0; clicked => { root.delete-element(2, point-sel); } }
+                width: 28px; spacing: 2px; alignment: start;
+                IconButton { icon: "+"; clicked => { root.add-element(2); } }
+                IconButton { icon: "✎"; enabled: root.active-kind == 2 && point-sel >= 0; clicked => { root.edit-element(2, point-sel); } }
+                IconButton { icon: "✕"; enabled: root.active-kind == 2 && point-sel >= 0; clicked => { root.delete-element(2, point-sel); } }
             }
         }
 
@@ -221,10 +249,10 @@ export component LeftPanel inherits Rectangle {
                 }
             }
             VerticalLayout {
-                width: 65px; spacing: 2px; alignment: start;
-                Button { text: "Ajouter"; height: 24px; clicked => { root.add-element(3); } }
-                Button { text: "Modifier"; height: 24px; enabled: root.active-kind == 3 && icon-sel >= 0; clicked => { root.edit-element(3, icon-sel); } }
-                Button { text: "Supprimer"; height: 24px; enabled: root.active-kind == 3 && icon-sel >= 0; clicked => { root.delete-element(3, icon-sel); } }
+                width: 28px; spacing: 2px; alignment: start;
+                IconButton { icon: "+"; clicked => { root.add-element(3); } }
+                IconButton { icon: "✎"; enabled: root.active-kind == 3 && icon-sel >= 0; clicked => { root.edit-element(3, icon-sel); } }
+                IconButton { icon: "✕"; enabled: root.active-kind == 3 && icon-sel >= 0; clicked => { root.delete-element(3, icon-sel); } }
             }
         }
 

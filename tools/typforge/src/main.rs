@@ -505,6 +505,8 @@ fn update_ui_from_doc(doc: &TypDocument, window: &AppWindow) {
             .collect::<Vec<_>>()
     )));
 
+    window.set_selected_kind(-1);
+    window.set_selected_idx(-1);
     window.set_active_nav_tab(0);
     rebuild_gallery(doc, window, 0);
 }
@@ -1034,19 +1036,6 @@ fn main() -> anyhow::Result<()> {
             let a = app_c.borrow();
             if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
                 rebuild_gallery(doc, &w, tab);
-            }
-        });
-    }
-
-    // on_gallery_tab_changed (Text/Icons tabs)
-    {
-        let app_c = Rc::clone(&app);
-        let ww = window.as_weak();
-        window.on_gallery_tab_changed(move |_gallery_tab| {
-            let a = app_c.borrow();
-            if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
-                let nav = w.get_active_nav_tab();
-                rebuild_gallery(doc, &w, nav);
             }
         });
     }

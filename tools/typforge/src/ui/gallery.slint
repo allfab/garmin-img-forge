@@ -11,15 +11,13 @@ export component Gallery inherits Rectangle {
     background: Palette.background;
 
     in property <[GalleryItem]> items: [];
-    in-out property <int> gallery-tab: 0;
     in-out property <int> selected-index: -1;
 
     callback gallery-item-selected(int, int);
     callback gallery-item-edit-requested(int, int);
-    callback gallery-tab-changed(int);
 
     VerticalLayout {
-        // ── Header : titre + bouton toggle ──────────────
+        // ── Header : titre ───────────────────────────────
         Rectangle {
             height: 32px;
             background: Palette.control-background;
@@ -29,91 +27,26 @@ export component Gallery inherits Rectangle {
             HorizontalLayout {
                 padding-left: 8px;
                 padding-right: 6px;
-                spacing: 8px;
 
                 Text {
                     text: "Visualisation";
                     vertical-alignment: center;
                     font-size: 12px;
                     font-weight: 600;
-                    horizontal-stretch: 1;
                     color: Palette.foreground;
                 }
-
-                toggle-rect := Rectangle {
-                    width: 104px;
-                    height: 22px;
-                    border-radius: 3px;
-                    border-width: 1px;
-                    border-color: Palette.border;
-                    background: toggle-ta.has-hover ? Palette.alternate-background : Palette.background;
-
-                    Text {
-                        text: "Texte / Icônes";
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        font-size: 11px;
-                        color: Palette.foreground;
-                    }
-                    toggle-ta := TouchArea {
-                        clicked => {
-                            root.gallery-tab = root.gallery-tab == 0 ? 1 : 0;
-                            root.gallery-tab-changed(root.gallery-tab);
-                        }
-                    }
-                }
             }
         }
 
-        // ── Mode Texte (liste compacte) ──────────────────
-        if root.gallery-tab == 0 : ScrollView {
-            vertical-stretch: 1;
-
-            VerticalLayout {
-                padding: 2px;
-                spacing: 1px;
-                alignment: start;
-
-                for item in root.items: Rectangle {
-                    height: 22px;
-                    border-width: root.selected-index == item.index ? 2px : 1px;
-                    border-color: root.selected-index == item.index ? #cc0000 : Palette.border;
-                    background: cell-ta-text.has-hover ? Palette.alternate-background
-                              : (root.selected-index == item.index ? #ffe8e8 : Palette.background);
-
-                    cell-ta-text := TouchArea {
-                        clicked => {
-                            root.selected-index = item.index;
-                            root.gallery-item-selected(item.kind, item.index);
-                        }
-                        double-clicked => {
-                            root.selected-index = item.index;
-                            root.gallery-item-selected(item.kind, item.index);
-                            root.gallery-item-edit-requested(item.kind, item.index);
-                        }
-                    }
-
-                    Text {
-                        x: 8px;
-                        text: item.name;
-                        vertical-alignment: center;
-                        font-size: 11px;
-                        overflow: elide;
-                        color: root.selected-index == item.index ? #aa0000 : Palette.foreground;
-                    }
-                }
-            }
-        }
-
-        // ── Mode Icônes (grille 5 colonnes) ─────────────
-        if root.gallery-tab == 1 : icon-scroll := ScrollView {
+        // ── Grille icônes (5 colonnes) ───────────────────
+        icon-scroll := ScrollView {
             vertical-stretch: 1;
             viewport-width: self.visible-width;
             viewport-height: ((root.items.length + 4) / 5) * 96px + 8px;
 
             Rectangle {
                 width: icon-scroll.visible-width;
-                height: ((root.items.length + 4) / 5) * 96px + 8px;
+                height: icon-scroll.viewport-height;
 
                 for item[idx] in root.items : Rectangle {
                     x: mod(idx, 5) * (icon-scroll.visible-width / 5);
@@ -121,18 +54,19 @@ export component Gallery inherits Rectangle {
                     width: icon-scroll.visible-width / 5 - 1px;
                     height: 92px;
 
-                    border-width: root.selected-index == item.index ? 3px : 1px;
+                    border-width: root.selected-index == item.index ? 2px : 1px;
                     border-color: root.selected-index == item.index ? #cc0000 : Palette.border;
-                    background: cell-ta-icon.has-hover ? Palette.alternate-background : Palette.background;
+                    background: root.selected-index == item.index ? Palette.selection-background
+                              : cell-ta.has-hover ? Palette.alternate-background
+                              : Palette.background;
 
-                    cell-ta-icon := TouchArea {
+                    cell-ta := TouchArea {
                         clicked => {
                             root.selected-index = item.index;
                             root.gallery-item-selected(item.kind, item.index);
                         }
                         double-clicked => {
                             root.selected-index = item.index;
-                            root.gallery-item-selected(item.kind, item.index);
                             root.gallery-item-edit-requested(item.kind, item.index);
                         }
                     }

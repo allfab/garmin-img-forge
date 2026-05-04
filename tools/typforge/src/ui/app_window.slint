@@ -58,7 +58,6 @@ export component AppWindow inherits Window {
     in-out property <bool> txt-edit-mode: false;
     in-out property <string> txt-edit-buffer: "";
     in-out property <string> txt-edit-error: "";
-    in-out property <int> gallery-display-tab: 0;
     callback txt-edit-apply(string);
     callback txt-edit-cancel();
 
@@ -71,6 +70,7 @@ export component AppWindow inherits Window {
     // Largeurs des panneaux latéraux (redimensionnables)
     private property <length> left-panel-width: 264px;
     private property <length> right-panel-width: 224px;
+    private property <length> txt-panel-height: 220px;
 
     // Callbacks fichiers
     callback open-file();
@@ -101,7 +101,6 @@ export component AppWindow inherits Window {
 
     // Callbacks galerie
     callback gallery-item-selected(int, int);
-    callback gallery-tab-changed(int);
 
     // Callback navigation
     callback nav-tab-changed(int);
@@ -447,19 +446,27 @@ export component AppWindow inherits Window {
                 gallery := Gallery {
                     vertical-stretch: 1;
                     items: root.gallery-items;
-                    gallery-tab <=> root.gallery-display-tab;
+                    selected-index <=> root.selected-idx;
                     gallery-item-selected(kind, idx) => { root.gallery-item-selected(kind, idx); }
                     gallery-item-edit-requested(kind, idx) => { root.edit-element(kind, idx); }
-                    gallery-tab-changed(tab) => { root.gallery-tab-changed(tab); }
                 }
 
-                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : Rectangle {
-                    height: 1px;
-                    background: #aaaaaa;
+                if root.selected-kind >= 0 : Rectangle {
+                    height: 5px;
+                    background: txt-spl-ta.has-hover || txt-spl-ta.pressed ? #5090ff : #aaaaaa;
+                    txt-spl-ta := TouchArea {
+                        mouse-cursor: row-resize;
+                        moved => {
+                            root.txt-panel-height = clamp(
+                                root.txt-panel-height + 2.5px - self.mouse-y,
+                                80px, 500px
+                            );
+                        }
+                    }
                 }
 
-                if root.gallery-display-tab == 0 && root.selected-kind >= 0 : TxtCodePanel {
-                    height: 220px;
+                if root.selected-kind >= 0 : TxtCodePanel {
+                    height: root.txt-panel-height;
                     txt-code: root.selected-txt-code;
                     edit-mode <=> root.txt-edit-mode;
                     edit-buffer <=> root.txt-edit-buffer;
