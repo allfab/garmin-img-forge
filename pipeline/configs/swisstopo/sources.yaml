@@ -2,10 +2,10 @@ version: 1
 
 # Profils de simplification — scope swisstopo.
 # Résolu relativement à ce fichier.
-generalize_profiles_path: "./generalize-profiles.yaml"
+# generalize_profiles_path: "./generalize-profiles.yaml"
 
 grid:
-  cell_size: 0.15   # ~17 km par tuile mp (une tuile SMV10 ~14×15 km)
+  cell_size: 1.00
   overlap: 0.005
 
 inputs:
@@ -22,45 +22,48 @@ inputs:
   # Couches vides tuile 1167 (T52, T55, T54, T50) gérées par error_handling: continue.
   # ==========================================================================
 
-  - path: "${DATA_ROOT}/${TILE_IDS}/swiss-map-vector10_*_${TILE_IDS}_2056.gpkg"
+  - path: "./pipeline/data/swisstopo/1167/SMV10_CHLV95LN02.gpkg"
     source_srs: "EPSG:2056"
     target_srs: "EPSG:4326"
     layers:
-      # TRANSPORT
-      - "T45_DKM10_STRASSE"
-      - "T44_DKM10_EISENBAHN"
-      - "T46_DKM10_EISENBAHN_TUNNEL"
-      - "T42_DKM10_OEV_LIN"
-      # BÂTI
-      - "T48_DKM10_GEBAEUDE"
-      - "T60_DKM10_BAUTE_PLY"
-      - "T40_DKM10_BAUTE_LIN"
-      # HYDROGRAPHIE
-      - "T56_DKM10_GEWAESSER_PLY"
-      - "T57_DKM10_GEWAESSER_LIN"
-      # OROGRAPHIE
-      - "T62_DKM10_HOEHENKURVE"
-      - "T38_DKM10_HOEHENKOTE"
       # VÉGÉTATION / OCCUPATION SOL
       - "T65_DKM10_BODENBEDECKUNG"
       - "T64_DKM10_NUTZUNGSAREAL"
-      # LOISIRS / TRAFIC
+      # ESPACE DE LOISIRS / TRAFIC
       - "T63_DKM10_FREIZEITAREAL"
-      - "T61_DKM10_VERKEHRSAREAL"
-      # ADMINISTRATIF
-      - "T53_DKM10_HOHEITSGRENZE"
-      # LIEUX NOMMÉS
-      - "DKM10_SIEDLUNGSNAME"
-      - "DKM10_HOHEITSGEBIET_ZENTROID"
-      # BÂTI POI / OROGRAPHIE POI
-      - "T32_DKM10_BAUTE_PKT"
-      - "T39_DKM10_MORPH_KLEINFORM_PKT"
+      # - "T61_DKM10_VERKEHRSAREAL"
+      # OROGRAPHIE
+      - "T62_DKM10_HOEHENKURVE"
+      # - "T38_DKM10_HOEHENKOTE"
+
+      # # TRANSPORT
+      # - "T45_DKM10_STRASSE"
+      # - "T44_DKM10_EISENBAHN"
+      # - "T46_DKM10_EISENBAHN_TUNNEL"
+      # - "T42_DKM10_OEV_LIN"
+      # # BÂTI
+      # - "T48_DKM10_GEBAEUDE"
+      # - "T60_DKM10_BAUTE_PLY"
+      # - "T40_DKM10_BAUTE_LIN"
+      # # HYDROGRAPHIE
+      # - "T56_DKM10_GEWAESSER_PLY"
+      # - "T57_DKM10_GEWAESSER_LIN"
+
+
+      # # ADMINISTRATIF
+      # - "T53_DKM10_HOHEITSGRENZE"
+      # # LIEUX NOMMÉS
+      # - "DKM10_SIEDLUNGSNAME"
+      # - "DKM10_HOHEITSGEBIET_ZENTROID"
+      # # BÂTI POI / OROGRAPHIE POI
+      # - "T32_DKM10_BAUTE_PKT"
+      # - "T39_DKM10_MORPH_KLEINFORM_PKT"
 
 output:
-  directory: "${OUTPUT_DIR}/mp/"
+  directory: "./pipeline/output/swisstopo/mp/"
   filename_pattern: "SMV10-{col:03}-{row:03}.mp"
   overwrite: true
-  base_id: ${BASE_ID}
+  base_id: 1167
 
 # Header MP — même 7 niveaux que tous les scopes de production (24/23/22/21/20/18/16)
 header:

@@ -3,386 +3,6 @@ version: 1
 
 rulesets:
   # ==========================================================================
-  # TRANSPORT — Routes (POLYLINE)
-  # Source : T45_DKM10_STRASSE
-  # Discrimine par OBJEKTART, puis WANDERWEG pour les sentiers balisés
-  # ==========================================================================
-  - name: "Routes"
-    source_layer: "T45_DKM10_STRASSE"
-    rules:
-      - match:
-          OBJEKTART: "Autobahn"
-        set:
-          Type: "0x01"
-          EndLevel: "5"
-          Label: "~[0x04]${NAME}"
-
-      - match:
-          OBJEKTART: "Ausfahrt"
-        set:
-          Type: "0x09"
-          EndLevel: "2"
-
-      - match:
-          OBJEKTART: "Einfahrt"
-        set:
-          Type: "0x09"
-          EndLevel: "2"
-
-      - match:
-          OBJEKTART: "Raststaette"
-        set:
-          Type: "0x09"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "10m_Strasse"
-        set:
-          Type: "0x04"
-          EndLevel: "4"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "8m_Strasse"
-        set:
-          Type: "0x05"
-          EndLevel: "3"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "6m_Strasse"
-        set:
-          Type: "0x06"
-          EndLevel: "2"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "4m_Strasse"
-        set:
-          Type: "0x06"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "3m_Strasse"
-        set:
-          Type: "0x07"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "Zufahrt"
-        set:
-          Type: "0x07"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Dienstzufahrt"
-        set:
-          Type: "0x07"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Markierte_Spur"
-        set:
-          Type: "0x0e"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "2m_Weg"
-          WANDERWEG: "Wanderweg"
-        set:
-          Type: "0x10"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "2m_Weg"
-        set:
-          Type: "0x0a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "1m_Weg"
-        set:
-          Type: "0x0a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "2m_Wegfragment"
-        set:
-          Type: "0x10"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "1m_Wegfragment"
-        set:
-          Type: "0x10"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # TRANSPORT — Rail normal (POLYLINE)
-  # Source : T44_DKM10_EISENBAHN
-  # ==========================================================================
-  - name: "Rail"
-    source_layer: "T44_DKM10_EISENBAHN"
-    rules:
-      - match:
-          OBJEKTART: "Normalspur"
-        set:
-          Type: "0x10c00"
-          EndLevel: "4"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "Schmalspur"
-        set:
-          Type: "0x10e03"
-          EndLevel: "3"
-
-  # ==========================================================================
-  # TRANSPORT — Rail souterrain (POLYLINE)
-  # Source : T46_DKM10_EISENBAHN_TUNNEL
-  # ==========================================================================
-  - name: "Rail souterrain"
-    source_layer: "T46_DKM10_EISENBAHN_TUNNEL"
-    rules:
-      - match:
-          OBJEKTART: "Normalspur"
-        set:
-          Type: "0x10e06"
-          EndLevel: "4"
-
-      - match:
-          OBJEKTART: "Schmalspur"
-        set:
-          Type: "0x10e06"
-          EndLevel: "3"
-
-  # ==========================================================================
-  # TRANSPORT — OEV linéaire : bandes transporteuses, câbles (POLYLINE)
-  # Source : T42_DKM10_OEV_LIN
-  # OBJEKTART observé sur tuile 1167 : Foerderband (bandes industrielles)
-  # D'autres tuiles peuvent contenir Luftseilbahn, Sesselbahn, etc.
-  # ==========================================================================
-  - name: "OEV linéaire"
-    source_layer: "T42_DKM10_OEV_LIN"
-    rules:
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x10f0b"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # BÂTI — Bâtiments (POLYGON)
-  # Source : T48_DKM10_GEBAEUDE
-  # ==========================================================================
-  - name: "Bâtiments"
-    source_layer: "T48_DKM10_GEBAEUDE"
-    rules:
-      - match:
-          OBJEKTART: "Kapelle"
-        set:
-          Type: "0x10f09"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Sakrales_Gebaeude"
-        set:
-          Type: "0x10f0b"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Sakraler_Turm"
-        set:
-          Type: "0x10f11"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Turm"
-        set:
-          Type: "0x10f11"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Hochkamin"
-        set:
-          Type: "0x10f11"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Lagertank"
-        set:
-          Type: "0x10f06"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Treibhaus"
-        set:
-          Type: "0x10f05"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Mauer_gross"
-        set:
-          Type: "0x10f0c"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Mauer_gross_gedeckt"
-        set:
-          Type: "0x10f0c"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # BÂTI — Constructions polygonales (POLYGON)
-  # Source : T60_DKM10_BAUTE_PLY
-  # ==========================================================================
-  - name: "Constructions poly"
-    source_layer: "T60_DKM10_BAUTE_PLY"
-    rules:
-      - match:
-          OBJEKTART: "Schwimmbecken"
-        set:
-          Type: "0x10f20"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Wasserbecken"
-        set:
-          Type: "0x10f20"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Sportplatz"
-        set:
-          Type: "0x10f20"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # BÂTI — Constructions linéaires (POLYLINE)
-  # Source : T40_DKM10_BAUTE_LIN
-  # ==========================================================================
-  - name: "Constructions linéaires"
-    source_layer: "T40_DKM10_BAUTE_LIN"
-    rules:
-      - match:
-          OBJEKTART: "Hochspannungsleitung"
-        set:
-          Type: "0x10f0a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Mauer"
-        set:
-          Type: "0x10f0c"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # HYDROGRAPHIE — Eau polygonale (POLYGON)
-  # Source : T56_DKM10_GEWAESSER_PLY
-  # ==========================================================================
-  - name: "Eau poly"
-    source_layer: "T56_DKM10_GEWAESSER_PLY"
-    rules:
-      - match:
-          OBJEKTART: "See"
-        set:
-          Type: "0x3f"
-          EndLevel: "4"
-
-      - match:
-          OBJEKTART: "Fluss"
-        set:
-          Type: "0x3f"
-          EndLevel: "2"
-
-  # ==========================================================================
-  # HYDROGRAPHIE — Eau linéaire (POLYLINE)
-  # Source : T57_DKM10_GEWAESSER_LIN
-  # ==========================================================================
-  - name: "Eau linéaire"
-    source_layer: "T57_DKM10_GEWAESSER_LIN"
-    rules:
-      - match:
-          OBJEKTART: "Trockenrinne"
-        set:
-          Type: "0x26"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Fliessgewaesser"
-        set:
-          Type: "0x18"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Druckleitung_einfach"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-      # Axe géométrique de lac — EndLevel "0" avec type neutre pour masquage maximum
-      - match:
-          OBJEKTART: "Seeachse"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # OROGRAPHIE — Courbes de niveau (POLYLINE)
-  # Source : T62_DKM10_HOEHENKURVE
-  # Pas d'attribut OBJEKTART — wildcard unique
-  # ==========================================================================
-  - name: "Courbes de niveau"
-    source_layer: "T62_DKM10_HOEHENKURVE"
-    rules:
-      # Courbes maîtresses (Zaehlkurve) — type 0x22, EndLevel=1 pour distinction visuelle
-      - match:
-          OBJEKTART: "Zaehlkurve"
-        set:
-          Type: "0x22"
-          EndLevel: "1"
-          Label: "${HOEHE}"
-      # Courbes normales (Normalkurve) — type 0x21, EndLevel=0
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x21"
-          EndLevel: "0"
-          Label: "${HOEHE}"
-
-  # ==========================================================================
-  # OROGRAPHIE — Points d'altitude (POINT)
-  # Source : T38_DKM10_HOEHENKOTE
-  # ==========================================================================
-  - name: "Points altitude"
-    source_layer: "T38_DKM10_HOEHENKOTE"
-    rules:
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x06508"
-          EndLevel: "0"
-          Label: "${HOEHE}"
-
-  # ==========================================================================
   # VÉGÉTATION — Forêt (POLYGON)
   # Source : T65_DKM10_BODENBEDECKUNG
   # ==========================================================================
@@ -390,9 +10,9 @@ rulesets:
     source_layer: "T65_DKM10_BODENBEDECKUNG"
     rules:
       - match:
-          OBJEKTART: "Wald"
+          Symbol: "Wald"
         set:
-          Type: "0x50"
+          Type: "0x01"
           EndLevel: "4"
 
   # ==========================================================================
@@ -403,46 +23,55 @@ rulesets:
     source_layer: "T64_DKM10_NUTZUNGSAREAL"
     rules:
       - match:
-          OBJEKTART: "Friedhof"
+          Symbol: "Baumschule"
         set:
-          Type: "0x10f20"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "Spitalareal"
-        set:
-          Type: "0x10f20"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "Oeffentliches_Parkareal"
-        set:
-          Type: "0x17"
-          EndLevel: "1"
-
-      - match:
-          OBJEKTART: "Schrebergartenareal"
-        set:
-          Type: "0x52"
+          Type: "0x02"
           EndLevel: "0"
-
       - match:
-          OBJEKTART: "Obstanlage"
+          Symbol: "Deponieareal"
         set:
-          Type: "0x52"
+          Type: "0x03"
           EndLevel: "0"
-
       - match:
-          OBJEKTART: "Baumschule"
+          Symbol: "Friedhof"
         set:
-          Type: "0x52"
+          Type: "0x04"
           EndLevel: "0"
-
       - match:
-          OBJEKTART: "*"
+          Symbol: "Obstanlage"
         set:
-          Type: "0x1101c"
+          Type: "0x05"
           EndLevel: "0"
+      - match:
+          Symbol: "Oeffentliches Parkareal"
+        set:
+          Type: "0x06"
+          EndLevel: "0"
+      - match:
+          Symbol: "Reben"
+        set:
+          Type: "0x07"
+          EndLevel: "0"
+      - match:
+          Symbol: "Schrebergartenareal"
+        set:
+          Type: "0x08"
+          EndLevel: "0"
+      - match:
+          Symbol: "Spitalareal"
+        set:
+          Type: "0x09"
+          EndLevel: "0"
+      - match:
+          Symbol: "Unterwerkareal"
+        set:
+          Type: "0x0A"
+          EndLevel: "0"
+      # - match:
+      #     OBJEKTART: "*"
+      #   set:
+      #     Type: "XXXXXXXX"
+      #     EndLevel: "0"
 
   # ==========================================================================
   # LOISIRS — Zones de loisirs (POLYGON)
@@ -452,187 +81,572 @@ rulesets:
     source_layer: "T63_DKM10_FREIZEITAREAL"
     rules:
       - match:
-          OBJEKTART: "Golfplatzareal"
+          Symbol: "Campingplatzareal"
         set:
-          Type: "0x17"
+          Type: "0x10d"
+          EndLevel: "1"
+      - match:
+          Symbol: "Freizeitanlagenareal"
+        set:
+          Type: "0x10e"
+          EndLevel: "1"
+      - match:
+          Symbol: "Golfplatzareal"
+        set:
+          Type: "0x10f"
           EndLevel: "1"
 
+  # ==========================================================================
+  # OROGRAPHIE — Courbes de niveau (POLYLINE)
+  # Source : T62_DKM10_HOEHENKURVE
+  # Pas d'attribut OBJEKTART — wildcard unique
+  # ==========================================================================
+  - name: "Courbes de niveau"
+    source_layer: "T62_DKM10_HOEHENKURVE"
+    rules:
       - match:
-          OBJEKTART: "Schwimmbadareal"
+          Symbol: "Normalkurve (schwarz)"
         set:
-          Type: "0x10f20"
+          Type: "0x1"
           EndLevel: "1"
-
+          Label: "${HOEHE}"
       - match:
-          OBJEKTART: "Freizeitanlagenareal"
+          Symbol: "Normalkurve (braun)"
         set:
-          Type: "0x17"
+          Type: "0x02"
           EndLevel: "1"
-
+          Label: "${HOEHE}"
       - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x10f20"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # TRAFIC — Zones de trafic (POLYGON)
-  # Source : T61_DKM10_VERKEHRSAREAL
-  # ==========================================================================
-  - name: "Zones trafic"
-    source_layer: "T61_DKM10_VERKEHRSAREAL"
-    rules:
-      - match:
-          OBJEKTART: "Parkplatzareal_oeffentlich"
-        set:
-          Type: "0x10f1a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Parkplatzareal_privat"
-        set:
-          Type: "0x10f1a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "Rastplatzareal"
-        set:
-          Type: "0x10f1a"
-          EndLevel: "0"
-
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x1101c"
-          EndLevel: "0"
-
-  # ==========================================================================
-  # ADMINISTRATIF — Limites administratives (POLYLINE)
-  # Source : T53_DKM10_HOHEITSGRENZE
-  # ==========================================================================
-  - name: "Limites admin"
-    source_layer: "T53_DKM10_HOHEITSGRENZE"
-    rules:
-      - match:
-          OBJEKTART: "Kantonsgrenze"
-        set:
-          Type: "0x1c"
-          EndLevel: "5"
-
-      - match:
-          OBJEKTART: "Bezirksgrenze"
-        set:
-          Type: "0x1d"
-          EndLevel: "3"
-
-      - match:
-          OBJEKTART: "Gemeindegrenze"
-        set:
-          Type: "0x1e"
-          EndLevel: "2"
-
-  # ==========================================================================
-  # LIEUX NOMMÉS — Noms de localités (POLYGON)
-  # Source : DKM10_SIEDLUNGSNAME — analogue ZONE_D_HABITATION BDTOPO
-  # ==========================================================================
-  - name: "Noms localités"
-    source_layer: "DKM10_SIEDLUNGSNAME"
-    rules:
-      - match:
-          OBJEKTART: "Ort"
+          Symbol: "Zählkurve (schwarz)"
         set:
           Type: "0x03"
-          EndLevel: "6"
-          Label: "${NAME}"
-
+          EndLevel: "1"
+          Label: "${HOEHE}"
       - match:
-          OBJEKTART: "Ortsteil"
+          Symbol: "Zählkurve (braun)"
         set:
-          Type: "0x03"
-          EndLevel: "4"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "Quartier"
-        set:
-          Type: "0x03"
-          EndLevel: "3"
-          Label: "${NAME}"
-
-      - match:
-          OBJEKTART: "Quartierteil"
-        set:
-          Type: "0x03"
-          EndLevel: "2"
-          Label: "${NAME}"
+          Type: "0x04"
+          EndLevel: "1"
+          Label: "${HOEHE}"
 
   # ==========================================================================
-  # ADMINISTRATIF — Centroïdes communes (POINT)
-  # Source : DKM10_HOHEITSGEBIET_ZENTROID — analogue COMMUNE BDTOPO
+  # TRANSPORT — Routes (POLYLINE)
+  # Source : T45_DKM10_STRASSE
+  # Discrimine par OBJEKTART, puis WANDERWEG pour les sentiers balisés
   # ==========================================================================
-  - name: "Communes"
-    source_layer: "DKM10_HOHEITSGEBIET_ZENTROID"
-    rules:
-      - match:
-          OBJEKTART: "Gemeindegebiet"
-        set:
-          Type: "0x54"
-          EndLevel: "6"
-          Label: "${NAME_LANG}"
-          CityName: "${NAME_LANG}"
-          CountryName: "Suisse~[0x1d]CHE"
-          Zip: "${BFS_NUMMER}"
+  # - name: "Routes"
+  #   source_layer: "T45_DKM10_STRASSE"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Autobahn"
+  #       set:
+  #         Type: "0x01"
+  #         EndLevel: "5"
+  #         Label: "~[0x04]${NAME}"
 
-  # ==========================================================================
-  # BÂTI — Constructions POI (POINT)
-  # Source : T32_DKM10_BAUTE_PKT
-  # ==========================================================================
-  - name: "Constructions POI"
-    source_layer: "T32_DKM10_BAUTE_PKT"
-    rules:
-      - match:
-          OBJEKTART: "Denkmal"
-        set:
-          Type: "0x10f0d"
-          EndLevel: "0"
-          Label: "${NAME}"
+  #     - match:
+  #         OBJEKTART: "Ausfahrt"
+  #       set:
+  #         Type: "0x09"
+  #         EndLevel: "2"
 
-      - match:
-          OBJEKTART: "Wasserversorgung"
-        set:
-          Type: "0x06509"
-          EndLevel: "0"
+  #     - match:
+  #         OBJEKTART: "Einfahrt"
+  #       set:
+  #         Type: "0x09"
+  #         EndLevel: "2"
 
-      - match:
-          OBJEKTART: "*"
-        set:
-          Type: "0x10f11"
-          EndLevel: "0"
+  #     - match:
+  #         OBJEKTART: "Raststaette"
+  #       set:
+  #         Type: "0x09"
+  #         EndLevel: "1"
 
-  # ==========================================================================
-  # OROGRAPHIE — Formes morphologiques POI (POINT)
-  # Source : T39_DKM10_MORPH_KLEINFORM_PKT
-  # ==========================================================================
-  - name: "Formes morpho POI"
-    source_layer: "T39_DKM10_MORPH_KLEINFORM_PKT"
-    rules:
-      - match:
-          OBJEKTART: "Senke"
-        set:
-          Type: "0x06414"
-          EndLevel: "0"
-          Label: "${NAME}"
+  #     - match:
+  #         OBJEKTART: "10m_Strasse"
+  #       set:
+  #         Type: "0x04"
+  #         EndLevel: "4"
+  #         Label: "${NAME}"
 
-  # ==========================================================================
-  # ZONES PROTÉGÉES — Parcs et réserves (POLYGON) — optionnel
-  # Source : T52_DKM10_SCHUTZGEBIET
-  # Vide sur tuile 1167 (Berne) — activé via error_handling: continue
-  # ==========================================================================
-  # - name: "Zones protégées"
-  #   source_layer: "T52_DKM10_SCHUTZGEBIET"
+  #     - match:
+  #         OBJEKTART: "8m_Strasse"
+  #       set:
+  #         Type: "0x05"
+  #         EndLevel: "3"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "6m_Strasse"
+  #       set:
+  #         Type: "0x06"
+  #         EndLevel: "2"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "4m_Strasse"
+  #       set:
+  #         Type: "0x06"
+  #         EndLevel: "1"
+
+  #     - match:
+  #         OBJEKTART: "3m_Strasse"
+  #       set:
+  #         Type: "0x07"
+  #         EndLevel: "1"
+
+  #     - match:
+  #         OBJEKTART: "Zufahrt"
+  #       set:
+  #         Type: "0x07"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Dienstzufahrt"
+  #       set:
+  #         Type: "0x07"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Markierte_Spur"
+  #       set:
+  #         Type: "0x0e"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "2m_Weg"
+  #         WANDERWEG: "Wanderweg"
+  #       set:
+  #         Type: "0x10"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "2m_Weg"
+  #       set:
+  #         Type: "0x0a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "1m_Weg"
+  #       set:
+  #         Type: "0x0a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "2m_Wegfragment"
+  #       set:
+  #         Type: "0x10"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "1m_Wegfragment"
+  #       set:
+  #         Type: "0x10"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # TRANSPORT — Rail normal (POLYLINE)
+  # # Source : T44_DKM10_EISENBAHN
+  # # ==========================================================================
+  # - name: "Rail"
+  #   source_layer: "T44_DKM10_EISENBAHN"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Normalspur"
+  #       set:
+  #         Type: "0x10c00"
+  #         EndLevel: "4"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "Schmalspur"
+  #       set:
+  #         Type: "0x10e03"
+  #         EndLevel: "3"
+
+  # # ==========================================================================
+  # # TRANSPORT — Rail souterrain (POLYLINE)
+  # # Source : T46_DKM10_EISENBAHN_TUNNEL
+  # # ==========================================================================
+  # - name: "Rail souterrain"
+  #   source_layer: "T46_DKM10_EISENBAHN_TUNNEL"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Normalspur"
+  #       set:
+  #         Type: "0x10e06"
+  #         EndLevel: "4"
+
+  #     - match:
+  #         OBJEKTART: "Schmalspur"
+  #       set:
+  #         Type: "0x10e06"
+  #         EndLevel: "3"
+
+  # # ==========================================================================
+  # # TRANSPORT — OEV linéaire : bandes transporteuses, câbles (POLYLINE)
+  # # Source : T42_DKM10_OEV_LIN
+  # # OBJEKTART observé sur tuile 1167 : Foerderband (bandes industrielles)
+  # # D'autres tuiles peuvent contenir Luftseilbahn, Sesselbahn, etc.
+  # # ==========================================================================
+  # - name: "OEV linéaire"
+  #   source_layer: "T42_DKM10_OEV_LIN"
   #   rules:
   #     - match:
   #         OBJEKTART: "*"
   #       set:
-  #         Type: "0x17"
+  #         Type: "0x10f0b"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # BÂTI — Bâtiments (POLYGON)
+  # # Source : T48_DKM10_GEBAEUDE
+  # # ==========================================================================
+  # - name: "Bâtiments"
+  #   source_layer: "T48_DKM10_GEBAEUDE"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Kapelle"
+  #       set:
+  #         Type: "0x10f09"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Sakrales_Gebaeude"
+  #       set:
+  #         Type: "0x10f0b"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Sakraler_Turm"
+  #       set:
+  #         Type: "0x10f11"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Turm"
+  #       set:
+  #         Type: "0x10f11"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Hochkamin"
+  #       set:
+  #         Type: "0x10f11"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Lagertank"
+  #       set:
+  #         Type: "0x10f06"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Treibhaus"
+  #       set:
+  #         Type: "0x10f05"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Mauer_gross"
+  #       set:
+  #         Type: "0x10f0c"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Mauer_gross_gedeckt"
+  #       set:
+  #         Type: "0x10f0c"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # BÂTI — Constructions polygonales (POLYGON)
+  # # Source : T60_DKM10_BAUTE_PLY
+  # # ==========================================================================
+  # - name: "Constructions poly"
+  #   source_layer: "T60_DKM10_BAUTE_PLY"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Schwimmbecken"
+  #       set:
+  #         Type: "0x10f20"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Wasserbecken"
+  #       set:
+  #         Type: "0x10f20"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Sportplatz"
+  #       set:
+  #         Type: "0x10f20"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # BÂTI — Constructions linéaires (POLYLINE)
+  # # Source : T40_DKM10_BAUTE_LIN
+  # # ==========================================================================
+  # - name: "Constructions linéaires"
+  #   source_layer: "T40_DKM10_BAUTE_LIN"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Hochspannungsleitung"
+  #       set:
+  #         Type: "0x10f0a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Mauer"
+  #       set:
+  #         Type: "0x10f0c"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # HYDROGRAPHIE — Eau polygonale (POLYGON)
+  # # Source : T56_DKM10_GEWAESSER_PLY
+  # # ==========================================================================
+  # - name: "Eau poly"
+  #   source_layer: "T56_DKM10_GEWAESSER_PLY"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "See"
+  #       set:
+  #         Type: "0x3f"
+  #         EndLevel: "4"
+
+  #     - match:
+  #         OBJEKTART: "Fluss"
+  #       set:
+  #         Type: "0x3f"
+  #         EndLevel: "2"
+
+  # # ==========================================================================
+  # # HYDROGRAPHIE — Eau linéaire (POLYLINE)
+  # # Source : T57_DKM10_GEWAESSER_LIN
+  # # ==========================================================================
+  # - name: "Eau linéaire"
+  #   source_layer: "T57_DKM10_GEWAESSER_LIN"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Trockenrinne"
+  #       set:
+  #         Type: "0x26"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Fliessgewaesser"
+  #       set:
+  #         Type: "0x18"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Druckleitung_einfach"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+  #     # Axe géométrique de lac — EndLevel "0" avec type neutre pour masquage maximum
+  #     - match:
+  #         OBJEKTART: "Seeachse"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+
+
+  # # ==========================================================================
+  # # OROGRAPHIE — Points d'altitude (POINT)
+  # # Source : T38_DKM10_HOEHENKOTE
+  # # ==========================================================================
+  # - name: "Points altitude"
+  #   source_layer: "T38_DKM10_HOEHENKOTE"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x06508"
+  #         EndLevel: "0"
+  #         Label: "${HOEHE}"
+
+
+  # # ==========================================================================
+  # # TRAFIC — Zones de trafic (POLYGON)
+  # # Source : T61_DKM10_VERKEHRSAREAL
+  # # ==========================================================================
+  # - name: "Zones trafic"
+  #   source_layer: "T61_DKM10_VERKEHRSAREAL"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Parkplatzareal_oeffentlich"
+  #       set:
+  #         Type: "0x10f1a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Parkplatzareal_privat"
+  #       set:
+  #         Type: "0x10f1a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "Rastplatzareal"
+  #       set:
+  #         Type: "0x10f1a"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x1101c"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # ADMINISTRATIF — Limites administratives (POLYLINE)
+  # # Source : T53_DKM10_HOHEITSGRENZE
+  # # ==========================================================================
+  # - name: "Limites admin"
+  #   source_layer: "T53_DKM10_HOHEITSGRENZE"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Kantonsgrenze"
+  #       set:
+  #         Type: "0x1c"
   #         EndLevel: "5"
+
+  #     - match:
+  #         OBJEKTART: "Bezirksgrenze"
+  #       set:
+  #         Type: "0x1d"
+  #         EndLevel: "3"
+
+  #     - match:
+  #         OBJEKTART: "Gemeindegrenze"
+  #       set:
+  #         Type: "0x1e"
+  #         EndLevel: "2"
+
+  # # ==========================================================================
+  # # LIEUX NOMMÉS — Noms de localités (POLYGON)
+  # # Source : DKM10_SIEDLUNGSNAME — analogue ZONE_D_HABITATION BDTOPO
+  # # ==========================================================================
+  # - name: "Noms localités"
+  #   source_layer: "DKM10_SIEDLUNGSNAME"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Ort"
+  #       set:
+  #         Type: "0x03"
+  #         EndLevel: "6"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "Ortsteil"
+  #       set:
+  #         Type: "0x03"
+  #         EndLevel: "4"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "Quartier"
+  #       set:
+  #         Type: "0x03"
+  #         EndLevel: "3"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "Quartierteil"
+  #       set:
+  #         Type: "0x03"
+  #         EndLevel: "2"
+  #         Label: "${NAME}"
+
+  # # ==========================================================================
+  # # ADMINISTRATIF — Centroïdes communes (POINT)
+  # # Source : DKM10_HOHEITSGEBIET_ZENTROID — analogue COMMUNE BDTOPO
+  # # ==========================================================================
+  # - name: "Communes"
+  #   source_layer: "DKM10_HOHEITSGEBIET_ZENTROID"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Gemeindegebiet"
+  #       set:
+  #         Type: "0x54"
+  #         EndLevel: "6"
+  #         Label: "${NAME_LANG}"
+  #         CityName: "${NAME_LANG}"
+  #         CountryName: "Suisse~[0x1d]CHE"
+  #         Zip: "${BFS_NUMMER}"
+
+  # # ==========================================================================
+  # # BÂTI — Constructions POI (POINT)
+  # # Source : T32_DKM10_BAUTE_PKT
+  # # ==========================================================================
+  # - name: "Constructions POI"
+  #   source_layer: "T32_DKM10_BAUTE_PKT"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Denkmal"
+  #       set:
+  #         Type: "0x10f0d"
+  #         EndLevel: "0"
+  #         Label: "${NAME}"
+
+  #     - match:
+  #         OBJEKTART: "Wasserversorgung"
+  #       set:
+  #         Type: "0x06509"
+  #         EndLevel: "0"
+
+  #     - match:
+  #         OBJEKTART: "*"
+  #       set:
+  #         Type: "0x10f11"
+  #         EndLevel: "0"
+
+  # # ==========================================================================
+  # # OROGRAPHIE — Formes morphologiques POI (POINT)
+  # # Source : T39_DKM10_MORPH_KLEINFORM_PKT
+  # # ==========================================================================
+  # - name: "Formes morpho POI"
+  #   source_layer: "T39_DKM10_MORPH_KLEINFORM_PKT"
+  #   rules:
+  #     - match:
+  #         OBJEKTART: "Senke"
+  #       set:
+  #         Type: "0x06414"
+  #         EndLevel: "0"
+  #         Label: "${NAME}"
+
+  # # ==========================================================================
+  # # ZONES PROTÉGÉES — Parcs et réserves (POLYGON) — optionnel
+  # # Source : T52_DKM10_SCHUTZGEBIET
+  # # Vide sur tuile 1167 (Berne) — activé via error_handling: continue
+  # # ==========================================================================
+  # # - name: "Zones protégées"
+  # #   source_layer: "T52_DKM10_SCHUTZGEBIET"
+  # #   rules:
+  # #     - match:
+  # #         OBJEKTART: "*"
+  # #       set:
+  # #         Type: "0x17"
+  # #         EndLevel: "5"
