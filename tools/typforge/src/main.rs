@@ -1272,6 +1272,45 @@ fn main() -> anyhow::Result<()> {
         let app_c = Rc::clone(&app);
         let ww = window.as_weak();
         window.on_open_file(move || {
+            // Vérification modifications non enregistrées
+            let (is_dirty, current_path) = {
+                let a = app_c.borrow();
+                (a.dirty, a.current_file_path.clone())
+            };
+            if is_dirty {
+                let result = rfd::MessageDialog::new()
+                    .set_title("Modifications non enregistrées")
+                    .set_description("Le fichier courant a été modifié. Voulez-vous l'enregistrer avant d'ouvrir un autre fichier ?")
+                    .set_buttons(rfd::MessageButtons::YesNoCancel)
+                    .show();
+                match result {
+                    rfd::MessageDialogResult::Cancel => return,
+                    rfd::MessageDialogResult::Yes => {
+                        let save_path = if let Some(p) = current_path {
+                            Some(p)
+                        } else {
+                            rfd::FileDialog::new()
+                                .add_filter("TYP texte", &["txt"])
+                                .set_title("Enregistrer le fichier TYP")
+                                .save_file()
+                        };
+                        match save_path {
+                            Some(p) => {
+                                if let Err(e) = app_c.borrow_mut().save_txt(&p) {
+                                    eprintln!("typforge: erreur sauvegarde: {}", e);
+                                    return;
+                                }
+                            }
+                            None => {
+                                eprintln!("typforge: sauvegarde annulée — ouverture annulée");
+                                return;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
             let picked = rfd::FileDialog::new()
                 .add_filter("Fichiers TYP", &["txt", "typ"])
                 .set_title("Ouvrir un fichier TYP")
@@ -1295,16 +1334,42 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    // on_save_file
+    // on_save_file — sauvegarde dans le fichier courant, sinon dialogue
     {
         let app_c = Rc::clone(&app);
         window.on_save_file(move || {
-            let picked = rfd::FileDialog::new()
+            let current_path = app_c.borrow().current_file_path.clone();
+            let save_path = if let Some(p) = current_path {
+                Some(p)
+            } else {
+                rfd::FileDialog::new()
+                    .add_filter("TYP texte", &["txt"])
+                    .set_title("Enregistrer le fichier TYP")
+                    .save_file()
+            };
+            if let Some(p) = save_path {
+                if let Err(e) = app_c.borrow_mut().save_txt(&p) {
+                    eprintln!("typforge: erreur sauvegarde: {}", e);
+                }
+            }
+        });
+    }
+
+    // on_save_file_as — dialogue systématique, pré-positionné sur le répertoire courant
+    {
+        let app_c = Rc::clone(&app);
+        window.on_save_file_as(move || {
+            let start_dir = app_c.borrow().current_file_path.as_ref()
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf());
+            let mut dialog = rfd::FileDialog::new()
                 .add_filter("TYP texte", &["txt"])
-                .set_title("Enregistrer le fichier TYP")
-                .save_file();
-            if let Some(p) = picked {
-                if let Err(e) = app_c.borrow().save_txt(&p) {
+                .set_title("Enregistrer sous…");
+            if let Some(dir) = start_dir {
+                dialog = dialog.set_directory(dir);
+            }
+            if let Some(p) = dialog.save_file() {
+                if let Err(e) = app_c.borrow_mut().save_txt(&p) {
                     eprintln!("typforge: erreur sauvegarde: {}", e);
                 }
             }
@@ -1363,6 +1428,7 @@ fn main() -> anyhow::Result<()> {
                 doc.polygons.extend(polys);
                 doc.lines.extend(lns);
                 doc.points.extend(pts);
+                a.dirty = true;
                 if let (Some(doc), Some(w)) = (&a.doc, ww.upgrade()) {
                     update_ui_from_doc(doc, &w);
                 }
@@ -1372,8 +1438,46 @@ fn main() -> anyhow::Result<()> {
 
     // on_quit
     {
+        let app_c = Rc::clone(&app);
         let ww = window.as_weak();
         window.on_quit(move || {
+            let (is_dirty, current_path) = {
+                let a = app_c.borrow();
+                (a.dirty, a.current_file_path.clone())
+            };
+            if is_dirty {
+                let result = rfd::MessageDialog::new()
+                    .set_title("Modifications non enregistrées")
+                    .set_description("Le fichier courant a été modifié. Voulez-vous l'enregistrer avant de quitter ?")
+                    .set_buttons(rfd::MessageButtons::YesNoCancel)
+                    .show();
+                match result {
+                    rfd::MessageDialogResult::Cancel => return,
+                    rfd::MessageDialogResult::Yes => {
+                        let save_path = if let Some(p) = current_path {
+                            Some(p)
+                        } else {
+                            rfd::FileDialog::new()
+                                .add_filter("TYP texte", &["txt"])
+                                .set_title("Enregistrer le fichier TYP")
+                                .save_file()
+                        };
+                        match save_path {
+                            Some(p) => {
+                                if let Err(e) = app_c.borrow_mut().save_txt(&p) {
+                                    eprintln!("typforge: erreur sauvegarde: {}", e);
+                                    return;
+                                }
+                            }
+                            None => {
+                                eprintln!("typforge: sauvegarde annulée — fermeture annulée");
+                                return;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if let Some(w) = ww.upgrade() {
                 w.hide().ok();
             }
@@ -1477,7 +1581,9 @@ fn main() -> anyhow::Result<()> {
             let result = {
                 let mut a = app_c.borrow_mut();
                 if let Some(doc) = &mut a.doc {
-                    apply_txt_edit(doc, kind, idx as usize, text.as_str())
+                    let r = apply_txt_edit(doc, kind, idx as usize, text.as_str());
+                    if r.is_ok() { a.dirty = true; }
+                    r
                 } else {
                     Err("Aucun document ouvert".to_string())
                 }
@@ -1768,6 +1874,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             if !had_error {
+                app_c.borrow_mut().dirty = true;
                 w.set_editor_visible(false);
             }
         });
@@ -2327,6 +2434,7 @@ fn main() -> anyhow::Result<()> {
                 w.set_preview_night(night_img);
                 let new_txt = crate::typ::text_writer::element_to_display_txt(doc, 2, doc_idx);
                 w.set_selected_txt_code(new_txt.into());
+                a.dirty = true;
             }
 
             *poi_c.borrow_mut() = None;
@@ -2703,8 +2811,9 @@ fn main() -> anyhow::Result<()> {
                         doc.icons.push(TypIconSet { type_code: tc, sub_type: 0, icons: Vec::new() });
                         update_ui_from_doc(doc, &w);
                     }
-                    _ => {}
+                    _ => return,
                 }
+                a.dirty = true;
             }
             // Ouvrir les éditeurs après avoir relâché le borrow mut
             if let Some(idx) = open_poly {
@@ -2788,16 +2897,21 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             let mut a = app_c.borrow_mut();
-            let doc = match &mut a.doc { Some(d) => d, None => return };
-            let i = idx as usize;
-            match kind {
-                0 if i < doc.polygons.len() => { doc.polygons.remove(i); }
-                1 if i < doc.lines.len()    => { doc.lines.remove(i); }
-                2 if i < doc.points.len()   => { doc.points.remove(i); }
-                3 if i < doc.icons.len()    => { doc.icons.remove(i); }
-                _ => return,
+            {
+                let doc = match &mut a.doc { Some(d) => d, None => return };
+                let i = idx as usize;
+                match kind {
+                    0 if i < doc.polygons.len() => { doc.polygons.remove(i); }
+                    1 if i < doc.lines.len()    => { doc.lines.remove(i); }
+                    2 if i < doc.points.len()   => { doc.points.remove(i); }
+                    3 if i < doc.icons.len()    => { doc.icons.remove(i); }
+                    _ => return,
+                }
             }
-            update_ui_from_doc(doc, &w);
+            a.dirty = true;
+            if let Some(doc) = &a.doc {
+                update_ui_from_doc(doc, &w);
+            }
         });
     }
 
@@ -2831,6 +2945,7 @@ fn main() -> anyhow::Result<()> {
                         .map(|e| make_item(format!("L{} 0x{:02X}/0x{:02X}", e.level, e.type_code, e.sub_type)))
                         .collect::<Vec<_>>()
                 )));
+                a.dirty = true;
             }
         });
     }
@@ -2850,6 +2965,7 @@ fn main() -> anyhow::Result<()> {
                             .map(|e| make_item(format!("L{} 0x{:02X}/0x{:02X}", e.level, e.type_code, e.sub_type)))
                             .collect::<Vec<_>>()
                     )));
+                    a.dirty = true;
                 }
             }
         });
@@ -2872,6 +2988,7 @@ fn main() -> anyhow::Result<()> {
                             .collect::<Vec<_>>()
                     )));
                     w.set_do_selected_idx(idx - 1);
+                    a.dirty = true;
                 }
             }
         });
@@ -2894,6 +3011,7 @@ fn main() -> anyhow::Result<()> {
                             .collect::<Vec<_>>()
                     )));
                     w.set_do_selected_idx(idx + 1);
+                    a.dirty = true;
                 }
             }
         });
