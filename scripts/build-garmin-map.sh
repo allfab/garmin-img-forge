@@ -44,7 +44,7 @@ BASE_ID=""              # Auto-calculé depuis le premier département
 
 # Chemins racine
 DATA_DIR="./pipeline/data"
-OUTPUT_BASE="./pipeline/output"
+OUTPUT_BASE="./pipeline/output/ign-bdtopo"
 
 # Chemins sources (si vide : dérivé de DATA_DIR)
 CONTOURS_DIR=""         # défaut: ${DATA_DIR}/contours
