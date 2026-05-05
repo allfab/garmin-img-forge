@@ -1,4 +1,5 @@
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit, Palette } from "std-widgets.slint";
+import { XpmPreview } from "xpm_preview.slint";
 
 export component PolygonEditor inherits Rectangle {
     background: #00000066;
@@ -28,6 +29,10 @@ export component PolygonEditor inherits Rectangle {
     in-out property <string> xpm-text:       "";
     in-out property <string> night-xpm-text: "";
 
+    // Previews XPM précalculées par Rust (motif tuilé jour/nuit)
+    in property <image> day-xpm-preview-image;
+    in property <image> night-xpm-preview-image;
+
     // État
     in-out property <string> error-msg: "";
 
@@ -35,6 +40,8 @@ export component PolygonEditor inherits Rectangle {
     callback day-text-changed(string);
     callback night-text-changed(string);
     callback contour-text-changed(string);
+    callback xpm-text-edited(string);
+    callback night-xpm-text-edited(string);
     callback pick-day-color();
     callback pick-night-color();
     callback pick-contour-color();
@@ -252,7 +259,10 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 4px; }
                         TextEdit {
                             height: 90px; text: root.xpm-text; font-size: 10px;
-                            edited(v) => { root.xpm-text = v; }
+                            edited(v) => {
+                                root.xpm-text = v;
+                                root.xpm-text-edited(v);
+                            }
                         }
                         Rectangle { height: 10px; }
 
@@ -263,7 +273,10 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 4px; }
                         TextEdit {
                             height: 70px; text: root.night-xpm-text; font-size: 10px;
-                            edited(v) => { root.night-xpm-text = v; }
+                            edited(v) => {
+                                root.night-xpm-text = v;
+                                root.night-xpm-text-edited(v);
+                            }
                         }
                     }
                 }
@@ -290,33 +303,10 @@ export component PolygonEditor inherits Rectangle {
                         color: Palette.foreground;
                     }
                     Rectangle { height: 8px; }
-                    Rectangle {
+                    XpmPreview {
                         height: 130px;
-                        background: #c8ccb4;
-                        border-radius: 6px;
-                        border-width: 1px; border-color: Palette.border;
-                        clip: true;
-
-                        // Preview couleur (live via day-fill-color)
-                        Rectangle {
-                            x: 6px; y: 6px;
-                            width: parent.width - 12px; height: parent.height - 12px;
-                            background: root.day-fill-color;
-                            border-radius: 3px;
-                            border-width: root.contour-enabled ? 3px : 1px;
-                            border-color: root.contour-enabled ? root.contour-color : #00000044;
-                        }
-                        // Badge XPM (si motif XPM présent)
-                        if root.xpm-text != "" : Rectangle {
-                            x: parent.width - 46px; y: parent.height - 22px;
-                            width: 40px; height: 16px;
-                            background: #00000080; border-radius: 3px;
-                            Text {
-                                text: "XPM";
-                                font-size: 9px; color: #ffffff;
-                                horizontal-alignment: center; vertical-alignment: center;
-                            }
-                        }
+                        preview-image: root.day-xpm-preview-image;
+                        is-night: false;
                     }
                     Rectangle { height: 16px; }
 
@@ -326,31 +316,10 @@ export component PolygonEditor inherits Rectangle {
                         color: Palette.foreground;
                     }
                     Rectangle { height: 8px; }
-                    Rectangle {
+                    XpmPreview {
                         height: 130px;
-                        background: #1e2530;
-                        border-radius: 6px;
-                        border-width: 1px; border-color: #555555;
-                        clip: true;
-
-                        Rectangle {
-                            x: 6px; y: 6px;
-                            width: parent.width - 12px; height: parent.height - 12px;
-                            background: root.night-fill-color;
-                            border-radius: 3px;
-                            border-width: root.contour-enabled ? 3px : 1px;
-                            border-color: root.contour-enabled ? root.contour-color : #ffffff22;
-                        }
-                        if root.night-xpm-text != "" : Rectangle {
-                            x: parent.width - 46px; y: parent.height - 22px;
-                            width: 40px; height: 16px;
-                            background: #ffffff20; border-radius: 3px;
-                            Text {
-                                text: "XPM";
-                                font-size: 9px; color: #aaaaaa;
-                                horizontal-alignment: center; vertical-alignment: center;
-                            }
-                        }
+                        preview-image: root.night-xpm-preview-image;
+                        is-night: true;
                     }
                     Rectangle { height: 16px; }
 

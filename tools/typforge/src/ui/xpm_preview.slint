@@ -1,0 +1,26 @@
+import { Palette } from "std-widgets.slint";
+
+// Composant de prévisualisation XPM générique partagé entre tous les éditeurs.
+// `preview-image` est une image Rust précalculée (RGB8, rendu XPM tuilé / bande / icône centré).
+// `is-night` commute le fond sombre et la bordure nuit.
+// `fit` permet d'ajuster le mode d'ajustement image (fill par défaut, contain pour POI).
+export component XpmPreview inherits Rectangle {
+    in property <image>    preview-image;
+    in property <bool>     is-night:  false;
+    in property <ImageFit> fit:       fill;
+
+    background:   root.is-night ? #1e2530 : #c8ccb4;
+    border-radius: 6px;
+    border-width:  1px;
+    border-color:  root.is-night ? #555555 : Palette.border;
+    clip: true;
+
+    Image {
+        source:     root.preview-image;
+        x:          5px;
+        y:          5px;
+        width:      parent.width  - 10px;
+        height:     parent.height - 10px;
+        image-fit:  root.fit;
+    }
+}

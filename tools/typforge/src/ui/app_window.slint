@@ -127,6 +127,8 @@ export component AppWindow inherits Window {
     in-out property <int>    ep-font-style: 0;
     in-out property <string> ep-xpm-text: "";
     in-out property <string> ep-night-xpm-text: "";
+    in property <image>      ep-day-xpm-preview;
+    in property <image>      ep-night-xpm-preview;
 
     // Champs ligne
     in-out property <string> el-type-code-text: "0x00";
@@ -142,6 +144,8 @@ export component AppWindow inherits Window {
     in-out property <int>    el-font-style: 0;
     in-out property <string> el-xpm-text: "";
     in-out property <string> el-night-xpm-text: "";
+    in property <image>      el-day-xpm-preview;
+    in property <image>      el-night-xpm-preview;
 
     callback editor-apply();
     callback editor-cancel();
@@ -210,9 +214,13 @@ export component AppWindow inherits Window {
     callback ep-day-text-changed(string);
     callback ep-night-text-changed(string);
     callback ep-contour-text-changed(string);
+    callback ep-xpm-text-edited(string);
+    callback ep-night-xpm-text-edited(string);
     callback el-day-text-changed(string);
     callback el-night-text-changed(string);
     callback el-dash-preset(int);
+    callback el-xpm-text-edited(string);
+    callback el-night-xpm-text-edited(string);
     in-out property <color> poi-font-color-day: #000000;
     in-out property <color> poi-font-color-night: #000000;
     in-out property <color> poi-new-color-preview: #000000;
@@ -589,10 +597,14 @@ export component AppWindow inherits Window {
         font-style      <=> root.ep-font-style;
         xpm-text        <=> root.ep-xpm-text;
         night-xpm-text  <=> root.ep-night-xpm-text;
+        day-xpm-preview-image:   root.ep-day-xpm-preview;
+        night-xpm-preview-image: root.ep-night-xpm-preview;
         error-msg       <=> root.editor-error;
-        day-text-changed(v)     => { root.ep-day-text-changed(v); }
-        night-text-changed(v)   => { root.ep-night-text-changed(v); }
-        contour-text-changed(v) => { root.ep-contour-text-changed(v); }
+        day-text-changed(v)       => { root.ep-day-text-changed(v); }
+        night-text-changed(v)     => { root.ep-night-text-changed(v); }
+        contour-text-changed(v)   => { root.ep-contour-text-changed(v); }
+        xpm-text-edited(v)        => { root.ep-xpm-text-edited(v); }
+        night-xpm-text-edited(v)  => { root.ep-night-xpm-text-edited(v); }
         pick-day-color     => { root.pick-ep-day-color(); }
         pick-night-color   => { root.pick-ep-night-color(); }
         pick-contour-color => { root.pick-ep-contour-color(); }
@@ -617,9 +629,13 @@ export component AppWindow inherits Window {
         font-style      <=> root.el-font-style;
         xpm-text        <=> root.el-xpm-text;
         night-xpm-text  <=> root.el-night-xpm-text;
+        day-xpm-preview-image:   root.el-day-xpm-preview;
+        night-xpm-preview-image: root.el-night-xpm-preview;
         error-msg       <=> root.editor-error;
-        day-text-changed(v)   => { root.el-day-text-changed(v); }
-        night-text-changed(v) => { root.el-night-text-changed(v); }
+        day-text-changed(v)      => { root.el-day-text-changed(v); }
+        night-text-changed(v)    => { root.el-night-text-changed(v); }
+        xpm-text-edited(v)       => { root.el-xpm-text-edited(v); }
+        night-xpm-text-edited(v) => { root.el-night-xpm-text-edited(v); }
         pick-day-color   => { root.pick-el-day-color(); }
         pick-night-color => { root.pick-el-night-color(); }
         dash-preset(p)   => { root.el-dash-preset(p); }

@@ -1,4 +1,5 @@
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Slider, Palette } from "std-widgets.slint";
+import { XpmPreview } from "xpm_preview.slint";
 
 export struct PaletteEntry {
     hex: string,          // "#RRGGBB" ou "transparent"
@@ -535,34 +536,22 @@ export component PoiEditor inherits Rectangle {
                         Rectangle { height: 6px; }
                         Text { text: "Jour"; font-size: 11px; font-weight: 700; }
                         Rectangle { height: 4px; }
-                        Rectangle {
+                        XpmPreview {
                             width: 130px; height: 130px;
-                            background: #c8ccb4;
-                            border-radius: 6px;
-                            border-width: 1px; border-color: #aaaaaa;
-                            Image {
-                                source: root.preview-day;
-                                x: 5px; y: 5px;
-                                width: 120px; height: 120px;
-                                image-fit: contain;
-                            }
+                            preview-image: root.preview-day;
+                            is-night: false;
+                            fit: contain;
                         }
                         Rectangle { height: 8px; }
 
                         // Preview Nuit
                         Text { text: "Nuit"; font-size: 11px; font-weight: 700; }
                         Rectangle { height: 4px; }
-                        Rectangle {
+                        XpmPreview {
                             width: 130px; height: 130px;
-                            background: #1e2530;
-                            border-radius: 6px;
-                            border-width: 1px; border-color: #555555;
-                            Image {
-                                source: root.preview-night;
-                                x: 5px; y: 5px;
-                                width: 120px; height: 120px;
-                                image-fit: contain;
-                            }
+                            preview-image: root.preview-night;
+                            is-night: true;
+                            fit: contain;
                         }
 
                         // Night BMP + Copy

@@ -787,6 +787,57 @@ fn render_poi_xpm_preview(xpm: Option<&Xpm>, size: u32, night_bg: bool) -> slint
     slint::Image::from_rgb8(buf)
 }
 
+// ─── Previews éditeurs polygone / ligne ─────────────────────────
+
+const EDITOR_PREVIEW_SIZE: u32 = 120;
+
+fn solid_xpm(c: Rgb) -> Xpm {
+    Xpm {
+        width: 1, height: 1,
+        colour_mode: ColorMode::Indexed,
+        palette: vec![(".".to_string(), Rgba::opaque(c.r, c.g, c.b))],
+        pixels: vec![vec![0]],
+    }
+}
+
+fn render_line_xpm_preview(xpm: Option<&Xpm>, line_width: u8, night: bool, size: u32) -> slint::Image {
+    let lc = first_opaque(xpm).unwrap_or(if night { (0xcc, 0xcc, 0xcc) } else { (0, 0, 0) });
+    let bg: u8 = if night { 0x33 } else { 0xe0 };
+    let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(size, size);
+    let pixels = buf.make_mut_slice();
+    for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
+    let xpm_tiled = xpm.filter(|x| x.width > 0 && x.height > 0);
+    let lw = if let Some(x) = xpm_tiled {
+        (x.height as u32).clamp(1, size / 4)
+    } else {
+        (line_width as u32).clamp(1, size / 4)
+    };
+    let y_start = (size / 2).saturating_sub(lw / 2);
+    if let Some(x) = xpm_tiled {
+        draw_line_xpm(pixels, size, y_start, lw, 4, size.saturating_sub(4), x);
+    } else {
+        for dy in 0..lw {
+            let y = y_start + dy;
+            if y < size {
+                for x in 4..size.saturating_sub(4) {
+                    pixels[(y * size + x) as usize] = Rgb8Pixel { r: lc.0, g: lc.1, b: lc.2 };
+                }
+            }
+        }
+    }
+    slint::Image::from_rgb8(buf)
+}
+
+fn push_ep_previews(w: &AppWindow, day_xpm: Option<&Xpm>, night_xpm: Option<&Xpm>) {
+    w.set_ep_day_xpm_preview(render_polygon_thumb_xpm(day_xpm, EDITOR_PREVIEW_SIZE, false));
+    w.set_ep_night_xpm_preview(render_polygon_thumb_xpm(night_xpm.or(day_xpm), EDITOR_PREVIEW_SIZE, true));
+}
+
+fn push_el_previews(w: &AppWindow, day_xpm: Option<&Xpm>, night_xpm: Option<&Xpm>, line_width: u8) {
+    w.set_el_day_xpm_preview(render_line_xpm_preview(day_xpm, line_width, false, EDITOR_PREVIEW_SIZE));
+    w.set_el_night_xpm_preview(render_line_xpm_preview(night_xpm.or(day_xpm), line_width, true, EDITOR_PREVIEW_SIZE));
+}
+
 fn ensure_transparent(xpm: &mut Xpm) -> usize {
     if let Some(idx) = xpm.palette.iter().position(|(_, c)| c.is_transparent()) {
         return idx;
@@ -1512,6 +1563,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_ep_font_style(font_style_to_int(p.font_style));
                             w.set_ep_xpm_text(xpm_to_text_opt(p.day_xpm.as_ref()));
                             w.set_ep_night_xpm_text(xpm_to_text_opt(p.night_xpm.as_ref()));
+                            push_ep_previews(&w, p.day_xpm.as_ref(), p.night_xpm.as_ref());
                             w.set_editor_error("".into());
                             w.set_editor_kind(0);
                             w.set_editor_idx(idx);
@@ -1536,6 +1588,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_el_font_style(font_style_to_int(l.font_style));
                             w.set_el_xpm_text(xpm_to_text_opt(l.day_xpm.as_ref()));
                             w.set_el_night_xpm_text(xpm_to_text_opt(l.night_xpm.as_ref()));
+                            push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
                             w.set_editor_error("".into());
                             w.set_editor_kind(1);
                             w.set_editor_idx(idx);
@@ -2027,9 +2080,13 @@ fn main() -> anyhow::Result<()> {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(w) = ww2.upgrade() {
                             w.set_ep_day_fill_color(hex_to_slint_color(&hex));
-                            w.set_ep_day_fill_text(hex.into());
+                            w.set_ep_day_fill_text(hex.clone().into());
                             w.set_ep_xpm_text("".into());
                             w.set_editor_error("".into());
+                            if let Some(c) = hex_to_rgb(&hex) {
+                                let xpm = solid_xpm(c);
+                                w.set_ep_day_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, false));
+                            }
                         }
                     });
                 }
@@ -2047,9 +2104,13 @@ fn main() -> anyhow::Result<()> {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(w) = ww2.upgrade() {
                             w.set_ep_night_fill_color(hex_to_slint_color(&hex));
-                            w.set_ep_night_fill_text(hex.into());
+                            w.set_ep_night_fill_text(hex.clone().into());
                             w.set_ep_night_xpm_text("".into());
                             w.set_editor_error("".into());
+                            if let Some(c) = hex_to_rgb(&hex) {
+                                let xpm = solid_xpm(c);
+                                w.set_ep_night_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, true));
+                            }
                         }
                     });
                 }
@@ -2086,9 +2147,14 @@ fn main() -> anyhow::Result<()> {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(w) = ww2.upgrade() {
                             w.set_el_day_color(hex_to_slint_color(&hex));
-                            w.set_el_day_text(hex.into());
+                            w.set_el_day_text(hex.clone().into());
                             w.set_el_xpm_text("".into());
                             w.set_editor_error("".into());
+                            if let Some(c) = hex_to_rgb(&hex) {
+                                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                                let xpm = solid_xpm(c);
+                                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, false, EDITOR_PREVIEW_SIZE));
+                            }
                         }
                     });
                 }
@@ -2106,8 +2172,13 @@ fn main() -> anyhow::Result<()> {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(w) = ww2.upgrade() {
                             w.set_el_night_color(hex_to_slint_color(&hex));
-                            w.set_el_night_text(hex.into());
+                            w.set_el_night_text(hex.clone().into());
                             w.set_el_night_xpm_text("".into());
+                            if let Some(c) = hex_to_rgb(&hex) {
+                                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                                let xpm = solid_xpm(c);
+                                w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
+                            }
                             w.set_editor_error("".into());
                         }
                     });
@@ -2179,6 +2250,8 @@ fn main() -> anyhow::Result<()> {
         window.on_ep_day_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_ep_day_fill_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+                let xpm = solid_xpm(c);
+                w.set_ep_day_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, false));
             }
         });
     }
@@ -2187,6 +2260,8 @@ fn main() -> anyhow::Result<()> {
         window.on_ep_night_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_ep_night_fill_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+                let xpm = solid_xpm(c);
+                w.set_ep_night_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, true));
             }
         });
     }
@@ -2203,6 +2278,9 @@ fn main() -> anyhow::Result<()> {
         window.on_el_day_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_day_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                let xpm = solid_xpm(c);
+                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, false, EDITOR_PREVIEW_SIZE));
             }
         });
     }
@@ -2211,9 +2289,57 @@ fn main() -> anyhow::Result<()> {
         window.on_el_night_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_night_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
+                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                let xpm = solid_xpm(c);
+                w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
             }
         });
     }
+    // ── Handlers XPM text edited (preview live dans les éditeurs) ──
+
+    {
+        let ww = window.as_weak();
+        window.on_ep_xpm_text_edited(move |text| {
+            if let Some(w) = ww.upgrade() {
+                if let Ok(Some(xpm)) = typ::text_reader::parse_xpm_lines(text.as_str()) {
+                    w.set_ep_day_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, false));
+                }
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_ep_night_xpm_text_edited(move |text| {
+            if let Some(w) = ww.upgrade() {
+                if let Ok(Some(xpm)) = typ::text_reader::parse_xpm_lines(text.as_str()) {
+                    w.set_ep_night_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, true));
+                }
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_xpm_text_edited(move |text| {
+            if let Some(w) = ww.upgrade() {
+                if let Ok(Some(xpm)) = typ::text_reader::parse_xpm_lines(text.as_str()) {
+                    let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                    w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, false, EDITOR_PREVIEW_SIZE));
+                }
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_night_xpm_text_edited(move |text| {
+            if let Some(w) = ww.upgrade() {
+                if let Ok(Some(xpm)) = typ::text_reader::parse_xpm_lines(text.as_str()) {
+                    let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                    w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
+                }
+            }
+        });
+    }
+
     {
         let ww = window.as_weak();
         window.on_el_dash_preset(move |preset| {
@@ -2239,10 +2365,14 @@ fn main() -> anyhow::Result<()> {
                 xpm.push_str(&row);
                 xpm.push('\n');
             }
-            w.set_el_xpm_text(xpm.into());
+            w.set_el_xpm_text(xpm.clone().into());
             // Synchronise le SpinBox épaisseur avec la hauteur effective de l'XPM
             // (line_w peut diverger de el_line_width si la ligne était un bitmap width=0)
             w.set_el_line_width(line_w as i32);
+            // Mettre à jour la preview avec le nouveau motif XPM
+            if let Ok(Some(parsed)) = typ::text_reader::parse_xpm_lines(&xpm) {
+                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&parsed), line_w as u8, false, EDITOR_PREVIEW_SIZE));
+            }
         });
     }
 
@@ -2311,6 +2441,7 @@ fn main() -> anyhow::Result<()> {
                         w.set_ep_contour_color(slint::Color::from_rgb_u8(0, 0, 0));
                         w.set_ep_extended_labels(false); w.set_ep_font_style(0);
                         w.set_ep_xpm_text("".into()); w.set_ep_night_xpm_text("".into());
+                        push_ep_previews(&w, p.day_xpm.as_ref(), p.night_xpm.as_ref());
                         w.set_editor_kind(0); w.set_editor_idx(idx as i32);
                         w.set_editor_visible(true);
                     }
@@ -2331,6 +2462,7 @@ fn main() -> anyhow::Result<()> {
                         w.set_el_use_orientation(true); w.set_el_extended_labels(false);
                         w.set_el_font_style(0);
                         w.set_el_xpm_text("".into()); w.set_el_night_xpm_text("".into());
+                        push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
                         w.set_editor_kind(1); w.set_editor_idx(idx as i32);
                         w.set_editor_visible(true);
                     }
