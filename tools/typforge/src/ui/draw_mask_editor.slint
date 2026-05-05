@@ -1,0 +1,272 @@
+import { CheckBox, Slider, Palette } from "std-widgets.slint";
+
+// Éditeur de motif binaire pour lignes (32×1-31) et polygones (32×32).
+// Clic gauche = Avant-plan, clic droit = Arrière-plan.
+// Poignée de redimensionnement verticale pour modifier le nombre de lignes.
+export component DrawMaskEditor inherits VerticalLayout {
+    // ── État grille (alimenté depuis Rust) ──────────
+    in property <image>    grid-image;
+    in-out property <int>  zoom: 8;
+    in-out property <int>  num-rows: 1;
+    in-out property <int>  max-rows: 31;
+    in-out property <bool> fixed-rows: false;  // true pour polygones (32×32)
+
+    // ── Couleurs jour ───────────────────────────────
+    in-out property <color>  fg-color: #000000;
+    in-out property <color>  bg-color: #ffffff;
+    in-out property <bool>   bg-is-clear: true;
+
+    // ── Couleurs nuit ───────────────────────────────
+    in-out property <bool>   has-night: false;
+    in-out property <bool>   editing-night: false;
+    in-out property <color>  night-fg-color: #ffffff;
+    in-out property <color>  night-bg-color: #000000;
+    in-out property <bool>   night-bg-is-clear: true;
+    in-out property <bool>   night-same-as-day: true;
+
+    // ── Outils ──────────────────────────────────────
+    in-out property <bool> show-wide-tool: true;  // false pour polygones
+    in-out property <bool> wide-tool: true;
+    in-out property <int>  active-tool: 0;        // 0=crayon  1=remplissage
+
+    // ── Callbacks ───────────────────────────────────
+    callback grid-clicked(float, float, int);     // x, y, bouton (0=G 1=D)
+    callback pick-fg-color();
+    callback pick-bg-color();
+    callback pick-night-fg-color();
+    callback pick-night-bg-color();
+    callback zoom-changed(int);
+    callback tool-changed(int);
+    callback resize-rows(int);
+    callback toggle-night();
+
+    // ── Privé ────────────────────────────────────────
+    private property <bool> is-right-pressing: false;
+
+    spacing: 6px;
+    padding: 0px;
+
+    // ─── Onglets Jour / Nuit ─────────────────────────
+    if root.has-night : HorizontalLayout {
+        alignment: start; spacing: 2px;
+        Rectangle {
+            width: 56px; height: 22px;
+            background: !root.editing-night ? #1e5aa8 : Palette.control-background;
+            border-top-left-radius: 4px; border-top-right-radius: 4px;
+            border-width: 1px; border-color: !root.editing-night ? #1e5aa8 : Palette.border;
+            Text { text: "Jour"; font-size: 10px; color: !root.editing-night ? #fff : Palette.foreground;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.editing-night = false; root.toggle-night(); } }
+        }
+        Rectangle {
+            width: 56px; height: 22px;
+            background: root.editing-night ? #1e5aa8 : Palette.control-background;
+            border-top-left-radius: 4px; border-top-right-radius: 4px;
+            border-width: 1px; border-color: root.editing-night ? #1e5aa8 : Palette.border;
+            Text { text: "Nuit"; font-size: 10px; color: root.editing-night ? #fff : Palette.foreground;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.editing-night = true; root.toggle-night(); } }
+        }
+    }
+
+    // ─── Grille + poignée resize ──────────────────────
+    Rectangle {
+        width: 32 * (root.zoom + 1) * 1px + 1px;
+        height: root.num-rows * (root.zoom + 1) * 1px + 1px + (root.fixed-rows ? 0px : 6px);
+
+        // Image de la grille
+        Rectangle {
+            x: 0; y: 0;
+            width: 32 * (root.zoom + 1) * 1px + 1px;
+            height: root.num-rows * (root.zoom + 1) * 1px + 1px;
+            border-width: 1px; border-color: #666666;
+            clip: true;
+
+            Image {
+                source: root.grid-image;
+                image-fit: fill;
+                width: parent.width;
+                height: parent.height;
+                image-rendering: pixelated;
+            }
+
+            grid-ta := TouchArea {
+                mouse-cursor: crosshair;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down {
+                        if e.button == PointerEventButton.left {
+                            root.is-right-pressing = false;
+                            root.grid-clicked(
+                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                0
+                            );
+                        } else if e.button == PointerEventButton.right {
+                            root.is-right-pressing = true;
+                            root.grid-clicked(
+                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                1
+                            );
+                        }
+                    } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                        root.is-right-pressing = false;
+                    } else if e.kind == PointerEventKind.move {
+                        if root.is-right-pressing {
+                            root.grid-clicked(
+                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                1
+                            );
+                        } else if self.pressed {
+                            root.grid-clicked(
+                                self.mouse-x / ((root.zoom + 1) * 1px),
+                                self.mouse-y / ((root.zoom + 1) * 1px),
+                                0
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Poignée de redimensionnement vertical (masquée pour polygones 32×32)
+        if !root.fixed-rows : Rectangle {
+            x: 0;
+            y: root.num-rows * (root.zoom + 1) * 1px + 1px;
+            width: 32 * (root.zoom + 1) * 1px + 1px;
+            height: 6px;
+            background: rsz-ta.has-hover || rsz-ta.pressed ? #5090ff : #888888;
+
+            rsz-ta := TouchArea {
+                mouse-cursor: row-resize;
+                moved => {
+                    let cell = (root.zoom + 1) * 1px;
+                    let cur-h = root.num-rows * cell + 1px;
+                    let new-h = cur-h + self.mouse-y - 3px;
+                    root.resize-rows(
+                        clamp(
+                            round((new-h - 1px) / cell),
+                            1, root.max-rows
+                        )
+                    );
+                }
+            }
+        }
+    }
+
+    // ─── Zoom pixel ───────────────────────────────────
+    HorizontalLayout {
+        spacing: 6px; alignment: start;
+        Text { text: "Zoom pixel :"; font-size: 10px; vertical-alignment: center; width: 70px; }
+        Slider {
+            minimum: 4; maximum: 24; value: root.zoom; width: 110px;
+            changed(v) => { root.zoom = v; root.zoom-changed(v); }
+        }
+        Text { text: root.zoom + "px"; font-size: 10px; vertical-alignment: center; }
+    }
+
+    // ─── Outils de dessin ─────────────────────────────
+    HorizontalLayout {
+        spacing: 4px; alignment: start;
+        Text { text: "Outil :"; font-size: 10px; vertical-alignment: center; width: 42px; }
+        Rectangle {
+            width: 68px; height: 24px; border-radius: 3px; border-width: 1px; border-color: #888;
+            background: root.active-tool == 0 ? #3080ff : (d-ta.has-hover ? #d0e0f0 : Palette.control-background);
+            Text { text: "Crayon"; font-size: 10px; color: root.active-tool == 0 ? #fff : Palette.foreground;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            d-ta := TouchArea { clicked => { root.active-tool = 0; root.tool-changed(0); } }
+        }
+        Rectangle {
+            width: 68px; height: 24px; border-radius: 3px; border-width: 1px; border-color: #888;
+            background: root.active-tool == 1 ? #3080ff : (f-ta.has-hover ? #d0e0f0 : Palette.control-background);
+            Text { text: "Remplir"; font-size: 10px; color: root.active-tool == 1 ? #fff : Palette.foreground;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            f-ta := TouchArea { clicked => { root.active-tool = 1; root.tool-changed(1); } }
+        }
+    }
+
+    // ─── Tracé Large / Fin (lignes uniquement) ────────
+    if root.show-wide-tool : HorizontalLayout {
+        spacing: 8px; alignment: start;
+        Text { text: "Tracé :"; font-size: 10px; vertical-alignment: center; width: 42px; }
+        HorizontalLayout {
+            spacing: 4px; alignment: center;
+            Rectangle {
+                width: 12px; height: 12px; border-radius: 6px; border-width: 2px;
+                border-color: root.wide-tool ? #3080ff : #888;
+                background: root.wide-tool ? #3080ff : transparent;
+            }
+            Text { text: "Large"; font-size: 10px; vertical-alignment: center; }
+            TouchArea { width: 60px; height: 20px; clicked => { root.wide-tool = true; } }
+        }
+        HorizontalLayout {
+            spacing: 4px; alignment: center;
+            Rectangle {
+                width: 12px; height: 12px; border-radius: 6px; border-width: 2px;
+                border-color: !root.wide-tool ? #3080ff : #888;
+                background: !root.wide-tool ? #3080ff : transparent;
+            }
+            Text { text: "Fin"; font-size: 10px; vertical-alignment: center; }
+            TouchArea { width: 40px; height: 20px; clicked => { root.wide-tool = false; } }
+        }
+    }
+
+    // ─── Couleurs FG / BG ─────────────────────────────
+    HorizontalLayout {
+        spacing: 10px; alignment: start;
+
+        // Avant-plan
+        HorizontalLayout {
+            spacing: 4px; alignment: center;
+            Text { text: "Avant-plan :"; font-size: 10px; vertical-alignment: center; width: 68px; }
+            Rectangle {
+                width: 26px; height: 20px; border-radius: 3px; border-width: 1px; border-color: #888;
+                background: root.editing-night ? root.night-fg-color : root.fg-color;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { if root.editing-night { root.pick-night-fg-color(); } else { root.pick-fg-color(); } }
+                }
+            }
+        }
+
+        // Arrière-plan
+        HorizontalLayout {
+            spacing: 4px; alignment: center;
+            Text { text: "Arrière-plan :"; font-size: 10px; vertical-alignment: center; width: 76px; }
+            Rectangle {
+                width: 26px; height: 20px; border-radius: 3px; border-width: 1px; border-color: #888;
+                background: (root.editing-night ? root.night-bg-is-clear : root.bg-is-clear)
+                    ? transparent
+                    : (root.editing-night ? root.night-bg-color : root.bg-color);
+                // Cases de transparence (damier simple)
+                if (root.editing-night ? root.night-bg-is-clear : root.bg-is-clear) : Rectangle {
+                    x: 0; y: 0; width: 13px; height: 10px; background: #cccccc;
+                }
+                if (root.editing-night ? root.night-bg-is-clear : root.bg-is-clear) : Rectangle {
+                    x: 13px; y: 10px; width: 13px; height: 10px; background: #cccccc;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { if root.editing-night { root.pick-night-bg-color(); } else { root.pick-bg-color(); } }
+                }
+            }
+        }
+    }
+
+    // ─── Arrière-plan transparent ─────────────────────
+    if !root.editing-night : CheckBox {
+        text: "Arrière-plan transparent";
+        checked <=> root.bg-is-clear;
+    }
+    if root.editing-night : CheckBox {
+        text: "Arrière-plan transparent (nuit)";
+        checked <=> root.night-bg-is-clear;
+    }
+
+    // ─── Info dimensions ──────────────────────────────
+    if !root.fixed-rows : Text {
+        text: root.num-rows + " lig. × 32 col. — glisser ↕ pour modifier le nombre de lignes";
+        font-size: 9px; color: #888888; wrap: word-wrap;
+    }
+}

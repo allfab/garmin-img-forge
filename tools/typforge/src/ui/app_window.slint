@@ -129,6 +129,21 @@ export component AppWindow inherits Window {
     in-out property <string> ep-night-xpm-text: "";
     in property <image>      ep-day-xpm-preview;
     in property <image>      ep-night-xpm-preview;
+    // Mode motif polygone
+    in-out property <bool>   ep-is-pattern: false;
+    in property <image>      ep-dm-grid-image;
+    in-out property <int>    ep-dm-zoom: 8;
+    in-out property <int>    ep-dm-num-rows: 32;
+    in-out property <int>    ep-dm-tool: 0;
+    in-out property <color>  ep-dm-fg-color: #000000;
+    in-out property <color>  ep-dm-bg-color: #ffffff;
+    in-out property <bool>   ep-dm-bg-is-clear: true;
+    in-out property <bool>   ep-dm-has-night: false;
+    in-out property <bool>   ep-dm-editing-night: false;
+    in-out property <color>  ep-dm-night-fg-color: #ffffff;
+    in-out property <color>  ep-dm-night-bg-color: #000000;
+    in-out property <bool>   ep-dm-night-bg-is-clear: true;
+    in-out property <bool>   ep-dm-night-same-as-day: true;
 
     // Champs ligne
     in-out property <string> el-type-code-text: "0x00";
@@ -146,6 +161,22 @@ export component AppWindow inherits Window {
     in-out property <string> el-night-xpm-text: "";
     in property <image>      el-day-xpm-preview;
     in property <image>      el-night-xpm-preview;
+    // Mode motif ligne
+    in-out property <bool>   el-is-pattern: false;
+    in property <image>      el-dm-grid-image;
+    in-out property <int>    el-dm-zoom: 8;
+    in-out property <int>    el-dm-num-rows: 1;
+    in-out property <int>    el-dm-tool: 0;
+    in-out property <bool>   el-dm-wide-tool: true;
+    in-out property <color>  el-dm-fg-color: #000000;
+    in-out property <color>  el-dm-bg-color: #ffffff;
+    in-out property <bool>   el-dm-bg-is-clear: true;
+    in-out property <bool>   el-dm-has-night: false;
+    in-out property <bool>   el-dm-editing-night: false;
+    in-out property <color>  el-dm-night-fg-color: #ffffff;
+    in-out property <color>  el-dm-night-bg-color: #000000;
+    in-out property <bool>   el-dm-night-bg-is-clear: true;
+    in-out property <bool>   el-dm-night-same-as-day: true;
 
     callback editor-apply();
     callback editor-cancel();
@@ -209,6 +240,27 @@ export component AppWindow inherits Window {
     callback pick-poi-new-color();
     callback pick-poi-font-day-color();
     callback pick-poi-font-night-color();
+
+    // Callbacks DrawMask polygone
+    callback ep-dm-grid-clicked(float, float, int);
+    callback ep-dm-zoom-changed(int);
+    callback ep-dm-tool-changed(int);
+    callback ep-dm-toggle-night();
+    callback pick-ep-dm-fg-color();
+    callback pick-ep-dm-bg-color();
+    callback pick-ep-dm-night-fg-color();
+    callback pick-ep-dm-night-bg-color();
+
+    // Callbacks DrawMask ligne
+    callback el-dm-grid-clicked(float, float, int);
+    callback el-dm-zoom-changed(int);
+    callback el-dm-tool-changed(int);
+    callback el-dm-resize-rows(int);
+    callback el-dm-toggle-night();
+    callback pick-el-dm-fg-color();
+    callback pick-el-dm-bg-color();
+    callback pick-el-dm-night-fg-color();
+    callback pick-el-dm-night-bg-color();
 
     // Callbacks live hex → couleur pour preview instantanée dans les éditeurs
     callback ep-day-text-changed(string);
@@ -600,6 +652,20 @@ export component AppWindow inherits Window {
         day-xpm-preview-image:   root.ep-day-xpm-preview;
         night-xpm-preview-image: root.ep-night-xpm-preview;
         error-msg       <=> root.editor-error;
+        is-pattern      <=> root.ep-is-pattern;
+        dm-grid-image:   root.ep-dm-grid-image;
+        dm-zoom         <=> root.ep-dm-zoom;
+        dm-num-rows     <=> root.ep-dm-num-rows;
+        dm-tool         <=> root.ep-dm-tool;
+        dm-fg-color     <=> root.ep-dm-fg-color;
+        dm-bg-color     <=> root.ep-dm-bg-color;
+        dm-bg-is-clear  <=> root.ep-dm-bg-is-clear;
+        dm-has-night    <=> root.ep-dm-has-night;
+        dm-editing-night <=> root.ep-dm-editing-night;
+        dm-night-fg-color     <=> root.ep-dm-night-fg-color;
+        dm-night-bg-color     <=> root.ep-dm-night-bg-color;
+        dm-night-bg-is-clear  <=> root.ep-dm-night-bg-is-clear;
+        dm-night-same-as-day  <=> root.ep-dm-night-same-as-day;
         day-text-changed(v)       => { root.ep-day-text-changed(v); }
         night-text-changed(v)     => { root.ep-night-text-changed(v); }
         contour-text-changed(v)   => { root.ep-contour-text-changed(v); }
@@ -608,6 +674,14 @@ export component AppWindow inherits Window {
         pick-day-color     => { root.pick-ep-day-color(); }
         pick-night-color   => { root.pick-ep-night-color(); }
         pick-contour-color => { root.pick-ep-contour-color(); }
+        dm-grid-clicked(x,y,b)   => { root.ep-dm-grid-clicked(x,y,b); }
+        dm-zoom-changed(v)       => { root.ep-dm-zoom-changed(v); }
+        dm-tool-changed(v)       => { root.ep-dm-tool-changed(v); }
+        dm-toggle-night          => { root.ep-dm-toggle-night(); }
+        dm-pick-fg-color         => { root.pick-ep-dm-fg-color(); }
+        dm-pick-bg-color         => { root.pick-ep-dm-bg-color(); }
+        dm-pick-night-fg-color   => { root.pick-ep-dm-night-fg-color(); }
+        dm-pick-night-bg-color   => { root.pick-ep-dm-night-bg-color(); }
         apply  => { root.editor-apply(); }
         cancel => { root.editor-cancel(); }
     }
@@ -632,6 +706,21 @@ export component AppWindow inherits Window {
         day-xpm-preview-image:   root.el-day-xpm-preview;
         night-xpm-preview-image: root.el-night-xpm-preview;
         error-msg       <=> root.editor-error;
+        is-pattern      <=> root.el-is-pattern;
+        dm-grid-image:   root.el-dm-grid-image;
+        dm-zoom         <=> root.el-dm-zoom;
+        dm-num-rows     <=> root.el-dm-num-rows;
+        dm-tool         <=> root.el-dm-tool;
+        dm-wide-tool    <=> root.el-dm-wide-tool;
+        dm-fg-color     <=> root.el-dm-fg-color;
+        dm-bg-color     <=> root.el-dm-bg-color;
+        dm-bg-is-clear  <=> root.el-dm-bg-is-clear;
+        dm-has-night    <=> root.el-dm-has-night;
+        dm-editing-night <=> root.el-dm-editing-night;
+        dm-night-fg-color     <=> root.el-dm-night-fg-color;
+        dm-night-bg-color     <=> root.el-dm-night-bg-color;
+        dm-night-bg-is-clear  <=> root.el-dm-night-bg-is-clear;
+        dm-night-same-as-day  <=> root.el-dm-night-same-as-day;
         day-text-changed(v)      => { root.el-day-text-changed(v); }
         night-text-changed(v)    => { root.el-night-text-changed(v); }
         xpm-text-edited(v)       => { root.el-xpm-text-edited(v); }
@@ -639,6 +728,15 @@ export component AppWindow inherits Window {
         pick-day-color   => { root.pick-el-day-color(); }
         pick-night-color => { root.pick-el-night-color(); }
         dash-preset(p)   => { root.el-dash-preset(p); }
+        dm-grid-clicked(x,y,b)   => { root.el-dm-grid-clicked(x,y,b); }
+        dm-zoom-changed(v)       => { root.el-dm-zoom-changed(v); }
+        dm-tool-changed(v)       => { root.el-dm-tool-changed(v); }
+        dm-resize-rows(v)        => { root.el-dm-resize-rows(v); }
+        dm-toggle-night          => { root.el-dm-toggle-night(); }
+        dm-pick-fg-color         => { root.pick-el-dm-fg-color(); }
+        dm-pick-bg-color         => { root.pick-el-dm-bg-color(); }
+        dm-pick-night-fg-color   => { root.pick-el-dm-night-fg-color(); }
+        dm-pick-night-bg-color   => { root.pick-el-dm-night-bg-color(); }
         apply  => { root.editor-apply(); }
         cancel => { root.editor-cancel(); }
     }

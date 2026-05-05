@@ -987,6 +987,233 @@ fn refresh_poi_grid(state: &PoiEditorState, window: &AppWindow) {
     window.set_poi_preview_night(render_poi_xpm_preview(state.night_xpm.as_ref(), 80, true));
 }
 
+// ─── DrawMask editor ─────────────────────────────────────────────
+
+struct DrawMaskState {
+    doc_idx: usize,
+    #[allow(dead_code)]
+    kind: i32,
+    day_pixels: Vec<Vec<u8>>,
+    night_pixels: Vec<Vec<u8>>,
+    has_night: bool,
+    day_fg: Rgb,
+    day_bg: Option<Rgb>,
+    night_fg: Rgb,
+    night_bg: Option<Rgb>,
+    zoom: u32,
+    editing_night: bool,
+    tool: i32,
+    wide_tool: bool,
+}
+
+fn slint_to_rgb(c: slint::Color) -> Rgb {
+    Rgb { r: c.red(), g: c.green(), b: c.blue() }
+}
+
+fn xpm_to_dm_pixels(xpm: &Xpm) -> Vec<Vec<u8>> {
+    xpm.pixels.iter().map(|row| {
+        row.iter().map(|&idx| if idx == 0 { 0u8 } else { 1u8 }).collect()
+    }).collect()
+}
+
+fn dm_pixels_to_xpm(pixels: &[Vec<u8>], fg: Rgb, bg: Option<Rgb>) -> Xpm {
+    let height = pixels.len();
+    let width = if height > 0 { pixels[0].len() } else { 32 };
+    let bg_color = bg.map_or(Rgba::transparent(), |c| Rgba::opaque(c.r, c.g, c.b));
+    Xpm {
+        width: width as u16,
+        height: height as u16,
+        colour_mode: ColorMode::Indexed,
+        palette: vec![
+            (".".to_string(), bg_color),
+            ("a".to_string(), Rgba::opaque(fg.r, fg.g, fg.b)),
+        ],
+        pixels: pixels.iter().map(|row| row.iter().map(|&b| b as usize).collect()).collect(),
+    }
+}
+
+fn render_draw_mask_grid(pixels: &[Vec<u8>], fg: Rgb, bg: Option<Rgb>, zoom: u32) -> slint::Image {
+    let rows = pixels.len().max(1);
+    let cols = 32usize;
+    let stride = zoom + 1;
+    let w = cols as u32 * stride + 1;
+    let h = rows as u32 * stride + 1;
+    let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(w, h);
+    let px = buf.make_mut_slice();
+    for p in px.iter_mut() { *p = Rgb8Pixel { r: 0xcc, g: 0xcc, b: 0xcc }; }
+    for (ri, row) in pixels.iter().enumerate() {
+        for (ci, &bit) in row.iter().enumerate() {
+            let cx = ci as u32 * stride + 1;
+            let cy = ri as u32 * stride + 1;
+            for dy in 0..zoom {
+                for dx in 0..zoom {
+                    let (r, g, b) = if bit == 1 {
+                        (fg.r, fg.g, fg.b)
+                    } else {
+                        match bg {
+                            Some(c) => (c.r, c.g, c.b),
+                            None => {
+                                let v = if (dx + dy) % 2 == 0 { 0xcc_u8 } else { 0xff_u8 };
+                                (v, v, v)
+                            }
+                        }
+                    };
+                    let idx = ((cy + dy) * w + (cx + dx)) as usize;
+                    if idx < px.len() { px[idx] = Rgb8Pixel { r, g, b }; }
+                }
+            }
+        }
+    }
+    slint::Image::from_rgb8(buf)
+}
+
+fn dm_flood_fill(pixels: &mut Vec<Vec<u8>>, col: usize, row: usize, value: u8) {
+    if row >= pixels.len() || col >= 32 { return; }
+    let target = pixels[row][col];
+    if target == value { return; }
+    let rows = pixels.len();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back((col, row));
+    while let Some((c, r)) = queue.pop_front() {
+        if r >= rows || c >= 32 { continue; }
+        if pixels[r][c] != target { continue; }
+        pixels[r][c] = value;
+        if c > 0 { queue.push_back((c - 1, r)); }
+        if c + 1 < 32 { queue.push_back((c + 1, r)); }
+        if r > 0 { queue.push_back((c, r - 1)); }
+        if r + 1 < rows { queue.push_back((c, r + 1)); }
+    }
+}
+
+fn init_dm_ep(p: &typ::TypPolygon) -> DrawMaskState {
+    let (day_pixels, day_fg, day_bg) = match &p.day_xpm {
+        Some(xpm) if xpm.width == 32 => {
+            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+            let bg = xpm.palette.get(0).and_then(|(_, c)|
+                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
+            (xpm_to_dm_pixels(xpm), fg, bg)
+        }
+        _ => {
+            let fg = first_opaque(p.day_xpm.as_ref())
+                .map(|(r, g, b)| Rgb { r, g, b }).unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+            (vec![vec![0u8; 32]; 32], fg, None)
+        }
+    };
+    let (night_pixels, night_fg, night_bg, has_night) = match &p.night_xpm {
+        Some(xpm) if xpm.width == 32 => {
+            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+                .unwrap_or(Rgb { r: 0xff, g: 0xff, b: 0xff });
+            let bg = xpm.palette.get(0).and_then(|(_, c)|
+                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
+            (xpm_to_dm_pixels(xpm), fg, bg, true)
+        }
+        _ => (day_pixels.clone(), day_fg, day_bg, false),
+    };
+    DrawMaskState {
+        doc_idx: 0, kind: 0,
+        day_pixels, night_pixels, has_night,
+        day_fg, day_bg, night_fg, night_bg,
+        zoom: 8, editing_night: false, tool: 0, wide_tool: false,
+    }
+}
+
+fn init_dm_el(l: &typ::TypLine) -> DrawMaskState {
+    let (day_pixels, day_fg, day_bg) = match &l.day_xpm {
+        Some(xpm) if xpm.width == 32 => {
+            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+            let bg = xpm.palette.get(0).and_then(|(_, c)|
+                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
+            (xpm_to_dm_pixels(xpm), fg, bg)
+        }
+        _ => {
+            let fg = first_opaque(l.day_xpm.as_ref())
+                .map(|(r, g, b)| Rgb { r, g, b }).unwrap_or(Rgb { r: 0, g: 0, b: 0 });
+            (vec![vec![0u8; 32]; 1], fg, None)
+        }
+    };
+    let (night_pixels, night_fg, night_bg, has_night) = match &l.night_xpm {
+        Some(xpm) if xpm.width == 32 => {
+            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+                .unwrap_or(Rgb { r: 0xff, g: 0xff, b: 0xff });
+            let bg = xpm.palette.get(0).and_then(|(_, c)|
+                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
+            (xpm_to_dm_pixels(xpm), fg, bg, true)
+        }
+        _ => (day_pixels.clone(), day_fg, day_bg, false),
+    };
+    DrawMaskState {
+        doc_idx: 0, kind: 1,
+        day_pixels, night_pixels, has_night,
+        day_fg, day_bg, night_fg, night_bg,
+        zoom: 8, editing_night: false, tool: 0, wide_tool: true,
+    }
+}
+
+fn push_dm_to_window_ep(state: &DrawMaskState, w: &AppWindow) {
+    w.set_ep_dm_grid_image(render_draw_mask_grid(&state.day_pixels, state.day_fg, state.day_bg, state.zoom));
+    w.set_ep_dm_zoom(state.zoom as i32);
+    w.set_ep_dm_num_rows(state.day_pixels.len() as i32);
+    w.set_ep_dm_tool(state.tool);
+    w.set_ep_dm_fg_color(slint::Color::from_rgb_u8(state.day_fg.r, state.day_fg.g, state.day_fg.b));
+    w.set_ep_dm_bg_color(state.day_bg.map_or(
+        slint::Color::from_rgb_u8(0xff, 0xff, 0xff),
+        |c| slint::Color::from_rgb_u8(c.r, c.g, c.b)));
+    w.set_ep_dm_bg_is_clear(state.day_bg.is_none());
+    w.set_ep_dm_has_night(state.has_night);
+    w.set_ep_dm_editing_night(false);
+    w.set_ep_dm_night_fg_color(slint::Color::from_rgb_u8(state.night_fg.r, state.night_fg.g, state.night_fg.b));
+    w.set_ep_dm_night_bg_color(state.night_bg.map_or(
+        slint::Color::from_rgb_u8(0, 0, 0),
+        |c| slint::Color::from_rgb_u8(c.r, c.g, c.b)));
+    w.set_ep_dm_night_bg_is_clear(state.night_bg.is_none());
+}
+
+fn push_dm_to_window_el(state: &DrawMaskState, w: &AppWindow) {
+    w.set_el_dm_grid_image(render_draw_mask_grid(&state.day_pixels, state.day_fg, state.day_bg, state.zoom));
+    w.set_el_dm_zoom(state.zoom as i32);
+    w.set_el_dm_num_rows(state.day_pixels.len() as i32);
+    w.set_el_dm_tool(state.tool);
+    w.set_el_dm_wide_tool(state.wide_tool);
+    w.set_el_dm_fg_color(slint::Color::from_rgb_u8(state.day_fg.r, state.day_fg.g, state.day_fg.b));
+    w.set_el_dm_bg_color(state.day_bg.map_or(
+        slint::Color::from_rgb_u8(0xff, 0xff, 0xff),
+        |c| slint::Color::from_rgb_u8(c.r, c.g, c.b)));
+    w.set_el_dm_bg_is_clear(state.day_bg.is_none());
+    w.set_el_dm_has_night(state.has_night);
+    w.set_el_dm_editing_night(false);
+    w.set_el_dm_night_fg_color(slint::Color::from_rgb_u8(state.night_fg.r, state.night_fg.g, state.night_fg.b));
+    w.set_el_dm_night_bg_color(state.night_bg.map_or(
+        slint::Color::from_rgb_u8(0, 0, 0),
+        |c| slint::Color::from_rgb_u8(c.r, c.g, c.b)));
+    w.set_el_dm_night_bg_is_clear(state.night_bg.is_none());
+}
+
+fn ep_dm_render_from_window(state: &DrawMaskState, w: &AppWindow) -> slint::Image {
+    let night = w.get_ep_dm_editing_night();
+    let pixels = if night { &state.night_pixels } else { &state.day_pixels };
+    let fg = if night { slint_to_rgb(w.get_ep_dm_night_fg_color()) } else { slint_to_rgb(w.get_ep_dm_fg_color()) };
+    let bg = if night {
+        if w.get_ep_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_night_bg_color())) }
+    } else {
+        if w.get_ep_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_bg_color())) }
+    };
+    render_draw_mask_grid(pixels, fg, bg, w.get_ep_dm_zoom() as u32)
+}
+
+fn el_dm_render_from_window(state: &DrawMaskState, w: &AppWindow) -> slint::Image {
+    let night = w.get_el_dm_editing_night();
+    let pixels = if night { &state.night_pixels } else { &state.day_pixels };
+    let fg = if night { slint_to_rgb(w.get_el_dm_night_fg_color()) } else { slint_to_rgb(w.get_el_dm_fg_color()) };
+    let bg = if night {
+        if w.get_el_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_night_bg_color())) }
+    } else {
+        if w.get_el_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_bg_color())) }
+    };
+    render_draw_mask_grid(pixels, fg, bg, w.get_el_dm_zoom() as u32)
+}
+
 // ─── Helpers édition TXT ─────────────────────────────────────────
 
 fn apply_txt_edit(doc: &mut typ::TypDocument, kind: i32, idx: usize, txt: &str) -> Result<(), String> {
@@ -1020,6 +1247,7 @@ fn main() -> anyhow::Result<()> {
     let window = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new()));
     let poi_state: Rc<RefCell<Option<PoiEditorState>>> = Rc::new(RefCell::new(None));
+    let dm_state: Rc<RefCell<Option<DrawMaskState>>> = Rc::new(RefCell::new(None));
 
     if let Some(path_str) = args.get(1) {
         let path = std::path::Path::new(path_str);
@@ -1291,6 +1519,7 @@ fn main() -> anyhow::Result<()> {
     // on_editor_apply — applique les modifications au TypDocument
     {
         let app_c = Rc::clone(&app);
+        let dm_c = Rc::clone(&dm_state);
         let ww = window.as_weak();
         window.on_editor_apply(move || {
             let w = match ww.upgrade() { Some(w) => w, None => return };
@@ -1344,33 +1573,53 @@ fn main() -> anyhow::Result<()> {
                             // Collecter XPM jour/nuit dans des locaux — écriture atomique ensuite
                             if let Some(p) = doc.polygons.get_mut(idx) {
                                 let mut new_day_xpm = p.day_xpm.clone();
-                                let xpm_text = w.get_ep_xpm_text();
-                                if !xpm_text.trim().is_empty() {
-                                    match typ::text_reader::parse_xpm_lines(&xpm_text) {
-                                        Ok(Some(xpm)) => new_day_xpm = Some(xpm),
-                                        Ok(None) => {}
-                                        Err(e) => {
-                                            w.set_editor_error(format!("XPM jour : {}", e).into());
-                                            had_error = true;
-                                        }
+                                if w.get_ep_is_pattern() {
+                                    let dm_borrow = dm_c.borrow();
+                                    if let Some(dm) = dm_borrow.as_ref() {
+                                        let fg = slint_to_rgb(w.get_ep_dm_fg_color());
+                                        let bg = if w.get_ep_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_bg_color())) };
+                                        new_day_xpm = Some(dm_pixels_to_xpm(&dm.day_pixels, fg, bg));
                                     }
-                                } else if let Some(c) = hex_to_rgb(w.get_ep_day_fill_text().as_str()) {
-                                    set_xpm_fill_color(&mut new_day_xpm, c);
-                                }
-                                let mut new_night_xpm = p.night_xpm.clone();
-                                if !had_error {
-                                    let night_text = w.get_ep_night_xpm_text();
-                                    if !night_text.trim().is_empty() {
-                                        match typ::text_reader::parse_xpm_lines(&night_text) {
-                                            Ok(Some(xpm)) => new_night_xpm = Some(xpm),
+                                } else {
+                                    let xpm_text = w.get_ep_xpm_text();
+                                    if !xpm_text.trim().is_empty() {
+                                        match typ::text_reader::parse_xpm_lines(&xpm_text) {
+                                            Ok(Some(xpm)) => new_day_xpm = Some(xpm),
                                             Ok(None) => {}
                                             Err(e) => {
-                                                w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                w.set_editor_error(format!("XPM jour : {}", e).into());
                                                 had_error = true;
                                             }
                                         }
-                                    } else if let Some(c) = hex_to_rgb(w.get_ep_night_fill_text().as_str()) {
-                                        set_xpm_fill_color(&mut new_night_xpm, c);
+                                    } else if let Some(c) = hex_to_rgb(w.get_ep_day_fill_text().as_str()) {
+                                        set_xpm_fill_color(&mut new_day_xpm, c);
+                                    }
+                                }
+                                let mut new_night_xpm = p.night_xpm.clone();
+                                if !had_error {
+                                    if w.get_ep_is_pattern() {
+                                        let dm_borrow = dm_c.borrow();
+                                        if let Some(dm) = dm_borrow.as_ref() {
+                                            if dm.has_night {
+                                                let fg = slint_to_rgb(w.get_ep_dm_night_fg_color());
+                                                let bg = if w.get_ep_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_night_bg_color())) };
+                                                new_night_xpm = Some(dm_pixels_to_xpm(&dm.night_pixels, fg, bg));
+                                            }
+                                        }
+                                    } else {
+                                        let night_text = w.get_ep_night_xpm_text();
+                                        if !night_text.trim().is_empty() {
+                                            match typ::text_reader::parse_xpm_lines(&night_text) {
+                                                Ok(Some(xpm)) => new_night_xpm = Some(xpm),
+                                                Ok(None) => {}
+                                                Err(e) => {
+                                                    w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                    had_error = true;
+                                                }
+                                            }
+                                        } else if let Some(c) = hex_to_rgb(w.get_ep_night_fill_text().as_str()) {
+                                            set_xpm_fill_color(&mut new_night_xpm, c);
+                                        }
                                     }
                                 }
                                 // Écriture atomique : seulement si tout est valide
@@ -1425,33 +1674,53 @@ fn main() -> anyhow::Result<()> {
                             // Collecter XPM jour/nuit dans des locaux — écriture atomique ensuite
                             if let Some(l) = doc.lines.get_mut(idx) {
                                 let mut new_day_xpm = l.day_xpm.clone();
-                                let xpm_text = w.get_el_xpm_text();
-                                if !xpm_text.trim().is_empty() {
-                                    match typ::text_reader::parse_xpm_lines(&xpm_text) {
-                                        Ok(Some(xpm)) => new_day_xpm = Some(xpm),
-                                        Ok(None) => {}
-                                        Err(e) => {
-                                            w.set_editor_error(format!("XPM jour : {}", e).into());
-                                            had_error = true;
-                                        }
+                                if w.get_el_is_pattern() {
+                                    let dm_borrow = dm_c.borrow();
+                                    if let Some(dm) = dm_borrow.as_ref() {
+                                        let fg = slint_to_rgb(w.get_el_dm_fg_color());
+                                        let bg = if w.get_el_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_bg_color())) };
+                                        new_day_xpm = Some(dm_pixels_to_xpm(&dm.day_pixels, fg, bg));
                                     }
-                                } else if let Some(c) = hex_to_rgb(w.get_el_day_text().as_str()) {
-                                    set_xpm_fill_color(&mut new_day_xpm, c);
-                                }
-                                let mut new_night_xpm = l.night_xpm.clone();
-                                if !had_error {
-                                    let night_text = w.get_el_night_xpm_text();
-                                    if !night_text.trim().is_empty() {
-                                        match typ::text_reader::parse_xpm_lines(&night_text) {
-                                            Ok(Some(xpm)) => new_night_xpm = Some(xpm),
+                                } else {
+                                    let xpm_text = w.get_el_xpm_text();
+                                    if !xpm_text.trim().is_empty() {
+                                        match typ::text_reader::parse_xpm_lines(&xpm_text) {
+                                            Ok(Some(xpm)) => new_day_xpm = Some(xpm),
                                             Ok(None) => {}
                                             Err(e) => {
-                                                w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                w.set_editor_error(format!("XPM jour : {}", e).into());
                                                 had_error = true;
                                             }
                                         }
-                                    } else if let Some(c) = hex_to_rgb(w.get_el_night_text().as_str()) {
-                                        set_xpm_fill_color(&mut new_night_xpm, c);
+                                    } else if let Some(c) = hex_to_rgb(w.get_el_day_text().as_str()) {
+                                        set_xpm_fill_color(&mut new_day_xpm, c);
+                                    }
+                                }
+                                let mut new_night_xpm = l.night_xpm.clone();
+                                if !had_error {
+                                    if w.get_el_is_pattern() {
+                                        let dm_borrow = dm_c.borrow();
+                                        if let Some(dm) = dm_borrow.as_ref() {
+                                            if dm.has_night {
+                                                let fg = slint_to_rgb(w.get_el_dm_night_fg_color());
+                                                let bg = if w.get_el_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_night_bg_color())) };
+                                                new_night_xpm = Some(dm_pixels_to_xpm(&dm.night_pixels, fg, bg));
+                                            }
+                                        }
+                                    } else {
+                                        let night_text = w.get_el_night_xpm_text();
+                                        if !night_text.trim().is_empty() {
+                                            match typ::text_reader::parse_xpm_lines(&night_text) {
+                                                Ok(Some(xpm)) => new_night_xpm = Some(xpm),
+                                                Ok(None) => {}
+                                                Err(e) => {
+                                                    w.set_editor_error(format!("XPM nuit : {}", e).into());
+                                                    had_error = true;
+                                                }
+                                            }
+                                        } else if let Some(c) = hex_to_rgb(w.get_el_night_text().as_str()) {
+                                            set_xpm_fill_color(&mut new_night_xpm, c);
+                                        }
                                     }
                                 }
                                 // Écriture atomique : seulement si tout est valide
@@ -1515,12 +1784,12 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    // on_edit_element — étend le handler existant pour kind=2 (POI)
-    // Le handler polygone/ligne est déjà enregistré ; on en ajoute un spécifique POI.
+    // on_edit_element — handler unique pour polygone, ligne, POI
     // NOTE : Slint ne permet qu'un seul handler par callback ; on écrase et réimplémente.
     {
         let app_c = Rc::clone(&app);
         let poi_c = Rc::clone(&poi_state);
+        let dm_c = Rc::clone(&dm_state);
         let ww = window.as_weak();
         window.on_edit_element(move |kind, idx| {
             if idx < 0 { return; }
@@ -1564,6 +1833,12 @@ fn main() -> anyhow::Result<()> {
                             w.set_ep_xpm_text(xpm_to_text_opt(p.day_xpm.as_ref()));
                             w.set_ep_night_xpm_text(xpm_to_text_opt(p.night_xpm.as_ref()));
                             push_ep_previews(&w, p.day_xpm.as_ref(), p.night_xpm.as_ref());
+                            let is_pattern = p.day_xpm.as_ref().map(|x| x.width == 32 && x.height == 32).unwrap_or(false);
+                            w.set_ep_is_pattern(is_pattern);
+                            let mut dm = init_dm_ep(p);
+                            dm.doc_idx = idx as usize;
+                            push_dm_to_window_ep(&dm, &w);
+                            *dm_c.borrow_mut() = Some(dm);
                             w.set_editor_error("".into());
                             w.set_editor_kind(0);
                             w.set_editor_idx(idx);
@@ -1589,6 +1864,12 @@ fn main() -> anyhow::Result<()> {
                             w.set_el_xpm_text(xpm_to_text_opt(l.day_xpm.as_ref()));
                             w.set_el_night_xpm_text(xpm_to_text_opt(l.night_xpm.as_ref()));
                             push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
+                            let is_pattern = l.day_xpm.as_ref().map(|x| x.width == 32).unwrap_or(false);
+                            w.set_el_is_pattern(is_pattern);
+                            let mut dm = init_dm_el(l);
+                            dm.doc_idx = idx as usize;
+                            push_dm_to_window_el(&dm, &w);
+                            *dm_c.borrow_mut() = Some(dm);
                             w.set_editor_error("".into());
                             w.set_editor_kind(1);
                             w.set_editor_idx(idx);
@@ -2380,6 +2661,7 @@ fn main() -> anyhow::Result<()> {
     {
         let app_c = Rc::clone(&app);
         let poi_c = Rc::clone(&poi_state);
+        let dm_c = Rc::clone(&dm_state);
         let ww = window.as_weak();
         window.on_add_element(move |kind| {
             let w = match ww.upgrade() { Some(w) => w, None => return };
@@ -2442,6 +2724,11 @@ fn main() -> anyhow::Result<()> {
                         w.set_ep_extended_labels(false); w.set_ep_font_style(0);
                         w.set_ep_xpm_text("".into()); w.set_ep_night_xpm_text("".into());
                         push_ep_previews(&w, p.day_xpm.as_ref(), p.night_xpm.as_ref());
+                        w.set_ep_is_pattern(false);
+                        let mut dm = init_dm_ep(p);
+                        dm.doc_idx = idx;
+                        push_dm_to_window_ep(&dm, &w);
+                        *dm_c.borrow_mut() = Some(dm);
                         w.set_editor_kind(0); w.set_editor_idx(idx as i32);
                         w.set_editor_visible(true);
                     }
@@ -2463,6 +2750,11 @@ fn main() -> anyhow::Result<()> {
                         w.set_el_font_style(0);
                         w.set_el_xpm_text("".into()); w.set_el_night_xpm_text("".into());
                         push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
+                        w.set_el_is_pattern(false);
+                        let mut dm = init_dm_el(l);
+                        dm.doc_idx = idx;
+                        push_dm_to_window_el(&dm, &w);
+                        *dm_c.borrow_mut() = Some(dm);
                         w.set_editor_kind(1); w.set_editor_idx(idx as i32);
                         w.set_editor_visible(true);
                     }
@@ -2611,6 +2903,462 @@ fn main() -> anyhow::Result<()> {
         let ww = window.as_weak();
         window.on_do_cancel(move || {
             if let Some(w) = ww.upgrade() { w.set_do_editor_visible(false); }
+        });
+    }
+
+    // ── DrawMask callbacks — polygone (ep) ───────────────────────
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_ep_dm_grid_clicked(move |fx, fy, btn| {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let col = fx as usize;
+            let row = fy as usize;
+            let value = if btn == 0 { 1u8 } else { 0u8 };
+            let night = w.get_ep_dm_editing_night();
+            let pixels = if night { &mut state.night_pixels } else { &mut state.day_pixels };
+            if row < pixels.len() && col < 32 {
+                match state.tool {
+                    1 => dm_flood_fill(pixels, col, row, value),
+                    _ => pixels[row][col] = value,
+                }
+            }
+            let img = ep_dm_render_from_window(state, &w);
+            w.set_ep_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_ep_dm_zoom_changed(move |v| {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            state.zoom = v as u32;
+            let img = ep_dm_render_from_window(state, &w);
+            w.set_ep_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        window.on_ep_dm_tool_changed(move |v| {
+            if let Some(state) = dm_c.borrow_mut().as_mut() { state.tool = v; }
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_ep_dm_toggle_night(move || {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            state.editing_night = w.get_ep_dm_editing_night();
+            let img = ep_dm_render_from_window(state, &w);
+            w.set_ep_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_ep_dm_fg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let night = w.get_ep_dm_editing_night();
+            let c = if night { w.get_ep_dm_night_fg_color() } else { w.get_ep_dm_fg_color() };
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, bg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let pix = if night { s.night_pixels.clone() } else { s.day_pixels.clone() };
+                        let bg = if night {
+                            if w.get_ep_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_night_bg_color())) }
+                        } else {
+                            if w.get_ep_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_bg_color())) }
+                        };
+                        (pix, bg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                let sc = slint::Color::from_rgb_u8(nc.r, nc.g, nc.b);
+                                if night { w.set_ep_dm_night_fg_color(sc); } else { w.set_ep_dm_fg_color(sc); }
+                                let img = render_draw_mask_grid(&pixels, nc, bg, zoom);
+                                w.set_ep_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_ep_dm_bg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let night = w.get_ep_dm_editing_night();
+            let c = if night { w.get_ep_dm_night_bg_color() } else { w.get_ep_dm_bg_color() };
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, fg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let pix = if night { s.night_pixels.clone() } else { s.day_pixels.clone() };
+                        let fg = if night { slint_to_rgb(w.get_ep_dm_night_fg_color()) } else { slint_to_rgb(w.get_ep_dm_fg_color()) };
+                        (pix, fg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                let sc = slint::Color::from_rgb_u8(nc.r, nc.g, nc.b);
+                                if night {
+                                    w.set_ep_dm_night_bg_color(sc);
+                                    w.set_ep_dm_night_bg_is_clear(false);
+                                } else {
+                                    w.set_ep_dm_bg_color(sc);
+                                    w.set_ep_dm_bg_is_clear(false);
+                                }
+                                let img = render_draw_mask_grid(&pixels, fg, Some(nc), zoom);
+                                w.set_ep_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_ep_dm_night_fg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let c = w.get_ep_dm_night_fg_color();
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, bg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let bg = if w.get_ep_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_night_bg_color())) };
+                        (s.night_pixels.clone(), bg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                w.set_ep_dm_night_fg_color(slint::Color::from_rgb_u8(nc.r, nc.g, nc.b));
+                                let img = render_draw_mask_grid(&pixels, nc, bg, zoom);
+                                w.set_ep_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_ep_dm_night_bg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let c = w.get_ep_dm_night_bg_color();
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, fg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let fg = slint_to_rgb(w.get_ep_dm_night_fg_color());
+                        (s.night_pixels.clone(), fg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                w.set_ep_dm_night_bg_color(slint::Color::from_rgb_u8(nc.r, nc.g, nc.b));
+                                w.set_ep_dm_night_bg_is_clear(false);
+                                let img = render_draw_mask_grid(&pixels, fg, Some(nc), zoom);
+                                w.set_ep_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    // ── DrawMask callbacks — ligne (el) ──────────────────────────
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_el_dm_grid_clicked(move |fx, fy, btn| {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let col = fx as usize;
+            let row = fy as usize;
+            let value = if btn == 0 { 1u8 } else { 0u8 };
+            let night = w.get_el_dm_editing_night();
+            let wide = w.get_el_dm_wide_tool();
+            let pixels = if night { &mut state.night_pixels } else { &mut state.day_pixels };
+            if row < pixels.len() && col < 32 {
+                match state.tool {
+                    1 => dm_flood_fill(pixels, col, row, value),
+                    _ => {
+                        pixels[row][col] = value;
+                        if wide {
+                            if col > 0 { pixels[row][col - 1] = value; }
+                            if col + 1 < 32 { pixels[row][col + 1] = value; }
+                        }
+                    }
+                }
+            }
+            let img = el_dm_render_from_window(state, &w);
+            w.set_el_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_el_dm_zoom_changed(move |v| {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            state.zoom = v as u32;
+            let img = el_dm_render_from_window(state, &w);
+            w.set_el_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        window.on_el_dm_tool_changed(move |v| {
+            if let Some(state) = dm_c.borrow_mut().as_mut() { state.tool = v; }
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_el_dm_resize_rows(move |new_rows| {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let nr = (new_rows as usize).clamp(1, 31);
+            let cur = state.day_pixels.len();
+            match nr.cmp(&cur) {
+                std::cmp::Ordering::Greater => {
+                    for _ in cur..nr { state.day_pixels.push(vec![0u8; 32]); }
+                    let ncur = state.night_pixels.len();
+                    for _ in ncur..nr { state.night_pixels.push(vec![0u8; 32]); }
+                }
+                std::cmp::Ordering::Less => {
+                    state.day_pixels.truncate(nr);
+                    state.night_pixels.truncate(nr);
+                }
+                std::cmp::Ordering::Equal => {}
+            }
+            w.set_el_dm_num_rows(nr as i32);
+            let img = el_dm_render_from_window(state, &w);
+            w.set_el_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_el_dm_toggle_night(move || {
+            let mut opt = dm_c.borrow_mut();
+            let state = match opt.as_mut() { Some(s) => s, None => return };
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            state.editing_night = w.get_el_dm_editing_night();
+            let img = el_dm_render_from_window(state, &w);
+            w.set_el_dm_grid_image(img);
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_el_dm_fg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let night = w.get_el_dm_editing_night();
+            let c = if night { w.get_el_dm_night_fg_color() } else { w.get_el_dm_fg_color() };
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, bg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let pix = if night { s.night_pixels.clone() } else { s.day_pixels.clone() };
+                        let bg = if night {
+                            if w.get_el_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_night_bg_color())) }
+                        } else {
+                            if w.get_el_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_bg_color())) }
+                        };
+                        (pix, bg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                let sc = slint::Color::from_rgb_u8(nc.r, nc.g, nc.b);
+                                if night { w.set_el_dm_night_fg_color(sc); } else { w.set_el_dm_fg_color(sc); }
+                                let img = render_draw_mask_grid(&pixels, nc, bg, zoom);
+                                w.set_el_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_el_dm_bg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let night = w.get_el_dm_editing_night();
+            let c = if night { w.get_el_dm_night_bg_color() } else { w.get_el_dm_bg_color() };
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, fg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let pix = if night { s.night_pixels.clone() } else { s.day_pixels.clone() };
+                        let fg = if night { slint_to_rgb(w.get_el_dm_night_fg_color()) } else { slint_to_rgb(w.get_el_dm_fg_color()) };
+                        (pix, fg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                let sc = slint::Color::from_rgb_u8(nc.r, nc.g, nc.b);
+                                if night {
+                                    w.set_el_dm_night_bg_color(sc);
+                                    w.set_el_dm_night_bg_is_clear(false);
+                                } else {
+                                    w.set_el_dm_bg_color(sc);
+                                    w.set_el_dm_bg_is_clear(false);
+                                }
+                                let img = render_draw_mask_grid(&pixels, fg, Some(nc), zoom);
+                                w.set_el_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_el_dm_night_fg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let c = w.get_el_dm_night_fg_color();
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, bg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let bg = if w.get_el_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_night_bg_color())) };
+                        (s.night_pixels.clone(), bg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                w.set_el_dm_night_fg_color(slint::Color::from_rgb_u8(nc.r, nc.g, nc.b));
+                                let img = render_draw_mask_grid(&pixels, nc, bg, zoom);
+                                w.set_el_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let dm_c = Rc::clone(&dm_state);
+        let ww = window.as_weak();
+        window.on_pick_el_dm_night_bg_color(move || {
+            let w = match ww.upgrade() { Some(w) => w, None => return };
+            let c = w.get_el_dm_night_bg_color();
+            let current = format!("#{:02X}{:02X}{:02X}", c.red(), c.green(), c.blue());
+            let (pixels, fg, zoom) = {
+                let opt = dm_c.borrow();
+                match opt.as_ref() {
+                    Some(s) => {
+                        let fg = slint_to_rgb(w.get_el_dm_night_fg_color());
+                        (s.night_pixels.clone(), fg, s.zoom)
+                    }
+                    None => return,
+                }
+            };
+            let ww2 = ww.clone();
+            std::thread::spawn(move || {
+                if let Some(hex) = pick_color(&current) {
+                    if let Some(nc) = hex_to_rgb(&hex) {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = ww2.upgrade() {
+                                w.set_el_dm_night_bg_color(slint::Color::from_rgb_u8(nc.r, nc.g, nc.b));
+                                w.set_el_dm_night_bg_is_clear(false);
+                                let img = render_draw_mask_grid(&pixels, fg, Some(nc), zoom);
+                                w.set_el_dm_grid_image(img);
+                            }
+                        });
+                    }
+                }
+            });
         });
     }
 

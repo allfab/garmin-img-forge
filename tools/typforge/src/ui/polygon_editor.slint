@@ -1,5 +1,6 @@
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit, Palette } from "std-widgets.slint";
 import { XpmPreview } from "xpm_preview.slint";
+import { DrawMaskEditor } from "draw_mask_editor.slint";
 
 export component PolygonEditor inherits Rectangle {
     background: #00000066;
@@ -10,7 +11,10 @@ export component PolygonEditor inherits Rectangle {
     in-out property <string> type-code-text: "0x00";
     in-out property <string> sub-type-text:  "0x00";
 
-    // Style couleur
+    // Mode Solide / Motif
+    in-out property <bool> is-pattern: false;
+
+    // Style couleur (mode Solide)
     in-out property <color>  day-fill-color:   #888888;
     in-out property <string> day-fill-text:    "#888888";
     in-out property <color>  night-fill-color: #888888;
@@ -29,14 +33,29 @@ export component PolygonEditor inherits Rectangle {
     in-out property <string> xpm-text:       "";
     in-out property <string> night-xpm-text: "";
 
-    // Previews XPM précalculées par Rust (motif tuilé jour/nuit)
+    // Previews XPM précalculées par Rust
     in property <image> day-xpm-preview-image;
     in property <image> night-xpm-preview-image;
+
+    // ── Propriétés DrawMaskEditor (mode Motif) ────────
+    in property <image>    dm-grid-image;
+    in-out property <int>  dm-zoom: 8;
+    in-out property <int>  dm-num-rows: 32;
+    in-out property <int>  dm-tool: 0;
+    in-out property <color>  dm-fg-color: #000000;
+    in-out property <color>  dm-bg-color: #ffffff;
+    in-out property <bool>   dm-bg-is-clear: true;
+    in-out property <bool>   dm-has-night: false;
+    in-out property <bool>   dm-editing-night: false;
+    in-out property <color>  dm-night-fg-color: #ffffff;
+    in-out property <color>  dm-night-bg-color: #000000;
+    in-out property <bool>   dm-night-bg-is-clear: true;
+    in-out property <bool>   dm-night-same-as-day: true;
 
     // État
     in-out property <string> error-msg: "";
 
-    // Callbacks
+    // Callbacks Solide
     callback day-text-changed(string);
     callback night-text-changed(string);
     callback contour-text-changed(string);
@@ -45,18 +64,29 @@ export component PolygonEditor inherits Rectangle {
     callback pick-day-color();
     callback pick-night-color();
     callback pick-contour-color();
+
+    // Callbacks DrawMask
+    callback dm-grid-clicked(float, float, int);
+    callback dm-pick-fg-color();
+    callback dm-pick-bg-color();
+    callback dm-pick-night-fg-color();
+    callback dm-pick-night-bg-color();
+    callback dm-zoom-changed(int);
+    callback dm-tool-changed(int);
+    callback dm-toggle-night();
+
     callback apply();
     callback cancel();
 
-    // Capture tous les clics sur le fond semi-transparent (empêche le click-through vers la galerie)
+    // Capture tous les clics sur le fond semi-transparent
     TouchArea {}
 
     // ── Dialog centré ──────────────────────────────────────────────
     Rectangle {
         x: (parent.width  - self.width)  / 2;
         y: (parent.height - self.height) / 2;
-        width:  min(parent.width  - 32px, 740px);
-        height: min(parent.height - 32px, 540px);
+        width:  min(parent.width  - 32px, 780px);
+        height: min(parent.height - 32px, 620px);
         background: Palette.background;
         border-width: 1px;
         border-color: #444444;
@@ -97,11 +127,11 @@ export component PolygonEditor inherits Rectangle {
 
                 // ═══ FORMULAIRE GAUCHE ════════════════════════
                 ScrollView {
-                    width: 400px;
+                    width: 420px;
 
                     VerticalLayout {
                         padding: 20px; spacing: 0px; alignment: start;
-                        width: 380px;
+                        width: 400px;
 
                         // ─ Section Identité ──────────────────
                         Text {
@@ -113,18 +143,12 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 10px; }
 
                         HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Type :"; font-size: 12px; width: 100px;
-                                vertical-alignment: center; color: Palette.foreground;
-                            }
+                            Text { text: "Type :"; font-size: 12px; width: 100px; vertical-alignment: center; color: Palette.foreground; }
                             LineEdit { text <=> root.type-code-text; width: 100px; font-size: 12px; }
                         }
                         Rectangle { height: 8px; }
                         HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Sous-type :"; font-size: 12px; width: 100px;
-                                vertical-alignment: center; color: Palette.foreground;
-                            }
+                            Text { text: "Sous-type :"; font-size: 12px; width: 100px; vertical-alignment: center; color: Palette.foreground; }
                             LineEdit { text <=> root.sub-type-text; width: 100px; font-size: 12px; }
                         }
                         Rectangle { height: 20px; }
@@ -138,93 +162,124 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 1px; background: #5a80c040; }
                         Rectangle { height: 10px; }
 
-                        // Couleur Jour
-                        HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Couleur Jour :"; font-size: 12px; width: 120px;
-                                vertical-alignment: center;
-                            }
-                            LineEdit {
-                                text <=> root.day-fill-text; width: 90px; font-size: 12px;
-                                edited(v) => {
-                                    root.xpm-text = "";
-                                    root.error-msg = "";
-                                    root.day-text-changed(v);
+                        // Radio Solide / Motif
+                        HorizontalLayout { spacing: 12px; alignment: start;
+                            Text { text: "Mode :"; font-size: 12px; width: 60px; vertical-alignment: center; }
+                            HorizontalLayout {
+                                spacing: 4px; alignment: center;
+                                Rectangle {
+                                    width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
+                                    border-color: !root.is-pattern ? #3080ff : #888;
+                                    background: !root.is-pattern ? #3080ff : transparent;
                                 }
+                                Text { text: "Solide"; font-size: 12px; vertical-alignment: center; }
+                                TouchArea { width: 70px; height: 20px; clicked => { root.is-pattern = false; } }
                             }
-                            Rectangle {
-                                width: 34px; height: 30px;
-                                background: root.day-fill-color;
-                                border-width: 1px; border-color: #888888;
-                                border-radius: 4px;
-                                TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.pick-day-color(); }
+                            HorizontalLayout {
+                                spacing: 4px; alignment: center;
+                                Rectangle {
+                                    width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
+                                    border-color: root.is-pattern ? #3080ff : #888;
+                                    background: root.is-pattern ? #3080ff : transparent;
                                 }
+                                Text { text: "Motif"; font-size: 12px; vertical-alignment: center; }
+                                TouchArea { width: 60px; height: 20px; clicked => { root.is-pattern = true; } }
                             }
                         }
-                        Rectangle { height: 8px; }
+                        Rectangle { height: 12px; }
 
-                        // Couleur Nuit
-                        HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Couleur Nuit :"; font-size: 12px; width: 120px;
-                                vertical-alignment: center;
-                            }
-                            LineEdit {
-                                text <=> root.night-fill-text; width: 90px; font-size: 12px;
-                                edited(v) => {
-                                    root.night-xpm-text = "";
-                                    root.error-msg = "";
-                                    root.night-text-changed(v);
+                        // ── Mode Solide ──────────────────────
+                        if !root.is-pattern : VerticalLayout {
+                            spacing: 0px;
+
+                            HorizontalLayout { spacing: 10px; alignment: start;
+                                Text { text: "Couleur Jour :"; font-size: 12px; width: 120px; vertical-alignment: center; }
+                                LineEdit {
+                                    text <=> root.day-fill-text; width: 90px; font-size: 12px;
+                                    edited(v) => { root.xpm-text = ""; root.error-msg = ""; root.day-text-changed(v); }
+                                }
+                                Rectangle {
+                                    width: 34px; height: 30px; background: root.day-fill-color;
+                                    border-width: 1px; border-color: #888888; border-radius: 4px;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-day-color(); } }
                                 }
                             }
-                            Rectangle {
-                                width: 34px; height: 30px;
-                                background: root.night-fill-color;
-                                border-width: 1px; border-color: #888888;
-                                border-radius: 4px;
-                                TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.pick-night-color(); }
+                            Rectangle { height: 8px; }
+
+                            HorizontalLayout { spacing: 10px; alignment: start;
+                                Text { text: "Couleur Nuit :"; font-size: 12px; width: 120px; vertical-alignment: center; }
+                                LineEdit {
+                                    text <=> root.night-fill-text; width: 90px; font-size: 12px;
+                                    edited(v) => { root.night-xpm-text = ""; root.error-msg = ""; root.night-text-changed(v); }
+                                }
+                                Rectangle {
+                                    width: 34px; height: 30px; background: root.night-fill-color;
+                                    border-width: 1px; border-color: #888888; border-radius: 4px;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-night-color(); } }
                                 }
                             }
+                            Rectangle { height: 8px; }
+
+                            HorizontalLayout { spacing: 10px; alignment: start;
+                                Text { text: "Contour :"; font-size: 12px; width: 120px; vertical-alignment: center; }
+                                CheckBox {
+                                    checked <=> root.contour-enabled;
+                                    text: root.contour-enabled ? "Couleur" : "Aucun";
+                                }
+                                if root.contour-enabled : LineEdit {
+                                    text <=> root.contour-text; width: 80px; font-size: 12px;
+                                    edited(v) => { root.contour-text-changed(v); }
+                                }
+                                if root.contour-enabled : Rectangle {
+                                    width: 34px; height: 30px; background: root.contour-color;
+                                    border-width: 1px; border-color: #888888; border-radius: 4px;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-contour-color(); } }
+                                }
+                            }
+                            Rectangle { height: 8px; }
                         }
-                        Rectangle { height: 8px; }
 
-                        // Couleur Contour
-                        HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Contour :"; font-size: 12px; width: 120px;
-                                vertical-alignment: center;
-                            }
-                            CheckBox {
-                                checked <=> root.contour-enabled;
-                                text: root.contour-enabled ? "Couleur" : "Aucun";
-                            }
-                            if root.contour-enabled : LineEdit {
-                                text <=> root.contour-text; width: 80px; font-size: 12px;
-                                edited(v) => { root.contour-text-changed(v); }
-                            }
-                            if root.contour-enabled : Rectangle {
-                                width: 34px; height: 30px;
-                                background: root.contour-color;
-                                border-width: 1px; border-color: #888888;
-                                border-radius: 4px;
-                                TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.pick-contour-color(); }
-                                }
-                            }
+                        // ── Mode Motif ───────────────────────
+                        if root.is-pattern : DrawMaskEditor {
+                            grid-image: root.dm-grid-image;
+                            zoom <=> root.dm-zoom;
+                            num-rows: root.dm-num-rows;
+                            max-rows: 32;
+                            fixed-rows: true;
+                            fg-color <=> root.dm-fg-color;
+                            bg-color <=> root.dm-bg-color;
+                            bg-is-clear <=> root.dm-bg-is-clear;
+                            has-night <=> root.dm-has-night;
+                            editing-night <=> root.dm-editing-night;
+                            night-fg-color <=> root.dm-night-fg-color;
+                            night-bg-color <=> root.dm-night-bg-color;
+                            night-bg-is-clear <=> root.dm-night-bg-is-clear;
+                            night-same-as-day <=> root.dm-night-same-as-day;
+                            show-wide-tool: false;
+                            active-tool <=> root.dm-tool;
+                            grid-clicked(x, y, b)    => { root.dm-grid-clicked(x, y, b); }
+                            pick-fg-color            => { root.dm-pick-fg-color(); }
+                            pick-bg-color            => { root.dm-pick-bg-color(); }
+                            pick-night-fg-color      => { root.dm-pick-night-fg-color(); }
+                            pick-night-bg-color      => { root.dm-pick-night-bg-color(); }
+                            zoom-changed(v)          => { root.dm-zoom-changed(v); }
+                            tool-changed(v)          => { root.dm-tool-changed(v); }
+                            toggle-night             => { root.dm-toggle-night(); }
                         }
-                        Rectangle { height: 8px; }
 
-                        // FontStyle
+                        Rectangle { height: 16px; }
+
+                        // ─ Options communes ──────────────────
+                        Text {
+                            text: "OPTIONS";
+                            font-size: 10px; font-weight: 700;
+                            color: #5a80c0; letter-spacing: 1px;
+                        }
+                        Rectangle { height: 1px; background: #5a80c040; }
+                        Rectangle { height: 10px; }
+
                         HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Style police :"; font-size: 12px; width: 120px;
-                                vertical-alignment: center;
-                            }
+                            Text { text: "Style police :"; font-size: 12px; width: 120px; vertical-alignment: center; }
                             ComboBox {
                                 model: ["Défaut", "Sans label", "Petit", "Normal", "Grand"];
                                 current-index <=> root.font-style;
@@ -233,12 +288,8 @@ export component PolygonEditor inherits Rectangle {
                         }
                         Rectangle { height: 8px; }
 
-                        // ExtendedLabels
                         HorizontalLayout { spacing: 10px; alignment: start;
-                            Text {
-                                text: "Labels étendus :"; font-size: 12px; width: 120px;
-                                vertical-alignment: center;
-                            }
+                            Text { text: "Labels étendus :"; font-size: 12px; width: 120px; vertical-alignment: center; }
                             CheckBox { checked <=> root.extended-labels; }
                         }
                         Rectangle { height: 20px; }
@@ -252,31 +303,19 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 1px; background: #5a80c040; }
                         Rectangle { height: 10px; }
 
-                        Text {
-                            text: "Motif Jour (XPM brut) :";
-                            font-size: 11px; color: Palette.foreground;
-                        }
+                        Text { text: "Motif Jour (XPM brut) :"; font-size: 11px; color: Palette.foreground; }
                         Rectangle { height: 4px; }
                         TextEdit {
                             height: 90px; text: root.xpm-text; font-size: 10px;
-                            edited(v) => {
-                                root.xpm-text = v;
-                                root.xpm-text-edited(v);
-                            }
+                            edited(v) => { root.xpm-text = v; root.xpm-text-edited(v); }
                         }
                         Rectangle { height: 10px; }
 
-                        Text {
-                            text: "Motif Nuit (XPM brut) :";
-                            font-size: 11px; color: Palette.foreground;
-                        }
+                        Text { text: "Motif Nuit (XPM brut) :"; font-size: 11px; color: Palette.foreground; }
                         Rectangle { height: 4px; }
                         TextEdit {
                             height: 70px; text: root.night-xpm-text; font-size: 10px;
-                            edited(v) => {
-                                root.night-xpm-text = v;
-                                root.night-xpm-text-edited(v);
-                            }
+                            edited(v) => { root.night-xpm-text = v; root.night-xpm-text-edited(v); }
                         }
                     }
                 }
@@ -297,11 +336,7 @@ export component PolygonEditor inherits Rectangle {
                     Rectangle { height: 1px; background: #5a80c040; }
                     Rectangle { height: 16px; }
 
-                    // Aperçu Jour
-                    Text {
-                        text: "Jour"; font-size: 12px; font-weight: 700;
-                        color: Palette.foreground;
-                    }
+                    Text { text: "Jour"; font-size: 12px; font-weight: 700; color: Palette.foreground; }
                     Rectangle { height: 8px; }
                     XpmPreview {
                         height: 130px;
@@ -310,11 +345,7 @@ export component PolygonEditor inherits Rectangle {
                     }
                     Rectangle { height: 16px; }
 
-                    // Aperçu Nuit
-                    Text {
-                        text: "Nuit"; font-size: 12px; font-weight: 700;
-                        color: Palette.foreground;
-                    }
+                    Text { text: "Nuit"; font-size: 12px; font-weight: 700; color: Palette.foreground; }
                     Rectangle { height: 8px; }
                     XpmPreview {
                         height: 130px;
@@ -323,9 +354,10 @@ export component PolygonEditor inherits Rectangle {
                     }
                     Rectangle { height: 16px; }
 
-                    // Aide
                     Text {
-                        text: "Cliquer sur le swatch pour\nouvrir le sélecteur de couleur.";
+                        text: root.is-pattern
+                            ? "Aperçu du motif binaire tuilé\n(avant-plan + arrière-plan)."
+                            : "Cliquer sur le swatch pour\nouvrir le sélecteur de couleur.";
                         font-size: 10px; color: #888888; wrap: word-wrap;
                     }
                 }
@@ -351,14 +383,8 @@ export component PolygonEditor inherits Rectangle {
                 border-width: 1px; border-color: Palette.border;
                 HorizontalLayout {
                     padding: 10px; spacing: 10px; alignment: end;
-                    Button {
-                        text: "Annuler"; height: 34px;
-                        clicked => { root.cancel(); }
-                    }
-                    Button {
-                        text: "Appliquer"; height: 34px;
-                        clicked => { root.apply(); }
-                    }
+                    Button { text: "Annuler"; height: 34px; clicked => { root.cancel(); } }
+                    Button { text: "Appliquer"; height: 34px; clicked => { root.apply(); } }
                 }
             }
         }
