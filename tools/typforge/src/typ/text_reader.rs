@@ -27,7 +27,18 @@ fn parse_str(input: &str) -> Result<TypDocument> {
     for (i, raw) in input.lines().enumerate() {
         let line_num = i + 1;
         let line = raw.trim();
-        if line.is_empty() || line.starts_with(';') {
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with(';') {
+            if let Some(val) = line.strip_prefix(";GRMN_TYPE:") {
+                match state {
+                    ParseState::Point | ParseState::Line | ParseState::Polygon => {
+                        acc.grmn_type = val.trim().to_string();
+                    }
+                    _ => {}
+                }
+            }
             continue;
         }
 
@@ -106,6 +117,7 @@ enum ParseState {
 struct ElementAcc {
     type_code: u16,
     sub_type: u8,
+    grmn_type: String,
     labels: Vec<TypLabel>,
     font_style: FontStyle,
     day_font_colour: Option<Rgb>,
@@ -505,6 +517,7 @@ fn flush(doc: &mut TypDocument, state: ParseState, acc: &mut ElementAcc) {
                 doc.points.push(TypPoint {
                     type_code: acc.type_code,
                     sub_type: acc.sub_type,
+                    grmn_type: std::mem::take(&mut acc.grmn_type),
                     labels: std::mem::take(&mut acc.labels),
                     day_xpm: day,
                     night_xpm: night,
@@ -521,6 +534,7 @@ fn flush(doc: &mut TypDocument, state: ParseState, acc: &mut ElementAcc) {
                 doc.lines.push(TypLine {
                     type_code: acc.type_code,
                     sub_type: acc.sub_type,
+                    grmn_type: std::mem::take(&mut acc.grmn_type),
                     labels: std::mem::take(&mut acc.labels),
                     day_xpm: day,
                     night_xpm: night,
@@ -540,6 +554,7 @@ fn flush(doc: &mut TypDocument, state: ParseState, acc: &mut ElementAcc) {
                 doc.polygons.push(TypPolygon {
                     type_code: acc.type_code,
                     sub_type: acc.sub_type,
+                    grmn_type: std::mem::take(&mut acc.grmn_type),
                     labels: std::mem::take(&mut acc.labels),
                     day_xpm: day,
                     night_xpm: night,

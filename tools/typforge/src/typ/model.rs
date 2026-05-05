@@ -108,6 +108,7 @@ pub enum ContourColor {
 pub struct TypPolygon {
     pub type_code: u16,
     pub sub_type: u8,
+    pub grmn_type: String,
     pub labels: Vec<TypLabel>,
     pub day_xpm: Option<Xpm>,
     pub night_xpm: Option<Xpm>,
@@ -123,6 +124,7 @@ pub struct TypPolygon {
 pub struct TypLine {
     pub type_code: u16,
     pub sub_type: u8,
+    pub grmn_type: String,
     pub labels: Vec<TypLabel>,
     pub day_xpm: Option<Xpm>,
     pub night_xpm: Option<Xpm>,
@@ -140,6 +142,7 @@ pub struct TypLine {
 pub struct TypPoint {
     pub type_code: u16,
     pub sub_type: u8,
+    pub grmn_type: String,
     pub labels: Vec<TypLabel>,
     pub day_xpm: Option<Xpm>,
     pub night_xpm: Option<Xpm>,

@@ -522,10 +522,18 @@ fn make_item(text: impl Into<slint::SharedString>) -> StandardListViewItem {
     item
 }
 
-fn build_list_model(pairs: impl Iterator<Item = (u16, u8)>) -> ModelRc<StandardListViewItem> {
+fn format_list_label(tc: u16, st: u8, grmn: &str) -> String {
+    if grmn.is_empty() {
+        format!("0x{:02X} / 0x{:02X}", tc, st)
+    } else {
+        format!("0x{:02X}/0x{:02X} — {}", tc, st, grmn)
+    }
+}
+
+fn build_list_model(triples: impl Iterator<Item = (u16, u8, String)>) -> ModelRc<StandardListViewItem> {
     ModelRc::new(VecModel::from(
-        pairs.map(|(tc, st)| make_item(format!("0x{:02X} / 0x{:02X}", tc, st)))
-             .collect::<Vec<_>>()
+        triples.map(|(tc, st, grmn)| make_item(format_list_label(tc, st, &grmn)))
+               .collect::<Vec<_>>()
     ))
 }
 
@@ -533,19 +541,19 @@ fn rebuild_gallery(doc: &TypDocument, window: &AppWindow, nav_tab: i32) {
     let items: Vec<GalleryItem> = match nav_tab {
         0 => doc.polygons.iter().enumerate().map(|(i, p)| GalleryItem {
             thumb: render_polygon_thumb(p, 56),
-            name: format!("0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into(),
+            name: format_list_label(p.type_code, p.sub_type, &p.grmn_type).into(),
             kind: 0,
             index: i as i32,
         }).collect(),
         1 => doc.lines.iter().enumerate().map(|(i, l)| GalleryItem {
             thumb: render_line_thumb(l, 56),
-            name: format!("0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into(),
+            name: format_list_label(l.type_code, l.sub_type, &l.grmn_type).into(),
             kind: 1,
             index: i as i32,
         }).collect(),
         2 => doc.points.iter().enumerate().map(|(i, p)| GalleryItem {
             thumb: render_point_thumb(p, 56),
-            name: format!("0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into(),
+            name: format_list_label(p.type_code, p.sub_type, &p.grmn_type).into(),
             kind: 2,
             index: i as i32,
         }).collect(),
@@ -570,10 +578,10 @@ fn update_ui_from_doc(doc: &TypDocument, window: &AppWindow) {
     window.set_point_count(doc.points.len() as i32);
     window.set_poi_count(doc.icons.len() as i32);
 
-    window.set_polygons(build_list_model(doc.polygons.iter().map(|p| (p.type_code, p.sub_type))));
-    window.set_lines(build_list_model(doc.lines.iter().map(|l| (l.type_code, l.sub_type))));
-    window.set_points(build_list_model(doc.points.iter().map(|p| (p.type_code, p.sub_type))));
-    window.set_extra_pois(build_list_model(doc.icons.iter().map(|ic| (ic.type_code, ic.sub_type))));
+    window.set_polygons(build_list_model(doc.polygons.iter().map(|p| (p.type_code, p.sub_type, p.grmn_type.clone()))));
+    window.set_lines(build_list_model(doc.lines.iter().map(|l| (l.type_code, l.sub_type, l.grmn_type.clone()))));
+    window.set_points(build_list_model(doc.points.iter().map(|p| (p.type_code, p.sub_type, p.grmn_type.clone()))));
+    window.set_extra_pois(build_list_model(doc.icons.iter().map(|ic| (ic.type_code, ic.sub_type, String::new()))));
     window.set_draworder(ModelRc::new(VecModel::from(
         doc.draw_order.iter()
             .map(|e| make_item(format!("L{} 0x{:02X}/0x{:02X}", e.level, e.type_code, e.sub_type)))
@@ -921,6 +929,7 @@ fn open_poi_editor(
                 labels: p.labels.clone(),
             };
             push_poi_state_to_window(&state, window, p.type_code, p.sub_type);
+            window.set_poi_grmn_type_text(p.grmn_type.as_str().into());
             state
         }),
         _ => None,
@@ -1732,6 +1741,7 @@ fn main() -> anyhow::Result<()> {
                                 if !had_error {
                                     p.type_code = new_tc;
                                     p.sub_type = new_st;
+                                    p.grmn_type = w.get_ep_grmn_type_text().to_string();
                                     p.day_xpm = new_day_xpm;
                                     p.night_xpm = new_night_xpm;
                                     p.extended_labels = w.get_ep_extended_labels();
@@ -1833,6 +1843,7 @@ fn main() -> anyhow::Result<()> {
                                 if !had_error {
                                     l.type_code = new_tc;
                                     l.sub_type = new_st;
+                                    l.grmn_type = w.get_el_grmn_type_text().to_string();
                                     l.day_xpm = new_day_xpm;
                                     l.night_xpm = new_night_xpm;
                                     l.line_width = w.get_el_line_width().clamp(0, 255) as u8;
@@ -1849,13 +1860,13 @@ fn main() -> anyhow::Result<()> {
                         // Mettre à jour uniquement la liste concernée (F9)
                         match kind {
                             0 => {
-                                w.set_polygons(build_list_model(doc.polygons.iter().map(|p| (p.type_code, p.sub_type))));
+                                w.set_polygons(build_list_model(doc.polygons.iter().map(|p| (p.type_code, p.sub_type, p.grmn_type.clone()))));
                                 if let Some(p) = doc.polygons.get(idx) {
                                     w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
                                 }
                             }
                             1 => {
-                                w.set_lines(build_list_model(doc.lines.iter().map(|l| (l.type_code, l.sub_type))));
+                                w.set_lines(build_list_model(doc.lines.iter().map(|l| (l.type_code, l.sub_type, l.grmn_type.clone()))));
                                 if let Some(l) = doc.lines.get(idx) {
                                     w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
                                 }
@@ -1918,6 +1929,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_editor_title(format!("Polygone 0x{:02X}/0x{:02X}", p.type_code, p.sub_type).into());
                             w.set_ep_type_code_text(format!("0x{:02X}", p.type_code).into());
                             w.set_ep_sub_type_text(format!("0x{:02X}", p.sub_type).into());
+                            w.set_ep_grmn_type_text(p.grmn_type.as_str().into());
                             w.set_ep_day_fill_text(day_text);
                             w.set_ep_day_fill_color(day_color);
                             w.set_ep_night_fill_text(night_text);
@@ -1959,6 +1971,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_editor_title(format!("Ligne 0x{:02X}/0x{:02X}", l.type_code, l.sub_type).into());
                             w.set_el_type_code_text(format!("0x{:02X}", l.type_code).into());
                             w.set_el_sub_type_text(format!("0x{:02X}", l.sub_type).into());
+                            w.set_el_grmn_type_text(l.grmn_type.as_str().into());
                             w.set_el_day_text(day_text);
                             w.set_el_day_color(day_color);
                             w.set_el_night_text(night_text);
@@ -2417,6 +2430,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(point) = doc.points.get_mut(doc_idx) {
                     point.type_code = new_tc;
                     point.sub_type = new_st;
+                    point.grmn_type = w.get_poi_grmn_type_text().to_string();
                     point.day_xpm = day_xpm;
                     point.night_xpm = if has_night { night_xpm } else { None };
                     point.labels = labels;
@@ -2426,7 +2440,7 @@ fn main() -> anyhow::Result<()> {
                     point.night_font_colour = night_fc;
                 }
                 // Mettre à jour la liste latérale (type_code peut avoir changé)
-                w.set_points(build_list_model(doc.points.iter().map(|p| (p.type_code, p.sub_type))));
+                w.set_points(build_list_model(doc.points.iter().map(|p| (p.type_code, p.sub_type, p.grmn_type.clone()))));
                 let nav = w.get_active_nav_tab();
                 rebuild_gallery(doc, &w, nav);
                 let (day_img, night_img) = render_preview(doc, 2, doc_idx);

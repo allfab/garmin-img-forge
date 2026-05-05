@@ -21,6 +21,7 @@ export component PoiEditor inherits Rectangle {
 
     in-out property <string> type-code-text: "0x00";
     in-out property <string> sub-type-text: "0x00";
+    in-out property <string> grmn-type-text: "";
     in property <int>     bmp-width: 16;
     in property <int>     bmp-height: 16;
     in property <int>     colour-count: 0;
@@ -149,6 +150,20 @@ export component PoiEditor inherits Rectangle {
                                 TextInput {
                                     x: 4px; y: 0px; width: parent.width - 8px; height: parent.height;
                                     text <=> root.sub-type-text;
+                                    font-size: 10px; vertical-alignment: center; single-line: true;
+                                }
+                            }
+                        }
+
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            Text { text: "Désign. :"; font-size: 10px; width: 40px; vertical-alignment: center; }
+                            Rectangle {
+                                height: 22px; border-radius: 2px; border-width: 1px; border-color: #888;
+                                background: Palette.control-background;
+                                horizontal-stretch: 1;
+                                TextInput {
+                                    x: 4px; y: 0px; width: parent.width - 8px; height: parent.height;
+                                    text <=> root.grmn-type-text;
                                     font-size: 10px; vertical-alignment: center; single-line: true;
                                 }
                             }

@@ -249,7 +249,7 @@ fn parse_polygon(bytes: &[u8], type_code: u16, sub_type: u8, cp: u16) -> Result<
     let (font_style, day_c, night_c) = if has_ext { read_extended_font(&mut r)? } else { (FontStyle::default(), None, None) };
     let day_xpm = Some(make_xpm(w, h, colours, flat_pix));
     Ok(TypPolygon {
-        type_code, sub_type, labels,
+        type_code, sub_type, grmn_type: String::new(), labels,
         day_xpm, night_xpm: None,
         font_style,
         day_font_colour: day_c.map(rgba_to_rgb),
@@ -287,7 +287,7 @@ fn parse_line(bytes: &[u8], type_code: u16, sub_type: u8, cp: u16) -> Result<Typ
     let labels = if has_label { read_label_block(&mut r, cp)? } else { vec![] };
     let (font_style, day_c, night_c) = if has_ext { read_extended_font(&mut r)? } else { (FontStyle::default(), None, None) };
     Ok(TypLine {
-        type_code, sub_type, labels,
+        type_code, sub_type, grmn_type: String::new(), labels,
         day_xpm: Some(make_xpm(w, height, colours, flat_pix)),
         night_xpm: None,
         line_width, border_width,
@@ -314,7 +314,7 @@ fn parse_point(bytes: &[u8], type_code: u16, sub_type: u8, cp: u16) -> Result<Ty
     let labels = if has_label { read_label_block(&mut r, cp)? } else { vec![] };
     let (font_style, day_c, night_c) = if has_ext { read_extended_font(&mut r)? } else { (FontStyle::default(), None, None) };
     Ok(TypPoint {
-        type_code, sub_type, labels,
+        type_code, sub_type, grmn_type: String::new(), labels,
         day_xpm, night_xpm,
         font_style,
         day_font_colour: day_c.map(rgba_to_rgb),

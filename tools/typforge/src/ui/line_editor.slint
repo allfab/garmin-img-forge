@@ -10,6 +10,7 @@ export component LineEditor inherits Rectangle {
     // Identité
     in-out property <string> type-code-text: "0x00";
     in-out property <string> sub-type-text:  "0x00";
+    in-out property <string> grmn-type-text: "";
 
     // Mode Solid / Pattern
     in-out property <bool> is-pattern: false;
@@ -151,6 +152,15 @@ export component LineEditor inherits Rectangle {
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text { text: "Sous-type :"; font-size: 12px; width: 100px; vertical-alignment: center; }
                             LineEdit { text <=> root.sub-type-text; width: 100px; font-size: 12px; }
+                        }
+                        Rectangle { height: 8px; }
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text { text: "Désignation :"; font-size: 12px; width: 100px; vertical-alignment: center; }
+                            LineEdit {
+                                text <=> root.grmn-type-text;
+                                horizontal-stretch: 1; font-size: 12px;
+                                placeholder-text: "ex: Roads/OTHER_HWY/Description/Non NT";
+                            }
                         }
                         Rectangle { height: 20px; }
 

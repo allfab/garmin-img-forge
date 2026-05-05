@@ -117,6 +117,7 @@ export component AppWindow inherits Window {
     // Champs polygone
     in-out property <string> ep-type-code-text: "0x00";
     in-out property <string> ep-sub-type-text: "0x00";
+    in-out property <string> ep-grmn-type-text: "";
     in-out property <color>  ep-day-fill-color: #888888;
     in-out property <string> ep-day-fill-text: "#888888";
     in-out property <color>  ep-night-fill-color: #888888;
@@ -149,6 +150,7 @@ export component AppWindow inherits Window {
     // Champs ligne
     in-out property <string> el-type-code-text: "0x00";
     in-out property <string> el-sub-type-text: "0x00";
+    in-out property <string> el-grmn-type-text: "";
     in-out property <color>  el-day-color: #000000;
     in-out property <string> el-day-text: "#000000";
     in-out property <color>  el-night-color: #000000;
@@ -187,6 +189,7 @@ export component AppWindow inherits Window {
     in-out property <bool>   poi-editor-visible: false;
     in-out property <string> poi-type-code-text: "0x00";
     in-out property <string> poi-sub-type-text: "0x00";
+    in-out property <string> poi-grmn-type-text: "";
     in property <int>        poi-bmp-width: 16;
     in property <int>        poi-bmp-height: 16;
     in property <int>        poi-colour-count: 0;
@@ -587,6 +590,7 @@ export component AppWindow inherits Window {
         width: root.width; height: root.height;
         type-code-text <=> root.poi-type-code-text;
         sub-type-text <=> root.poi-sub-type-text;
+        grmn-type-text <=> root.poi-grmn-type-text;
         bmp-width: root.poi-bmp-width;
         bmp-height: root.poi-bmp-height;
         colour-count: root.poi-colour-count;
@@ -644,6 +648,7 @@ export component AppWindow inherits Window {
         title-text: root.editor-title;
         type-code-text <=> root.ep-type-code-text;
         sub-type-text  <=> root.ep-sub-type-text;
+        grmn-type-text <=> root.ep-grmn-type-text;
         day-fill-color   <=> root.ep-day-fill-color;
         day-fill-text    <=> root.ep-day-fill-text;
         night-fill-color <=> root.ep-night-fill-color;
@@ -698,6 +703,7 @@ export component AppWindow inherits Window {
         title-text: root.editor-title;
         type-code-text <=> root.el-type-code-text;
         sub-type-text  <=> root.el-sub-type-text;
+        grmn-type-text <=> root.el-grmn-type-text;
         day-color  <=> root.el-day-color;
         day-text   <=> root.el-day-text;
         night-color <=> root.el-night-color;

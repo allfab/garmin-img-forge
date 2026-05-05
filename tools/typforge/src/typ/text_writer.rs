@@ -74,6 +74,9 @@ fn emit_draw_order(s: &mut String, entries: &[DrawOrderEntry]) {
 fn emit_polygon(s: &mut String, p: &TypPolygon) {
     crlf(s, "[_polygon]");
     emit_type_subtype(s, p.type_code, p.sub_type);
+    if !p.grmn_type.is_empty() {
+        crlf(s, &format!(";GRMN_TYPE: {}", p.grmn_type));
+    }
     if p.extended_labels {
         crlf(s, "ExtendedLabels=Y");
     }
@@ -97,6 +100,9 @@ fn emit_polygon(s: &mut String, p: &TypPolygon) {
 fn emit_line(s: &mut String, l: &TypLine) {
     crlf(s, "[_line]");
     emit_type_subtype(s, l.type_code, l.sub_type);
+    if !l.grmn_type.is_empty() {
+        crlf(s, &format!(";GRMN_TYPE: {}", l.grmn_type));
+    }
     if !l.use_orientation {
         crlf(s, "UseOrientation=N");
     }
@@ -125,6 +131,9 @@ fn emit_line(s: &mut String, l: &TypLine) {
 fn emit_point(s: &mut String, p: &TypPoint) {
     crlf(s, "[_point]");
     emit_type_subtype(s, p.type_code, p.sub_type);
+    if !p.grmn_type.is_empty() {
+        crlf(s, &format!(";GRMN_TYPE: {}", p.grmn_type));
+    }
     if p.extended_labels {
         crlf(s, "ExtendedLabels=Y");
     }
