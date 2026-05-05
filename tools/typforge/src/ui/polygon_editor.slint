@@ -85,8 +85,8 @@ export component PolygonEditor inherits Rectangle {
     Rectangle {
         x: (parent.width  - self.width)  / 2;
         y: (parent.height - self.height) / 2;
-        width:  min(parent.width  - 32px, 780px);
-        height: min(parent.height - 32px, 620px);
+        width:  min(parent.width  - 32px, 860px);
+        height: min(parent.height - 32px, 700px);
         background: Palette.background;
         border-width: 1px;
         border-color: #444444;
@@ -113,10 +113,10 @@ export component PolygonEditor inherits Rectangle {
                         background: close-ta.has-hover ? #cc3333 : transparent;
                         border-radius: 4px;
                         Text {
-                            text: "✕"; color: #ffffff; font-size: 14px;
+                            text: "×"; color: #ffffff; font-size: 18px;
                             horizontal-alignment: center; vertical-alignment: center;
                         }
-                        close-ta := TouchArea { clicked => { root.cancel(); } }
+                        close-ta := TouchArea { mouse-cursor: pointer; clicked => { root.cancel(); } }
                     }
                 }
             }
@@ -165,25 +165,35 @@ export component PolygonEditor inherits Rectangle {
                         // Radio Solide / Motif
                         HorizontalLayout { spacing: 12px; alignment: start;
                             Text { text: "Mode :"; font-size: 12px; width: 60px; vertical-alignment: center; }
-                            HorizontalLayout {
-                                spacing: 4px; alignment: center;
-                                Rectangle {
-                                    width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
-                                    border-color: !root.is-pattern ? #3080ff : #888;
-                                    background: !root.is-pattern ? #3080ff : transparent;
+                            Rectangle {
+                                width: 84px; height: 22px;
+                                HorizontalLayout {
+                                    alignment: start; spacing: 6px;
+                                    VerticalLayout { alignment: center; width: 14px;
+                                        Rectangle {
+                                            width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
+                                            border-color: !root.is-pattern ? #3080ff : #888;
+                                            background: !root.is-pattern ? #3080ff : transparent;
+                                        }
+                                    }
+                                    Text { text: "Solide"; font-size: 12px; vertical-alignment: center; }
                                 }
-                                Text { text: "Solide"; font-size: 12px; vertical-alignment: center; }
-                                TouchArea { width: 70px; height: 20px; clicked => { root.is-pattern = false; } }
+                                TouchArea { mouse-cursor: pointer; clicked => { root.is-pattern = false; } }
                             }
-                            HorizontalLayout {
-                                spacing: 4px; alignment: center;
-                                Rectangle {
-                                    width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
-                                    border-color: root.is-pattern ? #3080ff : #888;
-                                    background: root.is-pattern ? #3080ff : transparent;
+                            Rectangle {
+                                width: 72px; height: 22px;
+                                HorizontalLayout {
+                                    alignment: start; spacing: 6px;
+                                    VerticalLayout { alignment: center; width: 14px;
+                                        Rectangle {
+                                            width: 14px; height: 14px; border-radius: 7px; border-width: 2px;
+                                            border-color: root.is-pattern ? #3080ff : #888;
+                                            background: root.is-pattern ? #3080ff : transparent;
+                                        }
+                                    }
+                                    Text { text: "Motif"; font-size: 12px; vertical-alignment: center; }
                                 }
-                                Text { text: "Motif"; font-size: 12px; vertical-alignment: center; }
-                                TouchArea { width: 60px; height: 20px; clicked => { root.is-pattern = true; } }
+                                TouchArea { mouse-cursor: pointer; clicked => { root.is-pattern = true; } }
                             }
                         }
                         Rectangle { height: 12px; }
@@ -303,19 +313,21 @@ export component PolygonEditor inherits Rectangle {
                         Rectangle { height: 1px; background: #5a80c040; }
                         Rectangle { height: 10px; }
 
-                        Text { text: "Motif Jour (XPM brut) :"; font-size: 11px; color: Palette.foreground; }
-                        Rectangle { height: 4px; }
-                        TextEdit {
-                            height: 90px; text: root.xpm-text; font-size: 10px;
-                            edited(v) => { root.xpm-text = v; root.xpm-text-edited(v); }
-                        }
-                        Rectangle { height: 10px; }
-
-                        Text { text: "Motif Nuit (XPM brut) :"; font-size: 11px; color: Palette.foreground; }
-                        Rectangle { height: 4px; }
-                        TextEdit {
-                            height: 70px; text: root.night-xpm-text; font-size: 10px;
-                            edited(v) => { root.night-xpm-text = v; root.night-xpm-text-edited(v); }
+                        HorizontalLayout { spacing: 8px;
+                            VerticalLayout { spacing: 4px; horizontal-stretch: 1;
+                                Text { text: "XPM Jour :"; font-size: 11px; color: Palette.foreground; }
+                                TextEdit {
+                                    height: 80px; text: root.xpm-text; font-size: 10px;
+                                    edited(v) => { root.xpm-text = v; root.xpm-text-edited(v); }
+                                }
+                            }
+                            VerticalLayout { spacing: 4px; horizontal-stretch: 1;
+                                Text { text: "XPM Nuit :"; font-size: 11px; color: Palette.foreground; }
+                                TextEdit {
+                                    height: 80px; text: root.night-xpm-text; font-size: 10px;
+                                    edited(v) => { root.night-xpm-text = v; root.night-xpm-text-edited(v); }
+                                }
+                            }
                         }
                     }
                 }

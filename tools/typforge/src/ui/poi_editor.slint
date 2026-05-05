@@ -78,6 +78,9 @@ export component PoiEditor inherits Rectangle {
     callback pick-font-day-color();
     callback pick-font-night-color();
 
+    // Capture tous les clics sur le fond semi-transparent
+    TouchArea {}
+
     // ── Dialog centré ──────────────────────────────────────────
     Rectangle {
         x: (parent.width  - self.width)  / 2;
@@ -108,10 +111,10 @@ export component PoiEditor inherits Rectangle {
                         background: close-ta.has-hover ? #cc3333 : transparent;
                         border-radius: 4px;
                         Text {
-                            text: "✕"; color: #ffffff; font-size: 14px;
+                            text: "×"; color: #ffffff; font-size: 18px;
                             horizontal-alignment: center; vertical-alignment: center;
                         }
-                        close-ta := TouchArea { clicked => { root.editor-cancel(); } }
+                        close-ta := TouchArea { mouse-cursor: pointer; clicked => { root.editor-cancel(); } }
                     }
                 }
             }
