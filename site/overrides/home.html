@@ -18,19 +18,26 @@
   <div class="zn-hero__background" id="zn-topo-container"></div>
   <div class="zn-hero__overlay"></div>
   <div class="zn-hero__inner md-grid">
-    <div class="zn-hero__content">
-      <h1 class="zn-hero__title">On forge des cartes Garmin à partir de données SIG massives.</h1>
-      <p class="zn-hero__tagline">
-        Pipeline open-source qui transforme la <strong>BD TOPO IGN</strong> en cartes topographiques
-        <strong>Garmin</strong> prêtes à l'emploi — 100 % automatisé, 100 % reproductible.
-      </p>
-      <div class="zn-hero__actions">
-        <a href="{{ 'telechargements/' | url }}" class="md-button md-button--primary">
-          Télécharger une carte
-        </a>
-        <a href="{{ 'le-projet/' | url }}" class="md-button">
-          Découvrir le projet
-        </a>
+    <div class="zn-hero__content zn-hero__content--wide">
+      <div class="zn-hero__split">
+        <div class="zn-hero__text">
+          <h1 class="zn-hero__title">On forge des cartes Garmin à partir de données SIG massives.</h1>
+          <p class="zn-hero__tagline">
+            Pipeline open-source qui transforme la <strong>BD TOPO IGN</strong> en cartes topographiques
+            <strong>Garmin</strong> prêtes à l'emploi — 100 % automatisé, 100 % reproductible.
+          </p>
+          <div class="zn-hero__actions">
+            <a href="{{ 'telechargements/' | url }}" class="md-button md-button--primary">
+              Télécharger une carte
+            </a>
+            <a href="{{ 'le-projet/' | url }}" class="md-button">
+              Découvrir le projet
+            </a>
+          </div>
+        </div>
+        <div class="zn-hero__demo">
+          <img src="assets/images/vhs/01-project.gif" alt="Démonstration de l'installation des outils Garmin IMG Forge" class="medium-zoom-image">
+        </div>
       </div>
     </div>
   </div>
@@ -44,7 +51,7 @@
 (function() {
   var c = document.getElementById('zn-topo-container');
   if (!c) return;
-  fetch('{{ "assets/topo-background.svg" | url }}')
+  fetch('{{ "assets/images/background/topo-background.svg" | url }}')
     .then(function(r) { return r.text(); })
     .then(function(svg) {
       c.innerHTML = svg;
