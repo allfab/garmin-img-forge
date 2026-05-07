@@ -360,7 +360,7 @@ export component PolygonEditor inherits Rectangle {
                     Text { text: "Jour"; font-size: 12px; font-weight: 700; color: Palette.foreground; }
                     Rectangle { height: 8px; }
                     XpmPreview {
-                        height: 130px;
+                        width: 120px; height: 130px;
                         preview-image: root.day-xpm-preview-image;
                         is-night: false;
                     }
@@ -369,7 +369,7 @@ export component PolygonEditor inherits Rectangle {
                     Text { text: "Nuit"; font-size: 12px; font-weight: 700; color: Palette.foreground; }
                     Rectangle { height: 8px; }
                     XpmPreview {
-                        height: 130px;
+                        width: 120px; height: 130px;
                         preview-image: root.night-xpm-preview-image;
                         is-night: true;
                     }

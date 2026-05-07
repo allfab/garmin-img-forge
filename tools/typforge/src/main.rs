@@ -1098,8 +1098,9 @@ fn slint_to_rgb(c: slint::Color) -> Rgb {
 }
 
 fn xpm_to_dm_pixels(xpm: &Xpm) -> Vec<Vec<u8>> {
+    let bg_idx = xpm.palette.iter().position(|(_, c)| c.is_transparent()).unwrap_or(0);
     xpm.pixels.iter().map(|row| {
-        row.iter().map(|&idx| if idx == 0 { 0u8 } else { 1u8 }).collect()
+        row.iter().map(|&idx| if idx == bg_idx { 0u8 } else { 1u8 }).collect()
     }).collect()
 }
 
@@ -1172,14 +1173,23 @@ fn dm_flood_fill(pixels: &mut Vec<Vec<u8>>, col: usize, row: usize, value: u8) {
     }
 }
 
+fn xpm_fg(xpm: &Xpm, default: Rgb) -> Rgb {
+    xpm.palette.iter().find(|(_, c)| !c.is_transparent())
+        .map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b }).unwrap_or(default)
+}
+
+fn xpm_bg(xpm: &Xpm) -> Option<Rgb> {
+    if xpm.palette.iter().any(|(_, c)| c.is_transparent()) {
+        None
+    } else {
+        xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+    }
+}
+
 fn init_dm_ep(p: &typ::TypPolygon) -> DrawMaskState {
     let (day_pixels, day_fg, day_bg) = match &p.day_xpm {
         Some(xpm) if xpm.width == 32 => {
-            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
-                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-            let bg = xpm.palette.get(0).and_then(|(_, c)|
-                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
-            (xpm_to_dm_pixels(xpm), fg, bg)
+            (xpm_to_dm_pixels(xpm), xpm_fg(xpm, Rgb { r: 0, g: 0, b: 0 }), xpm_bg(xpm))
         }
         _ => {
             let fg = first_opaque(p.day_xpm.as_ref())
@@ -1189,11 +1199,7 @@ fn init_dm_ep(p: &typ::TypPolygon) -> DrawMaskState {
     };
     let (night_pixels, night_fg, night_bg, has_night) = match &p.night_xpm {
         Some(xpm) if xpm.width == 32 => {
-            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
-                .unwrap_or(Rgb { r: 0xff, g: 0xff, b: 0xff });
-            let bg = xpm.palette.get(0).and_then(|(_, c)|
-                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
-            (xpm_to_dm_pixels(xpm), fg, bg, true)
+            (xpm_to_dm_pixels(xpm), xpm_fg(xpm, Rgb { r: 0xff, g: 0xff, b: 0xff }), xpm_bg(xpm), true)
         }
         _ => (day_pixels.clone(), day_fg, day_bg, false),
     };
@@ -1208,11 +1214,7 @@ fn init_dm_ep(p: &typ::TypPolygon) -> DrawMaskState {
 fn init_dm_el(l: &typ::TypLine) -> DrawMaskState {
     let (day_pixels, day_fg, day_bg) = match &l.day_xpm {
         Some(xpm) if xpm.width == 32 => {
-            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
-                .unwrap_or(Rgb { r: 0, g: 0, b: 0 });
-            let bg = xpm.palette.get(0).and_then(|(_, c)|
-                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
-            (xpm_to_dm_pixels(xpm), fg, bg)
+            (xpm_to_dm_pixels(xpm), xpm_fg(xpm, Rgb { r: 0, g: 0, b: 0 }), xpm_bg(xpm))
         }
         _ => {
             let fg = first_opaque(l.day_xpm.as_ref())
@@ -1222,11 +1224,7 @@ fn init_dm_el(l: &typ::TypLine) -> DrawMaskState {
     };
     let (night_pixels, night_fg, night_bg, has_night) = match &l.night_xpm {
         Some(xpm) if xpm.width == 32 => {
-            let fg = xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
-                .unwrap_or(Rgb { r: 0xff, g: 0xff, b: 0xff });
-            let bg = xpm.palette.get(0).and_then(|(_, c)|
-                if c.is_transparent() { None } else { Some(Rgb { r: c.r, g: c.g, b: c.b }) });
-            (xpm_to_dm_pixels(xpm), fg, bg, true)
+            (xpm_to_dm_pixels(xpm), xpm_fg(xpm, Rgb { r: 0xff, g: 0xff, b: 0xff }), xpm_bg(xpm), true)
         }
         _ => (day_pixels.clone(), day_fg, day_bg, false),
     };
