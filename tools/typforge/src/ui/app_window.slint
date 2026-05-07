@@ -277,6 +277,8 @@ export component AppWindow inherits Window {
     callback el-dash-preset(int);
     callback el-xpm-text-edited(string);
     callback el-night-xpm-text-edited(string);
+    callback el-line-width-changed(int);
+    callback el-bdr-width-changed(int);
     in-out property <color> poi-font-color-day: #000000;
     in-out property <color> poi-font-color-night: #000000;
     in-out property <color> poi-new-color-preview: #000000;
@@ -737,6 +739,8 @@ export component AppWindow inherits Window {
         night-text-changed(v)    => { root.el-night-text-changed(v); }
         xpm-text-edited(v)       => { root.el-xpm-text-edited(v); }
         night-xpm-text-edited(v) => { root.el-night-xpm-text-edited(v); }
+        line-width-changed(v)    => { root.el-line-width-changed(v); }
+        bdr-width-changed(v)     => { root.el-bdr-width-changed(v); }
         pick-day-color   => { root.pick-el-day-color(); }
         pick-night-color => { root.pick-el-night-color(); }
         dash-preset(p)   => { root.el-dash-preset(p); }

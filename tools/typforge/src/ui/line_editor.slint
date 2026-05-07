@@ -65,6 +65,8 @@ export component LineEditor inherits Rectangle {
     callback pick-day-color();
     callback pick-night-color();
     callback dash-preset(int);
+    callback line-width-changed(int);
+    callback bdr-width-changed(int);
 
     // Callbacks DrawMask
     callback dm-grid-clicked(float, float, int);
@@ -79,6 +81,9 @@ export component LineEditor inherits Rectangle {
 
     callback apply();
     callback cancel();
+
+    changed line-width => { root.line-width-changed(root.line-width); }
+    changed bdr-width  => { root.bdr-width-changed(root.bdr-width); }
 
     // Capture tous les clics sur le fond semi-transparent
     TouchArea {}

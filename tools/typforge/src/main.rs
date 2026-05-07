@@ -924,6 +924,17 @@ fn push_el_previews(w: &AppWindow, day_xpm: Option<&Xpm>, night_xpm: Option<&Xpm
     w.set_el_night_xpm_preview(render_line_xpm_preview(night_xpm.or(day_xpm), line_width, true, EDITOR_PREVIEW_SIZE));
 }
 
+fn el_rebuild_preview(w: &AppWindow, lw: u8, bw: u8) {
+    let total_lw = lw.saturating_add(2u8.saturating_mul(bw));
+    let day_xpm = typ::text_reader::parse_xpm_lines(w.get_el_xpm_text().as_str())
+        .ok().flatten()
+        .unwrap_or_else(|| solid_xpm(slint_to_rgb(w.get_el_day_color())));
+    let night_xpm = typ::text_reader::parse_xpm_lines(w.get_el_night_xpm_text().as_str())
+        .ok().flatten();
+    w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&day_xpm), total_lw, false, EDITOR_PREVIEW_SIZE));
+    w.set_el_night_xpm_preview(render_line_xpm_preview(night_xpm.as_ref().or(Some(&day_xpm)), total_lw, true, EDITOR_PREVIEW_SIZE));
+}
+
 fn ensure_transparent(xpm: &mut Xpm) -> usize {
     if let Some(idx) = xpm.palette.iter().position(|(_, c)| c.is_transparent()) {
         return idx;
@@ -2778,6 +2789,25 @@ fn main() -> anyhow::Result<()> {
                 let lw = w.get_el_line_width().clamp(1, 20) as u8;
                 let xpm = solid_xpm(c);
                 w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
+            }
+        });
+    }
+    // ── Handlers épaisseur ligne / bordure → preview live ──────────
+    {
+        let ww = window.as_weak();
+        window.on_el_line_width_changed(move |lw| {
+            if let Some(w) = ww.upgrade() {
+                let bw = w.get_el_border_width().clamp(0, 255) as u8;
+                el_rebuild_preview(&w, lw.clamp(0, 255) as u8, bw);
+            }
+        });
+    }
+    {
+        let ww = window.as_weak();
+        window.on_el_bdr_width_changed(move |bw| {
+            if let Some(w) = ww.upgrade() {
+                let lw = w.get_el_line_width().clamp(0, 255) as u8;
+                el_rebuild_preview(&w, lw, bw.clamp(0, 255) as u8);
             }
         });
     }
