@@ -28,6 +28,13 @@
         var m = tail.match(/^([^/]+)\/([^/]+)\/[^/]+\/[^/]+\.img$/);
         return m ? { type: m[1], slug: m[2] } : null;
     }
+    // Fallback générique : extrait type/slug depuis toute URL versionnée
+    // Structure : .../<type>/<slug>/v<version>/<file>.img (S3 ou chemin local versionné)
+    var HREF_RE_GENERIC = /\/([^/]+)\/([^/]+)\/v[^/]+\/[^/]+\.img$/;
+    function matchGenericHref(href) {
+        var m = href.match(HREF_RE_GENERIC);
+        return m ? { type: m[1], slug: m[2] } : null;
+    }
 
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return '';
@@ -515,18 +522,31 @@
         // link.href = URL absolue résolue par le browser (support href relatifs type ../files/...).
         var href = link.href || link.getAttribute('href') || '';
         var key = null;
+        var isConfidentMatch = false;
         var m = href.match(HREF_RE_LOCAL);
         if (m) {
             key = m[1] + '/' + m[2];
+            isConfidentMatch = true;
         } else {
             var endpoint = manifest.storage && manifest.storage.endpoint_public;
             var s3 = matchS3Href(href, endpoint);
-            if (s3) key = s3.type + '/' + s3.slug;
+            if (s3) { key = s3.type + '/' + s3.slug; isConfidentMatch = true; }
+        }
+        if (!key) {
+            // Fallback : URL versionnée sans endpoint_public connu (ex: storage.type
+            // local mais entries publiées sur S3 avec URL complète dans le manifest).
+            // On extrait type/slug depuis la structure /<type>/<slug>/v<version>/<file>.
+            var generic = matchGenericHref(href);
+            if (generic) key = generic.type + '/' + generic.slug;
         }
         if (!key) return;
         var entry = manifest.coverages && manifest.coverages[key];
 
         if (!entry) {
+            // Pour les matches non certains (fallback générique), on ne décore pas
+            // les liens dont la clé est absente du manifest (évite de griser
+            // des liens non liés au catalogue).
+            if (!isConfidentMatch) return;
             link.classList.add('is-unavailable');
             link.textContent = 'Non disponible';
             link.setAttribute('aria-disabled', 'true');
