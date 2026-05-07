@@ -238,25 +238,6 @@ export component PolygonEditor inherits Rectangle {
                                     TouchArea { mouse-cursor: pointer; clicked => { root.pick-night-color(); } }
                                 }
                             }
-                            Rectangle { height: 8px; }
-
-                            HorizontalLayout { spacing: 10px; alignment: start;
-                                Text { text: "Contour :"; font-size: 12px; width: 120px; vertical-alignment: center; }
-                                CheckBox {
-                                    checked <=> root.contour-enabled;
-                                    text: root.contour-enabled ? "Couleur" : "Aucun";
-                                }
-                                if root.contour-enabled : LineEdit {
-                                    text <=> root.contour-text; width: 80px; font-size: 12px;
-                                    edited(v) => { root.contour-text-changed(v); }
-                                }
-                                if root.contour-enabled : Rectangle {
-                                    width: 34px; height: 30px; background: root.contour-color;
-                                    border-width: 1px; border-color: #888888; border-radius: 4px;
-                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-contour-color(); } }
-                                }
-                            }
-                            Rectangle { height: 8px; }
                         }
 
                         // ── Mode Motif ───────────────────────
@@ -311,6 +292,24 @@ export component PolygonEditor inherits Rectangle {
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text { text: "Labels étendus :"; font-size: 12px; width: 120px; vertical-alignment: center; }
                             CheckBox { checked <=> root.extended-labels; }
+                        }
+                        Rectangle { height: 8px; }
+
+                        HorizontalLayout { spacing: 10px; alignment: start;
+                            Text { text: "Contour :"; font-size: 12px; width: 120px; vertical-alignment: center; }
+                            CheckBox { checked <=> root.contour-enabled; }
+                            if root.contour-enabled : HorizontalLayout {
+                                spacing: 6px;
+                                LineEdit {
+                                    text <=> root.contour-text; width: 90px; font-size: 12px;
+                                    edited(v) => { root.error-msg = ""; root.contour-text-changed(v); }
+                                }
+                                Rectangle {
+                                    width: 34px; height: 30px; background: root.contour-color;
+                                    border-width: 1px; border-color: #888888; border-radius: 4px;
+                                    TouchArea { mouse-cursor: pointer; clicked => { root.pick-contour-color(); } }
+                                }
+                            }
                         }
                         Rectangle { height: 20px; }
 
