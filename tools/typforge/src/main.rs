@@ -8,8 +8,28 @@ slint::include_modules!();
 use std::rc::Rc;
 use std::cell::RefCell;
 use slint::{ModelRc, VecModel, StandardListViewItem, SharedPixelBuffer, Rgb8Pixel};
+// NOTE : winit_030 re-exporte winit 0.30.x via la feature Slint "unstable-winit-030".
+// Cette feature est intentionnellement instable côté Slint — vérifier lors d'un bump de version.
+use slint::winit_030::winit;
 use typ::{TypDocument, TypPolygon, TypLine, TypPoint, TypIconSet, DrawOrderEntry, TypLabel, Xpm, Rgb, Rgba, ColorMode, FontStyle, ContourColor};
 use app::App;
+
+// Icône 512×512 embarquée à la compilation — aucune dépendance fichier runtime.
+static ICON_BYTES: &[u8] = include_bytes!("../typforge.png");
+
+fn setup_platform_with_icon(icon: winit::window::Icon) -> anyhow::Result<()> {
+    let backend = i_slint_backend_winit::Backend::builder()
+        .with_window_attributes_hook(move |attr| attr.with_window_icon(Some(icon.clone())))
+        .build()?;
+    slint::platform::set_platform(Box::new(backend))
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+fn load_window_icon() -> Option<winit::window::Icon> {
+    let img = image::load_from_memory(ICON_BYTES).ok()?.to_rgba8();
+    let (width, height) = img.dimensions();
+    winit::window::Icon::from_rgba(img.into_raw(), width, height).ok()
+}
 
 // ─── Render helpers ──────────────────────────────────────────────
 
@@ -1366,6 +1386,15 @@ fn apply_txt_edit(doc: &mut typ::TypDocument, kind: i32, idx: usize, txt: &str) 
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+
+    // Configurer le backend winit avec l'icône de fenêtre (Linux/Windows).
+    // Sur macOS, winit::window::Icon est ignoré — l'icône Slint dans app_window.slint couvre ce cas.
+    if let Some(icon) = load_window_icon() {
+        if let Err(e) = setup_platform_with_icon(icon) {
+            eprintln!("typforge: impossible de configurer le backend avec l'icône: {}", e);
+        }
+    }
+
     let window = AppWindow::new()?;
     let app = Rc::new(RefCell::new(App::new()));
     let poi_state: Rc<RefCell<Option<PoiEditorState>>> = Rc::new(RefCell::new(None));

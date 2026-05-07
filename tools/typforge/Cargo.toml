@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-ui = ["dep:slint", "dep:rfd"]
+ui = ["dep:slint", "dep:rfd", "dep:i-slint-backend-winit"]
 
 [[bin]]
 name = "typforge"
@@ -13,7 +13,8 @@ path = "src/main.rs"
 required-features = ["ui"]
 
 [dependencies]
-slint = { version = "1.8", optional = true }
+slint = { version = "1.8", optional = true, features = ["unstable-winit-030"] }
+i-slint-backend-winit = { version = "1.8", optional = true }
 rfd = { version = "0.15", optional = true }
 quick-xml = "0.39"
 encoding_rs = "0.8"
