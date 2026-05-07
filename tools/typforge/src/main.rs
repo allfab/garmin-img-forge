@@ -895,12 +895,9 @@ fn render_line_xpm_preview(xpm: Option<&Xpm>, line_width: u8, night: bool, size:
     for p in pixels.iter_mut() { *p = Rgb8Pixel { r: bg, g: bg, b: bg }; }
     let xpm_tiled = xpm.filter(|x| x.width > 0 && x.height > 0);
     let lw = if let Some(x) = xpm_tiled {
-        if x.width == 1 && x.height == 1 {
-            // XPM solide 1×1 : utiliser line_width explicite, pas la hauteur du XPM
-            (line_width as u32).clamp(1, size / 4)
-        } else {
-            (x.height as u32).clamp(1, size / 4)
-        }
+        // line_width inclut le contour (total_lw) — utiliser max pour que le contour
+        // soit toujours reflété, même pour un XPM multi-lignes (motif pointillés)
+        (x.height as u32).max(line_width as u32).clamp(1, size / 4)
     } else {
         (line_width as u32).clamp(1, size / 4)
     };
@@ -940,9 +937,10 @@ fn ep_rebuild_preview(w: &AppWindow) {
     push_ep_previews(w, Some(&day_xpm), Some(&night_xpm));
 }
 
-fn push_el_previews(w: &AppWindow, day_xpm: Option<&Xpm>, night_xpm: Option<&Xpm>, line_width: u8) {
-    w.set_el_day_xpm_preview(render_line_xpm_preview(day_xpm, line_width, false, EDITOR_PREVIEW_SIZE));
-    w.set_el_night_xpm_preview(render_line_xpm_preview(night_xpm.or(day_xpm), line_width, true, EDITOR_PREVIEW_SIZE));
+fn push_el_previews(w: &AppWindow, day_xpm: Option<&Xpm>, night_xpm: Option<&Xpm>, line_width: u8, border_width: u8) {
+    let total_lw = line_width.saturating_add(2u8.saturating_mul(border_width));
+    w.set_el_day_xpm_preview(render_line_xpm_preview(day_xpm, total_lw, false, EDITOR_PREVIEW_SIZE));
+    w.set_el_night_xpm_preview(render_line_xpm_preview(night_xpm.or(day_xpm), total_lw, true, EDITOR_PREVIEW_SIZE));
 }
 
 fn el_rebuild_preview(w: &AppWindow, lw: u8, bw: u8) {
@@ -2100,7 +2098,7 @@ fn main() -> anyhow::Result<()> {
                             w.set_el_font_style(font_style_to_int(l.font_style));
                             w.set_el_xpm_text(xpm_to_text_opt(l.day_xpm.as_ref()));
                             w.set_el_night_xpm_text(xpm_to_text_opt(l.night_xpm.as_ref()));
-                            push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
+                            push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width, l.border_width);
                             let is_pattern = l.day_xpm.as_ref().map(|x| x.width == 32).unwrap_or(false);
                             w.set_el_is_pattern(is_pattern);
                             let mut dm = init_dm_el(l);
@@ -2800,9 +2798,11 @@ fn main() -> anyhow::Result<()> {
         window.on_el_day_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_day_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
-                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                let lw = w.get_el_line_width().clamp(0, 255) as u8;
+                let bw = w.get_el_border_width().clamp(0, 255) as u8;
+                let total_lw = lw.saturating_add(2u8.saturating_mul(bw));
                 let xpm = solid_xpm(c);
-                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, false, EDITOR_PREVIEW_SIZE));
+                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), total_lw, false, EDITOR_PREVIEW_SIZE));
             }
         });
     }
@@ -2811,9 +2811,11 @@ fn main() -> anyhow::Result<()> {
         window.on_el_night_text_changed(move |s| {
             if let (Some(w), Some(c)) = (ww.upgrade(), hex_to_rgb(s.as_str())) {
                 w.set_el_night_color(slint::Color::from_rgb_u8(c.r, c.g, c.b));
-                let lw = w.get_el_line_width().clamp(1, 20) as u8;
+                let lw = w.get_el_line_width().clamp(0, 255) as u8;
+                let bw = w.get_el_border_width().clamp(0, 255) as u8;
+                let total_lw = lw.saturating_add(2u8.saturating_mul(bw));
                 let xpm = solid_xpm(c);
-                w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
+                w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), total_lw, true, EDITOR_PREVIEW_SIZE));
             }
         });
     }
@@ -2908,7 +2910,20 @@ fn main() -> anyhow::Result<()> {
                 xpm.push_str(&row);
                 xpm.push('\n');
             }
-            w.set_el_xpm_text(xpm.clone().into());
+            w.set_el_xpm_text(xpm.into());
+            // Générer le XPM nuit avec la même trame et la couleur nuit (alignement pointillés)
+            let night_color_hex = w.get_el_night_text().to_string();
+            let night_color = if hex_to_rgb(&night_color_hex).is_some() {
+                night_color_hex.to_uppercase()
+            } else {
+                color.clone()
+            };
+            let mut night_xpm = format!("{} {} 2 1\na  c {}\n.  c none\n", w_total, line_w, night_color);
+            for _ in 0..line_w {
+                night_xpm.push_str(&row);
+                night_xpm.push('\n');
+            }
+            w.set_el_night_xpm_text(night_xpm.into());
             // Synchronise le SpinBox épaisseur avec la hauteur effective de l'XPM
             // (line_w peut diverger de el_line_width si la ligne était un bitmap width=0)
             w.set_el_line_width(line_w as i32);
@@ -3011,7 +3026,7 @@ fn main() -> anyhow::Result<()> {
                         w.set_el_use_orientation(true); w.set_el_extended_labels(false);
                         w.set_el_font_style(0);
                         w.set_el_xpm_text("".into()); w.set_el_night_xpm_text("".into());
-                        push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width);
+                        push_el_previews(&w, l.day_xpm.as_ref(), l.night_xpm.as_ref(), l.line_width, l.border_width);
                         w.set_el_is_pattern(false);
                         let mut dm = init_dm_el(l);
                         dm.doc_idx = idx;
