@@ -257,7 +257,7 @@ inputs:
     layer_alias: "MON_GR_ITINERAIRE_ME"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
+      buffer: 0
 
 output:
   directory: "${OUTPUT_DIR}/mp/"

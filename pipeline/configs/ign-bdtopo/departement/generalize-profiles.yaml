@@ -121,20 +121,20 @@ profiles:
 
   CONSTRUCTION_LINEAIRE:
     levels:
-      - { n: 0, simplify: 0.00003 }
-      - { n: 1, simplify: 0.00004 }
-      - { n: 2, simplify: 0.00006 }
-      - { n: 3, simplify: 0.00010 }
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
       - { n: 4, simplify: 0.00030 }
       - { n: 5, simplify: 0.00100 }
       - { n: 6, simplify: 0.00100 }
 
   SURFACE_HYDROGRAPHIQUE:
     levels:
-      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
-      - { n: 1, simplify: 0.00007 }
-      - { n: 2, simplify: 0.00008 }
-      - { n: 3, simplify: 0.00012 }
+      - { n: 0}
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
       - { n: 4, simplify: 0.00030 }
       - { n: 5, simplify: 0.00100 }
       - { n: 6, simplify: 0.00100 }
