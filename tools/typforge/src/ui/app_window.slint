@@ -270,8 +270,11 @@ export component AppWindow inherits Window {
     callback ep-day-text-changed(string);
     callback ep-night-text-changed(string);
     callback ep-contour-text-changed(string);
+    callback ep-contour-enabled-changed(bool);
     callback ep-xpm-text-edited(string);
     callback ep-night-xpm-text-edited(string);
+
+    changed ep-contour-enabled => { root.ep-contour-enabled-changed(root.ep-contour-enabled); }
     callback el-day-text-changed(string);
     callback el-night-text-changed(string);
     callback el-dash-preset(int);
