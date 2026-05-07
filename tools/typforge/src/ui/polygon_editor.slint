@@ -1,6 +1,7 @@
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit, Palette } from "std-widgets.slint";
 import { XpmPreview } from "xpm_preview.slint";
 import { DrawMaskEditor } from "draw_mask_editor.slint";
+import { TooltipIcon } from "tooltip_icon.slint";
 
 export component PolygonEditor inherits Rectangle {
     background: #00000066;
@@ -146,11 +147,13 @@ export component PolygonEditor inherits Rectangle {
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text { text: "Type :"; font-size: 12px; width: 100px; vertical-alignment: center; color: Palette.foreground; }
                             LineEdit { text <=> root.type-code-text; width: 100px; font-size: 12px; }
+                            TooltipIcon { tip: "Code hexadécimal du type de polygone Garmin (ex: 0x01). Doit correspondre à un type défini dans le fichier IMG."; }
                         }
                         Rectangle { height: 8px; }
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text { text: "Sous-type :"; font-size: 12px; width: 100px; vertical-alignment: center; color: Palette.foreground; }
                             LineEdit { text <=> root.sub-type-text; width: 100px; font-size: 12px; }
+                            TooltipIcon { tip: "Discriminant secondaire du type (0x00 = défaut). Permet des variantes visuelles d'un même type principal."; }
                         }
                         Rectangle { height: 8px; }
                         HorizontalLayout { spacing: 10px; alignment: start;
@@ -160,6 +163,7 @@ export component PolygonEditor inherits Rectangle {
                                 horizontal-stretch: 1; font-size: 12px;
                                 placeholder-text: "ex: Roads/OTHER_HWY/Description/Non NT";
                             }
+                            TooltipIcon { tip: "Chemin dans le catalogue Garmin (ex: Roads/OTHER_HWY). Non affiché sur GPS, utilisé par certains outils de traitement."; }
                         }
                         Rectangle { height: 20px; }
 
@@ -205,6 +209,7 @@ export component PolygonEditor inherits Rectangle {
                                 }
                                 TouchArea { mouse-cursor: pointer; clicked => { root.is-pattern = true; } }
                             }
+                            TooltipIcon { tip: "Solide : couleur de remplissage. Motif : bitmap 32×32 pour des textures complexes (forêts, zones construites, eau…)."; }
                         }
                         Rectangle { height: 12px; }
 
@@ -223,6 +228,7 @@ export component PolygonEditor inherits Rectangle {
                                     border-width: 1px; border-color: #888888; border-radius: 4px;
                                     TouchArea { mouse-cursor: pointer; clicked => { root.pick-day-color(); } }
                                 }
+                                TooltipIcon { tip: "Couleur de remplissage du polygone en mode diurne (#RRGGBB). Cliquez le carré coloré pour ouvrir le sélecteur."; }
                             }
                             Rectangle { height: 8px; }
 
@@ -237,6 +243,7 @@ export component PolygonEditor inherits Rectangle {
                                     border-width: 1px; border-color: #888888; border-radius: 4px;
                                     TouchArea { mouse-cursor: pointer; clicked => { root.pick-night-color(); } }
                                 }
+                                TooltipIcon { tip: "Couleur de remplissage en mode nocturne (#RRGGBB). Si vide, la couleur de jour est utilisée."; }
                             }
                         }
 
@@ -286,12 +293,14 @@ export component PolygonEditor inherits Rectangle {
                                 current-index <=> root.font-style;
                                 width: 160px;
                             }
+                            TooltipIcon { tip: "Taille de l'étiquette associée à ce type : Défaut, Sans label, Petit, Normal ou Grand."; }
                         }
                         Rectangle { height: 8px; }
 
                         HorizontalLayout { spacing: 10px; alignment: start;
                             Text { text: "Labels étendus :"; font-size: 12px; width: 120px; vertical-alignment: center; }
                             CheckBox { checked <=> root.extended-labels; }
+                            TooltipIcon { tip: "Active le rendu étendu des étiquettes (support multilingue). À activer uniquement si le fichier IMG contient des métadonnées étendues pour ce type."; }
                         }
                         Rectangle { height: 8px; }
 
@@ -310,6 +319,7 @@ export component PolygonEditor inherits Rectangle {
                                     TouchArea { mouse-cursor: pointer; clicked => { root.pick-contour-color(); } }
                                 }
                             }
+                            TooltipIcon { tip: "Bordure colorée autour du polygone. Cochez pour l'activer, puis saisissez la couleur (#RRGGBB)."; }
                         }
                         Rectangle { height: 20px; }
 

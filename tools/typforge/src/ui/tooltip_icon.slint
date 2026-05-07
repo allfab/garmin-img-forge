@@ -1,0 +1,56 @@
+// Icône d'aide contextuelle : cliquer pour afficher la bulle d'information.
+export component TooltipIcon inherits Rectangle {
+    in property <string> tip: "";
+
+    width: 18px;
+    // height : s'adapte à la hauteur de la ligne parente (HorizontalLayout)
+
+    ta := TouchArea {
+        clicked => { popup.show(); }
+    }
+
+    // Cercle visuel centré dans la zone cliquable
+    Rectangle {
+        width: 16px; height: 16px;
+        x: (parent.width  - self.width)  / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 8px;
+        background: ta.has-hover ? #5a80c0 : #3a5a8a;
+        animate background { duration: 80ms; }
+
+        Text {
+            text: "?";
+            color: #ffffff;
+            font-size: 9px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    popup := PopupWindow {
+        x: 22px;
+        y: -8px;
+        width: 240px;
+
+        Rectangle {
+            width: 240px;
+            min-height: 40px;
+            background: #1a2035;
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: #4466bb;
+
+            VerticalLayout {
+                padding: 10px;
+
+                Text {
+                    text: root.tip;
+                    color: #dde4f8;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

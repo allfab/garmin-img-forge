@@ -1,5 +1,6 @@
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Slider, Palette } from "std-widgets.slint";
 import { XpmPreview } from "xpm_preview.slint";
+import { TooltipIcon } from "tooltip_icon.slint";
 
 export struct PaletteEntry {
     hex: string,          // "#RRGGBB" ou "transparent"
@@ -167,6 +168,7 @@ export component PoiEditor inherits Rectangle {
                                     font-size: 10px; vertical-alignment: center; single-line: true;
                                 }
                             }
+                            TooltipIcon { tip: "Chemin dans le catalogue Garmin (ex: POI/LODGING). Non affiché sur GPS, utilisé par certains outils."; }
                         }
 
                         // Colormode
@@ -186,6 +188,7 @@ export component PoiEditor inherits Rectangle {
                                        horizontal-alignment: center; vertical-alignment: center; }
                                 TouchArea { clicked => { root.colormode = 32; } }
                             }
+                            TooltipIcon { tip: "Profondeur de couleur de la palette : 16 = 16 couleurs, 32 = 32 couleurs."; }
                         }
 
                         // Taille + Resize
@@ -603,9 +606,12 @@ export component PoiEditor inherits Rectangle {
                         // Typographie
                         Text { text: "Typographie"; font-size: 10px; font-weight: 700; }
 
-                        CheckBox {
-                            text: "Extended Labels";
-                            checked <=> root.extended-labels;
+                        HorizontalLayout { spacing: 4px; alignment: start;
+                            CheckBox {
+                                text: "Extended Labels";
+                                checked <=> root.extended-labels;
+                            }
+                            TooltipIcon { tip: "Active le rendu étendu des étiquettes (support multilingue) pour ce POI."; }
                         }
 
                         HorizontalLayout { spacing: 4px; alignment: start;
@@ -615,6 +621,7 @@ export component PoiEditor inherits Rectangle {
                                 current-index <=> root.font-style-idx;
                                 width: 110px;
                             }
+                            TooltipIcon { tip: "Taille de l'étiquette du POI : Default, NoLabel, Small, Normal ou Large."; }
                         }
 
                         HorizontalLayout { spacing: 4px; alignment: start;
@@ -629,6 +636,7 @@ export component PoiEditor inherits Rectangle {
                                     clicked => { root.pick-font-day-color(); }
                                 }
                             }
+                            TooltipIcon { tip: "Couleur de l'étiquette du POI en mode diurne (#RRGGBB)."; }
                         }
 
                         HorizontalLayout { spacing: 4px; alignment: start;
@@ -643,6 +651,7 @@ export component PoiEditor inherits Rectangle {
                                     clicked => { root.pick-font-night-color(); }
                                 }
                             }
+                            TooltipIcon { tip: "Couleur de l'étiquette du POI en mode nocturne (#RRGGBB)."; }
                         }
                     }
                 }
