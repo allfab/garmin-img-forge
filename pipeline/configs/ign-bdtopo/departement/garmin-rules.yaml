@@ -3425,7 +3425,7 @@ rulesets:
   # Type et EndLevel portés directement par les attributs du shapefile
   # ==========================================================================
   - name: "Sentiers GR"
-    source_layer: "FRANCE_GR"
+    source_layer: "MON_GR_ITINERAIRE_ME"
     rules:
       - match:
           NAME: "*"
