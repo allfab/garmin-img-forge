@@ -447,29 +447,107 @@ fn normalize_color_string(s: &str) -> Option<String> {
     None
 }
 
-fn pick_color(current_hex: &str) -> Option<String> {
-    // Valider la couleur initiale pour éviter le bruit stderr dans zenity/kdialog
-    let initial = if hex_to_rgb(current_hex).is_some() { current_hex } else { "#000000" };
-    // zenity (GNOME / GTK) — distinguer "non trouvé" (Err) de "annulé" (Ok non-success)
-    match std::process::Command::new("zenity")
-        .args(["--color-selection", "--color", initial, "--title=Choisir une couleur"])
+// F1/F7/F8: -STA requis (COM MTA sinon dialog invisible) ; -ExecutionPolicy Bypass pour les
+// environnements restreints ; powershell.exe cible explicitement Windows PowerShell v5 qui
+// embarque System.Windows.Forms (pwsh / PowerShell 7+ n'a pas WinForms).
+// F6: les `{{`/`}}` dans format! produisent des `{`/`}` littéraux dans le script ;
+//     la string PS simple-quote + opérateur -f est correcte (ce n'est pas de l'interpolation PS).
+#[cfg(windows)]
+fn pick_color_windows(initial: &str) -> Option<String> {
+    // F11: `initial` est déjà validé par l'appelant — pas de unwrap_or nécessaire
+    let rgb = hex_to_rgb(initial)?;
+    let script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms; \
+         $d = New-Object System.Windows.Forms.ColorDialog; \
+         $d.Color = [System.Drawing.Color]::FromArgb(255, {r}, {g}, {b}); \
+         $d.FullOpen = $true; \
+         if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) \
+         {{ '#{{0:X2}}{{1:X2}}{{2:X2}}' -f $d.Color.R, $d.Color.G, $d.Color.B }}",
+        r = rgb.r, g = rgb.g, b = rgb.b
+    );
+    let out = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
-    {
-        Ok(out) if out.status.success() => {
-            return normalize_color_string(&String::from_utf8_lossy(&out.stdout));
-        }
-        Ok(_) => return None,   // zenity présent, dialog annulé
-        Err(_) => {}            // zenity absent → essayer kdialog
+        .ok()?;
+    // F2: Cancel → stdout vide → normalize_color_string("") = None (correct) ;
+    //     on vérifie stdout non-vide avant pour éviter tout parasite de sortie PS.
+    if out.status.success() && !out.stdout.is_empty() {
+        normalize_color_string(&String::from_utf8_lossy(&out.stdout))
+    } else {
+        None
     }
-    // kdialog (KDE / Qt)
-    match std::process::Command::new("kdialog")
-        .args(["--getcolor", "--default", initial])
+}
+
+// osascript retourne "{R, G, B}" avec des valeurs 0-65535
+#[cfg(target_os = "macos")]
+fn pick_color_macos(initial: &str) -> Option<String> {
+    // F11: `initial` est déjà validé par l'appelant
+    let rgb = hex_to_rgb(initial)?;
+    // Convertir 0-255 → 0-65535 pour AppleScript
+    let (r16, g16, b16) = (
+        rgb.r as u32 * 257,
+        rgb.g as u32 * 257,
+        rgb.b as u32 * 257,
+    );
+    let script = format!("choose color default color {{{r16}, {g16}, {b16}}}");
+    let out = std::process::Command::new("osascript")
+        .args(["-e", &script])
         .output()
-    {
-        Ok(out) if out.status.success() => {
-            normalize_color_string(&String::from_utf8_lossy(&out.stdout))
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    // Sortie : "{R, G, B}\n" valeurs 0-65535
+    // F3: strip_prefix/suffix supprime exactement une accolade (trim_matches enlèverait toutes)
+    let s = String::from_utf8_lossy(&out.stdout);
+    let inner = s.trim().strip_prefix('{')?.strip_suffix('}')?;
+    let parts: Vec<&str> = inner.split(',').collect();
+    if parts.len() == 3 {
+        if let (Ok(r), Ok(g), Ok(b)) = (
+            parts[0].trim().parse::<u32>(),
+            parts[1].trim().parse::<u32>(),
+            parts[2].trim().parse::<u32>(),
+        ) {
+            // F4: arrondi correct pour les valeurs 16-bit non multiples de 257
+            let to_u8 = |v: u32| -> u8 { ((v * 255 + 32767) / 65535) as u8 };
+            return Some(format!("#{:02x}{:02x}{:02x}", to_u8(r), to_u8(g), to_u8(b)));
         }
-        _ => None,
+    }
+    None
+}
+
+fn pick_color(current_hex: &str) -> Option<String> {
+    let initial = if hex_to_rgb(current_hex).is_some() { current_hex } else { "#000000" };
+
+    #[cfg(windows)]
+    return pick_color_windows(initial);
+
+    #[cfg(target_os = "macos")]
+    return pick_color_macos(initial);
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        // zenity (GNOME / GTK) — distinguer "non trouvé" (Err) de "annulé" (Ok non-success)
+        match std::process::Command::new("zenity")
+            .args(["--color-selection", "--color", initial, "--title=Choisir une couleur"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                return normalize_color_string(&String::from_utf8_lossy(&out.stdout));
+            }
+            Ok(_) => return None,   // zenity présent, dialog annulé
+            Err(_) => {}            // zenity absent → essayer kdialog
+        }
+        // kdialog (KDE / Qt)
+        match std::process::Command::new("kdialog")
+            .args(["--getcolor", "--default", initial])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                normalize_color_string(&String::from_utf8_lossy(&out.stdout))
+            }
+            _ => None,
+        }
     }
 }
 
