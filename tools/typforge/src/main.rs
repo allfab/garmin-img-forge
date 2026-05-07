@@ -1174,15 +1174,22 @@ fn dm_flood_fill(pixels: &mut Vec<Vec<u8>>, col: usize, row: usize, value: u8) {
 }
 
 fn xpm_fg(xpm: &Xpm, default: Rgb) -> Rgb {
-    xpm.palette.iter().find(|(_, c)| !c.is_transparent())
-        .map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b }).unwrap_or(default)
+    if xpm.palette.iter().any(|(_, c)| c.is_transparent()) {
+        // Présence d'une entrée transparente : le premier opaque est l'avant-plan
+        xpm.palette.iter().find(|(_, c)| !c.is_transparent())
+            .map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b }).unwrap_or(default)
+    } else {
+        // Tout opaque : convention TYP — palette[1] = avant-plan
+        xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b }).unwrap_or(default)
+    }
 }
 
 fn xpm_bg(xpm: &Xpm) -> Option<Rgb> {
     if xpm.palette.iter().any(|(_, c)| c.is_transparent()) {
         None
     } else {
-        xpm.palette.get(1).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
+        // Tout opaque : convention TYP — palette[0] = arrière-plan
+        xpm.palette.get(0).map(|(_, c)| Rgb { r: c.r, g: c.g, b: c.b })
     }
 }
 
@@ -3136,6 +3143,19 @@ fn main() -> anyhow::Result<()> {
             }
             let img = ep_dm_render_from_window(state, &w);
             w.set_ep_dm_grid_image(img);
+            let fg = if night { slint_to_rgb(w.get_ep_dm_night_fg_color()) } else { slint_to_rgb(w.get_ep_dm_fg_color()) };
+            let bg = if night {
+                if w.get_ep_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_night_bg_color())) }
+            } else {
+                if w.get_ep_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_ep_dm_bg_color())) }
+            };
+            let pix = if night { &state.night_pixels } else { &state.day_pixels };
+            let xpm = dm_pixels_to_xpm(pix, fg, bg);
+            if night {
+                w.set_ep_night_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, true));
+            } else {
+                w.set_ep_day_xpm_preview(render_polygon_thumb_xpm(Some(&xpm), EDITOR_PREVIEW_SIZE, false));
+            }
         });
     }
 
@@ -3354,6 +3374,20 @@ fn main() -> anyhow::Result<()> {
             }
             let img = el_dm_render_from_window(state, &w);
             w.set_el_dm_grid_image(img);
+            let lw = w.get_el_line_width().clamp(1, 20) as u8;
+            let fg = if night { slint_to_rgb(w.get_el_dm_night_fg_color()) } else { slint_to_rgb(w.get_el_dm_fg_color()) };
+            let bg = if night {
+                if w.get_el_dm_night_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_night_bg_color())) }
+            } else {
+                if w.get_el_dm_bg_is_clear() { None } else { Some(slint_to_rgb(w.get_el_dm_bg_color())) }
+            };
+            let pix = if night { &state.night_pixels } else { &state.day_pixels };
+            let xpm = dm_pixels_to_xpm(pix, fg, bg);
+            if night {
+                w.set_el_night_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, true, EDITOR_PREVIEW_SIZE));
+            } else {
+                w.set_el_day_xpm_preview(render_line_xpm_preview(Some(&xpm), lw, false, EDITOR_PREVIEW_SIZE));
+            }
         });
     }
 
