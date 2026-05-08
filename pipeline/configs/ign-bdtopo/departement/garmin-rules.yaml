@@ -3,14 +3,13 @@ version: 1
 
 rulesets:
   # ==========================================================================
-  # TRANSPORT — Troncons de route (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_ROUTE
-  # 17 regles couvrant toutes les combinaisons CL_ADMIN x NATURE
+  # TRANSPORT — Tronçons de route (POLYLINE)
+  # 17 règles — combinaisons CL_ADMIN × NATURE
   # ==========================================================================
   - name: "Routes"
     source_layer: "TRONCON_DE_ROUTE"
     rules:
-      # --- Priorite CL_ADMIN (evaluee en premier dans FME) ---
+      # --- Priorité CL_ADMIN ---
 
       # 1. Autoroute (toute NATURE)
       - match:
@@ -144,9 +143,8 @@ rulesets:
           EndLevel: "0"
 
   # ==========================================================================
-  # TRANSPORT — Voies ferrees (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_VOIE_FERREE
-  # 7 regles — POS_SOL="-1" en PREMIER (souterrain override toute NATURE)
+  # TRANSPORT — Voies ferrées (POLYLINE)
+  # 7 règles — POS_SOL="-1" en premier (souterrain override toute NATURE)
   # ==========================================================================
   - name: "Voies ferrees"
     source_layer: "TRONCON_DE_VOIE_FERREE"
@@ -215,9 +213,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # TRANSPORT — Pistes d'aerodrome (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
-  # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
+  # TRANSPORT — Pistes d'aérodrome (POLYLINE)
+  # 2 règles — pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Pistes aerodrome"
     source_layer: "PISTE_D_AERODROME"
@@ -240,9 +237,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # TRANSPORT — Transport par cable (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRANSPORT_PAR_CABLE
-  # 1 regle statique (wildcard)
+  # TRANSPORT — Transport par câble (POLYLINE)
+  # 1 règle statique (wildcard)
   # ==========================================================================
   - name: "Transport par cable"
     source_layer: "TRANSPORT_PAR_CABLE"
@@ -258,8 +254,7 @@ rulesets:
 
   # ==========================================================================
   # ADMINISTRATIF — Communes (POLYGON)
-  # Source FME : 01-COMMUNE-ZONEURBA.fmw
-  # 1 regle wildcard avec attributs speciaux CountryName, CityName, Zip
+  # 1 règle wildcard — attributs CountryName, CityName, Zip
   # ==========================================================================
   - name: "Communes"
     source_layer: "COMMUNE"
@@ -278,10 +273,8 @@ rulesets:
 
   # ==========================================================================
   # ADMINISTRATIF — Zones d'habitation (POLYGON)
-  # Source FME : 01-COMMUNE-ZONEURBA.fmw / Tester-ZONEHABITATION
-  # Filtre : IMPORTANCE in {1,2,3}
-  #           AND NATURE = "Lieu-dit habité"
-  #           AND NOT TOPONYME commence par "Commune d" (insensible casse)
+  # Filtre : IMPORTANCE in {1,2,3}, NATURE = "Lieu-dit habité",
+  #          TOPONYME ne commence pas par "Commune d" (insensible à la casse)
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
@@ -298,9 +291,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Troncons hydrographiques (POLYLINE)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 2 regles — Intermittent en premier, puis catch-all (Permanent, Inconnue, vide)
+  # HYDROGRAPHIE — Tronçons hydrographiques (POLYLINE)
+  # 2 règles — Intermittent en premier, puis catch-all
   # ==========================================================================
   - name: "Troncons hydrographiques"
     source_layer: "TRONCON_HYDROGRAPHIQUE"
@@ -324,8 +316,7 @@ rulesets:
 
   # ==========================================================================
   # HYDROGRAPHIE — Surfaces hydrographiques (POLYGON)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 4 regles — NATURE="Glacier, neve" en PREMIER (override PERSISTANC)
+  # 4 règles — Glacier/névé en premier (override PERSISTANC)
   # ==========================================================================
   - name: "Surfaces hydrographiques"
     source_layer: "SURFACE_HYDROGRAPHIQUE"
@@ -364,9 +355,8 @@ rulesets:
           Label: "${NOM_P_EAU}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Details hydrographiques (POI)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 13 regles — 12 NATURE explicites + catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence)
+  # HYDROGRAPHIE — Détails hydrographiques (POI)
+  # 13 règles — 12 NATURE explicites + catch-all
   # ==========================================================================
   - name: "Details hydrographiques"
     source_layer: "DETAIL_HYDROGRAPHIQUE"
@@ -477,10 +467,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # BATI — Batiments (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager BATIMENT
-  # 12 regles NATURE + catch-all 0x1101c (Indifferenciee)
-  # Label : Pas de Label (FME supprime TOPONYME via AttributeKeeper)
+  # BATI — Bâtiments (POLYGON)
+  # 12 règles NATURE + catch-all 0x1101c (Indifférenciée). Pas de Label.
   # ==========================================================================
   - name: "Batiments"
     source_layer: "BATIMENT"
@@ -577,10 +565,8 @@ rulesets:
           EndLevel: "0"
 
   # ==========================================================================
-  # BATI — Cimetieres (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager CIMETIERE
-  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : Pas de Label (FME : AttributeKeeper ne garde que NATURE)
+  # BATI — Cimetières (POLYGON)
+  # 3 règles NATURE, pas de catch-all. Pas de Label.
   # ==========================================================================
   - name: "Cimetieres"
     source_layer: "CIMETIERE"
@@ -607,10 +593,8 @@ rulesets:
           EndLevel: "2"
 
   # ==========================================================================
-  # BATI — Constructions lineaires (POLYLINE)
-  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_LINEAIRE
-  # 11 regles NATURE + catch-all 0x10c04
-  # Label : ${TOPONYME} (FME renomme TOPONYME→NAME)
+  # BATI — Constructions linéaires (POLYLINE)
+  # 11 règles NATURE + catch-all 0x10c04
   # ==========================================================================
   - name: "Constructions lineaires"
     source_layer: "CONSTRUCTION_LINEAIRE"
@@ -714,9 +698,7 @@ rulesets:
 
   # ==========================================================================
   # BATI — Constructions ponctuelles (POI)
-  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_PONCTUELLE
-  # 12 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : ${TOPONYME} (FME : fallback NAT_DETAIL/NATURE non reproductible)
+  # 12 règles NATURE, pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Constructions ponctuelles"
     source_layer: "CONSTRUCTION_PONCTUELLE"
@@ -819,10 +801,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # BATI — Pylones (POI)
-  # Source FME : 06-BATI.fmw / AttributeCreator PYLONE (statique)
-  # 1 regle wildcard — Type 0x11503 (ECART avec doc : doc dit 0x11500)
-  # Label : Pas de Label (pas de champ NAME dans FME)
+  # BATI — Pylônes (POI)
+  # 1 règle wildcard — Type 0x11503. Pas de Label.
   # ==========================================================================
   - name: "Pylones"
     source_layer: "PYLONE"
@@ -836,9 +816,7 @@ rulesets:
 
   # ==========================================================================
   # BATI — Terrains de sport (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager TERRAIN_DE_SPORT
-  # 5 regles NATURE + catch-all 0x1090d, EndLevel variable (2 ou 4)
-  # Label : ${NAT_DETAIL} (FME renomme NAT_DETAIL→NAME)
+  # 5 règles NATURE + catch-all 0x1090d
   # ==========================================================================
   - name: "Terrains de sport"
     source_layer: "TERRAIN_DE_SPORT"
@@ -894,9 +872,7 @@ rulesets:
 
   # ==========================================================================
   # OROGRAPHIE — Lignes orographiques (POLYLINE)
-  # Source FME : 06-BATI.fmw / AttributeManager LIGNE_OROGRAPHIQUE
-  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : ${NATURE} (FME renomme NATURE→NAME)
+  # 3 règles NATURE, pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Lignes orographiques"
     source_layer: "LIGNE_OROGRAPHIQUE"
@@ -927,10 +903,8 @@ rulesets:
           Label: "${NATURE}"
 
   # ==========================================================================
-  # VEGETATION — Zones de vegetation (POLYGON)
-  # Source FME : 05-VEGETATION.fmw / AttributeManager ZONE_DE_VEGETATION
-  # 10 regles NATURE + catch-all 0x11005, EndLevel variable (4 ou 6)
-  # Labels : raccourcis FME (pas le NATURE brut), certains sans Label
+  # VÉGÉTATION — Zones de végétation (POLYGON)
+  # 10 règles NATURE + catch-all. Labels raccourcis, certains sans Label.
   # ==========================================================================
   - name: "Zones de vegetation"
     source_layer: "ZONE_DE_VEGETATION"
@@ -1020,10 +994,8 @@ rulesets:
           EndLevel: "2"
 
   # ==========================================================================
-  # SERVICES — Zones d'activite ou d'interet (POLYGON)
-  # Source FME : 03-SERVICES-ACTIVITES.fmw
-  # 1 regle wildcard — Type=0x0c, EndLevel=4, Label=${TOPONYME}
-  # ECART FME : EndLevel=4 (MPBITLEVEL=20), PAS 2 comme doc pipeline
+  # SERVICES — Zones d'activité ou d'intérêt (POLYGON)
+  # 1 règle wildcard
   # ==========================================================================
   - name: "Zones d'activite"
     source_layer: "ZONE_D_ACTIVITE_OU_D_INTERET"
@@ -1038,10 +1010,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # SERVICES — Lignes electriques (POLYLINE)
-  # Source FME : 03-SERVICES-ACTIVITES.fmw
-  # 1 regle wildcard — Type=0x29, EndLevel=2, Label="Ligne ${VOLTAGE}"
-  # Label : concatenation "Ligne " + VOLTAGE
+  # SERVICES — Lignes électriques (POLYLINE)
+  # 1 règle wildcard — Label "Ligne ${VOLTAGE}"
   # ==========================================================================
   - name: "Lignes electriques"
     source_layer: "LIGNE_ELECTRIQUE"
@@ -1056,9 +1026,8 @@ rulesets:
           Label: "Ligne ${VOLTAGE}"
 
   # ==========================================================================
-  # ZONES REGLEMENTEES — Forets publiques (POLYGON)
-  # Source FME : 02-ZONES-REGLEMENTEES.fmw
-  # 1 regle wildcard — Type=0x10a03, EndLevel=3, Label=${TOPONYME}
+  # ZONES RÉGLEMENTÉES — Forêts publiques (POLYGON)
+  # 1 règle wildcard
   # ==========================================================================
   - name: "Forets publiques"
     source_layer: "FORET_PUBLIQUE"
@@ -1074,21 +1043,15 @@ rulesets:
 
   # ==========================================================================
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
-  # Source FME : 08-TOPONYMIE.fmw
-  # Input BDTOPO : Couche unique TOPONYMIE, champs CLASSE, NATURE, GRAPHIE
-  # 10 categories CLASSE actives, 11 desactivees (doublons avec autres couches)
-  # Conditions AND : CLASSE + NATURE (chaque regle doit avoir les deux)
-  # Label source : GRAPHIE (FME renomme GRAPHIE→NAME)
-  # EndLevel : 2 pour toutes les regles, MPBITLEVEL=22
-  # Total : 162 regles actives (+ 11 categories commentees en fin de bloc)
+  # Champs : CLASSE, NATURE, GRAPHIE. Chaque règle combine CLASSE + NATURE.
+  # 10 catégories actives, 11 désactivées (doublons). 162 règles actives.
   # ==========================================================================
   - name: "Toponymie"
     source_layer: "TOPONYMIE"
     label_case: "title"
     rules:
       # ------------------------------------------------------------------
-      # Categorie 1 : Aerodrome (3 NATURE + catch-all 0x02d0b)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Aerodrome"
+      # Catégorie 1 : Aérodrome (3 NATURE + catch-all)
       # ------------------------------------------------------------------
 
       # 1. Aerodrome
@@ -1128,9 +1091,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 2 : Cimetiere (simplifie en 1 regle wildcard)
-      # FME: 3 NATURE + catch-all, toutes mappent a 0x06403
-      # Optimisation : 1 seule regle CLASSE="Cimetiere" + NATURE="*"
+      # Catégorie 2 : Cimetière (1 règle wildcard — toutes NATURE → 0x06403)
       # ------------------------------------------------------------------
 
       # 5. Cimetiere (toute NATURE → 0x06403)
@@ -1143,8 +1104,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 3 : Construction lineaire (8 NATURE + catch-all 0x06402)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction lineaire"
+      # Catégorie 3 : Construction linéaire (8 NATURE + catch-all 0x06402)
       # ------------------------------------------------------------------
 
       # 6. Barrage
@@ -1229,8 +1189,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 4 : Construction ponctuelle (5 NATURE + catch-all 0x10101)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction ponctuelle"
+      # Catégorie 4 : Construction ponctuelle (5 NATURE + catch-all 0x10101)
       # ------------------------------------------------------------------
 
       # 15. Autre construction elevee
@@ -1288,8 +1247,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 5 : Construction surfacique (4 NATURE + catch-all 0x06401)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction surfacique"
+      # Catégorie 5 : Construction surfacique (4 NATURE + catch-all 0x06401)
       # ------------------------------------------------------------------
 
       # 21. Barrage
@@ -1338,8 +1296,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 6 : Detail orographique (23 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_ (feature ignoree si NATURE non reconnue)
+      # Catégorie 6 : Détail orographique (23 NATURE, sans catch-all)
       # ------------------------------------------------------------------
 
       # 26. Cap
@@ -1550,8 +1507,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 7 : Foret publique (1 regle statique, pas de condition NATURE)
-      # FME: NATURE MP_TYPE 0x0660a RENAME_SET_VALUE (SET fixe)
+      # Catégorie 7 : Forêt publique (1 règle wildcard NATURE → 0x0660a)
       # ------------------------------------------------------------------
 
       # 49. Foret publique (wildcard NATURE)
@@ -1564,8 +1520,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 8 : Lieu-dit non habite (4 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_
+      # Catégorie 8 : Lieu-dit non habité (4 NATURE, sans catch-all)
       # ------------------------------------------------------------------
 
       # 50. Arbre
@@ -1605,9 +1560,8 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 9 : Zone d'activite ou d'interet (102 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_
-      # Site skiable : FME_NULL_VALUE → exclu (pas de regle)
+      # Catégorie 9 : Zone d'activité ou d'intérêt (102 NATURE, sans catch-all)
+      # Site skiable : exclu (pas de règle — NATURE sans équivalent Garmin)
       # ------------------------------------------------------------------
 
       # 54. Abri de montagne
@@ -2529,8 +2483,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 10 : Zone d'habitation (6 NATURE + catch-all 0x00d00)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Zone d'habitation"
+      # Catégorie 10 : Zone d'habitation (6 NATURE + catch-all 0x00d00)
       # ------------------------------------------------------------------
 
       # 156. Chateau
@@ -2856,8 +2809,7 @@ rulesets:
 
   # ==========================================================================
   # OSM — Amenity POIs (bar, restaurant, pharmacie, parking, etc.)
-  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
-  # 24 types amenity mappés depuis le job FME de référence
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points" (24 types)
   # Opérateur in: pour regrouper les types partageant le même code Garmin
   # ==========================================================================
   - name: "OSM Amenity POIs"
@@ -3028,10 +2980,8 @@ rulesets:
 
   # ==========================================================================
   # OSM — Shop POIs (boulangeries, supermarchés, coiffeurs, etc.)
-  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
-  # 53 types shop mappés depuis le job FME de référence
-  # Les types partageant le code 0x1500e (cheese, e-cigarette, etc.) sont
-  # capturés par la règle default wildcard en fin de ruleset
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points" (53 types)
+  # Les types partageant 0x1500e sont capturés par le wildcard en fin de ruleset
   # ==========================================================================
   - name: "OSM Shop POIs"
     source_layer: "osm_shop"
@@ -3324,10 +3274,9 @@ rulesets:
           EndLevel: "0"
           Label: "${name}"
 
-      # Default (0x1500e) — capte les 6 types FME explicitement mappés à ce code
-      # (cheese, e-cigarette, funeral_directors, hearing_aids, tattoo, yes)
-      # ainsi que tout type shop non listé ci-dessus.
-      # Pour ajouter un type shop dédié, insérer une règle AVANT ce wildcard.
+      # Default (0x1500e) — catch-all pour tout type shop non listé ci-dessus
+      # (cheese, e-cigarette, funeral_directors, hearing_aids, tattoo, yes…).
+      # Pour ajouter un type dédié, insérer la règle AVANT ce wildcard.
       - match:
           shop: "*"
         set:
