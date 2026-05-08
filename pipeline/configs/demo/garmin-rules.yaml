@@ -41,8 +41,10 @@ rulesets:
           Type: "0x16"
           EndLevel: "0"
 
-      # 5. Défaut — toutes autres routes (pas de match = règle catch-all)
-      - set:
+      # 5. Défaut — toutes autres routes (catch-all)
+      - match:
+          CL_ADMIN: "*"
+        set:
           Type: "0x06"
           EndLevel: "2"
 
@@ -59,8 +61,10 @@ rulesets:
           EndLevel: "4"
           Label: "${NOM_C_EAU}"
 
-      # Défaut — cours d'eau intermittent
-      - set:
+      # Défaut — cours d'eau intermittent (catch-all)
+      - match:
+          PERSISTANCE: "*"
+        set:
           Type: "0x26"
           EndLevel: "2"
 
@@ -82,8 +86,10 @@ rulesets:
           Type: "0x0c"
           EndLevel: "2"
 
-      # Défaut — bâtiment générique
-      - set:
+      # Défaut — bâtiment générique (catch-all)
+      - match:
+          USAGE1: "*"
+        set:
           Type: "0x13"
           EndLevel: "0"
 
