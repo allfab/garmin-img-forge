@@ -1,17 +1,18 @@
 version: 1
 
-grid:
-  # 0.225 = ~25 km par tuile (plus de détails, mais plus de tuiles et de temps de traitement)
-  cell_size: 0.225
-  # 0.005 = ~500 m de recouvrement entre les tuiles (pour éviter les artefacts de bordure)
-  overlap: 0.005
+# Catalogue de profils de simplification multi-niveaux pour les données IGN BDTOPO.
+generalize_profiles_path: "./generalize-profiles.yaml"
 
-# Règles de transformation IGN-BDTOPO  types Garmin
-rules: ./pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml
+# BDTOPO livre parfois chaque feature en double — dedup_by_field: ID dédoublonne
+# sur le CLEABS IGN (DBF/SHP tronque "cleabs" → "ID" à la livraison).
+
+grid:
+  cell_size: 0.225      # 0.225 = ~25 km par tuile
+  overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
 
 inputs:
   # ==========================================================================
-  # TRANSPORT
+  # TRANSPORT (4 couches)
   # ==========================================================================
 
   # Routes (couche principale — la plus volumineuse)
@@ -20,8 +21,26 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Voies ferrées
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Pistes d'aérodrome
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/PISTE_D_AERODROME.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Transport par câble (téléphériques, télésièges)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches — FME 01-TRANSPORT chef-lieu)
+  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches)
   # ==========================================================================
 
   # Communes (POI chef-lieu + polygone limites)
@@ -37,7 +56,7 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
+  # HYDROGRAPHIE (3 couches)
   # ==========================================================================
 
   # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
@@ -46,8 +65,20 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Détails hydrographiques (POI : sources, cascades, etc.)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
+  # BATI (7 couches)
   # ==========================================================================
 
   # Bâtiments (polygon — couche volumineuse)
@@ -62,8 +93,38 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Constructions linéaires (murs, digues)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/CONSTRUCTION_LINEAIRE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Constructions ponctuelles (châteaux d'eau, monuments)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/CONSTRUCTION_PONCTUELLE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Pylônes (POI)
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/PYLONE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Terrains de sport
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/TERRAIN_DE_SPORT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Lignes orographiques
+  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/LIGNE_OROGRAPHIQUE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # VEGETATION (1 couche — FME 05-VEGETATION)
+  # VEGETATION (1 couche)
   # ==========================================================================
 
   # Zones de végétation (forêts, haies — couche volumineuse)
@@ -73,7 +134,7 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # ZONES RÉGLEMENTÉES (1 couche — FME 02-ZONES_REG)
+  # ZONES RÉGLEMENTÉES (1 couche)
   # ==========================================================================
 
   # Forêts publiques (ONF)
@@ -83,7 +144,7 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
+  # TOPONYMIE (1 couche)
   # ==========================================================================
 
   # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
@@ -99,18 +160,15 @@ inputs:
   - path: "./pipeline/data/contours/D038/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
-    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10" EnterUBLIQUE.shp `
-    so    layer_alias: "COURBE"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
+    layer_alias: "COURBE"
     spatial_filter:
       source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500 # mètres, dans le SRS source (EPSG:2154)
+      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # ==========================================================================
-  # OSM — POIs et features naturelles (Geofabrik PBF  GPKG)
-  # Les PBF sont pré-convertis en GPKG par le script download-data.sh
-  # (option --with-osm).
-  # Le chemin glob intègre automatiquement tous les GPKG du sous-dossier gpkg/.
-  # Le spatial_filter restreint les features à l'emprise communale + buffer.
+  # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
+  # PBF pré-convertis en GPKG par download-data.sh (--with-osm).
   # ==========================================================================
 
   # --- Amenity POIs (restaurants, pharmacies, parking, etc.) ---
@@ -120,39 +178,23 @@ inputs:
       source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
-  # --- Shop POIs (boulangeries, supermarchés, etc.) ---
-  - path: "/pipeline/data/osm/gpkg/*-shop-points.gpkg"
-    layer_alias: "osm_shop"
-    spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
-
-  # --- Natural features linéaires (arêtes, crêtes, falaises) ---
-  - path: "/pipeline/data/osm/gpkg/*-natural-lines.gpkg"
-    layer_alias: "osm_natural_lines"
-    spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
-
   # --- Natural features ponctuelles (grottes, rochers, dolines) ---
-  - path: "/pipeline/data/osm/gpkg/*-natural-points.gpkg"
+  - path: "./pipeline/data/osm/gpkg/*-natural-points.gpkg"
     layer_alias: "osm_natural_points"
     spatial_filter:
       source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Tourism viewpoints ---
-  - path: "/pipeline/data/osm/gpkg/*-tourism-points.gpkg"
+  - path: "./pipeline/data/osm/gpkg/*-tourism-points.gpkg"
     layer_alias: "osm_tourism"
     spatial_filter:
       source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # ==========================================================================
-  # CADASTRE — Piscines privées (SYM=65, TSURF_id)
-  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
-  # Construit par : ./scripts/download-data.sh --with-pools (ou --with-cadastre)
-  # Déjà en EPSG:4326 — pas de reprojection. Filtre attributaire : SYM='65'
+  # CADASTRE — Piscines privées (SYM=65)
+  # Données produites par download-data.sh (--with-pools). Déjà en EPSG:4326.
   # ==========================================================================
   - path: "./pipeline/data/cadastre/D038/gpkg/TSURF_id.gpkg"
     layer_alias: "TSURF_id"
@@ -160,8 +202,7 @@ inputs:
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Déjà en EPSG:4326 — pas de reprojection nécessaire
-  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # Shapefile EPSG:4326 — clippé à l'emprise communale + buffer.
   # ==========================================================================
   - path: "./pipeline/data/hiking-trails/MON_GR_ITINERAIRE_ME.shp"
     layer_alias: "MON_GR_ITINERAIRE_ME"
@@ -173,8 +214,7 @@ output:
   directory: "./pipeline/output/ign-bdtopo/2026/v2026.03/D038/mp/"
   filename_pattern: "BDTOPO-{col:03}-{row:03}.mp"
   overwrite: true
-  # Auto-génère des IDs uniques par tuile : ex. 00380001, 00380002, etc.
-  base_id: 38
+  base_id: 38  # Auto-génère des IDs uniques par tuile : ex. 00380001, 00380002, etc.
 
 # Header MP — métadonnées écrites dans chaque tuile .mp
 # Le champ 'name' supporte les variables {col}, {row} (0-based), {seq} (1-based)
@@ -200,10 +240,9 @@ header:
   routing: "Y"
   elevation: "M"
 
-# Catalogue de profils de simplification multi-niveaux pour les données IGN BDTOPO.
-generalize_profiles_path: "./generalize-profiles.yaml"
+# Règles de transformation BDTOPO → types Garmin
+rules: ./garmin-rules.yaml
 
-# Gestion des erreurs lors de la conversion en Polish Map Format
 error_handling: "continue"
 
 # =============================================================================
@@ -212,4 +251,3 @@ error_handling: "continue"
 # Filtre bbox (WGS84) — exemple pour l'Isère :
 # filters:
 #   bbox: [5.0, 44.6, 6.4, 45.9]
-

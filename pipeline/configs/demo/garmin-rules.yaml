@@ -1,0 +1,115 @@
+# Règles de transformation BDTOPO → Polish Map (démo)
+version: 1
+
+rulesets:
+  # ==========================================================================
+  # TRANSPORT — Tronçons de route (POLYLINE)
+  # match: champ/valeur — préfixe ! pour la négation
+  # set:  Type Garmin, EndLevel (0=max détail, 6=vue large), Label optionnel
+  # ==========================================================================
+  - name: "Routes"
+    source_layer: "TRONCON_DE_ROUTE"
+    rules:
+      # 1. Autoroute (toute NATURE)
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
+
+      # 2. Nationale (hors Rond-point) — préfixe ! = négation
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "!Rond-point"
+        set:
+          Type: "0x04"
+          EndLevel: "4"
+          Label: "~[0x05]${NUMERO}"
+
+      # 3. Chemin
+      - match:
+          CL_ADMIN: "Chemin"
+        set:
+          Type: "0x0a"
+          EndLevel: "1"
+
+      # 4. Sentier (niveau détail seulement)
+      - match:
+          CL_ADMIN: "Sentier"
+        set:
+          Type: "0x16"
+          EndLevel: "0"
+
+      # 5. Défaut — toutes autres routes (pas de match = règle catch-all)
+      - set:
+          Type: "0x06"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Tronçons (POLYLINE)
+  # ==========================================================================
+  - name: "Hydrographie linéaire"
+    source_layer: "TRONCON_HYDROGRAPHIQUE"
+    rules:
+      - match:
+          PERSISTANCE: "Permanent"
+        set:
+          Type: "0x1f"
+          EndLevel: "4"
+          Label: "${NOM_C_EAU}"
+
+      # Défaut — cours d'eau intermittent
+      - set:
+          Type: "0x26"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Bâtiments (POLYGON)
+  # ==========================================================================
+  - name: "Bâtiments"
+    source_layer: "BATIMENT"
+    rules:
+      - match:
+          USAGE1: "Religieux"
+        set:
+          Type: "0x6600"
+          EndLevel: "2"
+
+      - match:
+          USAGE1: "Industriel"
+        set:
+          Type: "0x0c"
+          EndLevel: "2"
+
+      # Défaut — bâtiment générique
+      - set:
+          Type: "0x13"
+          EndLevel: "0"
+
+  # ==========================================================================
+  # TOPONYMIE — Lieux nommés (POINT)
+  # ==========================================================================
+  - name: "Toponymie"
+    source_layer: "TOPONYMIE"
+    rules:
+      - match:
+          CLASSE: "Sommet"
+        set:
+          Type: "0x6616"
+          EndLevel: "5"
+          Label: "${NOM}"
+
+      - match:
+          CLASSE: "Lac ou plan d'eau"
+        set:
+          Type: "0x650a"
+          EndLevel: "4"
+          Label: "${NOM}"
+
+      - match:
+          CLASSE: "Forêt"
+        set:
+          Type: "0x6603"
+          EndLevel: "3"
+          Label: "${NOM}"

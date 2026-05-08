@@ -1,0 +1,155 @@
+# Profils de simplification — variante locale (départements, outre-mer).
+# Seul TRONCON_DE_ROUTE diffère du catalogue partagé : seuils simplify_vw
+# n=0..3 réduits ~50 % pour préserver virages et intersections au zoom élevé.
+
+profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_DE_VEGETATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_ROUTE:
+    # topology: true — vertices d'intersection ancrés (seul simplify_vw autorisé).
+    # Variante locale : n=0..3 réduits ~50 % vs catalogue partagé.
+    topology: true
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Nationale, "Nationale/Route nommée"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Départementale, "Départementale/Route nommée"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify_vw: 0.000001 }
+      - { n: 3, simplify_vw: 0.000002 }
+      - { n: 4, simplify_vw: 0.000010 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
+
+  COURBE:
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00006 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0}
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_VOIE_FERREE:
+    # EndLevel=4 pour tous les types (LGV, principale, service, tramway…).
+    # Paliers n=0..4 uniquement — imgforge ne rend pas au-delà de EndLevel.
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00005 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
+
+  COMMUNE:
+    # topology: true — frontières partagées entre communes (même shapefile BDTOPO).
+    # n=4..6 sans simplify_vw : le rounding shift=4/6/8 élimine les points
+    # redondants nativement. Appliquer VW avant rounding effondre les petites
+    # communes (< 0.01°) à ≤3 points identiques → polygone supprimé silencieusement
+    # → aplats ZONE_DE_VEGETATION visibles. Confirmé : 7/61 communes perdues sans
+    # cette protection, 0/61 avec.
+    topology: true
+    levels:
+      - { n: 0, simplify_vw: 0.00003 }
+      - { n: 1, simplify_vw: 0.00007 }
+      - { n: 2, simplify_vw: 0.00013 }
+      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
