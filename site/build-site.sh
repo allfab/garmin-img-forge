@@ -20,7 +20,7 @@ rm -rf "$SITE_DIR/_site/en"
 mkdir -p "$SITE_DIR/_site/en"
 cp -r "$SITE_DIR/_site-en/." "$SITE_DIR/_site/en/"
 
-# --- Assets partagés (CSS, JS, images) : symlink depuis le build FR ---
+# --- Assets partagés (CSS, JS, images) : copie depuis le build FR ---
 echo "==> Copie assets partagés FR → _site/en/..."
 for dir in stylesheets javascripts assets; do
     if [[ -d "$SITE_DIR/_site/$dir" ]]; then
@@ -28,6 +28,10 @@ for dir in stylesheets javascripts assets; do
         cp -r "$SITE_DIR/_site/$dir" "$SITE_DIR/_site/en/$dir"
     fi
 done
+
+# --- Re-application des assets EN spécifiques par-dessus les assets FR ---
+echo "==> Re-application assets EN spécifiques → _site/en/assets/..."
+cp -r "$SITE_DIR/_site-en/assets/." "$SITE_DIR/_site/en/assets/"
 
 echo ""
 echo "Site bilingue disponible dans _site/"
