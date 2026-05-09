@@ -69,53 +69,63 @@ rulesets:
           EndLevel: "2"
 
   # ==========================================================================
-  # BATI — Bâtiments (POLYGON)
+  # ADMINISTRATIF — Communes (POLYGON)
   # ==========================================================================
-  - name: "Bâtiments"
-    source_layer: "BATIMENT"
+  - name: "Communes"
+    source_layer: "COMMUNE"
+    label_case: "title"
     rules:
       - match:
-          USAGE1: "Religieux"
+          NOM: "*"
         set:
-          Type: "0x6600"
-          EndLevel: "2"
-
-      - match:
-          USAGE1: "Industriel"
-        set:
-          Type: "0x0c"
-          EndLevel: "2"
-
-      # Défaut — bâtiment générique (catch-all)
-      - match:
-          USAGE1: "*"
-        set:
-          Type: "0x13"
-          EndLevel: "0"
+          Type: "0x54"
+          EndLevel: "6"
+          Label: "${NOM}"
+          CountryName: "France~[0x1d]FRA"
+          CityName: "${NOM}"
+          Zip: "${CODE_POST}"
 
   # ==========================================================================
-  # TOPONYMIE — Lieux nommés (POINT)
+  # OCCUPATION DU SOL — Végétation (POLYGON)
   # ==========================================================================
-  - name: "Toponymie"
-    source_layer: "TOPONYMIE"
+  - name: "Zones de végétation"
+    source_layer: "ZONE_DE_VEGETATION"
+    label_case: "title"
     rules:
+      # 1. Bois
       - match:
-          CLASSE: "Sommet"
+          NATURE: "Bois"
         set:
-          Type: "0x6616"
-          EndLevel: "5"
-          Label: "${NOM}"
-
-      - match:
-          CLASSE: "Lac ou plan d'eau"
-        set:
-          Type: "0x650a"
-          EndLevel: "4"
-          Label: "${NOM}"
-
-      - match:
-          CLASSE: "Forêt"
-        set:
-          Type: "0x6603"
+          Type: "0x11005"
           EndLevel: "3"
-          Label: "${NOM}"
+          Label: "Bois"
+
+      # 2. Forêt fermée de conifères
+      - match:
+          NATURE: "Forêt fermée de conifères"
+        set:
+          Type: "0x10f1f"
+          EndLevel: "3"
+          Label: "Forêt de conifères"
+
+      # 3. Forêt fermée de feuillus
+      - match:
+          NATURE: "Forêt fermée de feuillus"
+        set:
+          Type: "0x10f1e"
+          EndLevel: "3"
+          Label: "Forêt de feuillus"
+
+      # 4. Forêt fermée mixte
+      - match:
+          NATURE: "Forêt fermée mixte"
+        set:
+          Type: "0x4e"
+          EndLevel: "3"
+
+      # 5. Défaut — toute autre végétation (catch-all)
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11005"
+          EndLevel: "2"
