@@ -1,0 +1,539 @@
+# Garmin Types — Complete BD TOPO Reference
+
+Type codes (`Type=0xNNNN`) determine how each object is rendered on Garmin devices. This page documents all types used in the BD TOPO → Garmin IMG mapping.
+
+Codes `0x0001`–`0x00FF` are standard Garmin types. Codes `0x10000`–`0x1FFFF` are custom types that require a TYP file (`.typ`) to define their visual rendering.
+
+---
+
+## Administrative
+
+### Communes
+
+| Source | BD TOPO field | Value | Type | EndLevel |
+|--------|--------------|-------|------|----------|
+| COMMUNE.shp | — | (all) | `0x54` | 7 |
+
+Additional attributes: `Country="France~[0x1d]FRA"`, `CityName` from NOM, `Zip` from CODE_POST.
+
+### Inhabited areas
+
+| Source | BD TOPO field | NATURE value | Type | EndLevel |
+|--------|--------------|-------------|------|----------|
+| ZONE_D_HABITATION.shp | NATURE | Château | `0x10f0a` | 4 |
+| | | Grange | `0x03` | 4 |
+| | | Lieu-dit habité | `0x03` | 4 |
+| | | Moulin | `0x03` | 4 |
+| | | Quartier | `0x03` | 4 |
+| | | Ruines | `0x03` | 4 |
+
+---
+
+## Transport
+
+### Roads
+
+| CL_ADMIN | NATURE | Type | EndLevel | Label |
+|----------|--------|------|----------|-------|
+| Autoroute | * | `0x01` | 7 | `${NUMERO}` |
+| Nationale | != Rond-point | `0x04` | 7 | `${NUMERO}` |
+| Nationale | Rond-point | `0x04` | 7 | — |
+| Départementale | != Rond-point | `0x05` | 7 | `${NUMERO}` |
+| Départementale | Rond-point | `0x04` | 7 | — |
+| Route intercommunale | * | `0x05` | 7 | `${NUMERO}` |
+| * | Route à 1 chaussée | `0x06` | 2 | — |
+| * | Route à 2 chaussées | `0x06` | 2 | — |
+| * | Rond-point (no CL_ADMIN) | `0x06` | 2 | — |
+| * | Route empierrée | `0x07` | 1 | — |
+| * | Bretelle | `0x09` | 7 | — |
+| * | Chemin | `0x0a` | 1 | — |
+| * | Escalier | `0x0f` | 1 | — |
+| * | Piste cyclable | `0x0e` | 1 | — |
+| * | Sentier | `0x10` | 1 | — |
+| * | Type autoroutier | `0x09` | 7 | — |
+| * | Bac ou liaison maritime | `0x1b` | 1 | — |
+
+**EndLevel → MPBITLEVEL correspondence:**
+
+| EndLevel | MPBITLEVEL | Used for |
+|----------|-----------|----------|
+| 7 | 17 | Motorways, national roads, department roads |
+| 2 | 22 | Communal roads |
+| 1 | 23 | Paths, trails, cycle paths |
+
+### Railways
+
+| NATURE | POS_SOL | Type | EndLevel |
+|--------|---------|------|----------|
+| Voie ferrée principale | != -1 | `0x10c00` | 5 |
+| LGV | != -1 | `0x10e02` | 5 |
+| Voie de service | != -1 | `0x10e03` | 5 |
+| Tramway | != -1 | `0x10e04` | 5 |
+| Funiculaire ou crémaillère | != -1 | `0x10e05` | 5 |
+| Sans objet | != -1 | `0x10c00` | 5 |
+| * (underground) | -1 | `0x10e06` | 5 |
+
+Label: `${TOPONYME}`
+
+### Aerodromes and cables
+
+**Lines / Polygons:**
+
+| Source | NATURE | Type | EndLevel |
+|--------|--------|------|----------|
+| PISTE_D_AERODROME | Piste en dur | `0x1090b` | 4 |
+| PISTE_D_AERODROME | Piste en herbe | `0x10f17` | 4 |
+| TRANSPORT_PAR_CABLE | * | `0x10f0b` | 2 |
+
+**Aerodrome POI:**
+
+| NATURE (AERODROME) | Type | EndLevel |
+|--------------------|------|----------|
+| Aérodrome | `0x02d0b` | 2 |
+| Altiport | `0x15500` | 2 |
+| Héliport | `0x15500` | 2 |
+
+**Cable transport POI:**
+
+| NATURE (TRANSPORT_PAR_CABLE) | Type | EndLevel |
+|------------------------------|------|----------|
+| Télécabine, téléphérique | `0x15501` | 2 |
+| Télésiège | `0x15501` | 2 |
+| Téléski | `0x15501` | 2 |
+
+### Transport equipment (POI)
+
+| NATURE (EQUIPEMENT_DE_TRANSPORT) | Type | EndLevel |
+|----------------------------------|------|----------|
+| Carrefour | `0x06406` | 2 |
+| Parking | `0x1100b` | 2 |
+| Port | `0x06401` | 2 |
+| Station de métro | `0x02f08` | 2 |
+| Station de tramway | `0x02f08` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Hydrography
+
+### Watercourses (lines)
+
+| NATURE (TRONCON_HYDROGRAPHIQUE) | PERSISTANC | Type | EndLevel |
+|---------------------------------|-----------|------|----------|
+| Cours d'eau | Permanent | `0x18` | 2 |
+| Cours d'eau | Intermittent | `0x26` | 2 |
+| Ruisseau | * | `0x18` | 2 |
+| Canal | * | `0x18` | 2 |
+
+Label: `${TOPONYME}`
+
+### Hydrographic surfaces
+
+| NATURE (SURFACE_HYDROGRAPHIQUE) | Type | EndLevel |
+|---------------------------------|------|----------|
+| Eau libre (large surface) | `0x3c` | 5 |
+| Eau libre (medium surface) | `0x3f` | 4 |
+| Eau libre (small surface) | `0x41` | 2 |
+| Glacier, névé | `0x4d` | 4 |
+| Marais | `0x10c04` | 2 |
+| Lac intermittent | `0x4c` | 2 |
+
+Note: lake size classification (`0x3c` → `0x41`) depends on the geometric surface of the polygon.
+
+### Hydrographic details (POI)
+
+| NATURE (DETAIL_HYDROGRAPHIQUE) | Type | EndLevel |
+|-------------------------------|------|----------|
+| Arroyo | `0x06501` | 2 |
+| Baie | `0x06503` | 2 |
+| Cascade | `0x06508` | 2 |
+| Citerne | `0x06414` | 2 |
+| Crique | `0x06507` | 2 |
+| Fontaine | `0x06509` | 2 |
+| Glacier | `0x0650a` | 2 |
+| Lac | `0x0650d` | 2 |
+| Lavoir | `0x06414` | 2 |
+| Marais | `0x06513` | 2 |
+| Mer | `0x06510` | 2 |
+| Perte | `0x06414` | 2 |
+| Point d'eau | `0x06414` | 2 |
+| Embouchure | `0x06414` | 2 |
+| Réservoir | `0x0650f` | 2 |
+| Résurgence | `0x06414` | 2 |
+| Source | `0x06511` | 2 |
+| Source captée | `0x06511` | 2 |
+
+Label: `${TOPONYME}`
+
+### Water body (POI)
+
+| NATURE (PLAN_D_EAU) | Type | EndLevel |
+|----------------------|------|----------|
+| Canal | `0x06506` | 2 |
+| Ecoulement naturel | `0x06414` | 2 |
+| Glacier, névé | `0x0650a` | 2 |
+| Lac | `0x0650d` | 2 |
+| Marais | `0x06513` | 2 |
+| Mare | `0x06513` | 2 |
+| Plan d'eau de gravière | `0x06414` | 2 |
+| Réservoir-bassin | `0x0650f` | 2 |
+| Réservoir-bassin piscicole | `0x0650f` | 2 |
+| Retenue | `0x0650f` | 2 |
+| Retenue-barrage | `0x0650f` | 2 |
+| Retenue-bassin portuaire | `0x0650f` | 2 |
+| Retenue-digue | `0x0650f` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Vegetation
+
+| NATURE (ZONE_DE_VEGETATION) | Type | EndLevel | Label |
+|----------------------------|------|----------|-------|
+| Bois | `0x11005` | 6 | Bois |
+| Forêt fermée de conifères | `0x10f1f` | 6 | Conifer forest |
+| Forêt fermée de feuillus | `0x10f1e` | 6 | Deciduous forest |
+| Forêt fermée mixte | `0x4e` | 6 | — |
+| Forêt ouverte | `0x11000` | 6 | — |
+| Haie | `0x11002` | 4 | — |
+| Lande ligneuse | `0x11003` | 4 | — |
+| Peupleraie | `0x11001` | 4 | Peupleraie |
+| Verger | `0x11004` | 4 | Verger |
+| Vigne | `0x11004` | 4 | Vigne |
+
+---
+
+## Activity zones
+
+**Polygon:**
+
+| Source | Type | EndLevel |
+|--------|------|----------|
+| ZONE_D_ACTIVITE_OU_D_INTERET | `0x0c` | 2 |
+
+**Activity or interest zone POI:**
+
+| NATURE (ZONE_D_ACTIVITE_OU_D_INTERET) | Type | EndLevel |
+|----------------------------------------|------|----------|
+| Abri de montagne | `0x02b04` | 2 |
+| Administration centrale de l'Etat | `0x03007` | 2 |
+| Aire d'accueil des gens du voyage | `0x02f0c` | 2 |
+| Aire de détente | `0x02c04` | 2 |
+| Aquaculture | `0x02900` | 2 |
+| Autre équipement sportif | `0x11601` | 2 |
+| Autre établissement d'enseignement | `0x02c05` | 2 |
+| Autre service déconcentré de l'Etat | `0x03007` | 2 |
+| Baignade surveillée | `0x1151f` | 2 |
+| Borne | `0x0660f` | 2 |
+| Borne frontière | `0x0660f` | 2 |
+| Camp militaire non clos | `0x0640b` | 2 |
+| Camping | `0x02b03` | 2 |
+| Capitainerie | `0x02f09` | 2 |
+| Carrière | `0x0640c` | 2 |
+| Caserne | `0x03008` | 2 |
+| Caserne de pompiers | `0x03008` | 2 |
+| Centrale électrique | `0x02900` | 2 |
+| Centre de documentation | `0x02c03` | 2 |
+| Centre équestre | `0x02d0a` | 2 |
+| Champ de tir | `0x0640b` | 2 |
+| Collège | `0x02c05` | 2 |
+| Complexe sportif couvert | `0x11601` | 2 |
+| Construction | `0x06402` | 2 |
+| Culte chrétien | `0x02c0e` | 2 |
+| Culte divers | `0x02c0b` | 2 |
+| Culte israélite | `0x02c10` | 2 |
+| Culte musulman | `0x02c0d` | 2 |
+| Déchèterie | `0x02900` | 2 |
+| Divers agricole | `0x1150e` | 2 |
+| Divers commercial | `0x02e04` | 2 |
+| Divers industriel | `0x02900` | 2 |
+| Divers public ou administratif | `0x03007` | 2 |
+| Ecomusée | `0x11600` | 2 |
+| Elevage | `0x02900` | 2 |
+| Enceinte militaire | `0x0640b` | 2 |
+| Enseignement primaire | `0x02c05` | 2 |
+| Enseignement supérieur | `0x02c05` | 2 |
+| Equipement de cyclisme | `0x1160a` | 2 |
+| Espace public | `0x1160d` | 2 |
+| Etablissement extraterritorial | `0x03007` | 2 |
+| Etablissement hospitalier | `0x03002` | 2 |
+| Etablissement pénitentiaire | `0x02900` | 2 |
+| Etablissement thermal | `0x02900` | 2 |
+| Gendarmerie | `0x03001` | 2 |
+| Golf | `0x02d05` | 2 |
+| Habitation troglodytique | `0x11509` | 2 |
+| Haras | `0x02d0a` | 2 |
+| Hébergement de loisirs | `0x02b04` | 2 |
+| Hippodrome | `0x02c08` | 2 |
+| Hôpital | `0x03002` | 2 |
+| Hôtel de département | `0x03003` | 2 |
+| Hôtel de région | `0x03003` | 2 |
+| Lycée | `0x02c05` | 2 |
+| Mairie | `0x03003` | 2 |
+| Maison de retraite | `0x02900` | 2 |
+| Maison du parc | `0x06402` | 2 |
+| Maison forestière | `0x14e01` | 2 |
+| Marché | `0x02e04` | 2 |
+| Mégalithe | `0x11508` | 2 |
+| Mine | `0x0640c` | 2 |
+| Monument | `0x14e0f` | 2 |
+| Musée | `0x02c02` | 2 |
+| Office de tourisme | `0x02f0c` | 2 |
+| Ouvrage militaire | `0x0640b` | 2 |
+| Palais de justice | `0x03004` | 2 |
+| Parc de loisirs | `0x02c01` | 2 |
+| Parc des expositions | `0x10d09` | 2 |
+| Parc zoologique | `0x02c07` | 2 |
+| Patinoire | `0x02d08` | 2 |
+| Piscine | `0x02d09` | 2 |
+| Point de vue | `0x02c04` | 2 |
+| Police | `0x03001` | 2 |
+| Poste | `0x02f05` | 2 |
+| Préfecture | `0x03007` | 2 |
+| Préfecture de région | `0x03007` | 2 |
+| Refuge | `0x02b04` | 2 |
+| Salle de danse ou de jeux | `0x02d04` | 2 |
+| Salle de spectacle ou conférence | `0x02d01` | 2 |
+| Science | `0x02c05` | 2 |
+| Sentier de découverte | `0x06412` | 2 |
+| Siège d'EPCI | `0x03003` | 2 |
+| Site de vol libre | `0x02d0b` | 2 |
+| Site d'escalade | `0x11601` | 2 |
+| Sous-préfecture | `0x03007` | 2 |
+| Sports en eaux vives | `0x11601` | 2 |
+| Sports mécaniques | `0x11601` | 2 |
+| Sports nautiques | `0x11601` | 2 |
+| Stade | `0x02c08` | 2 |
+| Stand de tir | `0x02900` | 2 |
+| Station de pompage | `0x02900` | 2 |
+| Station d'épuration | `0x02900` | 2 |
+| Structure d'accueil pour personnes handicapées | `0x02900` | 2 |
+| Tombeau | `0x06403` | 2 |
+| Université | `0x02c05` | 2 |
+| Usine | `0x02900` | 2 |
+| Usine de production d'eau potable | `0x02900` | 2 |
+| Vestige archéologique | `0x1150b` | 2 |
+| Zone industrielle | `0x02900` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Buildings
+
+| NATURE (BATIMENT) | Type | EndLevel |
+|-------------------|------|----------|
+| Arène ou théâtre antique | `0x10f08` | 0 |
+| Chapelle | `0x10f09` | 0 |
+| Château | `0x10f0a` | 0 |
+| Eglise | `0x10f0b` | 0 |
+| Fort, blockhaus, casemate | `0x10f0c` | 0 |
+| Indifférenciée | `0x1101c` | 0 |
+| Industriel, agricole ou commercial | `0x10f04` | 0 |
+| Monument | `0x10f0d` | 0 |
+| Préfecture | `0x10f0f` | 0 |
+| Sous-préfecture | `0x10f10` | 0 |
+| Serre | `0x10f05` | 0 |
+| Silo | `0x10f06` | 0 |
+| Tour, donjon | `0x10f11` | 0 |
+| Tribune | `0x10f12` | 0 |
+| Construction légère | `0x10f14` | 0 |
+
+!!! note "Detail only — all scopes"
+    `EndLevel=0` is identical for `departement/`, `france-quadrant/` and `outre-mer/`: buildings are only visible at maximum zoom (level 0, 24 bits ≈ 25–350 m). No simplification profile is defined for `BATIMENT`: the geometry is emitted raw in `Data0=` only.
+
+Label: `${TOPONYME}`
+
+---
+
+## Cemeteries
+
+**Polygon:**
+
+| NATURE (CIMETIERE) | Type | EndLevel |
+|--------------------|------|----------|
+| Civil | `0x1a` | 4 |
+| Militaire | `0x10f13` | 4 |
+| Militaire étranger | `0x10f13` | 4 |
+
+**Cemetery POI:**
+
+| NATURE (CIMETIERE) | Type | EndLevel |
+|--------------------|------|----------|
+| Civil | `0x06403` | 2 |
+| Militaire | `0x06403` | 2 |
+| Militaire étranger | `0x06403` | 2 |
+
+---
+
+## Linear constructions
+
+| NATURE (CONSTRUCTION_LINEAIRE) | Type | EndLevel |
+|-------------------------------|------|----------|
+| Autre ligne descriptive | `0x10c04` | 2 |
+| Barrage | `0x10f08` | 2 |
+| Clôture | `0x13309` | 2 |
+| Mur | `0x13308` | 2 |
+| Mur anti-bruit | `0x10e13` | 2 |
+| Mur de soutènement | `0x10e18` | 2 |
+| Pont | `0x10e14` | 2 |
+| Quai | `0x10e16` | 2 |
+| Ruines | `0x10e15` | 2 |
+| Sport de montagne | `0x10f0c` | 2 |
+| Tunnel | `0x10e08` | 2 |
+
+Label: `${TOPONYME}` or `${NATURE}`
+
+**Linear construction POI:**
+
+| NATURE (CONSTRUCTION_LINEAIRE) | Type | EndLevel |
+|-------------------------------|------|----------|
+| Barrage | `0x06407` | 2 |
+| Mur | `0x06402` | 2 |
+| Mur de soutènement | `0x06402` | 2 |
+| Pont | `0x06401` | 2 |
+| Quai | `0x06402` | 2 |
+| Ruines | `0x11514` | 2 |
+| Sport de montagne | `0x11601` | 2 |
+| Tunnel | `0x06413` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Surface construction (POI)
+
+| NATURE (CONSTRUCTION_SURFACIQUE) | Type | EndLevel |
+|----------------------------------|------|----------|
+| Barrage | `0x06407` | 2 |
+| Dalle | `0x06401` | 2 |
+| Ecluse | `0x06401` | 2 |
+| Pont | `0x06401` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Orographic lines
+
+| NATURE (LIGNE_OROGRAPHIQUE) | Type | EndLevel |
+|----------------------------|------|----------|
+| Carrière | `0x10e1a` | 2 |
+| Levée | `0x10e17` | 2 |
+| Talus | `0x10e19` | 2 |
+
+---
+
+## Pylons and punctual constructions
+
+| NATURE | Type | EndLevel |
+|--------|------|----------|
+| Pylône (PYLONE) | `0x11500` | 1 |
+| Antenne | `0x11503` | 1 |
+| Autre construction élevée | `0x06402` | 1 |
+| Calvaire | `0x11507` | 1 |
+| Cheminée | `0x11504` | 1 |
+| Clocher | `0x10d0e` | 1 |
+| Croix | `0x11507` | 1 |
+| Eolienne | `0x11505` | 1 |
+| Minaret | `0x10d0d` | 1 |
+| Phare | `0x10101` | 1 |
+| Puits d'hydrocarbures | `0x0640d` | 1 |
+| Torchère | `0x11108` | 1 |
+| Transformateur | `0x11506` | 1 |
+
+---
+
+## Sports grounds
+
+| NATURE (TERRAIN_DE_SPORT) | Type | EndLevel |
+|--------------------------|------|----------|
+| Terrain de tennis | `0x10f1c` | 2 |
+| Bassin de natation | `0x10f1d` | 2 |
+| Grand terrain de sport | `0x1090d` | 2 |
+| Petit terrain multi-sports | `0x1100a` | 2 |
+| Piste de sport | `0x10f1b` | 2 |
+
+---
+
+## Services and activities
+
+| Source | Type | EndLevel | Label |
+|--------|------|----------|-------|
+| LIGNE_ELECTRIQUE | `0x29` | 2 | `Ligne ${VOLTAGE}` |
+
+---
+
+## Public forest
+
+**Polygon (regulated zone):**
+
+| Source | Type | EndLevel | Label |
+|--------|------|----------|-------|
+| FORET_PUBLIQUE | `0x10a03` | 3 | `${TOPONYME}` |
+
+**POI:**
+
+| NATURE (FORET_PUBLIQUE) | Type | EndLevel |
+|-------------------------|------|----------|
+| Autre forêt publique | `0x0660a` | 2 |
+| Forêt domaniale | `0x0660a` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Toponymy — Named places (POI)
+
+| NATURE (TOPONYMIE) | Type | EndLevel |
+|--------------------|------|----------|
+| Arbre | `0x1150c` | 2 |
+| Bois | `0x0660a` | 2 |
+| Château | `0x1150f` | 2 |
+| Cirque | `0x06608` | 2 |
+| Col | `0x06601` | 2 |
+| Crête | `0x06613` | 2 |
+| Dépression | `0x0660b` | 2 |
+| Escarpement | `0x06607` | 2 |
+| Gorge | `0x06611` | 2 |
+| Gouffre | `0x11515` | 2 |
+| Grange | `0x11510` | 2 |
+| Grotte | `0x11515` | 2 |
+| Île | `0x06501` | 2 |
+| Lieu-dit habité | `0x11511` | 4 |
+| Lieu-dit non habité | `0x1150e` | 2 |
+| Montagne | `0x06601` | 2 |
+| Moulin | `0x11512` | 2 |
+| Pic | `0x06616` | 2 |
+| Plage | `0x1160e` | 2 |
+| Plaine | `0x06610` | 2 |
+| Quartier | `0x11513` | 4 |
+| Rochers | `0x06614` | 2 |
+| Ruines | `0x11514` | 2 |
+| Sommet | `0x06616` | 2 |
+| Vallée | `0x06617` | 2 |
+| Versant | `0x06615` | 2 |
+| Cap | `0x06606` | 2 |
+| Volcan | `0x06608` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Park or reserve (POI)
+
+| NATURE (PARC_OU_RESERVE) | Type | EndLevel |
+|--------------------------|------|----------|
+| Terrain du Conservatoire du Littoral | `0x15502` | 2 |
+
+Label: `${TOPONYME}`
+
+---
+
+## Network point (POI)
+
+| NATURE (POINT_DU_RESEAU) | Type | EndLevel |
+|--------------------------|------|----------|
+| Passage à niveau | `0x1160b` | 2 |

@@ -39,10 +39,44 @@ jobs:
       - name: Install Zensical
         run: pip install -r site/requirements.txt
 
-      - name: Build site
+      - name: Build site (FR + EN)
+        shell: bash
         run: |
+          set -euo pipefail
           cd site
+
+          # Build FR
           zensical build
+
+          # Build EN — vérifie la présence du config avant de lancer
+          if [ ! -f zensical-en.toml ]; then
+            echo "ERROR: zensical-en.toml introuvable" >&2
+            exit 1
+          fi
+          zensical build --config-file zensical-en.toml
+
+          # Vérifie que le build EN a produit un résultat
+          if [ ! -d _site-en ] || [ -z "$(ls -A _site-en)" ]; then
+            echo "ERROR: le build EN n'a produit aucun fichier dans _site-en/" >&2
+            exit 1
+          fi
+
+          # Fusion EN → _site/en/ (hors dotfiles)
+          rm -rf _site/en
+          mkdir -p _site/en
+          find _site-en -mindepth 1 -maxdepth 1 ! -name '.*' -exec cp -r {} _site/en/ \;
+
+          # Copie des assets partagés depuis le build FR
+          # (CSS/JS/images issus des mêmes sources — identiques entre les deux builds)
+          for dir in stylesheets javascripts assets; do
+            if [ -d "_site/${dir}" ]; then
+              rm -rf "_site/en/${dir}"
+              cp -r "_site/${dir}" "_site/en/${dir}"
+            fi
+          done
+
+          # Nettoyage du répertoire intermédiaire EN
+          rm -rf _site-en
 
       - name: Write CNAME
         run: echo "imgforge.garmin.allfabox.fr" > site/_site/CNAME

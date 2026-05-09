@@ -121,6 +121,10 @@ Installation = [
 generator = false
 copyright = "Documentation sous licence <a href=\"https://creativecommons.org/licenses/by-sa/4.0/deed.fr\">CC BY-SA 4.0</a> — Outils sous licences MIT et GPL v3 &nbsp;|&nbsp; <a href=\"/mentions-legales/\">Mentions légales</a> &nbsp;·&nbsp; <a href=\"/cgu/\">CGU</a> &nbsp;·&nbsp; <a href=\"/cgv/\">Conditions de soutien</a>"
 comentario_url = "https://comentario.allfabox.fr/comentario.js"
+alternate = [
+  { name = "Français", link = "/", lang = "fr" },
+  { name = "English", link = "/en/", lang = "en" }
+]
 
 [[extra.social]]
 icon = "fontawesome/brands/github"

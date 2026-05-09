@@ -1,0 +1,64 @@
+{% extends "main.html" %}
+
+{% block content %}{% endblock %}
+
+{% block hero %}
+<style>
+  /* Transparent header/tabs so the hero shows through */
+  body:has(.zn-hero) .md-header,
+  body:has(.zn-hero) .md-tabs,
+  body:has(.zn-hero) .md-container,
+  body:has(.zn-hero) .md-header__inner,
+  body:has(.zn-hero) .md-tabs__list {
+    background-color: transparent !important;
+    background: transparent !important;
+  }
+</style>
+<section class="zn-hero">
+  <div class="zn-hero__background" id="zn-topo-container"></div>
+  <div class="zn-hero__overlay"></div>
+  <div class="zn-hero__inner md-grid">
+    <div class="zn-hero__content zn-hero__content--wide">
+      <div class="zn-hero__split">
+        <div class="zn-hero__text">
+          <h1 class="zn-hero__title">We forge Garmin maps from massive GIS data.</h1>
+          <p class="zn-hero__tagline">
+            Open-source pipeline that transforms <strong>BD TOPO IGN</strong> into ready-to-use
+            <strong>Garmin</strong> topographic maps — 100% automated, 100% reproducible.
+          </p>
+          <div class="zn-hero__actions">
+            <a href="{{ 'downloads/' | url }}" class="md-button md-button--primary">
+              Download a map
+            </a>
+            <a href="{{ 'the-project/' | url }}" class="md-button">
+              Explore the project
+            </a>
+          </div>
+        </div>
+        <div class="zn-hero__demo">
+          <img src="assets/images/vhs/01-project.gif" alt="Demonstration of Garmin IMG Forge tools installation" class="medium-zoom-image">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="zn-hero__seo" hidden>
+    <p>Free Garmin topographic maps generated from IGN BD TOPO open data.
+    Download .img files for GPS covering metropolitan France and overseas territories.
+    FOSS pipeline: ogr-polishmap, mpforge, imgforge — no Java, no FME.</p>
+  </div>
+</section>
+<script>
+(function() {
+  var c = document.getElementById('zn-topo-container');
+  if (!c) return;
+  fetch('{{ "assets/images/background/topo-background.svg" | url }}')
+    .then(function(r) { return r.text(); })
+    .then(function(svg) {
+      c.innerHTML = svg;
+      requestAnimationFrame(function() {
+        c.classList.add('zn-topo-loaded');
+      });
+    });
+})();
+</script>
+{% endblock %}

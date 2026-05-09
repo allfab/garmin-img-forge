@@ -1,0 +1,132 @@
+site_name = "GARMIN IMG FORGE"
+site_url = "https://imgforge.garmin.allfabox.fr/en"
+site_description = "Garmin topographic maps generated from IGN BD TOPO open data"
+site_author = "allfab"
+repo_url = "https://github.com/allfab/garmin-img-forge"
+repo_name = "allfab/garmin-img-forge"
+docs_dir = "docs-en"
+site_dir = "_site-en"
+use_directory_urls = true
+extra_css = ["stylesheets/hero.css", "stylesheets/extra.css", "stylesheets/donate.css"]
+extra_javascript = ["javascripts/lemonsqueezy.js", "javascripts/umami-tracking.js", "javascripts/downloads-manifest.js", "javascripts/medium-zoom.min.js", "javascripts/image-zoom.js"]
+
+[theme]
+name = "classic"
+custom_dir = "overrides-en"
+favicon = "assets/images/garmin-favicon.png"
+logo = "assets/images/garmin-favicon.png"
+language = "en"
+palette = [
+  { media = "(prefers-color-scheme: light)", scheme = "default", primary = "green", accent = "deep-orange", toggle = { icon = "material/brightness-7", name = "Dark mode" } },
+  { media = "(prefers-color-scheme: dark)", scheme = "slate", primary = "green", accent = "deep-orange", toggle = { icon = "material/brightness-4", name = "Light mode" } }
+]
+features = [
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.sections",
+  "navigation.expand",
+  "navigation.top",
+  "search.suggest",
+  "search.highlight",
+  "content.code.annotate",
+  "content.code.copy",
+  "navigation.footer"
+]
+
+[theme.font]
+text = "Roboto"
+code = "Roboto Mono"
+
+[[nav]]
+Home = "index.md"
+
+[[nav]]
+"The Project" = [
+  { "Overview" = "the-project/index.md" },
+  { "ogr-polishmap" = "the-project/ogr-polishmap.md" },
+  { "mpforge" = "the-project/mpforge.md" },
+  { "imgforge" = "the-project/imgforge.md" },
+  { "Wins & Pitfalls" = "the-project/wins-and-pitfalls.md" }
+]
+
+[[nav]]
+"The Pipeline" = [
+  { "Overview" = "the-pipeline/index.md" },
+  { "1. Download" = "the-pipeline/step-1-download.md" },
+  { "2. Configuration" = "the-pipeline/step-2-configuration.md" },
+  { "3. Tiling (mpforge)" = "the-pipeline/step-3-tiling.md" },
+  { "4. Compilation (imgforge)" = "the-pipeline/step-4-compilation.md" },
+  { "5. GPS Installation" = "the-pipeline/step-5-installation.md" },
+  { "6. Publishing" = "the-pipeline/step-6-publishing.md" }
+]
+
+[[nav]]
+"Reference" = [
+  { "Overview" = "reference/index.md" },
+  { "Format & Architecture" = [
+    { "Garmin IMG Format" = "reference/garmin-img-format.md" },
+    { "Garmin Types" = "reference/garmin-types.md" },
+    { "Format Limits" = "reference/format-limits.md" }
+  ]},
+  { "Data & Transformation" = [
+    { "BD TOPO Mappings" = "reference/bdtopo-mappings.md" },
+    { "Zoom Levels & EndLevel" = "reference/zoom-levels.md" },
+    { "Generalization Profiles" = "reference/generalize-profiles.md" },
+    { "Simplification Levels" = "reference/simplification-levels.md" },
+    { "mkgmap/imgforge Comparison" = "reference/comparaison-mkgmap-imgforge.md" }
+  ]},
+  { "Tools & Configuration" = [
+    { "--base-id Convention" = "reference/base-id-convention.md" },
+    { "Binary Versioning" = "reference/binary-versioning.md" }
+  ]},
+  { "Visual Styles" = [
+    { "TYP Styles" = "reference/typ-styles.md" },
+    { "OpenTopo Styles" = "reference/opentopo-styles.md" }
+  ]},
+  { "Observability" = [
+    { "mpforge Logs" = "reference/mpforge-logs.md" },
+    { "imgforge Logs" = "reference/imgforge-logs.md" }
+  ]}
+]
+
+[[nav]]
+Installation = [
+  { "Prerequisites" = "installation/index.md" },
+  { "Installation Guide" = "installation/installation-guide.md" }
+]
+
+[[nav]]
+"Downloads" = [
+  { "Overview" = "downloads/index.md" },
+  { "Metropolitan France" = "downloads/france.md" },
+  { "By Region" = "downloads/regions.md" },
+  { "By Department" = "downloads/department.md" },
+  { "Overseas" = "downloads/overseas.md" },
+  { "SD Card Installation" = "downloads/sd-card-install.md" }
+]
+
+[[nav]]
+"Support the Project" = "support/index.md"
+
+[[nav]]
+"About" = [
+  { "About" = "about/index.md" },
+  { "Legal Notice & GDPR" = "legal/index.md" },
+  { "Terms of Use" = "legal/terms-of-use.md" },
+  { "Support Conditions" = "legal/support-conditions.md" }
+]
+
+
+[extra]
+generator = false
+copyright = "Documentation under <a href=\"https://creativecommons.org/licenses/by-sa/4.0/\">CC BY-SA 4.0</a> — Tools under MIT and GPL v3 licenses &nbsp;|&nbsp; <a href=\"/en/legal/\">Legal Notice</a> &nbsp;·&nbsp; <a href=\"/en/legal/terms-of-use/\">Terms of Use</a> &nbsp;·&nbsp; <a href=\"/en/legal/support-conditions/\">Support Conditions</a>"
+comentario_url = "https://comentario.allfabox.fr/comentario.js"
+alternate = [
+  { name = "Français", link = "/", lang = "fr" },
+  { name = "English", link = "/en/", lang = "en" }
+]
+
+[[extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/allfab/garmin-img-forge"
+name = "GitHub Repository"
