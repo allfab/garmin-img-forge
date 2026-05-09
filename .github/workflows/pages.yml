@@ -66,14 +66,24 @@ jobs:
           mkdir -p _site/en
           find _site-en -mindepth 1 -maxdepth 1 ! -name '.*' -exec cp -r {} _site/en/ \;
 
-          # Copie des assets partagés depuis le build FR
-          # (CSS/JS/images issus des mêmes sources — identiques entre les deux builds)
-          for dir in stylesheets javascripts assets; do
+          # Copie des assets partagés depuis le build FR (CSS/JS identiques entre les deux builds)
+          for dir in stylesheets javascripts; do
             if [ -d "_site/${dir}" ]; then
               rm -rf "_site/en/${dir}"
               cp -r "_site/${dir}" "_site/en/${dir}"
             fi
           done
+          # Pour assets : overlay FR → EN sans écraser les fichiers EN-spécifiques (ex: images/01-project.gif)
+          # cp -rn requiert GNU coreutils (garanti sur ubuntu-latest)
+          if [ -d "_site/assets" ]; then
+            cp -rn "_site/assets/." "_site/en/assets/"
+          fi
+
+          # Assertion : vérifie que le GIF EN-spécifique est bien présent après la fusion
+          if [ ! -f "_site/en/assets/images/01-project.gif" ]; then
+            echo "ERROR: _site/en/assets/images/01-project.gif absent après fusion — vérifier le build EN" >&2
+            exit 1
+          fi
 
           # Nettoyage du répertoire intermédiaire EN
           rm -rf _site-en
