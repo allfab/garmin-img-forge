@@ -14,7 +14,7 @@ Il décrit les données géographiques à charger, comment les découper en tuil
 | `rules` | Chemin vers les règles de mapping Garmin |
 | `generalize_profiles_path` | Catalogue de simplification géométrique |
 
-## Couches d'entrée — 15 sources géographiques
+## Couches d'entrée — Sources géographiques
 
 | Thème | Couches BDTOPO / autres |
 |-------|------------------------|

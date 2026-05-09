@@ -14,7 +14,7 @@ It describes the geographic data to load, how to split it into tiles and the met
 | `rules` | Path to Garmin mapping rules |
 | `generalize_profiles_path` | Geometric simplification catalog |
 
-## Input layers — 15 geographic sources
+## Input layers — Geographic sources
 
 | Theme | BDTOPO / other layers |
 |-------|----------------------|
