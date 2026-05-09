@@ -1,3 +1,7 @@
+---
+description: Open-source pipeline that transforms IGN BD TOPO data into ready-to-use Garmin topographic maps — ogr-polishmap, mpforge, imgforge, 100% FOSS.
+---
+
 # The Project
 
 **Free, accurate and up-to-date Garmin topographic maps — forged from IGN open data, with a 100% open-source pipeline.**

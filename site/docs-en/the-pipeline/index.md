@@ -1,3 +1,7 @@
+---
+description: Complete guide to the Garmin IMG Forge pipeline — BD TOPO IGN download, mpforge tiling, imgforge compilation, and GPS installation.
+---
+
 # The Production Pipeline
 
 This section describes **step by step** the complete process of creating a Garmin topographic map from IGN BD TOPO data. Each step is illustrated with the actual commands to run.

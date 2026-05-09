@@ -1,5 +1,6 @@
 ---
 title: Downloads
+description: Download free Garmin topographic maps of France — by department, region or full country — in gmapsupp.img format, generated from IGN BD TOPO open data.
 ---
 
 # Garmin Map Downloads

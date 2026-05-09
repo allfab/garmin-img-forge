@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://imgforge.garmin.allfabox.fr/sitemap.xml
+Sitemap: https://imgforge.garmin.allfabox.fr/en/sitemap.xml

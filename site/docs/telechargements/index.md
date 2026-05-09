@@ -1,5 +1,6 @@
 ---
 title: Téléchargements
+description: Cartes Garmin topographiques de France gratuites — par département, région ou France entière. Fichiers gmapsupp.img générés depuis les données ouvertes IGN BD TOPO.
 ---
 
 # Téléchargements des cartes Garmin

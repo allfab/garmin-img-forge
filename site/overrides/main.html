@@ -1,5 +1,35 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+  {{ super() }}
+  {%- if page is defined and page.title %}
+    {%- set page_title = page.title ~ " — " ~ config.site_name %}
+  {%- else %}
+    {%- set page_title = config.site_name %}
+  {%- endif %}
+  {%- if page is defined and page.meta.description %}
+    {%- set page_desc = page.meta.description %}
+  {%- else %}
+    {%- set page_desc = config.site_description %}
+  {%- endif %}
+  {%- if page is defined and page.canonical_url %}
+    {%- set page_url = page.canonical_url %}
+  {%- else %}
+    {%- set page_url = config.site_url %}
+  {%- endif %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ page_desc }}">
+  <meta property="og:url" content="{{ page_url }}">
+  <meta property="og:image" content="https://imgforge.garmin.allfabox.fr/assets/images/background/topo-background-1600x300.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ page_desc }}">
+  <meta name="twitter:image" content="https://imgforge.garmin.allfabox.fr/assets/images/background/topo-background-1600x300.png">
+  <link rel="alternate" href="https://imgforge.garmin.allfabox.fr/" hreflang="x-default">
+{% endblock %}
+
 {% block analytics %}
   <script defer src="https://umami.allfabox.fr/app.js" data-website-id="16e916d9-669d-48f3-affe-b8acd8a327fd"></script>
   <script defer src="https://umami.allfabox.fr/recorder.js" data-website-id="16e916d9-669d-48f3-affe-b8acd8a327fd" data-sample-rate="0.15" data-mask-level="moderate" data-max-duration="300000"></script>

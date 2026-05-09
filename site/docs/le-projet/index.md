@@ -1,3 +1,7 @@
+---
+description: Pipeline open-source qui transforme la BD TOPO IGN en cartes topographiques Garmin prêtes à l'emploi — ogr-polishmap, mpforge, imgforge, 100 % FOSS.
+---
+
 # Le Projet
 
 **Des cartes topographiques Garmin gratuites, précises et à jour — forgées depuis les données ouvertes de l'IGN, avec un pipeline 100 % open-source.**

@@ -1,3 +1,7 @@
+---
+description: Technical reference for the Garmin IMG format, feature types, BD TOPO mappings, generalization profiles, TYP styles and mpforge/imgforge logs.
+---
+
 # Technical Reference
 
 This section gathers the technical specifications of the project: Garmin IMG binary format, type codes, BD TOPO mappings, styles, tools and observability.

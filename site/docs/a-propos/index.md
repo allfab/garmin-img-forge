@@ -1,3 +1,7 @@
+---
+description: À propos de Garmin IMG Forge — projet FOSS de cartes topographiques Garmin par Fabien Allamanche, géomaticien, basé sur les données ouvertes IGN BD TOPO.
+---
+
 # À propos
 
 ## L'auteur

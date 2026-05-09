@@ -1,3 +1,7 @@
+---
+description: About Garmin IMG Forge — FOSS Garmin topographic map project by Fabien Allamanche, geomatician, based on IGN BD TOPO open data.
+---
+
 # About
 
 ## The Author
