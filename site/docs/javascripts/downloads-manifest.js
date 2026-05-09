@@ -1,19 +1,67 @@
 (function () {
     'use strict';
 
+    // Détection de la langue depuis l'attribut lang de <html> (positionné par Zensical).
+    var lang = (document.documentElement.lang || 'fr').toLowerCase();
+    var isEn = lang === 'en';
+
+    // Table i18n — toutes les chaînes visibles par l'utilisateur.
+    var T = isEn ? {
+        unavailable:      'Not available',
+        download:         'Download',
+        copy:             'Copy',
+        copy_label:       'Copy command',
+        copied:           'Copied!',
+        close_label:      'Close',
+        older_versions:   'Previous versions',
+        commands_btn:     '⚙ Build commands',
+        modal_prefix:     'Commands — ',
+        tab_labels:       ['Download', 'Compilation', 'mpforge', 'imgforge'],
+        sec_download:     'BDTOPO data download',
+        sec_compile:      'Map compilation (build-garmin-map.sh)',
+        sec_mpforge:      'Tiling (mpforge)',
+        sec_imgforge:     'IMG compilation (imgforge)',
+        date_locale:      'en-GB',
+        env_comment:      '# Environment variables required by mpforge (YAML config)',
+    } : {
+        unavailable:      'Non disponible',
+        download:         'Télécharger',
+        copy:             'Copier',
+        copy_label:       'Copier la commande',
+        copied:           'Copié !',
+        close_label:      'Fermer',
+        older_versions:   'Versions antérieures',
+        commands_btn:     '⚙ Commandes de compilation',
+        modal_prefix:     'Commandes — ',
+        tab_labels:       ['Téléchargement', 'Compilation', 'mpforge', 'imgforge'],
+        sec_download:     'Téléchargement des données BDTOPO',
+        sec_compile:      'Compilation de la carte (build-garmin-map.sh)',
+        sec_mpforge:      'Tuilage (mpforge)',
+        sec_imgforge:     'Compilation IMG (imgforge)',
+        date_locale:      'fr-FR',
+        env_comment:      '# Variables d\'environnement requises par mpforge (config YAML)',
+    };
+
     // Dérive l'URL du manifest depuis l'emplacement du script :
     //   script : {base}/javascripts/downloads-manifest.js
     //   cible  : {base}/telechargements/manifest.json
-    // Gère correctement les déploiements sous sous-chemin (ex: /projet/…).
+    // Pour la version EN (/en/javascripts/…), on remonte à la racine du site
+    // car le manifest est toujours publié sous /telechargements/.
     var scriptSrc = (document.currentScript && document.currentScript.src) || '';
-    var MANIFEST_URL = scriptSrc
-        ? new URL('../telechargements/manifest.json', scriptSrc).href
-        : '/telechargements/manifest.json';
-
-    // Base pour construire les href des versions antérieures (= {base}/telechargements/)
-    var TELECHARGEMENTS_BASE = scriptSrc
-        ? new URL('../telechargements/', scriptSrc).href
-        : '/telechargements/';
+    var MANIFEST_URL, TELECHARGEMENTS_BASE;
+    if (isEn) {
+        // Racine du site = origin (manifest toujours sous /telechargements/)
+        var origin = window.location.origin || '';
+        MANIFEST_URL       = origin + '/telechargements/manifest.json';
+        TELECHARGEMENTS_BASE = origin + '/telechargements/';
+    } else {
+        MANIFEST_URL = scriptSrc
+            ? new URL('../telechargements/manifest.json', scriptSrc).href
+            : '/telechargements/manifest.json';
+        TELECHARGEMENTS_BASE = scriptSrc
+            ? new URL('../telechargements/', scriptSrc).href
+            : '/telechargements/';
+    }
 
     // Lien local (legacy) : .../telechargements/files/<type>/<slug>/latest/*.img
     var HREF_RE_LOCAL = /\/telechargements\/files\/([^/]+)\/([^/]+)\/latest\/[^/]+\.img$/;
@@ -53,7 +101,7 @@
         var d = new Date(iso);
         if (isNaN(d.getTime())) return '';
         try {
-            return d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+            return d.toLocaleDateString(T.date_locale, { year: 'numeric', month: 'long', day: 'numeric' });
         } catch (e) {
             return iso.slice(0, 10);
         }
@@ -80,13 +128,11 @@
             lines.push('    ' + flag + (val !== undefined ? ' ' + val : '') + ' \\');
         }
 
-        // Géographique
         add('--zones', bp.zones);
         add('--base-id', bp.base_id);
         add('--year', bp.year);
         add('--version', bp.version);
 
-        // Chemins (défauts conventionnels)
         add('--data-dir', './pipeline/data');
         add('--contours-dir', './pipeline/data/contours');
         add('--dem-dir', './pipeline/data/dem');
@@ -94,60 +140,48 @@
         add('--hiking-trails-dir', './pipeline/data/hiking-trails');
         add('--output-base', './pipeline/output');
 
-        // Parallélisation
         add('--jobs', bp.jobs || '8');
         if (bp.mpforge_jobs)  add('--mpforge-jobs', bp.mpforge_jobs);
         if (bp.imgforge_jobs) add('--imgforge-jobs', bp.imgforge_jobs);
 
-        // Identité carte
         add('--family-id', bp.family_id);
         add('--product-id', bp.product_id || '1');
         add('--family-name', '"' + bp.family_name + '"');
         add('--series-name', '"' + (bp.series_name || 'IGN-BDTOPO-MAP') + '"');
 
-        // Encodage / niveaux / styles
         add('--code-page', bp.code_page || '1252');
         add('--levels', '"' + (bp.levels || '24,22,20,18,16') + '"');
         add('--typ', bp.typ_file || 'pipeline/resources/typfiles/I2023100.typ');
 
-        // Copyright
         add('--copyright', '"' + bp.copyright + '"');
 
-        // Packaging
         if (bp.packaging && bp.packaging !== 'legacy') add('--packaging', bp.packaging);
 
-        // Simplification géométrique (opt-in)
         if (bp.reduce_point_density)  add('--reduce-point-density', bp.reduce_point_density);
         if (bp.simplify_polygons)     add('--simplify-polygons', '"' + bp.simplify_polygons + '"');
         if (bp.min_size_polygon)      add('--min-size-polygon', bp.min_size_polygon);
         if (bp.merge_lines === 'true') add('--merge-lines');
 
-        // DEM / routage (opt-out : affiché seulement si désactivé)
         if (bp.with_dem   === 'false') add('--no-dem');
         if (bp.with_route === 'false' && bp.with_net !== 'true') add('--no-route');
         if (bp.with_net   === 'true')  add('--net');
 
-        // Options rendu (opt-in)
         if (bp.draw_priority)                      add('--draw-priority', bp.draw_priority);
         if (bp.transparent            === 'true')  add('--transparent');
         if (bp.order_by_decreasing_area === 'true') add('--order-by-decreasing-area');
         if (bp.keep_going             === 'true')  add('--keep-going');
 
-        // Options imgforge avancées (opt-in)
         if (bp.no_round_coords          === 'true') add('--no-round-coords');
         if (bp.no_size_filter           === 'true') add('--no-size-filter');
         if (bp.no_remove_obsolete_points === 'true') add('--no-remove-obsolete-points');
 
-        // DEM avancé (opt-in)
         if (bp.dem_dists)         add('--dem-dists', '"' + bp.dem_dists + '"');
         if (bp.dem_interpolation) add('--dem-interpolation', bp.dem_interpolation);
 
-        // Publication
         add('--publish');
         add('--publish-target', bp.publish_target || 's3');
         add('-v');
 
-        // Supprimer le ' \' final de la dernière ligne
         lines[lines.length - 1] = lines[lines.length - 1].replace(' \\', '');
         return lines.join('\n');
     }
@@ -173,14 +207,13 @@
     }
 
     // Construit la commande mpforge build depuis les build_params.
-    // Inclut les exports des variables d'environnement consommées par le config YAML.
     function buildMpforgeCmd(bp, entry) {
         var config = getConfigPath(entry);
         var jobs = bp.mpforge_jobs || bp.jobs || '8';
         var zonesLabel = (entry.slug || bp.zones || 'ZONES').toUpperCase();
         var outputDir = './pipeline/output/' + bp.year + '/' + bp.version + '/' + zonesLabel;
         return [
-            '# Variables d\'environnement requises par mpforge (config YAML)',
+            T.env_comment,
             'export DATA_ROOT=./pipeline/data',
             'export OUTPUT_DIR=' + outputDir,
             'export BASE_ID=' + bp.base_id,
@@ -218,7 +251,6 @@
         add('--levels', '"' + (bp.levels || '24,22,20,18,16') + '"');
         add('--copyright-message', '"' + bp.copyright + '"');
 
-        // Routage
         if (bp.with_net === 'true') {
             add('--net');
         } else if (bp.with_route !== 'false') {
@@ -230,13 +262,11 @@
         if (bp.typ_file) add('--typ-file', bp.typ_file);
         add('--packaging', bp.packaging || 'legacy');
 
-        // Simplification géométrique (opt-in)
         if (bp.reduce_point_density)  add('--reduce-point-density', bp.reduce_point_density);
         if (bp.simplify_polygons)     add('--simplify-polygons', '"' + bp.simplify_polygons + '"');
         if (bp.min_size_polygon)      add('--min-size-polygon', bp.min_size_polygon);
         if (bp.merge_lines === 'true') add('--merge-lines');
 
-        // DEM : un --dem par département présent dans bp.zones
         if (bp.with_dem === 'true') {
             var depts = (bp.zones || '').split(',');
             depts.forEach(function (dept) {
@@ -248,7 +278,6 @@
             if (bp.dem_interpolation) add('--dem-interpolation', bp.dem_interpolation);
         }
 
-        // Options avancées (opt-in)
         if (bp.keep_going               === 'true') add('--keep-going');
         if (bp.order_by_decreasing_area === 'true') add('--order-by-decreasing-area');
         if (bp.draw_priority)                       add('--draw-priority', bp.draw_priority);
@@ -278,19 +307,18 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dl-modal-copy';
-        btn.textContent = 'Copier';
-        btn.setAttribute('aria-label', 'Copier la commande');
+        btn.textContent = T.copy;
+        btn.setAttribute('aria-label', T.copy_label);
         btn.addEventListener('click', function () {
             var done = function () {
-                btn.textContent = 'Copié !';
+                btn.textContent = T.copied;
                 btn.classList.add('is-copied');
                 setTimeout(function () {
-                    btn.textContent = 'Copier';
+                    btn.textContent = T.copy;
                     btn.classList.remove('is-copied');
                 }, 1500);
             };
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                // En cas de refus de permission, bascule sur le fallback execCommand.
                 navigator.clipboard.writeText(text).then(done, function () {
                     execCommandCopy(text, done);
                 });
@@ -303,7 +331,7 @@
 
     // Infrastructure modale (création paresseuse, instance unique).
     var _modal = null;
-    var _modalTrigger = null; // élément déclencheur courant, pour restaurer le focus
+    var _modalTrigger = null;
 
     function getOrCreateModal() {
         if (_modal) return _modal;
@@ -329,7 +357,7 @@
         var closeBtn = document.createElement('button');
         closeBtn.type = 'button';
         closeBtn.className = 'dl-modal-close';
-        closeBtn.setAttribute('aria-label', 'Fermer');
+        closeBtn.setAttribute('aria-label', T.close_label);
         closeBtn.textContent = '×';
         closeBtn.addEventListener('click', function () { closeModal(); });
         header.appendChild(closeBtn);
@@ -342,12 +370,10 @@
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
-        // Fermeture au clic sur le fond
         overlay.addEventListener('click', function (e) {
             if (e.target === overlay) closeModal();
         });
 
-        // Fermeture à la touche Escape + focus trap (Tab/Shift+Tab)
         document.addEventListener('keydown', function (e) {
             if (!_modal || !_modal.overlay.classList.contains('is-open')) return;
             if (e.key === 'Escape') {
@@ -377,12 +403,8 @@
         if (!_modal) return;
         _modal.overlay.classList.remove('is-open');
         _modal.overlay.setAttribute('aria-hidden', 'true');
-        // Restauration du focus sur l'élément déclencheur (WCAG §2.4.3)
         if (_modalTrigger) { _modalTrigger.focus(); _modalTrigger = null; }
     }
-
-    // Labels courts affichés dans les onglets (index aligné sur sections[]).
-    var TAB_LABELS = ['Téléchargement', 'Compilation', 'mpforge', 'imgforge'];
 
     function activateTab(idx, tabBtns, panels) {
         tabBtns.forEach(function (t, i) {
@@ -399,10 +421,8 @@
         _modalTrigger = triggerEl || null;
         m.title.textContent = titleText;
 
-        // Vider le contenu précédent
         while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
 
-        // Barre d'onglets
         var tablist = document.createElement('div');
         tablist.className = 'dl-modal-tablist';
         tablist.setAttribute('role', 'tablist');
@@ -414,9 +434,8 @@
         sections.forEach(function (pair, i) {
             var tabId   = 'dl-tab-btn-' + i;
             var panelId = 'dl-tab-panel-' + i;
-            var shortLabel = TAB_LABELS[i] || pair[0];
+            var shortLabel = T.tab_labels[i] || pair[0];
 
-            // Bouton onglet
             var tab = document.createElement('button');
             tab.type = 'button';
             tab.className = 'dl-modal-tab' + (i === 0 ? ' is-active' : '');
@@ -429,7 +448,6 @@
             tablist.appendChild(tab);
             tabBtns.push(tab);
 
-            // Panneau
             var panel = document.createElement('div');
             panel.className = 'dl-modal-panel';
             panel.setAttribute('role', 'tabpanel');
@@ -451,14 +469,12 @@
             panels.push(panel);
         });
 
-        // Clic sur un onglet
         tabBtns.forEach(function (tab, i) {
             tab.addEventListener('click', function () {
                 activateTab(i, tabBtns, panels);
             });
         });
 
-        // Navigation clavier dans la barre d'onglets (flèches ← →, Home, End)
         tablist.addEventListener('keydown', function (e) {
             var idx = tabBtns.indexOf(document.activeElement);
             if (idx === -1) return;
@@ -475,7 +491,6 @@
 
         m.overlay.classList.add('is-open');
         m.overlay.setAttribute('aria-hidden', 'false');
-        // Focus le bouton de fermeture à l'ouverture (WCAG §2.4.3)
         m.closeBtn.focus();
     }
 
@@ -485,19 +500,19 @@
 
         var label = (entry && entry.label) ? entry.label : (bp.zones + ' ' + bp.version);
         var sections = [
-            ['Téléchargement des données BDTOPO', buildDownloadCmd(bp)],
-            ['Compilation de la carte (build-garmin-map.sh)', buildCompileCmd(bp)],
-            ['Tuilage (mpforge)', buildMpforgeCmd(bp, entry || {})],
-            ['Compilation IMG (imgforge)', buildImgforgeCmd(bp, entry || {})]
+            [T.sec_download, buildDownloadCmd(bp)],
+            [T.sec_compile,  buildCompileCmd(bp)],
+            [T.sec_mpforge,  buildMpforgeCmd(bp, entry || {})],
+            [T.sec_imgforge, buildImgforgeCmd(bp, entry || {})]
         ];
 
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dl-cmds-trigger';
         btn.setAttribute('aria-haspopup', 'dialog');
-        btn.textContent = '⚙ Commandes de compilation';
+        btn.textContent = T.commands_btn;
         btn.addEventListener('click', function () {
-            openModal('Commandes — ' + label, sections, btn);
+            openModal(T.modal_prefix + label, sections, btn);
         });
         return btn;
     }
@@ -505,7 +520,7 @@
     function buildMetaBlock(version) {
         if (!version || !version.published_at) return null;
         var formatted = formatDate(version.published_at);
-        if (!formatted) return null;  // Date invalide : ne pas injecter "📅 " nu.
+        if (!formatted) return null;
 
         var wrapper = document.createElement('div');
         wrapper.className = 'download-meta';
@@ -519,7 +534,6 @@
     }
 
     function enhanceLink(link, manifest) {
-        // link.href = URL absolue résolue par le browser (support href relatifs type ../files/...).
         var href = link.href || link.getAttribute('href') || '';
         var key = null;
         var isConfidentMatch = false;
@@ -533,9 +547,6 @@
             if (s3) { key = s3.type + '/' + s3.slug; isConfidentMatch = true; }
         }
         if (!key) {
-            // Fallback : URL versionnée sans endpoint_public connu (ex: storage.type
-            // local mais entries publiées sur S3 avec URL complète dans le manifest).
-            // On extrait type/slug depuis la structure /<type>/<slug>/v<version>/<file>.
             var generic = matchGenericHref(href);
             if (generic) key = generic.type + '/' + generic.slug;
         }
@@ -543,12 +554,9 @@
         var entry = manifest.coverages && manifest.coverages[key];
 
         if (!entry) {
-            // Pour les matches non certains (fallback générique), on ne décore pas
-            // les liens dont la clé est absente du manifest (évite de griser
-            // des liens non liés au catalogue).
             if (!isConfidentMatch) return;
             link.classList.add('is-unavailable');
-            link.textContent = 'Non disponible';
+            link.textContent = T.unavailable;
             link.setAttribute('aria-disabled', 'true');
             link.addEventListener('click', function (e) { e.preventDefault(); });
             return;
@@ -556,7 +564,6 @@
 
         link.classList.add('is-available');
 
-        // Source de vérité = entry.latest (calculé côté serveur)
         var allVersions = entry.versions || [];
         var latestVersion = entry.latest;
         var latest = null;
@@ -565,7 +572,6 @@
             if (v.version === latestVersion) latest = v;
             else older.push(v);
         });
-        // Tri des versions antérieures par published_at décroissant (fallback version desc)
         older.sort(function (a, b) {
             var ka = a.published_at || a.version;
             var kb = b.published_at || b.version;
@@ -574,12 +580,11 @@
 
         if (latest) {
             var size = formatBytes(latest.size_bytes);
-            var label = 'Télécharger';
+            var label = T.download;
             if (size) label += ' (' + size + ' — ' + latestVersion + ')';
             else label += ' (' + latestVersion + ')';
             link.textContent = label;
 
-            // Bloc méta sous le bouton : date de publication
             var meta = buildMetaBlock(latest);
             if (meta && link.parentNode) {
                 if (link.nextSibling) {
@@ -589,7 +594,6 @@
                 }
             }
 
-            // Bouton déclencheur de la modal de commandes
             var trigger = buildCommandsTrigger(latest.build_params, entry);
             if (trigger && link.parentNode) {
                 var anchor = meta || link;
@@ -606,7 +610,7 @@
         var details = document.createElement('details');
         details.className = 'downloads-previous-versions';
         var summary = document.createElement('summary');
-        summary.textContent = 'Versions antérieures';
+        summary.textContent = T.older_versions;
         details.appendChild(summary);
         var ul = document.createElement('ul');
         older.forEach(function (v) {
@@ -630,8 +634,6 @@
     }
 
     function run() {
-        // On cible large (tout <a> vers .img) puis on filtre dans enhanceLink via
-        // HREF_RE_LOCAL (legacy) ou matchS3Href (endpoint lu dans le manifest).
         var candidates = document.querySelectorAll('a[href$=".img"]');
         if (candidates.length === 0) return;
 
