@@ -120,3 +120,17 @@ A Garmin topographic map of France (or a region) including:
 
 !!! info "Source data"
     Maps are generated from the **IGN BD TOPO** — quarterly updates, metric precision, covering the entire French territory. Open license [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).
+
+## Demo
+
+<div class="video-wrapper">
+  <iframe
+    src="https://www.youtube-nocookie.com/embed/9RXXqV1AtK4"
+    title="Garmin IMG Forge — Demo"
+    loading="lazy"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    allowfullscreen>
+    <a href="https://www.youtube.com/watch?v=9RXXqV1AtK4">Watch the demo on YouTube</a>
+  </iframe>
+</div>

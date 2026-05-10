@@ -120,3 +120,17 @@ Une carte Garmin topographique de la France (ou d'une région) incluant :
 
 !!! info "Données sources"
     Les cartes sont générées depuis la **BD TOPO IGN** — mise à jour trimestrielle, précision métrique, couvrant l'ensemble du territoire français. Licence ouverte [Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence).
+
+## Démo
+
+<div class="video-wrapper">
+  <iframe
+    src="https://www.youtube-nocookie.com/embed/ML7Q7NLF7Ew"
+    title="Garmin IMG Forge — Démo"
+    loading="lazy"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    allowfullscreen>
+    <a href="https://www.youtube.com/watch?v=ML7Q7NLF7Ew">Voir la démo sur YouTube</a>
+  </iframe>
+</div>
