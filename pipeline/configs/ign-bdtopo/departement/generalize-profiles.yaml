@@ -146,8 +146,8 @@ profiles:
     # cette protection, 0/61 avec.
     topology: true
     levels:
-      - { n: 0, simplify_vw: 0.00003 }
-      - { n: 1, simplify_vw: 0.00007 }
+      - { n: 0 }
+      - { n: 1 }
       - { n: 2, simplify_vw: 0.00013 }
       - { n: 3, simplify_vw: 0.00020 }
       - { n: 4 }
