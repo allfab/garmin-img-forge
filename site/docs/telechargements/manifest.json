@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-10T13:27:56Z",
+  "generated_at": "2026-05-10T16:46:41Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -221,9 +221,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-10T13:22:41Z",
-          "size_bytes": 57820160,
-          "sha256": "ed28de4246bc147e219b43e30d3b75b9840f330e14a5cb3695b01d12afa3d904",
+          "published_at": "2026-05-10T16:15:15Z",
+          "size_bytes": 59866112,
+          "sha256": "5f699553bc36068b84b6423f43546c1703b7fcc64052ca0e6190829b3366a22c",
           "file": "IGN-BDTOPO-D02A-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d02a/v2026.03/IGN-BDTOPO-D02A-v2026.03.img",
           "build_params": {
@@ -274,9 +274,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-10T13:25:14Z",
-          "size_bytes": 65681408,
-          "sha256": "9deed9b68cdc892bc1f0142f7fb79eda17a186428faad2b33a64c8fcc45ff718",
+          "published_at": "2026-05-10T16:27:45Z",
+          "size_bytes": 65817600,
+          "sha256": "3b17e6841c228725a3c119df2aa959cb055171681b6d42af3b1e971c74b1edcb",
           "file": "IGN-BDTOPO-D02B-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d02b/v2026.03/IGN-BDTOPO-D02B-v2026.03.img",
           "build_params": {
@@ -327,9 +327,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-10T13:27:56Z",
-          "size_bytes": 86116352,
-          "sha256": "b615289598624f336e8892da7885bb1b5064a0afb7201e2ab7e3e2f8f1211cd8",
+          "published_at": "2026-05-10T16:46:41Z",
+          "size_bytes": 86272000,
+          "sha256": "11127ed35d4b1e5d5432d2716f2aa1b36571682f4f6b755c354a27bdf0c92720",
           "file": "IGN-BDTOPO-D003-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d003/v2026.03/IGN-BDTOPO-D003-v2026.03.img",
           "build_params": {
