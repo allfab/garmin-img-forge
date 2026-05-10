@@ -13,6 +13,16 @@ grid:
 
 inputs:
   # ==========================================================================
+  # BOUNDS - SEA — Polygones de mer (pour rendre les zones marines bleues)
+  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # ==========================================================================
+  # - path: "./pipeline/resources/bounds/FRANCE/SEA.shp"
+  #   layer_alias: "SEA"
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 60000
+
+  # ==========================================================================
   # TRANSPORT (4 couches)
   # ==========================================================================
 

@@ -355,7 +355,16 @@ rulesets:
           EndLevel: "6"
           Label: "${NOM_P_EAU}"
 
-      # 5. Catch-all (Permanent, vide)
+      #5. Retenue-bassin portuaire
+      - match:
+          PERSISTANC: "Permanent"
+          NATURE: "Retenue-bassin portuaire"
+        set:
+          Type: "0x3f"
+          EndLevel: "6"
+          Label: "${NOM_P_EAU}"
+
+      # 6. Catch-all (Permanent, vide)
       - match:
           PERSISTANC: "*"
         set:
@@ -3477,3 +3486,17 @@ rulesets:
         set:
           Type: "0x1101e"
           EndLevel: "0"
+
+  # ==========================================================================
+  # SEA — Polygones de mer (bounds, EPSG:4326)
+  # Source : ./pipeline/resources/bounds/FRANCE/SEA.shp
+  # Catch-all : toutes les features reçoivent le type mer (0x32).
+  # ==========================================================================
+  # - name: "Mer (SEA bounds)"
+  #   source_layer: "SEA"
+  #   rules:
+  #     - match:
+  #         NAME: "*"
+  #       set:
+  #         Type: "0x32"
+  #         EndLevel: "6"
