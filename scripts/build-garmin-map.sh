@@ -695,8 +695,24 @@ validate_base_id() {
         log_error "  Raison : mpforge génère des IDs Garmin = base_id × 10000 + seq"
         exit 1
     fi
+    # Pré-garde longueur : évite l'overflow entier bash sur de très longues chaînes
+    # (ex. 18446744073709551617 passe ^[0-9]+$ mais wrapping → valeur dans [1,9999]).
+    if [[ ${#BASE_ID} -gt 4 ]]; then
+        log_error "base-id : valeur trop grande, reçu '${BASE_ID}' (max 9999)"
+        log_error "  Raison : mpforge génère des IDs Garmin = base_id × 10000 + seq"
+        log_error "  L'ID résultant doit tenir sur 8 chiffres (format IMG Garmin)"
+        exit 1
+    fi
+    # Normalise les zéros de tête ("038" → 38) : serde_yml (YAML 1.1 via unsafe-libyaml)
+    # interprète "010" comme octal 8, "038" lève une erreur parse — le champ u32 reçoit
+    # une string ou un entier inattendu selon la valeur. On force la base 10 explicitement.
+    local base_id_raw="$BASE_ID"
+    BASE_ID=$((10#$BASE_ID))
+    if [[ "$base_id_raw" != "$BASE_ID" ]]; then
+        log_warn "base-id : zéros de tête supprimés : '${base_id_raw}' → ${BASE_ID}"
+    fi
     if [[ "$BASE_ID" -lt 1 || "$BASE_ID" -gt 9999 ]]; then
-        log_error "base-id : doit être dans l'intervalle 1-9999, reçu ${BASE_ID}"
+        log_error "base-id : doit être dans l'intervalle 1-9999, reçu '${base_id_raw}' (normalisé : ${BASE_ID})"
         log_error "  Raison : mpforge génère des IDs Garmin = base_id × 10000 + seq"
         log_error "  L'ID résultant doit tenir sur 8 chiffres (format IMG Garmin)"
         log_error "  Exemple : --base-id 38 → IDs 00380001, 00380002, etc."
