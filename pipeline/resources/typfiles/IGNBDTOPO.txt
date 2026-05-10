@@ -3559,6 +3559,58 @@ Xpm="0 0 1 0"
 
 
 [_polygon]
+Type=0x10f18
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_25/Customizable area/Non NT, NT
+String1=0x04,GRAVEL, SHINGLE
+String2=0x01,GRAVIERS, GALETS
+String3=0x02,KIES, SCHOTTER
+String4=0x00,GRAVIERS, GALETS
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #B0A890"
+"  c none"
+"                                "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+;12345678901234567890123456789012
+[end]
+
+
+[_polygon]
 Type=0x10f1b
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_28/Customizable area/Non NT, NT
 String1=0x04,RACECOURSE
@@ -6397,6 +6449,26 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#A05C50
 NightcustomColor:#A06850
+ContourColor=No
+[end]
+
+
+[_line]
+Type=0x10e1b
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_28/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #505050"
+String1=0x04,LOW WATER MARK
+String2=0x01,LAISSE DE BASSE MER
+String3=0x02,NIEDRIGWASSERLINIE
+String4=0x00,LAISSE DE BASSE MER
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#505050
+NightcustomColor:#505050
 ContourColor=No
 [end]
 

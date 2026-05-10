@@ -346,7 +346,16 @@ rulesets:
           EndLevel: "0"
           Label: "${NOM_P_EAU}"
 
-      # 4. Catch-all (Permanent, vide)
+      # 4. Lagune
+      - match:
+          PERSISTANC: "Permanent"
+          NATURE: "Lagune"
+        set:
+          Type: "0x3f"
+          EndLevel: "6"
+          Label: "${NOM_P_EAU}"
+
+      # 5. Catch-all (Permanent, vide)
       - match:
           PERSISTANC: "*"
         set:
@@ -465,6 +474,35 @@ rulesets:
           Type: "0x06414"
           EndLevel: "0"
           Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # HYDROGRAPHIE — Limite terre-mer / trait de côte (POLYLINE)
+  # Couche optionnelle — présente uniquement pour les départements côtiers.
+  # 2 règles NIVEAU + catch-all
+  # ==========================================================================
+  - name: "Limite terre-mer"
+    source_layer: "LIMITE_TERRE_MER"
+    rules:
+      # 1. Ligne des plus hautes eaux (trait de côte principal)
+      - match:
+          NIVEAU: "Plus hautes eaux"
+        set:
+          Type: "0x15"
+          EndLevel: "4"
+
+      # 2. Ligne des plus basses eaux (laisse de basse mer — trait fin gris foncé)
+      - match:
+          NIVEAU: "Plus basses eaux"
+        set:
+          Type: "0x10e1b"
+          EndLevel: "3"
+
+      # 3. Catch-all (limites administratives maritimes, null NIVEAU)
+      - match:
+          NIVEAU: "*"
+        set:
+          Type: "0x15"
+          EndLevel: "2"
 
   # ==========================================================================
   # BATI — Bâtiments (POLYGON)
@@ -992,6 +1030,42 @@ rulesets:
         set:
           Type: "0x11005"
           EndLevel: "2"
+
+  # ==========================================================================
+  # OCCUPATION DU SOL — Zone d'estran / intertidal (POLYGON)
+  # Couche optionnelle — présente uniquement pour les départements côtiers.
+  # 3 règles NATURE + catch-all
+  # ==========================================================================
+  - name: "Estran"
+    source_layer: "ZONE_D_ESTRAN"
+    rules:
+      # 1. Sable (0x11014 — SAND, GRAVEL, tan #907C60 — existant dans TYP)
+      - match:
+          NATURE: "Sable"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
+
+      # 2. Graviers ou galets (0x10f18 — custom #B0A890 — créé dans TYP)
+      - match:
+          NATURE: "Graviers ou galets"
+        set:
+          Type: "0x10f18"
+          EndLevel: "4"
+
+      # 3. Rocher (0x1101a — rocky texture #606060 — existant dans TYP)
+      - match:
+          NATURE: "Rocher"
+        set:
+          Type: "0x1101a"
+          EndLevel: "4"
+
+      # 4. Catch-all
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
 
   # ==========================================================================
   # SERVICES — Zones d'activité ou d'intérêt (POLYGON)

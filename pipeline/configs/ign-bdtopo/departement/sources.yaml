@@ -78,6 +78,12 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Limite terre-mer / trait de côte (optionnel — départements côtiers uniquement)
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/LIMITE_TERRE_MER.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
   # BATI (7 couches)
   # ==========================================================================
@@ -130,6 +136,12 @@ inputs:
 
   # Zones de végétation (forêts, haies — couche volumineuse)
   - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Estran / zones intertidales (optionnel — départements côtiers uniquement)
+  - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_D_ESTRAN.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
