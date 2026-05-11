@@ -3464,7 +3464,7 @@ rulesets:
         set:
           Type: "0x10f04"
           EndLevel: "5"
-          Label: "~[0x02]${NAME}"
+          Label: "~[0x03]${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
       - match:
