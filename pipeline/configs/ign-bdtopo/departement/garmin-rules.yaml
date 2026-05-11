@@ -3492,11 +3492,11 @@ rulesets:
   # Source : ./pipeline/resources/bounds/FRANCE/SEA.shp
   # Catch-all : toutes les features reçoivent le type mer (0x32).
   # ==========================================================================
-  # - name: "Mer (SEA bounds)"
-  #   source_layer: "SEA"
-  #   rules:
-  #     - match:
-  #         NAME: "*"
-  #       set:
-  #         Type: "0x32"
-  #         EndLevel: "6"
+  - name: "Mer (SEA bounds)"
+    source_layer: "SEA"
+    rules:
+      - match:
+          NAME: "*"
+        set:
+          Type: "0x32"
+          EndLevel: "6"

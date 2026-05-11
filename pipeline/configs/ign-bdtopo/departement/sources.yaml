@@ -19,8 +19,12 @@ inputs:
   # - path: "./pipeline/resources/bounds/FRANCE/SEA.shp"
   #   layer_alias: "SEA"
   #   spatial_filter:
-  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     source: "${DATA_ROOT}/sea/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
   #     buffer: 60000
+  - path: "./pipeline/data/sea/{${ZONES}}/SEA_BOUNDS.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "SEA"
 
   # ==========================================================================
   # TRANSPORT (4 couches)
