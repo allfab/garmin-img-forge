@@ -100,7 +100,7 @@ profiles:
   CONSTRUCTION_LINEAIRE:
     levels:
       - { n: 0 }
-      - { n: 1, simplify: 0.00001 }
+      - { n: 1 }
       - { n: 2, simplify: 0.00004 }
       - { n: 3, simplify: 0.00008 }
       - { n: 4, simplify: 0.00030 }

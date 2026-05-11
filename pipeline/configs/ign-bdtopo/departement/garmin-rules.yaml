@@ -355,10 +355,10 @@ rulesets:
           EndLevel: "6"
           Label: "${NOM_P_EAU}"
 
-      #5. Retenue-bassin portuaire
+      #5. Retenue-bassin portuaire, Ecoulement canalisé
       - match:
           PERSISTANC: "Permanent"
-          NATURE: "Retenue-bassin portuaire"
+          NATURE: "in:Retenue-bassin portuaire,Ecoulement canalisé"
         set:
           Type: "0x3f"
           EndLevel: "6"
@@ -3463,15 +3463,15 @@ rulesets:
           NAME: "*"
         set:
           Type: "0x10f04"
-          EndLevel: "4"
-          Label: "${NAME}"
+          EndLevel: "5"
+          Label: "~[0x02]${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
       - match:
           NAME: ""
         set:
           Type: "0x10f04"
-          EndLevel: "4"
+          EndLevel: "5"
 
   # ==========================================================================
   # CADASTRE — Piscines privées (TSURF_id, SYM=65)
