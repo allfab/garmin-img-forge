@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-11T19:57:59Z",
+  "generated_at": "2026-05-12T17:27:49Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -221,9 +221,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:18:48Z",
-          "size_bytes": 63400960,
-          "sha256": "b38059bcb5c60611d4bf2f231298514f40107a70eaab2674564e5a93d60e3ca0",
+          "published_at": "2026-05-12T17:26:01Z",
+          "size_bytes": 66176000,
+          "sha256": "69d48381553caed4efe02273ee2505b2d493dec60b1bda88202d2cf85f8209f8",
           "file": "IGN-BDTOPO-D02A-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d02a/v2026.03/IGN-BDTOPO-D02A-v2026.03.img",
           "build_params": {
@@ -274,9 +274,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:22:04Z",
-          "size_bytes": 67633152,
-          "sha256": "1926e54b3bb5beef96099a080ebda8e3f60528c955b5adcb9652beed34359f92",
+          "published_at": "2026-05-12T17:27:49Z",
+          "size_bytes": 70414336,
+          "sha256": "054d5c8d2377ab5753878ed80ffb53b9fb7b42f6d4db920cf0cced28044afee6",
           "file": "IGN-BDTOPO-D02B-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d02b/v2026.03/IGN-BDTOPO-D02B-v2026.03.img",
           "build_params": {
