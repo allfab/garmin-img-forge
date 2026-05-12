@@ -1,7 +1,6 @@
 //! Source data reading from GDAL-compatible formats.
 
 use crate::config::{Config, InputSource};
-use crate::pipeline::tiler::{feature_to_gdal_geometry, gdal_geometry_to_multi_coords};
 use anyhow::{anyhow, Context, Result};
 use gdal::spatial_ref::{CoordTransform, SpatialRef};
 use gdal::vector::{LayerAccess, OGRwkbGeometryType};
@@ -1539,7 +1538,6 @@ impl SourceReader {
 
                 // Apply spatial filter: combine with clipping geometry if available
                 let mut skip_layer = false;
-                let mut clip_polygon_wgs84: Option<gdal::vector::Geometry> = None;
                 if let Some(sf_geom) = spatial_filter_geometries.get(&idx) {
                     // F5: Fast envelope pre-rejection — avoid WKB parse if tile is clearly outside
                     let env = &sf_geom.envelope;
@@ -1598,16 +1596,6 @@ impl SourceReader {
                         match clip_geom.intersection(&tile_poly) {
                             Some(combined) if !combined.is_empty() => {
                                 layer.set_spatial_filter(&combined);
-
-                                // Build WGS84 clip polygon for post-load geometry clipping.
-                                // set_spatial_filter() only filters by bounding box; we need an
-                                // explicit intersection to clip feature geometries to the commune
-                                // boundary (not just to the tile boundary).
-                                clip_polygon_wgs84 = Self::build_clip_polygon_wgs84(
-                                    &sf_geom.wkb,
-                                    sf_geom.srs.as_deref(),
-                                    tile_bounds,
-                                ).ok().flatten();
                             }
                             _ => {
                                 trace!(
@@ -1637,7 +1625,7 @@ impl SourceReader {
                 }
 
                 // Story 9.4: Propagate explicit SRS from InputSource
-                let (mut features, unsupported, multi_geom) =
+                let (features, unsupported, multi_geom) =
                     Self::load_features_from_layer(
                         &mut layer,
                         path,
@@ -1655,13 +1643,6 @@ impl SourceReader {
                         .ok(); // Ignore error on cleanup
                 }
                 layer.clear_spatial_filter();
-
-                // Clip feature geometries to the commune polygon.
-                // set_spatial_filter() only filters by bounding box — features extending
-                // beyond commune boundaries would otherwise be clipped to the tile only.
-                if let Some(ref clip) = clip_polygon_wgs84 {
-                    features = Self::clip_features_to_spatial_filter(features, clip)?;
-                }
 
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
@@ -1828,102 +1809,6 @@ impl SourceReader {
         let rtree = RTreeIndex::build(&all_features)?;
 
         Ok((all_features, rtree, all_unsupported, all_multi_geom))
-    }
-
-    /// Build the WGS84 clip polygon for a spatial filter geometry intersected with a tile.
-    ///
-    /// Reprojects the spatial filter from its native CRS to WGS84, then intersects with
-    /// the tile bounding box. Returns `None` when the intersection is empty (tile outside
-    /// the filter area).
-    fn build_clip_polygon_wgs84(
-        wkb: &[u8],
-        srs_def: Option<&str>,
-        tile_bounds: &crate::pipeline::tiler::TileBounds,
-    ) -> Result<Option<gdal::vector::Geometry>> {
-        let geom = gdal::vector::Geometry::from_wkb(wkb)
-            .with_context(|| "Failed to deserialize spatial filter WKB for WGS84 clip")?;
-
-        let sf_srs = srs_def.unwrap_or("EPSG:4326");
-        if sf_srs != "EPSG:4326" {
-            let mut src = SpatialRef::from_definition(sf_srs)
-                .with_context(|| format!("Invalid spatial filter SRS: {}", sf_srs))?;
-            src.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
-            let mut dst = SpatialRef::from_epsg(4326)?;
-            dst.set_axis_mapping_strategy(gdal::spatial_ref::AxisMappingStrategy::TraditionalGisOrder);
-            let transform = CoordTransform::new(&src, &dst)?;
-            let rv = unsafe {
-                gdal_sys::OGR_G_Transform(geom.c_geometry(), transform.to_c_hct())
-            };
-            if rv != gdal_sys::OGRErr::OGRERR_NONE {
-                return Err(anyhow!(
-                    "Failed to reproject spatial filter from {} to WGS84",
-                    sf_srs
-                ));
-            }
-        }
-
-        let tile_wkt = format!(
-            "POLYGON (({} {}, {} {}, {} {}, {} {}, {} {}))",
-            tile_bounds.min_lon, tile_bounds.min_lat,
-            tile_bounds.max_lon, tile_bounds.min_lat,
-            tile_bounds.max_lon, tile_bounds.max_lat,
-            tile_bounds.min_lon, tile_bounds.max_lat,
-            tile_bounds.min_lon, tile_bounds.min_lat,
-        );
-        let tile_poly = gdal::vector::Geometry::from_wkt(&tile_wkt)
-            .with_context(|| "Failed to build WGS84 tile polygon for spatial filter clip")?;
-
-        Ok(geom.intersection(&tile_poly).filter(|g| !g.is_empty()))
-    }
-
-    /// Clip feature geometries to a polygon (WGS84).
-    ///
-    /// Used to enforce spatial_filter commune boundaries after loading: GDAL's
-    /// `set_spatial_filter()` only pre-selects features by bounding box; this function
-    /// performs the actual geometric clip so no feature extends beyond the filter polygon.
-    ///
-    /// Points are tested for containment and kept or dropped. Lines and polygons are
-    /// clipped via GDAL intersection; multi-geometry results produce multiple Feature
-    /// entries so that no fragment is silently dropped.
-    fn clip_features_to_spatial_filter(
-        features: Vec<Feature>,
-        clip_poly: &gdal::vector::Geometry,
-    ) -> Result<Vec<Feature>> {
-        let mut result = Vec::with_capacity(features.len());
-        for feature in features {
-            if feature.geometry_type == GeometryType::Point {
-                let geom = match feature_to_gdal_geometry(&feature) {
-                    Ok(g) => g,
-                    Err(_) => continue,
-                };
-                if geom.intersects(clip_poly) {
-                    result.push(feature);
-                }
-                continue;
-            }
-
-            let geom = match feature_to_gdal_geometry(&feature) {
-                Ok(g) => g,
-                Err(_) => continue,
-            };
-
-            match geom.intersection(clip_poly) {
-                Some(clipped) if !clipped.is_empty() => {
-                    let all_coords = gdal_geometry_to_multi_coords(&clipped)?;
-                    for coords in all_coords {
-                        result.push(Feature {
-                            geometry_type: feature.geometry_type,
-                            geometry: coords,
-                            additional_geometries: BTreeMap::new(),
-                            attributes: feature.attributes.clone(),
-                            source_layer: feature.source_layer.clone(),
-                        });
-                    }
-                }
-                _ => {}
-            }
-        }
-        Ok(result)
     }
 }
 
@@ -2475,175 +2360,5 @@ mod tests {
         // Bypass `set_level` on purpose — this is the bug pattern we guard.
         bad.additional_geometries.insert(0, vec![(9.0, 9.0)]);
         bad.assert_multi_bucket_invariant();
-    }
-
-    // =================================================================
-    // spatial_filter geometry clipping
-    // =================================================================
-
-    fn make_linestring(coords: Vec<(f64, f64)>) -> Feature {
-        Feature {
-            geometry_type: GeometryType::LineString,
-            geometry: coords,
-            additional_geometries: std::collections::BTreeMap::new(),
-            attributes: HashMap::new(),
-            source_layer: Some("TEST".to_string()),
-        }
-    }
-
-    fn make_point(x: f64, y: f64) -> Feature {
-        Feature {
-            geometry_type: GeometryType::Point,
-            geometry: vec![(x, y)],
-            additional_geometries: std::collections::BTreeMap::new(),
-            attributes: HashMap::new(),
-            source_layer: Some("TEST".to_string()),
-        }
-    }
-
-    fn wgs84_square(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> gdal::vector::Geometry {
-        let wkt = format!(
-            "POLYGON (({} {}, {} {}, {} {}, {} {}, {} {}))",
-            min_lon, min_lat,
-            max_lon, min_lat,
-            max_lon, max_lat,
-            min_lon, max_lat,
-            min_lon, min_lat,
-        );
-        gdal::vector::Geometry::from_wkt(&wkt).expect("valid WKT square")
-    }
-
-    /// Une LineString entièrement à l'intérieur du polygone de clip doit être conservée intacte.
-    #[test]
-    fn test_clip_features_linestring_inside_kept_intact() {
-        let feature = make_linestring(vec![(1.0, 1.0), (1.5, 1.5), (2.0, 1.0)]);
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature.clone()], &clip)
-            .expect("clip should succeed");
-
-        assert_eq!(result.len(), 1, "feature inside clip must be kept");
-        assert_eq!(result[0].geometry, feature.geometry, "coords must be unchanged");
-    }
-
-    /// Une LineString entièrement à l'extérieur du polygone de clip doit être supprimée.
-    #[test]
-    fn test_clip_features_linestring_outside_dropped() {
-        let feature = make_linestring(vec![(10.0, 10.0), (11.0, 11.0)]);
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature], &clip)
-            .expect("clip should succeed");
-
-        assert!(result.is_empty(), "feature outside clip must be dropped");
-    }
-
-    /// Une LineString qui traverse la frontière de clip doit être tronquée à cette frontière.
-    #[test]
-    fn test_clip_features_linestring_crossing_boundary_clipped() {
-        // Ligne de (1.0, 1.0) à (5.0, 1.0), clip = carré [0,0]-[3,3]
-        let feature = make_linestring(vec![(1.0, 1.0), (5.0, 1.0)]);
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature], &clip)
-            .expect("clip should succeed");
-
-        assert_eq!(result.len(), 1, "one clipped segment expected");
-        let last = result[0].geometry.last().expect("non-empty");
-        assert!(
-            (last.0 - 3.0).abs() < 1e-6,
-            "LineString must be truncated at clip boundary x=3.0, got x={}",
-            last.0
-        );
-    }
-
-    /// Un Point à l'intérieur du clip doit être conservé.
-    #[test]
-    fn test_clip_features_point_inside_kept() {
-        let feature = make_point(1.0, 1.0);
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature], &clip)
-            .expect("clip should succeed");
-
-        assert_eq!(result.len(), 1);
-    }
-
-    /// Un Point à l'extérieur du clip doit être supprimé.
-    #[test]
-    fn test_clip_features_point_outside_dropped() {
-        let feature = make_point(10.0, 10.0);
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature], &clip)
-            .expect("clip should succeed");
-
-        assert!(result.is_empty());
-    }
-
-    /// Les attributs et source_layer sont préservés après clip.
-    #[test]
-    fn test_clip_features_preserves_attributes() {
-        let mut attrs = HashMap::new();
-        attrs.insert("Label".to_string(), "GR10".to_string());
-        let feature = Feature {
-            geometry_type: GeometryType::LineString,
-            geometry: vec![(1.0, 1.0), (5.0, 1.0)],
-            additional_geometries: std::collections::BTreeMap::new(),
-            attributes: attrs.clone(),
-            source_layer: Some("MON_GR".to_string()),
-        };
-        let clip = wgs84_square(0.0, 0.0, 3.0, 3.0);
-
-        let result = SourceReader::clip_features_to_spatial_filter(vec![feature], &clip)
-            .expect("clip should succeed");
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].attributes.get("Label").map(String::as_str), Some("GR10"));
-        assert_eq!(result[0].source_layer.as_deref(), Some("MON_GR"));
-    }
-
-    /// build_clip_polygon_wgs84 — intersection vide retourne None.
-    #[test]
-    fn test_build_clip_polygon_wgs84_outside_tile_returns_none() {
-        use crate::pipeline::tiler::TileBounds;
-
-        // Polygone en WGS84 à (10,10)-(11,11), tuile à (0,0)-(1,1) → pas d'intersection
-        let poly = wgs84_square(10.0, 10.0, 11.0, 11.0);
-        let wkb = poly.wkb().expect("wkb");
-        let tile = TileBounds {
-            min_lon: 0.0,
-            min_lat: 0.0,
-            max_lon: 1.0,
-            max_lat: 1.0,
-            col: 0,
-            row: 0,
-        };
-
-        let result = SourceReader::build_clip_polygon_wgs84(&wkb, Some("EPSG:4326"), &tile)
-            .expect("no error expected");
-        assert!(result.is_none(), "non-overlapping clip + tile must return None");
-    }
-
-    /// build_clip_polygon_wgs84 — intersection valide retourne Some.
-    #[test]
-    fn test_build_clip_polygon_wgs84_overlapping_returns_some() {
-        use crate::pipeline::tiler::TileBounds;
-
-        // Polygone en WGS84 couvrant (0,0)-(2,2), tuile (1,1)-(3,3) → intersection (1,1)-(2,2)
-        let poly = wgs84_square(0.0, 0.0, 2.0, 2.0);
-        let wkb = poly.wkb().expect("wkb");
-        let tile = TileBounds {
-            min_lon: 1.0,
-            min_lat: 1.0,
-            max_lon: 3.0,
-            max_lat: 3.0,
-            col: 0,
-            row: 0,
-        };
-
-        let result = SourceReader::build_clip_polygon_wgs84(&wkb, Some("EPSG:4326"), &tile)
-            .expect("no error expected");
-        assert!(result.is_some(), "overlapping clip + tile must return Some geometry");
     }
 }

@@ -662,7 +662,7 @@ pub fn feature_to_gdal_geometry(feature: &Feature) -> anyhow::Result<Geometry> {
 /// produce a single entry. Multi-geometries (MultiPolygon, MultiLineString, MultiPoint)
 /// are decomposed into one entry per sub-geometry so that no fragment is lost during
 /// tile clipping.
-pub(crate) fn gdal_geometry_to_multi_coords(geom: &Geometry) -> anyhow::Result<Vec<Vec<(f64, f64)>>> {
+fn gdal_geometry_to_multi_coords(geom: &Geometry) -> anyhow::Result<Vec<Vec<(f64, f64)>>> {
     use gdal::vector::OGRwkbGeometryType;
 
     let geom_type = geom.geometry_type();
