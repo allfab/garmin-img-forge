@@ -155,11 +155,15 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
         .map(|(i, &res)| Zoom::new(i as u8, res))
         .collect();
 
-    // 3. Compute bounds (DEM-aligned override takes priority — see build_subfiles_with_dem_bounds)
-    let bounds = match bounds_override {
-        Some(b) => b,
-        None => compute_bounds(mp)?,
-    };
+    // 3. Compute bounds
+    // feature_bounds : toujours feature-based → centres des subdivisions + encodage delta RGN
+    //   (parité mkgmap src.getBounds() passé à makeMapAreas / topLevelSubdivision)
+    // tre_header_bounds : DEM-alignés si disponibles → header TRE outer bounds uniquement
+    //   (parité mkgmap map.setBounds(treArea), MapBuilder.java:395)
+    // Les deux peuvent différer légèrement (snap grille HGT) ; utiliser dem_bounds pour les
+    // centres décalerait tous les deltas coordonnées → fan-pattern visible en vue large.
+    let feature_bounds = compute_bounds(mp)?;
+    let tre_header_bounds = bounds_override.unwrap_or(feature_bounds);
 
     // 4. Pre-compute routing → RoutingContext + net_writer + nod_data
     let (routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);
@@ -167,7 +171,7 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
     // 5. Build multi-level subdivision hierarchy + encode RGN (with routing context)
     let mut rgn = RgnWriter::new();
     let (all_subdivisions, tre_levels, ext_type_offsets_data, subdiv_road_refs) = build_multilevel_hierarchy(
-        mp, &bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
+        mp, &feature_bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
         routing_ctx.as_ref(),
     )?;
 
@@ -188,7 +192,7 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
 
     // 6. Build TRE
     let mut tre = TreWriter::new();
-    tre.set_bounds(bounds.min_lat(), bounds.min_lon(), bounds.max_lat(), bounds.max_lon());
+    tre.set_bounds(tre_header_bounds.min_lat(), tre_header_bounds.min_lon(), tre_header_bounds.max_lat(), tre_header_bounds.max_lon());
     tre.display_priority = mp.header.draw_priority;
     tre.transparent = mp.header.transparent;
     tre.map_id = mp.header.id;
