@@ -377,7 +377,7 @@ impl MapArea {
             // then process other overlapping cells (avoids a duplicate clip_to_bbox call).
             let mut clipped_any = false;
 
-            fn emit_segs(area: &mut MapArea, mp_index: usize, segs: Vec<Vec<Coord>>) -> bool {
+            fn emit_segs(area: &mut MapArea, mp_index: usize, line: &SplitLine, segs: Vec<Vec<Coord>>) -> bool {
                 let mut any = false;
                 for seg in segs {
                     if seg.len() >= 2 {
@@ -389,7 +389,7 @@ impl MapArea {
             }
 
             if let Some(segs) = target_clip {
-                clipped_any |= emit_segs(&mut sub_areas[target], line.mp_index, segs);
+                clipped_any |= emit_segs(&mut sub_areas[target], line.mp_index, line, segs);
             }
 
             for j in 0..num_areas {
@@ -401,7 +401,7 @@ impl MapArea {
                         clipped_any = true;
                     }
                     Some(segs) => {
-                        clipped_any |= emit_segs(&mut sub_areas[j], line.mp_index, segs);
+                        clipped_any |= emit_segs(&mut sub_areas[j], line.mp_index, line, segs);
                     }
                 }
             }
