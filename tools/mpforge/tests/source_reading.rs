@@ -32,7 +32,6 @@ fn test_read_shapefile_source() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -78,7 +77,6 @@ fn test_read_geopackage_with_layer() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -107,7 +105,6 @@ fn test_read_source_file_not_found() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let result = SourceReader::read_file_source(&input);
@@ -131,7 +128,6 @@ fn test_coordinates_wgs84() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -170,7 +166,6 @@ fn test_attribute_extraction() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -214,7 +209,6 @@ fn test_attribute_extraction_garmin_fields() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -253,7 +247,6 @@ fn test_read_multiple_sources() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // LineStrings
@@ -267,7 +260,6 @@ fn test_read_multiple_sources() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("roads.gpkg")), // Polygons
@@ -281,7 +273,6 @@ fn test_read_multiple_sources() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
         ],
         grid: GridConfig {
@@ -368,7 +359,6 @@ fn test_read_all_sources_continue_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
@@ -382,7 +372,6 @@ fn test_read_all_sources_continue_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid
@@ -396,7 +385,6 @@ fn test_read_all_sources_continue_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
         ],
         grid: GridConfig {
@@ -453,7 +441,6 @@ fn test_read_all_sources_fail_fast_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some("/nonexistent/file.shp".to_string()), // Invalid
@@ -467,7 +454,6 @@ fn test_read_all_sources_fail_fast_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // Valid (won't be reached)
@@ -481,7 +467,6 @@ fn test_read_all_sources_fail_fast_mode() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
         ],
         grid: GridConfig {
@@ -536,7 +521,6 @@ fn test_geopackage_multi_layers_integration() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, _multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -600,7 +584,6 @@ fn test_multi_source_with_multi_layer_geopackage() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("multi_layers.gpkg")), // 23 features (3 layers)
@@ -618,7 +601,6 @@ fn test_multi_source_with_multi_layer_geopackage() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file2.shp")), // 2 linestrings
@@ -632,7 +614,6 @@ fn test_multi_source_with_multi_layer_geopackage() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
             },
         ],
         grid: GridConfig {

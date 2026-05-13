@@ -205,7 +205,6 @@ inputs:
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
     layer_alias: "COURBE"
-    no_tile_overlap: true   # display-only : clip sur bounds core pour éviter les doublons au joint de tuiles
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500  # mètres, dans le SRS source (EPSG:2154)
@@ -264,7 +263,6 @@ inputs:
   # ==========================================================================
   - path: "${HIKING_TRAILS_DATA_ROOT}/MON_GR_ITINERAIRE_ME.shp"
     layer_alias: "MON_GR_ITINERAIRE_ME"
-    no_tile_overlap: true   # display-only : clip sur bounds core pour éviter les doublons au joint de tuiles
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500

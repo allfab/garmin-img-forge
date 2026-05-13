@@ -130,7 +130,6 @@ fn test_multipoint_decomposition_with_attributes() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -198,7 +197,6 @@ fn test_multilinestring_decomposition() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -243,7 +241,6 @@ fn test_multipolygon_decomposition() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -301,7 +298,6 @@ fn test_geometry_collection_filtered() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -345,7 +341,6 @@ fn test_simple_geometries_unchanged() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();
@@ -385,7 +380,6 @@ fn test_mix_simple_and_multi_geometries() {
             generalize: None,
             spatial_filter: None,
         dedup_by_field: None,
-            no_tile_overlap: None,
     };
 
     let (features, _unsupported, multi_geom) = SourceReader::read_file_source(&input).unwrap();

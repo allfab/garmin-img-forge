@@ -36,7 +36,6 @@ fn make_config(filenames: &[&str]) -> Config {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         })
         .collect();
 
@@ -147,7 +146,6 @@ fn test_scan_extents_invalid_source_continue_mode() {
             generalize: None,
             spatial_filter: None,
                 dedup_by_field: None,
-            no_tile_overlap: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file1.shp")),
@@ -161,7 +159,6 @@ fn test_scan_extents_invalid_source_continue_mode() {
             generalize: None,
             spatial_filter: None,
                 dedup_by_field: None,
-            no_tile_overlap: None,
             },
         ],
         error_handling: "continue".to_string(),
@@ -188,7 +185,6 @@ fn test_scan_extents_invalid_source_fail_fast() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         }],
         error_handling: "fail-fast".to_string(),
         ..make_config(&[])

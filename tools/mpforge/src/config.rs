@@ -144,11 +144,6 @@ pub struct InputSource {
     /// Absent = pas de dedup pour cette source (et pas de warning "field not present").
     #[serde(default)]
     pub dedup_by_field: Option<String>,
-    /// When true, clip features to core tile bounds (without overlap extension).
-    /// Prevents duplicate features in the overlap zone for display-only layers (GR, COURBE).
-    /// Routing layers must NOT set this flag (they need overlap for cross-tile route continuity).
-    #[serde(default)]
-    pub no_tile_overlap: Option<bool>,
 }
 
 /// Configuration for geometry generalization (smoothing + simplification).
@@ -1960,7 +1955,6 @@ output:
                 generalize: None,
                 spatial_filter: None,
                 dedup_by_field: None,
-                no_tile_overlap: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -2270,7 +2264,6 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -2287,7 +2280,6 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -2304,7 +2296,6 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -2321,7 +2312,6 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -2963,7 +2953,6 @@ header:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
         };
         let cloned = input.clone();
         assert_eq!(cloned.path, input.path);

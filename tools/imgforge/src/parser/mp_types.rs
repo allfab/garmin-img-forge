@@ -70,10 +70,6 @@ pub struct MpHeader {
     pub routing_mode: RoutingMode,
     // Elevation
     pub elevation_unit: ElevationUnit,
-    // Tile geographic bounds written by mpforge (includes grid overlap).
-    // Format: [south, west, north, east] in WGS84 degrees.
-    // Used by imgforge DEM encoder to ensure full-tile elevation coverage.
-    pub tile_bounds: Option<[f64; 4]>,
     // Metadata (TDB-level)
     pub country_name: String,
     pub country_abbr: String,

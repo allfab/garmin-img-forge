@@ -582,14 +582,6 @@ fn build_dem_subfile_with_grids(
 }
 
 fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds {
-    // Use tile bounds written by mpforge when available.
-    // These cover the full tile extent including grid overlap, ensuring the DEM
-    // grid covers the entire tile and preventing elevation gaps at tile seams.
-    if let Some([south, west, north, east]) = mp.header.tile_bounds {
-        return dem::GeoBounds { north, south, east, west };
-    }
-
-    // Fallback: compute from feature coordinates (legacy .mp files without TileBounds).
     let mut min_lat = f64::INFINITY;
     let mut max_lat = f64::NEG_INFINITY;
     let mut min_lon = f64::INFINITY;

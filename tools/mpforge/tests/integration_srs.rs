@@ -134,7 +134,6 @@ fn test_srs_explicit_source_and_target_reprojection() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     });
 
     // Scan extents should work with explicit SRS
@@ -202,7 +201,6 @@ fn test_srs_source_only_defaults_to_wgs84() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
@@ -253,7 +251,6 @@ fn test_srs_backward_compat_no_explicit_srs() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();
@@ -314,7 +311,6 @@ fn test_srs_override_detected_srs() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     });
 
     // Use scan_extents to get proper bounds for the spatial filter
@@ -405,7 +401,6 @@ fn test_srs_scan_extents_explicit() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
-            no_tile_overlap: None,
     });
 
     let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new()).unwrap();

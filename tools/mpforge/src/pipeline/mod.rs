@@ -223,8 +223,6 @@ struct TileContext<'a> {
     topo_presimplified: Arc<Vec<Feature>>,
     /// Noms des couches déclarées `topology: true` dans le catalogue de profils.
     topo_layer_names: Arc<HashSet<String>>,
-    /// Couches pour lesquelles le clipping utilise les bounds core (sans overlap).
-    no_tile_overlap_layers: Arc<HashSet<String>>,
 }
 
 /// Vérifie si la bounding box d'une feature intersecte la bounding box d'une tuile.
@@ -401,42 +399,14 @@ fn process_single_tile(
         }
     };
 
-    // Core bounds = tile bounds sans l'extension d'overlap (pour no_tile_overlap layers)
-    let core_bbox_geom: Option<gdal::vector::Geometry> = if !ctx.no_tile_overlap_layers.is_empty() {
-        let half_overlap = ctx.config.grid.overlap / 2.0;
-        let core = TileBounds {
-            col: tile_bounds.col,
-            row: tile_bounds.row,
-            min_lon: tile_bounds.min_lon + half_overlap,
-            min_lat: tile_bounds.min_lat + half_overlap,
-            max_lon: tile_bounds.max_lon - half_overlap,
-            max_lat: tile_bounds.max_lat - half_overlap,
-        };
-        match core.to_gdal_polygon() {
-            Ok(g) => Some(g),
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-
     let mut clipped_features = Vec::new();
     let mut tile_validation_stats = ValidationStats::default();
     let mut clip_errors = Vec::new();
 
     for feature in &features {
-        let layer_name = feature.source_layer.as_deref().unwrap_or("");
-        let clip_bbox = if !ctx.no_tile_overlap_layers.is_empty()
-            && ctx.no_tile_overlap_layers.contains(layer_name)
-            && core_bbox_geom.is_some()
-        {
-            core_bbox_geom.as_ref().unwrap()
-        } else {
-            &tile_bbox_geom
-        };
         match clip_feature_to_tile(
             feature,
-            clip_bbox,
+            &tile_bbox_geom,
             ctx.error_mode,
             &mut tile_validation_stats,
         ) {
@@ -562,8 +532,11 @@ fn process_single_tile(
         .and_then(|h| h.name.as_deref())
         .map_or(false, |name| name.contains('{'));
 
-    let needs_clone = true; // always clone: TileBounds written per-tile
-    let _ = needs_name_resolve; // used below in the clone block
+    let needs_clone = needs_name_resolve || {
+        ctx.config.output.base_id.is_some() && ctx.config.header.as_ref()
+            .and_then(|h| h.id.as_deref())
+            .map_or(true, |id| id == AUTO_ID)
+    };
 
     let effective_header = if needs_clone {
         let mut header = ctx.config.header.clone().unwrap_or_default();
@@ -601,14 +574,6 @@ fn process_single_tile(
                 header.name = Some(resolved);
             }
         }
-
-        // Write tile geographic bounds for imgforge DEM extent (includes overlap).
-        // Format: "south,west,north,east" (WGS84 degrees, 8 decimal places).
-        let bounds_str = format!("{:.8},{:.8},{:.8},{:.8}",
-            tile_bounds.min_lat, tile_bounds.min_lon,
-            tile_bounds.max_lat, tile_bounds.max_lon);
-        header.custom.get_or_insert_with(std::collections::HashMap::new)
-            .insert("TileBounds".to_string(), bounds_str);
 
         tile_header_config = Some(header);
         tile_header_config.as_ref()
@@ -1141,12 +1106,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         ));
     }
 
-    let no_tile_overlap_layers: HashSet<String> = config.inputs.iter()
-        .filter(|i| i.no_tile_overlap.unwrap_or(false))
-        .filter_map(|i| i.layer_alias.clone())
-        .collect();
-    let no_tile_overlap_layers = Arc::new(no_tile_overlap_layers);
-
     let ctx = TileContext {
         config,
         rules: rules.map(Arc::new),
@@ -1163,7 +1122,6 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         spatial_filter_geometries: spatial_filter_geometries.clone(),
         topo_presimplified,
         topo_layer_names,
-        no_tile_overlap_layers: no_tile_overlap_layers.clone(),
     };
 
     // Inform user when no header section is configured
