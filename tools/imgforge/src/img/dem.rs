@@ -1050,8 +1050,12 @@ impl DemWriter {
         for section in &self.sections {
             let s_west = section.left as i32 as f64 * MAP_UNIT_FACTOR_ADJ / 256.0;
             let s_north = section.top as i32 as f64 * MAP_UNIT_FACTOR_ADJ / 256.0;
-            let s_east = s_west + (section.tiles_lon * STD_DIM) as f64 * section.points_distance_lon as f64 * FACTOR;
-            let s_south = s_north - (section.tiles_lat * STD_DIM) as f64 * section.points_distance_lat as f64 * FACTOR;
+            // Couverture réelle du dernier tile non-standard : (N-1)*64 + non_std
+            // (et non N*64 qui surestime quand non_std < STD_DIM → bande blanche DEM)
+            let east_points = (section.tiles_lon - 1) * STD_DIM + section.non_std_width;
+            let south_points = (section.tiles_lat - 1) * STD_DIM + section.non_std_height;
+            let s_east = s_west + east_points as f64 * section.points_distance_lon as f64 * FACTOR;
+            let s_south = s_north - south_points as f64 * section.points_distance_lat as f64 * FACTOR;
 
             if s_west < adj.west { adj.west = s_west; }
             if s_east > adj.east { adj.east = s_east; }
