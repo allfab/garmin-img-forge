@@ -93,6 +93,18 @@ pub struct TileResult {
 
 /// Build subfiles from a parsed .mp without assembling into IMG
 pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
+    build_subfiles_inner(mp, None)
+}
+
+/// Build subfiles using DEM-aligned bounds for the TRE — mirrors mkgmap's
+/// `map.setBounds(treArea)` (MapBuilder.java:395) which updates TRE bounds
+/// after DEM calculation to prevent a mismatch where DEM extends beyond the
+/// TRE-declared area (visible as a white band in Basecamp at tile seams).
+pub fn build_subfiles_with_dem_bounds(mp: &MpFile, dem_bounds: Area) -> Result<TileResult, ImgError> {
+    build_subfiles_inner(mp, Some(dem_bounds))
+}
+
+fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<TileResult, ImgError> {
     // Encoding selection: codepage drives the label format.
     // --lower-case forces Format9/10 (Format6 is uppercase-only).
     let encoding = if mp.header.lower_case && mp.header.codepage == 0 {
@@ -143,8 +155,11 @@ pub fn build_subfiles(mp: &MpFile) -> Result<TileResult, ImgError> {
         .map(|(i, &res)| Zoom::new(i as u8, res))
         .collect();
 
-    // 3. Compute bounds
-    let bounds = compute_bounds(mp)?;
+    // 3. Compute bounds (DEM-aligned override takes priority — see build_subfiles_with_dem_bounds)
+    let bounds = match bounds_override {
+        Some(b) => b,
+        None => compute_bounds(mp)?,
+    };
 
     // 4. Pre-compute routing → RoutingContext + net_writer + nod_data
     let (routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);

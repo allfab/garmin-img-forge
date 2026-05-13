@@ -101,14 +101,27 @@ fn main() -> Result<()> {
                 }
             });
 
-            let mut result = writer::build_subfiles(&mp)
-                .with_context(|| "Failed to build subfiles")?;
-
-            if let Some(ref config) = dem_config {
+            // DEM first: calc() returns HGT-grid-aligned bounds used for TRE
+            // (mirrors mkgmap MapBuilder.java:394-395 map.setBounds(treArea)).
+            let dem_result = if let Some(ref config) = dem_config {
                 match build_dem_subfile(&mp, config) {
-                    Ok(dem_data) => { result.dem = Some(dem_data); }
-                    Err(e) => { tracing::warn!("DEM generation failed: {:#}", e); }
+                    Ok((data, bounds)) => Some((data, bounds)),
+                    Err(e) => { tracing::warn!("DEM generation failed: {:#}", e); None }
                 }
+            } else {
+                None
+            };
+
+            let mut result = if let Some((_, ref dem_bounds)) = dem_result {
+                writer::build_subfiles_with_dem_bounds(&mp, geo_bounds_to_area(dem_bounds))
+                    .with_context(|| "Failed to build subfiles")?
+            } else {
+                writer::build_subfiles(&mp)
+                    .with_context(|| "Failed to build subfiles")?
+            };
+
+            if let Some((dem_data, _)) = dem_result {
+                result.dem = Some(dem_data);
             }
 
             let img_data = writer::build_img_with_typ_from_result(&result, typ_data.as_deref())
@@ -240,14 +253,27 @@ fn main() -> Result<()> {
                     route, net, no_route, copyright_clone.as_deref(),
                 );
 
-                let mut tile = writer::build_subfiles(&mp)
-                    .with_context(|| format!("Failed to build {}", path.display()))?;
-
-                if let (Some(ref config), Some(ref grids)) = (&dem_config_clone, &shared_dem_clone) {
+                // DEM first: calc() returns HGT-grid-aligned bounds used for TRE
+                // (mirrors mkgmap MapBuilder.java:394-395 map.setBounds(treArea)).
+                let dem_result = if let (Some(ref config), Some(ref grids)) = (&dem_config_clone, &shared_dem_clone) {
                     match build_dem_subfile_with_grids(&mp, config, grids) {
-                        Ok(dem_data) => { tile.dem = Some(dem_data); }
-                        Err(e) => { tracing::warn!("DEM generation failed for {}: {:#}", path.display(), e); }
+                        Ok((data, bounds)) => Some((data, bounds)),
+                        Err(e) => { tracing::warn!("DEM generation failed for {}: {:#}", path.display(), e); None }
                     }
+                } else {
+                    None
+                };
+
+                let mut tile = if let Some((_, ref dem_bounds)) = dem_result {
+                    writer::build_subfiles_with_dem_bounds(&mp, geo_bounds_to_area(dem_bounds))
+                        .with_context(|| format!("Failed to build {}", path.display()))?
+                } else {
+                    writer::build_subfiles(&mp)
+                        .with_context(|| format!("Failed to build {}", path.display()))?
+                };
+
+                if let Some((dem_data, _)) = dem_result {
+                    tile.dem = Some(dem_data);
                 }
 
                 let counts = (mp.points.len(), mp.polylines.len(), mp.polygons.len());
@@ -554,7 +580,7 @@ fn apply_tile_overrides(
 fn build_dem_subfile(
     mp: &imgforge::parser::mp_types::MpFile,
     config: &dem::DemConfig,
-) -> Result<Vec<u8>> {
+) -> Result<(Vec<u8>, dem::GeoBounds)> {
     let grids = dem::load_elevation_sources(&config.paths, config.source_srs.as_deref())?;
     build_dem_subfile_with_grids(mp, config, &grids)
 }
@@ -563,7 +589,7 @@ fn build_dem_subfile_with_grids(
     mp: &imgforge::parser::mp_types::MpFile,
     config: &dem::DemConfig,
     grids: &[dem::ElevationGrid],
-) -> Result<Vec<u8>> {
+) -> Result<(Vec<u8>, dem::GeoBounds)> {
     use imgforge::img::dem::DemWriter;
     use imgforge::img::zoom::Zoom;
 
@@ -576,9 +602,22 @@ fn build_dem_subfile_with_grids(
     }).collect();
 
     let mut writer = DemWriter::new();
-    writer.calc(&bounds, config, &converter, &levels);
+    // calc() returns DEM-aligned bounds (may extend slightly beyond feature bounds
+    // due to HGT grid snapping) — caller uses these for TRE bounds (mkgmap parity).
+    let dem_bounds = writer.calc(&bounds, config, &converter, &levels);
 
-    Ok(writer.build())
+    Ok((writer.build(), dem_bounds))
+}
+
+/// Convert DEM GeoBounds (WGS84 degrees) to map-unit Area for TRE bounds.
+fn geo_bounds_to_area(b: &dem::GeoBounds) -> imgforge::img::area::Area {
+    use imgforge::img::coord::to_map_unit;
+    imgforge::img::area::Area::new(
+        to_map_unit(b.south),
+        to_map_unit(b.west),
+        to_map_unit(b.north),
+        to_map_unit(b.east),
+    )
 }
 
 fn compute_mp_bounds(mp: &imgforge::parser::mp_types::MpFile) -> dem::GeoBounds {
