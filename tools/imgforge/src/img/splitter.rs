@@ -5,11 +5,9 @@
 // - splitMaxSize: initial grid split to respect MAX_DIVISION_SIZE
 // - addAreasToList: recursive re-split until all areas fit limits
 // - Sutherland-Hodgman: polygon clipping against axis-aligned rectangles
-// - Liang-Barsky (line_clipper): polyline clipping at subdivision boundaries
 
 use super::area::Area;
 use super::coord::Coord;
-use super::line_clipper;
 
 // ── Splitting limits from mkgmap MapSplitter.java ──────────────────────────
 
@@ -67,7 +65,7 @@ pub struct SplitPoint {
     pub location: Coord,
 }
 
-/// A line feature — may be a full original line or a clipped segment at a subdivision boundary
+/// A line feature — distributed by first point, never clipped
 #[derive(Debug, Clone)]
 pub struct SplitLine {
     pub mp_index: usize,
@@ -348,12 +346,11 @@ impl MapArea {
         }
 
 
-        // ── Lines: clip to each sub-area the line overlaps (parité mkgmap LineClipper).
-        // clip_to_bbox retourne None quand la ligne est entièrement intérieure (cas
-        // majoritaire, sans allocation). Sinon, chaque segment clippé est émis comme
-        // SplitLine distinct avec le même mp_index, éliminant les micro-écarts aux
-        // frontières de subdivision (cause racine des ruptures visuelles sur les courbes
-        // de niveau).
+        // ── Lines: single sub-area by bbox midpoint (mkgmap pickArea, no clipping).
+        // La ligne intacte va dans UNE seule sub-area ; add_line() → extend_bounds_points()
+        // étend full_bounds() pour couvrir toute la ligne, même si elle déborde de la cell.
+        // writer.rs utilise full_bounds() pour les bounds TRE → le firmware charge la
+        // subdivision quand n'importe quelle portion de la ligne est dans le viewport.
         for line in &self.lines {
             if line.points.is_empty() {
                 continue;
@@ -365,49 +362,7 @@ impl MapArea {
                 mid_lon, mid_lat,
                 xbase, ybase, nx, ny, dx, dy, num_areas,
             );
-
-            // Fast path: line fully inside target cell — compute once, reuse below.
-            let target_clip = line_clipper::clip_to_bbox(&line.points, &sub_areas[target].bounds);
-            if target_clip.is_none() {
-                sub_areas[target].add_line(line.clone());
-                continue;
-            }
-
-            // Line crosses cell boundaries. Process target first using the cached result,
-            // then process other overlapping cells (avoids a duplicate clip_to_bbox call).
-            let mut clipped_any = false;
-
-            fn emit_segs(area: &mut MapArea, mp_index: usize, line: &SplitLine, segs: Vec<Vec<Coord>>) -> bool {
-                let mut any = false;
-                for seg in segs {
-                    if seg.len() >= 2 {
-                        area.add_line(SplitLine { mp_index, points: seg });
-                        any = true;
-                    }
-                }
-                any
-            }
-
-            if let Some(segs) = target_clip {
-                clipped_any |= emit_segs(&mut sub_areas[target], line.mp_index, line, segs);
-            }
-
-            for j in 0..num_areas {
-                if j == target { continue; }
-                if !sub_areas[j].bounds.intersects(&line_bbox) { continue; }
-                match line_clipper::clip_to_bbox(&line.points, &sub_areas[j].bounds) {
-                    None => {
-                        sub_areas[j].add_line(line.clone());
-                        clipped_any = true;
-                    }
-                    Some(segs) => {
-                        clipped_any |= emit_segs(&mut sub_areas[j], line.mp_index, line, segs);
-                    }
-                }
-            }
-            if !clipped_any {
-                sub_areas[target].add_line(line.clone());
-            }
+            sub_areas[target].add_line(line.clone());
         }
 
         // ── Shapes: clip each polygon to every sub-area it overlaps (Sutherland-Hodgman).
@@ -478,6 +433,66 @@ fn pick_area(
         0
     };
     (xcell * ny + ycell).min(num_areas - 1)
+}
+
+// ── Polyline clipping — Liang-Barsky ───────────────────────────────────────
+
+/// Clip an open polyline to a rectangle using Liang-Barsky parametric clipping.
+/// Returns one or more segments (a line may exit and re-enter the rect multiple times).
+/// Each returned segment has ≥ 2 points and lies entirely within `rect`.
+pub fn clip_polyline_to_rect(points: &[Coord], rect: &Area) -> Vec<Vec<Coord>> {
+    if points.len() < 2 {
+        return vec![];
+    }
+    let mut segments: Vec<Vec<Coord>> = Vec::new();
+    let mut current: Vec<Coord> = Vec::new();
+    for i in 0..points.len() - 1 {
+        match clip_segment_lb(points[i], points[i + 1], rect) {
+            None => {
+                if current.len() >= 2 { segments.push(std::mem::take(&mut current)); }
+                else { current.clear(); }
+            }
+            Some((ca, cb)) => {
+                if current.is_empty() {
+                    current.push(ca);
+                } else if ca != *current.last().unwrap() {
+                    if current.len() >= 2 { segments.push(std::mem::take(&mut current)); }
+                    else { current.clear(); }
+                    current.push(ca);
+                }
+                current.push(cb);
+            }
+        }
+    }
+    if current.len() >= 2 { segments.push(current); }
+    segments
+}
+
+/// Liang-Barsky segment clip: returns None if fully outside, Some((a',b')) otherwise.
+fn clip_segment_lb(a: Coord, b: Coord, rect: &Area) -> Option<(Coord, Coord)> {
+    let ax = a.longitude() as f64;
+    let ay = a.latitude() as f64;
+    let dx = (b.longitude() - a.longitude()) as f64;
+    let dy = (b.latitude() - a.latitude()) as f64;
+    let mut t0 = 0.0f64;
+    let mut t1 = 1.0f64;
+    for (p, q) in [
+        (-dx, ax - rect.min_lon() as f64),
+        ( dx, rect.max_lon() as f64 - ax),
+        (-dy, ay - rect.min_lat() as f64),
+        ( dy, rect.max_lat() as f64 - ay),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 { return None; }
+        } else {
+            let r = q / p;
+            if p < 0.0 { if r > t1 { return None; } else if r > t0 { t0 = r; } }
+            else       { if r < t0 { return None; } else if r < t1 { t1 = r; } }
+        }
+    }
+    let ca = Coord::new((ay + t0 * dy).round() as i32, (ax + t0 * dx).round() as i32);
+    let cb = Coord::new((ay + t1 * dy).round() as i32, (ax + t1 * dx).round() as i32);
+    Some((ca, cb))
 }
 
 // ── Polygon clipping — Sutherland-Hodgman ──────────────────────────────────
@@ -873,28 +888,25 @@ mod tests {
     }
 
     #[test]
-    fn test_split_line_crossing_cells_clipped() {
-        // Une polyline qui traverse plusieurs cells est clippée en segments distincts,
-        // un par cell traversée. Le mp_index est préservé sur chaque fragment.
+    fn test_split_line_entire_in_single_cell_or_dedicated() {
+        // Une polyline qui traverse plusieurs cells reste ENTIÈRE dans la cell
+        // de son premier point (ou subdiv dédié si elle dépasse max_cell_size).
+        // Les bounds de subdivision = area.bounds (non-chevauchants) garantissent
+        // qu'exactement 1 subdivision couvre chaque viewport.
         let bounds = Area::new(0, 0, 1000, 1000);
         let mut area = MapArea::new(bounds, 24);
 
-        // Diagonal line crossing 2 diagonal cells of a 2×2 grid
+        // Diagonal line crossing all 4 cells of a 2×2 grid
         area.add_line(SplitLine {
-            mp_index: 42,
+            mp_index: 0,
             points: vec![pt(100, 100), pt(900, 900)],
         });
 
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        // La ligne doit être découpée en segments (2 cells diagonales traversées).
-        assert!(total_lines >= 2, "crossing line must be clipped into ≥2 segments");
-        // Chaque segment porte le même mp_index source
-        for sub in &subs {
-            for l in &sub.lines {
-                assert_eq!(l.mp_index, 42);
-            }
-        }
+        // La ligne doit apparaître UNE SEULE FOIS (dans une seule sub-area ou
+        // dans un dedicated subdiv).
+        assert_eq!(total_lines, 1, "line must not be duplicated across cells");
     }
 
     #[test]
@@ -911,32 +923,9 @@ mod tests {
         let subs = area.split(2, 2);
         let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
         assert_eq!(total_lines, 1);
-        // Points identical to the source (no clipping applied) and mp_index preserved
+        // Points identical to the source (no clipping applied)
         let hosted = subs.iter().find(|s| !s.lines.is_empty()).unwrap();
-        assert_eq!(hosted.lines[0].mp_index, 7);
         assert_eq!(hosted.lines[0].points, vec![pt(100, 100), pt(200, 150), pt(300, 250)]);
-    }
-
-    #[test]
-    fn test_split_line_inside_non_target_cell() {
-        // Une ligne entièrement dans la cell (1,1) alors que le midpoint pointe vers (0,0).
-        // Le splitter doit la router vers la bonne cell via le None-branch de clip_to_bbox.
-        let bounds = Area::new(0, 0, 1000, 1000);
-        let mut area = MapArea::new(bounds, 24);
-
-        // Line fully inside top-right quadrant (lat 500-1000, lon 500-1000)
-        area.add_line(SplitLine {
-            mp_index: 99,
-            points: vec![pt(600, 600), pt(700, 700), pt(800, 750)],
-        });
-
-        let subs = area.split(2, 2);
-        let total_lines: usize = subs.iter().map(|s| s.lines.len()).sum();
-        assert_eq!(total_lines, 1, "line fully inside one cell must not be duplicated");
-        let hosted = subs.iter().find(|s| !s.lines.is_empty()).unwrap();
-        assert_eq!(hosted.lines[0].mp_index, 99);
-        // Points must be unchanged — no clipping applied
-        assert_eq!(hosted.lines[0].points, vec![pt(600, 600), pt(700, 700), pt(800, 750)]);
     }
 
     // ── Sutherland-Hodgman tests ──

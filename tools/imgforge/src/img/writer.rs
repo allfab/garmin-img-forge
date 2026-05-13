@@ -8,7 +8,7 @@ use crate::parser::mp_types::{ElevationUnit, MpFile};
 use crate::routing::graph_builder::{self, RouteParams, find_junctions, compute_node_flags};
 use std::collections::{HashMap, HashSet};
 use super::area::Area;
-use super::coord::{Coord, to_map_unit};
+use super::coord::Coord;
 use super::filesystem::ImgFilesystem;
 use super::filters::{round_coords, remove_obsolete_points, passes_size_filter, passes_remove_empty};
 use super::labelenc::LabelEncoding;
@@ -541,9 +541,9 @@ fn build_multilevel_hierarchy(
             // Subdivision TRE bounds = full_bounds() (union bbox de toutes les features).
             // Parité mkgmap MapBuilder.java:913 — createSubdivision(parent, ma.getFullBounds(), z).
             // Les polygones sont clipés à la cellule → full_bounds ≈ cell pour les shapes.
-            // Les polylignes sont clippées aux frontières de subdivision (line_clipper) → chaque
-            // subdiv ne contient que son segment, full_bounds = bbox du segment clippé. Le firmware
-            // charge la subdivision dès que son TRE bounds intersecte le viewport.
+            // Les polylignes sont stockées intactes dans UNE seule subdivision → full_bounds
+            // s'étend pour couvrir toute la ligne. Le firmware charge la subdivision dès que
+            // son TRE bounds intersecte le viewport → la ligne reste visible lors du panning.
             // Le centre reste ancré sur la cellule grille (hiérarchie de navigation inchangée).
             let fb = area.full_bounds();
             subdiv.set_center(&area.bounds.center());
@@ -1270,22 +1270,6 @@ fn split_type_subtype(type_code: u32) -> (u8, u8) {
 }
 
 fn compute_bounds(mp: &MpFile) -> Result<Area, ImgError> {
-    // Use tile bounds written by mpforge when available — guarantees TRE bounds
-    // match the DEM extent so Basecamp renders elevation without white seam bands.
-    if let Some([south, west, north, east]) = mp.header.tile_bounds {
-        if south >= north || west >= east {
-            return Err(ImgError::InvalidFormat(
-                format!("TileBounds degenerate: S={south} N={north} W={west} E={east}")
-            ));
-        }
-        return Ok(Area::new(
-            to_map_unit(south),
-            to_map_unit(west),
-            to_map_unit(north),
-            to_map_unit(east),
-        ));
-    }
-
     let mut min_lat = i32::MAX;
     let mut max_lat = i32::MIN;
     let mut min_lon = i32::MAX;
@@ -1800,45 +1784,6 @@ Data1=(50.0,9.0),(50.1,9.1)
         // max_lat doit refléter le bucket Data1 (50.x).
         assert!(bounds.max_lat() > Coord::from_degrees(49.0, 8.0).latitude(),
             "bounds must include Data1 bucket coords");
-    }
-
-    #[test]
-    fn compute_bounds_uses_tile_bounds_when_available() {
-        let content = r#"
-[IMG ID]
-ID=1
-Levels=24,22
-TileBounds=44.0,5.0,45.0,6.0
-[END-IMG ID]
-[POLYLINE]
-Type=0x06
-Data0=(44.5,5.5),(44.6,5.6)
-[END]
-"#;
-        let mp = mp_with_multi_data(content);
-        let bounds = compute_bounds(&mp).unwrap();
-        // Bounds must come from TileBounds, not from the feature coords.
-        assert!(bounds.min_lat() <= to_map_unit(44.0));
-        assert!(bounds.max_lat() >= to_map_unit(45.0));
-        assert!(bounds.min_lon() <= to_map_unit(5.0));
-        assert!(bounds.max_lon() >= to_map_unit(6.0));
-    }
-
-    #[test]
-    fn compute_bounds_rejects_degenerate_tile_bounds() {
-        let content = r#"
-[IMG ID]
-ID=1
-Levels=24,22
-TileBounds=45.0,5.0,44.0,6.0
-[END-IMG ID]
-[POLYLINE]
-Type=0x06
-Data0=(44.5,5.5),(44.6,5.6)
-[END]
-"#;
-        let mp = mp_with_multi_data(content);
-        assert!(compute_bounds(&mp).is_err(), "south >= north must produce an error");
     }
 
     #[test]
