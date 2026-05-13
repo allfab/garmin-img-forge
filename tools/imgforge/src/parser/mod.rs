@@ -216,6 +216,15 @@ fn parse_header_field(header: &mut MpHeader, key: &str, value: &str) {
                 _ => ElevationUnit::Feet,
             };
         }
+        "tilebounds" => {
+            let parts: Vec<f64> = value
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if parts.len() == 4 {
+                header.tile_bounds = Some([parts[0], parts[1], parts[2], parts[3]]);
+            }
+        }
         _ => {}
     }
 }
