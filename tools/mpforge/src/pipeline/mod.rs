@@ -381,7 +381,7 @@ fn process_single_tile(
     }
 
     // 3. Clip features to tile boundary
-    let tile_bbox_geom = match tile_bounds.to_gdal_polygon() {
+    let tile_bbox_geom = match tile_bounds.to_strict_gdal_polygon() {
         Ok(geom) => geom,
         Err(e) => {
             if ctx.error_mode == ErrorMode::FailFast {
@@ -1018,6 +1018,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             min_lat: global_extent.min_y - 1.0,
             max_lon: global_extent.max_x + 1.0,
             max_lat: global_extent.max_y + 1.0,
+            overlap: 0.0,
         };
         let (mut all_features, _, _) = SourceReader::read_features_for_tile(
             config,

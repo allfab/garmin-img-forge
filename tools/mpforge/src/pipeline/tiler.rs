@@ -92,6 +92,7 @@ impl TileProcessor {
                     min_lat,
                     max_lon,
                     max_lat,
+                    overlap: self.grid.overlap / 2.0,
                 };
 
                 // 5. Apply spatial filter if exists
@@ -181,6 +182,7 @@ impl TileProcessor {
                     min_lat,
                     max_lon,
                     max_lat,
+                    overlap: self.grid.overlap / 2.0,
                 };
 
                 // Apply spatial filter if exists
@@ -264,6 +266,8 @@ pub struct TileBounds {
     pub max_lon: f64,
     /// Maximum latitude (north boundary with overlap)
     pub max_lat: f64,
+    /// Half-overlap in each direction (= grid.overlap / 2). Zero for synthetic tiles.
+    pub overlap: f64,
 }
 
 impl TileBounds {
@@ -317,69 +321,54 @@ impl TileBounds {
             || self.min_lat > fmax_lat)
     }
 
-    /// Create GDAL Polygon geometry from tile bounding box.
+    /// Create GDAL Polygon geometry from tile bounding box (overlap-extended).
     ///
-    /// Used for clipping features to tile boundaries via OGR_G_Intersection.
-    /// Constructs a rectangular polygon in WGS84 (EPSG:4326) coordinate system.
-    ///
-    /// # Returns
-    /// * `anyhow::Result<Geometry>` - Rectangular polygon ready for intersection
-    ///
-    /// # Errors
-    /// * WKT parsing fails (should never happen for bbox)
-    /// * SRS assignment fails
-    /// * Geometry validation fails (indicates invalid bbox coordinates)
-    ///
-    /// # Examples
-    /// ```
-    /// # use mpforge::pipeline::tiler::TileBounds;
-    /// let tile = TileBounds {
-    ///     col: 0,
-    ///     row: 0,
-    ///     min_lon: 10.0,
-    ///     min_lat: 20.0,
-    ///     max_lon: 10.15,
-    ///     max_lat: 20.15,
-    /// };
-    /// let polygon = tile.to_gdal_polygon().unwrap();
-    /// assert!(polygon.is_valid());
-    /// ```
+    /// Used for spatial assignment queries (which features intersect this tile?).
     pub fn to_gdal_polygon(&self) -> anyhow::Result<Geometry> {
-        // Construct WKT POLYGON ((minx miny, maxx miny, maxx maxy, minx maxy, minx miny))
-        let wkt = format!(
-            "POLYGON(({} {}, {} {}, {} {}, {} {}, {} {}))",
-            self.min_lon,
-            self.min_lat,
-            self.max_lon,
-            self.min_lat,
-            self.max_lon,
-            self.max_lat,
-            self.min_lon,
-            self.max_lat,
-            self.min_lon,
-            self.min_lat // Close ring
-        );
-
-        let mut geom = Geometry::from_wkt(&wkt)?;
-
-        // Set WGS84 spatial reference
-        let srs = SpatialRef::from_epsg(4326)?;
-        geom.set_spatial_ref(srs);
-
-        // Validate bbox geometry (should always be valid for proper bbox coords)
-        if !geom.is_valid() {
-            anyhow::bail!(
-                "Invalid tile bbox geometry for tile {}: [{}, {}, {}, {}]",
-                self.tile_id(),
-                self.min_lon,
-                self.min_lat,
-                self.max_lon,
-                self.max_lat
-            );
-        }
-
-        Ok(geom)
+        gdal_polygon_from_bbox(
+            self.min_lon, self.min_lat, self.max_lon, self.max_lat,
+            &self.tile_id(),
+        )
     }
+
+    /// Create GDAL Polygon from the STRICT tile boundary (without overlap extension).
+    ///
+    /// Used for feature clipping: ensures adjacent tiles clip polylines to exactly
+    /// the same boundary, eliminating visual ruptures at tile seams. A polyline
+    /// crossing the strict boundary is split at the same coordinate in both T1 and T2.
+    ///
+    /// strict_min = min_lon + overlap, strict_max = max_lon - overlap
+    /// (when overlap = 0 the result is identical to to_gdal_polygon())
+    pub fn to_strict_gdal_polygon(&self) -> anyhow::Result<Geometry> {
+        let smin_lon = self.min_lon + self.overlap;
+        let smin_lat = self.min_lat + self.overlap;
+        let smax_lon = self.max_lon - self.overlap;
+        let smax_lat = self.max_lat - self.overlap;
+        gdal_polygon_from_bbox(smin_lon, smin_lat, smax_lon, smax_lat, &self.tile_id())
+    }
+}
+
+fn gdal_polygon_from_bbox(
+    min_lon: f64, min_lat: f64,
+    max_lon: f64, max_lat: f64,
+    tile_id: &str,
+) -> anyhow::Result<Geometry> {
+    let wkt = format!(
+        "POLYGON(({} {}, {} {}, {} {}, {} {}, {} {}))",
+        min_lon, min_lat, max_lon, min_lat,
+        max_lon, max_lat, min_lon, max_lat,
+        min_lon, min_lat
+    );
+    let mut geom = Geometry::from_wkt(&wkt)?;
+    let srs = SpatialRef::from_epsg(4326)?;
+    geom.set_spatial_ref(srs);
+    if !geom.is_valid() {
+        anyhow::bail!(
+            "Invalid tile bbox geometry for tile {}: [{}, {}, {}, {}]",
+            tile_id, min_lon, min_lat, max_lon, max_lat
+        );
+    }
+    Ok(geom)
 }
 
 // ============================================================================
