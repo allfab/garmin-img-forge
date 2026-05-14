@@ -185,6 +185,11 @@ pub enum Commands {
         #[arg(long, value_name = "PATH", value_delimiter = ',')]
         dem: Option<Vec<PathBuf>>,
 
+        /// DEM bounds expansion in degrees (optional, default: 0.0).
+        /// Set to grid.overlap from sources.yaml for extra DEM coverage at tile joints.
+        #[arg(long, value_name = "DEGREES")]
+        dem_expand: Option<f64>,
+
         /// DEM distances between points per zoom level
         #[arg(long, value_name = "DISTS", value_delimiter = ',')]
         dem_dists: Option<Vec<i32>>,
@@ -346,6 +351,11 @@ pub enum Commands {
         /// DEM elevation data paths (directories or files, .hgt/.asc)
         #[arg(long, value_name = "PATH", value_delimiter = ',')]
         dem: Option<Vec<PathBuf>>,
+
+        /// DEM bounds expansion in degrees (optional, default: 0.0).
+        /// Set to grid.overlap from sources.yaml for extra DEM coverage at tile joints.
+        #[arg(long, value_name = "DEGREES")]
+        dem_expand: Option<f64>,
 
         /// DEM distances between points per zoom level
         #[arg(long, value_name = "DISTS", value_delimiter = ',')]

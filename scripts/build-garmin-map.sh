@@ -89,6 +89,7 @@ TRANSPARENT=false               # imgforge --transparent (carte overlay transpar
 WITH_NET=false                  # imgforge --net (NET sans routage complet)
 
 # imgforge — DEM avancé
+DEM_EXPAND="0.005"              # imgforge --dem-expand (optionnel — léger débordement DEM aux joints de tuiles)
 DEM_DISTS=""                    # imgforge --dem-dists (distances entre points par niveau)
 DEM_INTERPOLATION=""            # imgforge --dem-interpolation (auto|bicubic|bilinear)
 
@@ -382,6 +383,7 @@ IMGFORGE :
     --no-round-coords          Désactiver la quantification des coords sur la grille subdivision
     --no-size-filter           Désactiver le filtre de features sous-pixel (SizeFilter)
     --no-remove-obsolete-points Désactiver la suppression de points colinéaires/spikes
+    --dem-expand DEGREES       Extension des bounds DEM en degrés (défaut: 0.005 — optionnel, léger débordement aux joints)
     --dem-dists DISTS          Distances entre points DEM par niveau de zoom
     --dem-interpolation METHOD Méthode d'interpolation DEM (auto|bicubic|bilinear, défaut: auto)
 
@@ -478,6 +480,7 @@ parse_args() {
             --no-round-coords)              NO_ROUND_COORDS=true;               shift   ;;
             --no-size-filter)               NO_SIZE_FILTER=true;                shift   ;;
             --no-remove-obsolete-points)    NO_REMOVE_OBSOLETE_POINTS=true;     shift   ;;
+            --dem-expand)                   DEM_EXPAND="$2";                    shift 2 ;;
             --dem-dists)                    DEM_DISTS="$2";                     shift 2 ;;
             --dem-interpolation)            DEM_INTERPOLATION="$2";             shift 2 ;;
             --dry-run)       DRY_RUN=true; shift ;;
@@ -1249,6 +1252,7 @@ run_imgforge() {
             fi
         done
         cmd+=(--dem-source-srs "EPSG:2154")
+        cmd+=(--dem-expand "$DEM_EXPAND")
         [[ -n "$DEM_DISTS" ]]         && cmd+=(--dem-dists "$DEM_DISTS")
         [[ -n "$DEM_INTERPOLATION" ]] && cmd+=(--dem-interpolation "$DEM_INTERPOLATION")
     fi
@@ -1378,6 +1382,7 @@ update_manifest() {
     local bp_no_size_filter="${NO_SIZE_FILTER}"
     local bp_no_remove_obsolete_points="${NO_REMOVE_OBSOLETE_POINTS}"
     local bp_keep_going="${KEEP_GOING}"
+    local bp_dem_expand="${DEM_EXPAND:-}"
     local bp_dem_dists="${DEM_DISTS:-}"
     local bp_dem_interpolation="${DEM_INTERPOLATION:-}"
 
@@ -1427,6 +1432,7 @@ update_manifest() {
         --arg bp_no_size_filter "$bp_no_size_filter" \
         --arg bp_no_remove_obsolete_points "$bp_no_remove_obsolete_points" \
         --arg bp_keep_going "$bp_keep_going" \
+        --arg bp_dem_expand "$bp_dem_expand" \
         --arg bp_dem_dists "$bp_dem_dists" \
         --arg bp_dem_interpolation "$bp_dem_interpolation" \
         '
@@ -1485,6 +1491,7 @@ update_manifest() {
                         no_size_filter: $bp_no_size_filter,
                         no_remove_obsolete_points: $bp_no_remove_obsolete_points,
                         keep_going: $bp_keep_going,
+                        dem_expand: $bp_dem_expand,
                         dem_dists: $bp_dem_dists,
                         dem_interpolation: $bp_dem_interpolation
                     }

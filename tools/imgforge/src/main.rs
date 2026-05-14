@@ -64,7 +64,7 @@ fn main() -> Result<()> {
             reduce_point_density, simplify_polygons, min_size_polygon, merge_lines,
             no_round_coords, no_size_filter, no_remove_obsolete_points,
             route, net, no_route, copyright_message, typ_file,
-            dem, dem_dists, dem_interpolation, dem_source_srs,
+            dem, dem_expand, dem_dists, dem_interpolation, dem_source_srs,
             report,
         } => {
             let start = Instant::now();
@@ -92,14 +92,18 @@ fn main() -> Result<()> {
 
             let typ_data = typ_file.as_ref().map(read_typ_file).transpose()?;
 
-            let dem_config = dem.as_ref().map(|paths| {
-                imgforge::dem::DemConfig {
+            let dem_config = if let Some(paths) = dem.as_ref() {
+                let expand = dem_expand.unwrap_or(0.0);
+                Some(imgforge::dem::DemConfig {
                     paths: paths.clone(),
                     dists: dem_dists.clone().unwrap_or_default(),
                     interpolation: imgforge::dem::InterpolationMethod::from_str(&dem_interpolation),
                     source_srs: dem_source_srs.clone(),
-                }
-            });
+                    expand,
+                })
+            } else {
+                None
+            };
 
             // DEM first: calc() returns HGT-grid-aligned bounds used for TRE
             // (mirrors mkgmap MapBuilder.java:394-395 map.setBounds(treArea)).
@@ -162,7 +166,7 @@ fn main() -> Result<()> {
             route, net, no_route, copyright_message,
             mapname, country_name, country_abbr, region_name, region_abbr,
             area_name, product_version, keep_going, typ_file,
-            dem, dem_dists, dem_interpolation, dem_source_srs, packaging, gmp_override,
+            dem, dem_expand, dem_dists, dem_interpolation, dem_source_srs, packaging, gmp_override,
             report,
         } => {
             if let Some(j) = jobs {
@@ -173,6 +177,19 @@ fn main() -> Result<()> {
             }
             let start = Instant::now();
             let mut build_report = BuildReport::new();
+
+            let dem_config = if let Some(paths) = dem.as_ref() {
+                let expand = dem_expand.unwrap_or(0.0);
+                Some(dem::DemConfig {
+                    paths: paths.clone(),
+                    dists: dem_dists.clone().unwrap_or_default(),
+                    interpolation: dem::InterpolationMethod::from_str(&dem_interpolation),
+                    source_srs: dem_source_srs.clone(),
+                    expand,
+                })
+            } else {
+                None
+            };
 
             let input_path = Path::new(&input);
             let mp_files: Vec<_> = std::fs::read_dir(input_path)
@@ -191,15 +208,6 @@ fn main() -> Result<()> {
                 "Compilation de {} tuile(s) .mp",
                 mp_files.len()
             );
-
-            let dem_config = dem.as_ref().map(|paths| {
-                dem::DemConfig {
-                    paths: paths.clone(),
-                    dists: dem_dists.clone().unwrap_or_default(),
-                    interpolation: dem::InterpolationMethod::from_str(&dem_interpolation),
-                    source_srs: dem_source_srs.clone(),
-                }
-            });
 
             let shared_dem = dem_config.as_ref().map(|config| {
                 match dem::load_elevation_sources(&config.paths, config.source_srs.as_deref()) {
@@ -595,18 +603,27 @@ fn build_dem_subfile_with_grids(
 
     let converter = dem::converter::DemConverter::new(grids.to_vec(), config.interpolation.clone());
 
-    let bounds = compute_mp_bounds(mp);
+    let mp_bounds = compute_mp_bounds(mp);
+    let bounds = dem::GeoBounds {
+        north: mp_bounds.north + config.expand,
+        south: mp_bounds.south - config.expand,
+        east:  mp_bounds.east  + config.expand,
+        west:  mp_bounds.west  - config.expand,
+    };
 
     let levels: Vec<Zoom> = mp.header.levels.iter().enumerate().map(|(i, &res)| {
         Zoom::new(i as u8, res)
     }).collect();
 
     let mut writer = DemWriter::new();
-    // calc() returns DEM-aligned bounds (may extend slightly beyond feature bounds
-    // due to HGT grid snapping) — caller uses these for TRE bounds (mkgmap parity).
-    let dem_bounds = writer.calc(&bounds, config, &converter, &levels);
+    // calc() generates DEM for expanded bounds (overlap zone covered).
+    // We discard the returned DEM-aligned expanded bounds and use mp_bounds for TRE
+    // instead: expanded TRE would claim coverage for the overlap zone where this tile
+    // has no vector features (features are clipped to strict bounds by mpforge),
+    // causing white bands in 3D view at tile joints.
+    let _dem_aligned_expanded = writer.calc(&bounds, config, &converter, &levels);
 
-    Ok((writer.build(), dem_bounds))
+    Ok((writer.build(), mp_bounds))
 }
 
 /// Convert DEM GeoBounds (WGS84 degrees) to map-unit Area for TRE bounds.

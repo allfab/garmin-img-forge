@@ -97,6 +97,9 @@ pub struct DemConfig {
     pub interpolation: InterpolationMethod,
     /// Source SRS for ASC files (e.g. "EPSG:2154")
     pub source_srs: Option<String>,
+    /// Bounds expansion in degrees (must equal grid.overlap from sources.yaml)
+    /// Prevents white-band artifacts at tile joints in 3D view.
+    pub expand: f64,
 }
 
 /// Detected DEM file format
