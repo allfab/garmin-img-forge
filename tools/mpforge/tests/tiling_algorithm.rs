@@ -31,6 +31,7 @@ fn test_tilebounds_fields() {
         min_lat: 2.0,
         max_lon: 1.15,
         max_lat: 2.15,
+            overlap: 0.0,
     };
 
     assert_eq!(tile.col, 15);
@@ -51,6 +52,7 @@ fn test_tilebounds_to_aabb() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     let aabb = tile.to_aabb();
@@ -68,6 +70,7 @@ fn test_tilebounds_tile_id() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     assert_eq!(tile.tile_id(), "15_42");
@@ -83,6 +86,7 @@ fn test_tilebounds_intersects_bbox_true() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     // Overlapping bbox
@@ -100,6 +104,7 @@ fn test_tilebounds_intersects_bbox_false() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     // Non-overlapping bbox
@@ -117,6 +122,7 @@ fn test_tilebounds_clone_and_debug() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     let cloned = tile.clone();

@@ -246,6 +246,7 @@ fn test_clipping_with_boundary_features() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+        overlap: 0.0,
     };
 
     let tile_right = TileBounds {
@@ -255,6 +256,7 @@ fn test_clipping_with_boundary_features() {
         min_lat: 0.0,
         max_lon: 2.0,
         max_lat: 1.0,
+        overlap: 0.0,
     };
 
     // LineString crossing boundary at x=1.0
@@ -325,6 +327,7 @@ fn test_clipping_performance_1000_features() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+        overlap: 0.0,
     };
 
     let tile_bbox = tile.to_gdal_polygon().unwrap();

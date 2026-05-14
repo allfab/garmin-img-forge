@@ -8,7 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
 use gdal::{Dataset, DriverManager, Metadata};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use tracing::{info, instrument, warn};
 
@@ -138,6 +138,132 @@ pub struct ExportStats {
     /// `OGR_F_SetGeomField` non-NONE OU construction WKT invalide. Remonté
     /// dans le rapport JSON mpforge pour observabilité.
     pub skipped_additional_geom: usize,
+}
+
+/// Limite de points par polyligne dans le format IMG Garmin — miroir de
+/// `MAX_POINTS_IN_ELEMENT` dans imgforge (writer.rs). Pré-découper en mpforge
+/// évite qu'imgforge scinde les courbes à des positions arbitraires et assure
+/// des tronçons cohérents dès le fichier .mp.
+const MAX_POINTS_PER_LINE: usize = 250;
+
+/// Calcule les intervalles `[start, end)` de découpe pour `n` points.
+/// Retourne `[(0, n)]` si `n ≤ MAX_POINTS_PER_LINE`.
+/// Garantit : chaque intervalle ≤ MAX_POINTS_PER_LINE, intervalles consécutifs
+/// partagent un point (end_i - 1 == start_{i+1}).
+fn chunk_boundaries(n: usize) -> Vec<(usize, usize)> {
+    if n <= MAX_POINTS_PER_LINE {
+        return vec![(0, n)];
+    }
+    let mut bounds: Vec<(usize, usize)> = Vec::new();
+    let mut pos = 0usize;
+    let mut wanted = if n < 2 * MAX_POINTS_PER_LINE { n / 2 + 1 } else { MAX_POINTS_PER_LINE };
+    debug_assert!(wanted >= 2, "chunk size must be ≥ 2 points");
+    loop {
+        let end = (pos + wanted).min(n);
+        bounds.push((pos, end));
+        if end >= n { break; }
+        pos = end - 1; // overlap 1 point
+        let remaining = n - pos;
+        if remaining <= MAX_POINTS_PER_LINE {
+            bounds.push((pos, n));
+            break;
+        } else if remaining < 2 * MAX_POINTS_PER_LINE {
+            wanted = remaining / 2 + 1;
+        } else {
+            wanted = MAX_POINTS_PER_LINE;
+        }
+        debug_assert!(wanted >= 2, "chunk size must be ≥ 2 points");
+    }
+    bounds
+}
+
+/// Découpe une géométrie selon des intervalles pré-calculés.
+fn chunk_geometry(coords: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> {
+    chunk_boundaries(coords.len())
+        .iter()
+        .map(|&(s, e)| coords[s..e].to_vec())
+        .collect()
+}
+
+/// Pour un DataN de `n_dataN` points, calcule les intervalles proportionnels
+/// alignés sur `data0_bounds` (calculés sur Data0 de `n_data0` points).
+/// Garantit que le tronçon i de DataN couvre la même fraction géographique
+/// que le tronçon i de Data0. Retourne `(0, 0)` pour un tronçon vide (< 2 pts).
+fn proportional_bounds(
+    data0_bounds: &[(usize, usize)],
+    n_data0: usize,
+    n_dataN: usize,
+) -> Vec<(usize, usize)> {
+    if n_data0 <= 1 || n_dataN < 2 {
+        return (0..data0_bounds.len())
+            .map(|i| if i == 0 && n_dataN >= 2 { (0, n_dataN) } else { (0, 0) })
+            .collect();
+    }
+    // Interpolation linéaire : index Data0 → index DataN
+    let map = |i: usize| -> usize {
+        ((i * (n_dataN - 1) + (n_data0 - 1) / 2) / (n_data0 - 1)).min(n_dataN - 1)
+    };
+    data0_bounds
+        .iter()
+        .map(|&(s0, e0)| {
+            let sN = map(s0);
+            // e0 est exclusif donc le dernier point du chunk est e0-1
+            let eN = (map(e0 - 1) + 1).min(n_dataN);
+            if eN >= sN + 2 { (sN, eN) } else { (0, 0) }
+        })
+        .collect()
+}
+
+/// Découpe une feature LineString en plusieurs features si sa géométrie Data0
+/// dépasse MAX_POINTS_PER_LINE. Chaque tronçon hérite des mêmes attributs et
+/// source_layer. Les additional_geometries (Data1..DataN) sont découpées
+/// proportionnellement aux intervalles de Data0 pour conserver l'alignement
+/// géographique entre niveaux de zoom. Si `additional_geometries` est vide,
+/// aucun calcul supplémentaire n'est effectué (F6).
+fn split_linestring_if_needed(feature: &Feature) -> Vec<Feature> {
+    let n0 = feature.geometry.len();
+    if n0 <= MAX_POINTS_PER_LINE {
+        return vec![feature.clone()];
+    }
+    let data0_bounds = chunk_boundaries(n0);
+    let n_chunks = data0_bounds.len();
+
+    // Calcul proportionnel des intervalles DataN uniquement si nécessaire (F6)
+    let add_prop: BTreeMap<u8, Vec<(usize, usize)>> = if !feature.additional_geometries.is_empty() {
+        feature
+            .additional_geometries
+            .iter()
+            .map(|(&lvl, coords)| {
+                (lvl, proportional_bounds(&data0_bounds, n0, coords.len()))
+            })
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+
+    let mut result = Vec::with_capacity(n_chunks);
+    for (i, &(s0, e0)) in data0_bounds.iter().enumerate() {
+        let additional_geometries: BTreeMap<u8, Vec<(f64, f64)>> = add_prop
+            .iter()
+            .filter_map(|(&lvl, bounds)| {
+                let &(sN, eN) = bounds.get(i)?;
+                if eN >= sN + 2 {
+                    let coords = feature.additional_geometries.get(&lvl)?;
+                    Some((lvl, coords[sN..eN].to_vec()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        result.push(Feature {
+            geometry_type: feature.geometry_type,
+            geometry: feature.geometry[s0..e0].to_vec(),
+            additional_geometries,
+            attributes: feature.attributes.clone(),
+            source_layer: feature.source_layer.clone(),
+        });
+    }
+    result
 }
 
 /// Writes Polish Map (.mp) files using GDAL PolishMap driver.
@@ -570,15 +696,34 @@ impl MpWriter {
                     if feature.geometry.len() < 2 {
                         continue;
                     }
-                    let written = Self::write_linestring_feature(
-                        &mut polyline_layer,
-                        feature,
-                        field_mapping,
-                        multi_geom_max,
-                    )
-                    .context("Failed to write POLYLINE feature")?;
-                    if written {
+                    // Pré-découpe à 249 pts : même limite que imgforge MAX_POINTS_IN_ELEMENT.
+                    // Évite qu'imgforge scinde les courbes à des positions arbitraires,
+                    // ce qui causait des ruptures de continuité aux joints de tuile.
+                    let sub_features = split_linestring_if_needed(feature);
+                    let mut any_written = false;
+                    let mut any_skipped = false;
+                    for sub in &sub_features {
+                        if sub.geometry.len() < 2 {
+                            continue;
+                        }
+                        let written = Self::write_linestring_feature(
+                            &mut polyline_layer,
+                            sub,
+                            field_mapping,
+                            multi_geom_max,
+                        )
+                        .context("Failed to write POLYLINE feature")?;
+                        if written {
+                            any_written = true;
+                        } else {
+                            any_skipped = true;
+                        }
+                    }
+                    if any_written {
                         stats.linestring_count += 1;
+                        if any_skipped {
+                            warn!("partial write: some sub-features of a split linestring were skipped");
+                        }
                     } else {
                         stats.skipped_additional_geom += 1;
                     }
@@ -1051,5 +1196,182 @@ mod tests {
 
         // Caractère hors-CP1252 sans repli → '?'
         assert_eq!(sanitize_for_cp1252("\u{1F600}"), "?"); // emoji
+    }
+
+    // ── Tests chunk_geometry / split_linestring_if_needed ──────────────────
+
+    fn make_coords(n: usize) -> Vec<(f64, f64)> {
+        (0..n).map(|i| (i as f64 * 0.001, 45.0)).collect()
+    }
+
+    #[test]
+    fn chunk_geometry_short_unchanged() {
+        let coords = make_coords(10);
+        let chunks = chunk_geometry(&coords);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 10);
+        assert_eq!(chunks[0], coords);
+    }
+
+    #[test]
+    fn chunk_geometry_exactly_limit_unchanged() {
+        let coords = make_coords(MAX_POINTS_PER_LINE);
+        let chunks = chunk_geometry(&coords);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), MAX_POINTS_PER_LINE);
+    }
+
+    #[test]
+    fn chunk_geometry_one_over_limit_splits_evenly() {
+        // 250 = 2 * 249 / 2 + 1 → deux tronçons équilibrés
+        let n = MAX_POINTS_PER_LINE + 1;
+        let coords = make_coords(n);
+        let chunks = chunk_geometry(&coords);
+        assert_eq!(chunks.len(), 2, "250 pts → 2 tronçons");
+        // Overlap : dernier point du chunk 0 = premier point du chunk 1
+        assert_eq!(chunks[0].last(), chunks[1].first());
+        // Total points = n + 1 overlap (un point compté deux fois)
+        let total: usize = chunks.iter().map(|c| c.len()).sum();
+        assert_eq!(total, n + 1);
+    }
+
+    #[test]
+    fn chunk_geometry_large_all_within_limit() {
+        let n = 600;
+        let coords = make_coords(n);
+        let chunks = chunk_geometry(&coords);
+        for chunk in &chunks {
+            assert!(
+                chunk.len() <= MAX_POINTS_PER_LINE,
+                "tronçon de {} pts dépasse la limite",
+                chunk.len()
+            );
+        }
+        // Overlap : points partagés entre tronçons consécutifs
+        for w in chunks.windows(2) {
+            assert_eq!(w[0].last(), w[1].first(), "overlap 1 pt manquant");
+        }
+        // Tous les points couverts
+        assert_eq!(chunks[0][0], coords[0]);
+        assert_eq!(*chunks.last().unwrap().last().unwrap(), *coords.last().unwrap());
+    }
+
+    #[test]
+    fn split_linestring_if_needed_short_unchanged() {
+        let feature = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: make_coords(10),
+            additional_geometries: BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        let parts = split_linestring_if_needed(&feature);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].geometry, feature.geometry);
+    }
+
+    #[test]
+    fn split_linestring_if_needed_large_produces_valid_parts() {
+        let n = 500usize;
+        let feature = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: make_coords(n),
+            additional_geometries: {
+                let mut m = BTreeMap::new();
+                m.insert(1u8, make_coords(50)); // DataN simplifié
+                m
+            },
+            attributes: {
+                let mut a = HashMap::new();
+                a.insert("Type".to_string(), "0x22".to_string());
+                a.insert("EndLevel".to_string(), "6".to_string());
+                a
+            },
+            source_layer: Some("COURBE".to_string()),
+        };
+        let parts = split_linestring_if_needed(&feature);
+        assert!(parts.len() >= 2, "500 pts doit produire ≥ 2 tronçons");
+        for p in &parts {
+            assert!(p.geometry.len() <= MAX_POINTS_PER_LINE);
+            assert_eq!(p.geometry_type, GeometryType::LineString);
+            assert_eq!(p.attributes["Type"], "0x22");
+            assert_eq!(p.source_layer, Some("COURBE".to_string()));
+        }
+        // Endpoint partagé entre tronçons consécutifs
+        for w in parts.windows(2) {
+            assert_eq!(
+                w[0].geometry.last(),
+                w[1].geometry.first(),
+                "overlap 1 pt manquant entre tronçons"
+            );
+        }
+        // Premier / dernier point de la géométrie d'origine préservés
+        assert_eq!(parts[0].geometry[0], feature.geometry[0]);
+        assert_eq!(
+            *parts.last().unwrap().geometry.last().unwrap(),
+            *feature.geometry.last().unwrap()
+        );
+    }
+
+    #[test]
+    fn split_linestring_proportional_dataN_large() {
+        // F5 : Data0=500pts, DataN=400pts — vérifie l'alignement géographique
+        // entre les tronçons Data0 et leurs contreparties DataN.
+        let n0 = 500usize;
+        let nn = 400usize;
+        // Coordonnées linéaires : x croît uniformément pour mesurer l'alignement.
+        let data0: Vec<(f64, f64)> = (0..n0).map(|i| (i as f64, 0.0)).collect();
+        let dataN: Vec<(f64, f64)> = (0..nn).map(|i| (i as f64, 1.0)).collect();
+        let feature = Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: data0.clone(),
+            additional_geometries: {
+                let mut m = BTreeMap::new();
+                m.insert(1u8, dataN.clone());
+                m
+            },
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+
+        let parts = split_linestring_if_needed(&feature);
+        assert!(parts.len() >= 2, "500 pts doit produire ≥ 2 tronçons");
+
+        // Chaque tronçon doit avoir ≤ MAX_POINTS_PER_LINE dans Data0
+        for p in &parts {
+            assert!(p.geometry.len() <= MAX_POINTS_PER_LINE);
+        }
+
+        // Vérification alignement géographique : le premier point DataN de chaque
+        // tronçon doit correspondre (proportiellement) au premier point Data0.
+        for p in &parts {
+            let x0_start = p.geometry[0].0;
+            let frac0 = x0_start / (n0 - 1) as f64;
+            if let Some(dn) = p.additional_geometries.get(&1u8) {
+                if !dn.is_empty() {
+                    let xN_start = dn[0].0;
+                    let fracN = xN_start / (nn - 1) as f64;
+                    // Tolérance : 1 point d'écart max sur la fraction [0,1]
+                    let tolerance = 1.0 / (nn - 1) as f64;
+                    assert!(
+                        (frac0 - fracN).abs() <= tolerance + 1e-9,
+                        "désalignement géographique Data0/DataN: frac0={:.4} fracN={:.4}",
+                        frac0, fracN
+                    );
+                }
+            }
+        }
+
+        // Couverture totale : union des DataN doit couvrir [0, nn-1]
+        let all_dataN: Vec<(f64, f64)> = parts
+            .iter()
+            .filter_map(|p| p.additional_geometries.get(&1u8))
+            .flat_map(|v| v.iter().copied())
+            .collect();
+        assert!(!all_dataN.is_empty(), "DataN ne doit pas être vide");
+        let min_x = all_dataN.iter().map(|(x, _)| *x as i64).min().unwrap();
+        let max_x = all_dataN.iter().map(|(x, _)| *x as i64).max().unwrap();
+        assert_eq!(min_x, 0, "DataN doit commencer à x=0");
+        assert_eq!(max_x, (nn - 1) as i64, "DataN doit finir à x=nn-1");
     }
 }

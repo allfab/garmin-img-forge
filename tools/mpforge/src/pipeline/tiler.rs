@@ -294,6 +294,7 @@ impl TileBounds {
     ///     min_lat: 0.0,
     ///     max_lon: 1.0,
     ///     max_lat: 1.0,
+    ///     overlap: 0.0,
     /// };
     /// assert_eq!(tile.tile_id(), "15_42");
     /// ```

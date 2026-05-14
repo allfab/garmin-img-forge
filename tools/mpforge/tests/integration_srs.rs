@@ -160,6 +160,7 @@ fn test_srs_explicit_source_and_target_reprojection() {
         max_lat: extent.max_y + 1.0,
         col: 0,
         row: 0,
+            overlap: 0.0,
     };
     let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1, "Should have exactly 1 feature");
@@ -211,6 +212,7 @@ fn test_srs_source_only_defaults_to_wgs84() {
         max_lat: extent.max_y + 1.0,
         col: 0,
         row: 0,
+            overlap: 0.0,
     };
     let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);
@@ -261,6 +263,7 @@ fn test_srs_backward_compat_no_explicit_srs() {
         max_lat: extent.max_y + 1.0,
         col: 0,
         row: 0,
+            overlap: 0.0,
     };
     let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);
@@ -322,6 +325,7 @@ fn test_srs_override_detected_srs() {
         max_lat: extent.max_y + 1.0,
         col: 0,
         row: 0,
+            overlap: 0.0,
     };
     let (features, _, _) = SourceReader::read_features_for_tile(&config, &tile_bounds, &std::collections::HashMap::new()).unwrap();
     assert_eq!(features.len(), 1);

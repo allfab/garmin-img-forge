@@ -124,6 +124,7 @@ fn test_assign_features_all_tiles_empty() {
         min_lat: 10.0,
         max_lon: 11.0,
         max_lat: 11.0,
+            overlap: 0.0,
     }];
 
     let assignments = processor.assign_features_to_tiles(&rtree, tiles);

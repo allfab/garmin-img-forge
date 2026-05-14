@@ -131,6 +131,7 @@ fn test_tile_filename_pattern_matches_tile_id() {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+            overlap: 0.0,
     };
 
     // Test that tile_id() returns expected format

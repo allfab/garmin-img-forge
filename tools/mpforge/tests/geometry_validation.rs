@@ -380,6 +380,7 @@ fn test_pipeline_with_invalid_features_mixed() {
         min_lat: 0.0,
         max_lon: 2.0,
         max_lat: 2.0,
+            overlap: 0.0,
     };
     let tile_bbox = tile.to_gdal_polygon().unwrap();
 
@@ -455,7 +456,8 @@ fn test_validation_stats_accumulate_across_tiles() {
             min_lat: 0.0,
             max_lon: 1.0,
             max_lat: 1.0,
-        },
+                overlap: 0.0,
+    },
         TileBounds {
             col: 1,
             row: 0,
@@ -463,7 +465,8 @@ fn test_validation_stats_accumulate_across_tiles() {
             min_lat: 0.0,
             max_lon: 2.0,
             max_lat: 1.0,
-        },
+                overlap: 0.0,
+    },
     ];
 
     let valid_feature = Feature {

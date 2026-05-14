@@ -19,6 +19,7 @@ fn create_test_tile() -> TileBounds {
         min_lat: 0.0,
         max_lon: 1.0,
         max_lat: 1.0,
+        overlap: 0.0,
     }
 }
 
@@ -65,6 +66,7 @@ fn test_tile_to_gdal_polygon_correct_bounds() {
         min_lat: 20.0,
         max_lon: 10.15,
         max_lat: 20.15,
+        overlap: 0.0,
     };
 
     let polygon = tile.to_gdal_polygon().unwrap();
@@ -198,6 +200,7 @@ fn test_polygon_spanning_4_tiles_with_area_validation() {
             min_lat: 0.0,
             max_lon: 1.0,
             max_lat: 1.0,
+            overlap: 0.0,
         },
         // Bottom-right [1,0]
         TileBounds {
@@ -207,6 +210,7 @@ fn test_polygon_spanning_4_tiles_with_area_validation() {
             min_lat: 0.0,
             max_lon: 2.0,
             max_lat: 1.0,
+            overlap: 0.0,
         },
         // Top-left [0,1]
         TileBounds {
@@ -216,6 +220,7 @@ fn test_polygon_spanning_4_tiles_with_area_validation() {
             min_lat: 1.0,
             max_lon: 1.0,
             max_lat: 2.0,
+            overlap: 0.0,
         },
         // Top-right [1,1]
         TileBounds {
@@ -225,6 +230,7 @@ fn test_polygon_spanning_4_tiles_with_area_validation() {
             min_lat: 1.0,
             max_lon: 2.0,
             max_lat: 2.0,
+            overlap: 0.0,
         },
     ];
 

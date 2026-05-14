@@ -216,6 +216,7 @@ fn test_read_features_for_tile_filters_spatially() {
         min_lat: extent.min_y,
         max_lon: mid_x,
         max_lat: mid_y,
+            overlap: 0.0,
     };
 
     let (tile_features, _unsup, _multi) =
@@ -247,6 +248,7 @@ fn test_read_features_for_tile_empty_area() {
         min_lat: 80.0,
         max_lon: 180.0,
         max_lat: 90.0,
+            overlap: 0.0,
     };
 
     let (features, _unsup, _multi) =
