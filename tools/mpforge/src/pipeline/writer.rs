@@ -177,39 +177,31 @@ fn chunk_boundaries(n: usize) -> Vec<(usize, usize)> {
     bounds
 }
 
-/// Découpe une géométrie selon des intervalles pré-calculés.
-fn chunk_geometry(coords: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> {
-    chunk_boundaries(coords.len())
-        .iter()
-        .map(|&(s, e)| coords[s..e].to_vec())
-        .collect()
-}
-
-/// Pour un DataN de `n_dataN` points, calcule les intervalles proportionnels
+/// Pour un DataN de `n_data_n` points, calcule les intervalles proportionnels
 /// alignés sur `data0_bounds` (calculés sur Data0 de `n_data0` points).
 /// Garantit que le tronçon i de DataN couvre la même fraction géographique
 /// que le tronçon i de Data0. Retourne `(0, 0)` pour un tronçon vide (< 2 pts).
 fn proportional_bounds(
     data0_bounds: &[(usize, usize)],
     n_data0: usize,
-    n_dataN: usize,
+    n_data_n: usize,
 ) -> Vec<(usize, usize)> {
-    if n_data0 <= 1 || n_dataN < 2 {
+    if n_data0 <= 1 || n_data_n < 2 {
         return (0..data0_bounds.len())
-            .map(|i| if i == 0 && n_dataN >= 2 { (0, n_dataN) } else { (0, 0) })
+            .map(|i| if i == 0 && n_data_n >= 2 { (0, n_data_n) } else { (0, 0) })
             .collect();
     }
     // Interpolation linéaire : index Data0 → index DataN
     let map = |i: usize| -> usize {
-        ((i * (n_dataN - 1) + (n_data0 - 1) / 2) / (n_data0 - 1)).min(n_dataN - 1)
+        ((i * (n_data_n - 1) + (n_data0 - 1) / 2) / (n_data0 - 1)).min(n_data_n - 1)
     };
     data0_bounds
         .iter()
         .map(|&(s0, e0)| {
-            let sN = map(s0);
+            let s_n = map(s0);
             // e0 est exclusif donc le dernier point du chunk est e0-1
-            let eN = (map(e0 - 1) + 1).min(n_dataN);
-            if eN >= sN + 2 { (sN, eN) } else { (0, 0) }
+            let e_n = (map(e0 - 1) + 1).min(n_data_n);
+            if e_n >= s_n + 2 { (s_n, e_n) } else { (0, 0) }
         })
         .collect()
 }
@@ -246,10 +238,10 @@ fn split_linestring_if_needed(feature: &Feature) -> Vec<Feature> {
         let additional_geometries: BTreeMap<u8, Vec<(f64, f64)>> = add_prop
             .iter()
             .filter_map(|(&lvl, bounds)| {
-                let &(sN, eN) = bounds.get(i)?;
-                if eN >= sN + 2 {
+                let &(s_n, e_n) = bounds.get(i)?;
+                if e_n >= s_n + 2 {
                     let coords = feature.additional_geometries.get(&lvl)?;
-                    Some((lvl, coords[sN..eN].to_vec()))
+                    Some((lvl, coords[s_n..e_n].to_vec()))
                 } else {
                     None
                 }
@@ -1202,6 +1194,13 @@ mod tests {
 
     fn make_coords(n: usize) -> Vec<(f64, f64)> {
         (0..n).map(|i| (i as f64 * 0.001, 45.0)).collect()
+    }
+
+    fn chunk_geometry(coords: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> {
+        chunk_boundaries(coords.len())
+            .iter()
+            .map(|&(s, e)| coords[s..e].to_vec())
+            .collect()
     }
 
     #[test]
