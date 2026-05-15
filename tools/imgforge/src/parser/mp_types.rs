@@ -99,6 +99,9 @@ pub struct MpPolyline {
     pub direction: bool,
     pub road_id: Option<u32>,
     pub route_param: Option<String>,
+    /// Routing topology nodes parsed from `NodN=<idx>,<id>,<boundary>` directives.
+    /// Sorted by point_index. Empty for non-routable polylines.
+    pub nodes: Vec<garmin_routing_graph::NodEntry>,
 }
 
 impl MpPolyline {
@@ -181,6 +184,7 @@ mod tests {
             direction: false,
             road_id: None,
             route_param: None,
+            nodes: Vec::new(),
         }
     }
 

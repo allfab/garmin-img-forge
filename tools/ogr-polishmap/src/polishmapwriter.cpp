@@ -641,6 +641,25 @@ bool PolishMapWriter::WriteExtendedAttributes(OGRFeature* poFeature,
             }
         }
     }
+    // Routing topology nodes: Nod1..Nod30 (POLYLINE only, 1-based)
+    // Fields are contiguous: break as soon as NodN is absent or empty.
+    if (nLayerFlag == LAYER_POLYLINE) {
+        for (int n = 1; n <= 30; n++) {
+            std::string osName = "Nod" + std::to_string(n);
+            int nFieldIdx = poFeature->GetFieldIndex(osName.c_str());
+            if (nFieldIdx < 0 || !poFeature->IsFieldSetAndNotNull(nFieldIdx)) {
+                break;
+            }
+            const char* pszValue = poFeature->GetFieldAsString(nFieldIdx);
+            if (pszValue == nullptr || pszValue[0] == '\0') {
+                break;
+            }
+            if (!BufferedWrite(FormatString("%s=%s\n", osName.c_str(), pszValue).c_str())) {
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 

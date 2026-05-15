@@ -6,6 +6,7 @@ pub mod geometry_smoother;
 pub mod geometry_validator;
 pub mod reader;
 pub mod route_params;
+pub mod routing_graph;
 pub mod tile_naming;
 pub mod tiler;
 pub mod writer;
@@ -325,7 +326,18 @@ fn process_single_tile(
                         Ok(Some(mut new_attrs)) => {
                             // Story 14.1: Merge routing attributes into rule output
                             if let Some(routing) = routing_attrs {
+                                // If the rule set a denied_mask, apply it after routing
+                                // attrs are merged (routing RouteParam wins over stale value,
+                                // then denied_mask patches the access bits).
+                                let denied_mask = new_attrs.get("denied_mask").cloned();
                                 new_attrs.extend(routing);
+                                if let Some(mask) = denied_mask {
+                                    if let Some(rp) = new_attrs.get("RouteParam").cloned() {
+                                        let patched = route_params::apply_denied_mask(&rp, &mask);
+                                        new_attrs.insert("RouteParam".to_string(), patched);
+                                    }
+                                    new_attrs.remove("denied_mask");
+                                }
                             }
                             feature.attributes = new_attrs;
                             transformed.push(feature);
@@ -581,6 +593,18 @@ fn process_single_tile(
         ctx.header_config
     };
 
+    // 7b. Compute routing graph (NodN= topology) for routable polylines in this tile.
+    let tile_routing_graph = routing_graph::compute_tile_routing_graph(&clipped_features, tile_bounds);
+    if tile_routing_graph.total_nodes > 0 {
+        info!(
+            tile_id = %tile_id,
+            total_nodes = tile_routing_graph.total_nodes,
+            junctions = tile_routing_graph.junction_count,
+            boundary_nodes = tile_routing_graph.boundary_count,
+            "Routing graph computed"
+        );
+    }
+
     // 8. Export tile (each call creates its own MpWriter → own GDAL dataset)
     match (|| -> Result<ExportStats> {
         let mut writer = MpWriter::new(
@@ -589,7 +613,7 @@ fn process_single_tile(
             effective_header,
             ctx.max_data_level,
         )?;
-        let tile_stats = writer.write_features(&clipped_features)?;
+        let tile_stats = writer.write_features(&clipped_features, &tile_routing_graph)?;
         writer.finalize()?;
         Ok(tile_stats)
     })() {

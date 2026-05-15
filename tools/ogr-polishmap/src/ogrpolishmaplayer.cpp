@@ -130,6 +130,15 @@ void OGRPolishMapLayer::InitializeLayerDefn(const char* pszLayerName,
         m_poFeatureDefn->AddFieldDefn(&oField);
     }
 
+    // Routing topology nodes: Nod1..Nod30 (POLYLINE only, 1-based per mkgmap spec)
+    if (nLayerFlag == LAYER_POLYLINE) {
+        for (int n = 1; n <= 30; n++) {
+            std::string osName = "Nod" + std::to_string(n);
+            OGRFieldDefn oNodField(osName.c_str(), OFTString);
+            m_poFeatureDefn->AddFieldDefn(&oNodField);
+        }
+    }
+
     // Data0: Numeric data field added separately (coordinates in geometry)
     OGRFieldDefn oFieldData0("Data0", OFTInteger);
     m_poFeatureDefn->AddFieldDefn(&oFieldData0);

@@ -139,25 +139,67 @@ pub fn tonnes_to_centithons(value_t: f64) -> u32 {
 }
 
 /// RouteParam components for composing the Polish Map RouteParam string.
+///
+/// 12 canonical fields (mkgmap RoadHelper.java order):
+/// speed, road_class, oneway, toll,
+/// denied_emergency, denied_delivery, denied_car, denied_bus,
+/// denied_taxi, denied_pedestrian, denied_bicycle, denied_truck
 pub struct RouteParamComponents {
     pub speed: u8,
     pub road_class: u8,
     pub oneway: u8,
     pub toll: u8,
+    // 8 access denial bits — polarité : 1 = interdit, 0 = autorisé
+    pub denied_emergency: u8,
+    pub denied_delivery: u8,
     pub denied_car: u8,
     pub denied_bus: u8,
-    pub denied_foot: u8,
+    pub denied_taxi: u8,
+    pub denied_foot: u8,   // denied_pedestrian
+    pub denied_bike: u8,   // denied_bicycle
     pub denied_truck: u8,
 }
 
 /// Compose RouteParam string from individual components.
 ///
-/// Format: speed,road_class,one_way,toll,denied_emergency,denied_delivery,
-///         denied_car,denied_bus,denied_taxi,denied_pedestrian,denied_bicycle,denied_truck
+/// Canonical 12-field format (mkgmap RoadHelper.java:87-88):
+/// `speed,road_class,oneway,toll,denied_emergency,denied_delivery,
+///  denied_car,denied_bus,denied_taxi,denied_pedestrian,denied_bicycle,denied_truck`
 pub fn compose_route_param(c: &RouteParamComponents) -> String {
     format!(
-        "{},{},{},{},0,0,{},{},0,{},0,{}",
-        c.speed, c.road_class, c.oneway, c.toll, c.denied_car, c.denied_bus, c.denied_foot, c.denied_truck
+        "{},{},{},{},{},{},{},{},{},{},{},{}",
+        c.speed, c.road_class, c.oneway, c.toll,
+        c.denied_emergency, c.denied_delivery,
+        c.denied_car, c.denied_bus, c.denied_taxi,
+        c.denied_foot, c.denied_bike, c.denied_truck
+    )
+}
+
+/// Apply `denied_mask` YAML attribute to a RouteParam string.
+///
+/// `denied_mask` is an 8-character binary string ordered as:
+/// `(denied_emergency, denied_delivery, denied_car, denied_bus,
+///   denied_taxi, denied_pedestrian, denied_bicycle, denied_truck)`
+/// Polarité : '1' = interdit, '0' = autorisé.
+///
+/// Returns the rewritten RouteParam string, or the original if denied_mask is
+/// invalid or RouteParam is absent.
+pub fn apply_denied_mask(route_param: &str, denied_mask: &str) -> String {
+    if denied_mask.len() != 8 || !denied_mask.chars().all(|c| c == '0' || c == '1') {
+        tracing::warn!(denied_mask = denied_mask, "invalid denied_mask format, must be 8 binary chars");
+        return route_param.to_string();
+    }
+
+    let parts: Vec<&str> = route_param.split(',').collect();
+    if parts.len() < 4 {
+        return route_param.to_string();
+    }
+
+    let bits: Vec<u8> = denied_mask.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{}",
+        parts[0], parts[1], parts[2], parts[3],
+        bits[0], bits[1], bits[2], bits[3], bits[4], bits[5], bits[6], bits[7]
     )
 }
 
@@ -189,7 +231,7 @@ pub fn compute_route_attrs(
     let sens = source_attrs.get("SENS").map(|s| s.as_str()).unwrap_or("");
     let (oneway, dir_indicator) = sens_to_oneway(sens);
 
-    // Toll + denied bits from ACCES_VL
+    // Toll + denied_car/bus/truck from ACCES_VL
     let acces_vl = source_attrs.get("ACCES_VL").map(|s| s.as_str()).unwrap_or("");
     let (toll, denied_car, denied_bus, denied_truck) = acces_vl_to_bits(acces_vl);
 
@@ -197,9 +239,17 @@ pub fn compute_route_attrs(
     let acces_ped = source_attrs.get("ACCES_PED").map(|s| s.as_str()).unwrap_or("");
     let denied_foot = acces_ped_to_denied_foot(acces_ped);
 
-    // Compose RouteParam
+    // Compose RouteParam (12 champs canoniques; denied_mask YAML appliqué post-merge)
     let route_param = compose_route_param(&RouteParamComponents {
-        speed, road_class, oneway, toll, denied_car, denied_bus, denied_foot, denied_truck,
+        speed, road_class, oneway, toll,
+        denied_emergency: 0,
+        denied_delivery: 0,
+        denied_car,
+        denied_bus,
+        denied_taxi: 0,
+        denied_foot,
+        denied_bike: 0,
+        denied_truck,
     });
     result.insert("RouteParam".to_string(), route_param);
 
@@ -491,32 +541,60 @@ mod tests {
     // Task 1.5: RouteParam composition
     // =========================================================================
 
+    fn full_components(speed: u8, road_class: u8, oneway: u8, toll: u8) -> RouteParamComponents {
+        RouteParamComponents {
+            speed, road_class, oneway, toll,
+            denied_emergency: 0, denied_delivery: 0,
+            denied_car: 0, denied_bus: 0, denied_taxi: 0,
+            denied_foot: 0, denied_bike: 0, denied_truck: 0,
+        }
+    }
+
     #[test]
     fn test_compose_route_param_autoroute_peage() {
-        // AC1: VIT_MOY_VL=80→speed=6, CL_ADMIN=Nationale→class=3, Sens direct→oneway=1, péage→toll=1
-        let rp = compose_route_param(&RouteParamComponents {
-            speed: 6, road_class: 3, oneway: 1, toll: 1,
-            denied_car: 0, denied_bus: 0, denied_foot: 0, denied_truck: 0,
-        });
+        // AC6: speed=6, class=3, oneway=1, toll=1, all denied=0 → 12 fields
+        let rp = compose_route_param(&full_components(6, 3, 1, 1));
         assert_eq!(rp, "6,3,1,1,0,0,0,0,0,0,0,0");
     }
 
     #[test]
     fn test_compose_route_param_chemin() {
-        let rp = compose_route_param(&RouteParamComponents {
-            speed: 0, road_class: 0, oneway: 0, toll: 0,
-            denied_car: 0, denied_bus: 0, denied_foot: 0, denied_truck: 0,
-        });
+        let rp = compose_route_param(&full_components(0, 0, 0, 0));
         assert_eq!(rp, "0,0,0,0,0,0,0,0,0,0,0,0");
     }
 
     #[test]
-    fn test_compose_route_param_denied_all() {
+    fn test_compose_route_param_denied_partial() {
+        // AC6 variant: denied_car=1, denied_bus=1, denied_foot=1, denied_truck=1
         let rp = compose_route_param(&RouteParamComponents {
             speed: 3, road_class: 2, oneway: 0, toll: 0,
-            denied_car: 1, denied_bus: 1, denied_foot: 1, denied_truck: 1,
+            denied_emergency: 0, denied_delivery: 0,
+            denied_car: 1, denied_bus: 1, denied_taxi: 0,
+            denied_foot: 1, denied_bike: 0, denied_truck: 1,
         });
         assert_eq!(rp, "3,2,0,0,0,0,1,1,0,1,0,1");
+    }
+
+    #[test]
+    fn test_apply_denied_mask_sentier() {
+        // AC7: denied_mask="11111001" → sentier piéton/cycliste
+        let base = "4,1,0,0,0,0,0,0,0,0,0,0";
+        let result = apply_denied_mask(base, "11111001");
+        assert_eq!(result, "4,1,0,0,1,1,1,1,1,0,0,1");
+    }
+
+    #[test]
+    fn test_apply_denied_mask_all_allowed() {
+        let base = "4,1,0,0,0,0,0,0,0,0,0,0";
+        let result = apply_denied_mask(base, "00000000");
+        assert_eq!(result, "4,1,0,0,0,0,0,0,0,0,0,0");
+    }
+
+    #[test]
+    fn test_apply_denied_mask_invalid_length_noop() {
+        let base = "4,1,0,0,0,0,0,0,0,0,0,0";
+        let result = apply_denied_mask(base, "1111");
+        assert_eq!(result, base);
     }
 
     // =========================================================================

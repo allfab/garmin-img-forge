@@ -5,7 +5,7 @@
 
 use crate::error::ImgError;
 use crate::parser::mp_types::{ElevationUnit, MpFile};
-use crate::routing::graph_builder::{self, RouteParams, find_junctions, compute_node_flags};
+use crate::routing::graph_builder::{self, RouteParams, NodEntry, find_junctions, compute_node_flags};
 use std::collections::{HashMap, HashSet};
 use super::area::Area;
 use super::coord::Coord;
@@ -1440,6 +1440,7 @@ fn pre_compute_routing(
     let mut road_polylines = Vec::new();
     let mut mp_indices: Vec<usize> = Vec::new();
     let mut road_params: Vec<RouteParams> = Vec::new();
+    let mut road_nod_entries: Vec<Vec<NodEntry>> = Vec::new();
 
     // Collect road data
     struct RoadInfo {
@@ -1476,11 +1477,27 @@ fn pre_compute_routing(
             road_polylines.push((routing_geom.to_vec(), road_idx, params.clone()));
             road_params.push(params);
             mp_indices.push(i);
+            road_nod_entries.push(mp_line.nodes.clone());
         }
     }
 
-    // Find junctions and compute node_flags
-    let junctions = find_junctions(&road_polylines);
+    // Heuristic junction detection (shared endpoints between roads).
+    let mut junctions = find_junctions(&road_polylines);
+
+    // Enrich with NodEntry-specified junction points (mpforge-produced .mp files).
+    // For polylines without NodEntries the heuristic already covers their endpoints.
+    for (road_idx, nods) in road_nod_entries.iter().enumerate() {
+        if !nods.is_empty() {
+            let coords = &road_polylines[road_idx].0;
+            for nod in nods {
+                let idx = nod.point_index as usize;
+                if idx < coords.len() {
+                    junctions.insert((coords[idx].latitude(), coords[idx].longitude()));
+                }
+            }
+        }
+    }
+
     let all_node_flags = compute_node_flags(&road_polylines, &junctions);
 
     // Build routing graph (enriched with heading + node_class)
@@ -1952,6 +1969,45 @@ Data0=(48.57,7.75),(48.58,7.76)
         let has_nod = find_subfile_in_img(&img, "NOD");
         assert!(has_net, "Routing IMG must contain NET subfile");
         assert!(has_nod, "Routing IMG must contain NOD subfile");
+    }
+
+    #[test]
+    fn test_build_routing_with_nod_entries_has_net_nod() {
+        // T9: NodN= directives parsed from .mp (mpforge-produced) → NET+NOD generated
+        // and the NodEntry junction points are honoured in the junction set.
+        let content = r#"
+[IMG ID]
+ID=99990100
+Name=NodEntry Routing Test
+Levels=24
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Label=Route A
+RoadID=1
+RouteParam=4,3,0,0,0,0,0,0,0,0,0,0
+Data0=(48.57,7.75),(48.575,7.755),(48.58,7.76)
+Nod1=0,1001,0
+Nod2=2,1002,1
+[END]
+[POLYLINE]
+Type=0x06
+Label=Route B
+RoadID=2
+RouteParam=4,3,0,0,0,0,0,0,0,0,0,0
+Data0=(48.58,7.76),(48.585,7.765)
+Nod1=0,1002,0
+Nod2=1,1003,1
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        assert_eq!(mp.polylines[0].nodes.len(), 2, "Nod1+Nod2 parsed for Route A");
+        assert_eq!(mp.polylines[0].nodes[0].node_id, 1001);
+        assert_eq!(mp.polylines[0].nodes[1].node_id, 1002);
+
+        let img = build_img(&mp).unwrap();
+        assert!(find_subfile_in_img(&img, "NET"), "NodEntry .mp must produce NET");
+        assert!(find_subfile_in_img(&img, "NOD"), "NodEntry .mp must produce NOD");
     }
 
     #[test]

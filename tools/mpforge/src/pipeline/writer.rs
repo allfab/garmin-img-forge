@@ -2,7 +2,9 @@
 
 use crate::config::HeaderConfig;
 use crate::pipeline::reader::{Feature, GeometryType};
+use crate::pipeline::routing_graph::TileRoutingGraph;
 use anyhow::{anyhow, Context, Result};
+use garmin_routing_graph::NodEntry;
 use gdal::cpl::CslStringList;
 use unicode_normalization::UnicodeNormalization;
 use gdal::vector::{Geometry as GdalGeometry, LayerAccess, LayerOptions, OGRwkbGeometryType};
@@ -204,6 +206,60 @@ fn proportional_bounds(
             if e_n >= s_n + 2 { (s_n, e_n) } else { (0, 0) }
         })
         .collect()
+}
+
+/// Découpe une feature LineString et retourne (sub_features, chunk_bounds_in_original).
+///
+/// `chunk_bounds[i]` = `(start, end)` — indices demi-ouverts dans `feature.geometry`.
+/// Si pas de découpe : `[(0, geometry.len())]`.
+fn split_linestring_with_bounds(feature: &Feature) -> (Vec<Feature>, Vec<(usize, usize)>) {
+    let n0 = feature.geometry.len();
+    let data0_bounds = if n0 <= MAX_POINTS_PER_LINE {
+        vec![(0, n0)]
+    } else {
+        chunk_boundaries(n0)
+    };
+    let n_chunks = data0_bounds.len();
+
+    if n_chunks == 1 {
+        return (vec![feature.clone()], data0_bounds);
+    }
+
+    let add_prop: BTreeMap<u8, Vec<(usize, usize)>> = if !feature.additional_geometries.is_empty() {
+        feature
+            .additional_geometries
+            .iter()
+            .map(|(&lvl, coords)| {
+                (lvl, proportional_bounds(&data0_bounds, n0, coords.len()))
+            })
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+
+    let mut result = Vec::with_capacity(n_chunks);
+    for (i, &(s0, e0)) in data0_bounds.iter().enumerate() {
+        let additional_geometries: BTreeMap<u8, Vec<(f64, f64)>> = add_prop
+            .iter()
+            .filter_map(|(&lvl, bounds)| {
+                let &(s_n, e_n) = bounds.get(i)?;
+                if e_n >= s_n + 2 {
+                    let coords = feature.additional_geometries.get(&lvl)?;
+                    Some((lvl, coords[s_n..e_n].to_vec()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        result.push(Feature {
+            geometry_type: feature.geometry_type,
+            geometry: feature.geometry[s0..e0].to_vec(),
+            additional_geometries,
+            attributes: feature.attributes.clone(),
+            source_layer: feature.source_layer.clone(),
+        });
+    }
+    (result, data0_bounds)
 }
 
 /// Découpe une feature LineString en plusieurs features si sa géométrie Data0
@@ -640,7 +696,7 @@ impl MpWriter {
     /// * Failed to access layer
     /// * Failed to create or write feature
     #[instrument(skip(self, features))]
-    pub fn write_features(&mut self, features: &[Feature]) -> Result<ExportStats> {
+    pub fn write_features(&mut self, features: &[Feature], routing_graph: &TileRoutingGraph) -> Result<ExportStats> {
         info!(
             feature_count = features.len(),
             output_path = %self.output_path.display(),
@@ -675,7 +731,7 @@ impl MpWriter {
         let mut stats = ExportStats::default();
 
         // Write each feature to appropriate layer
-        for feature in features {
+        for (feat_idx, feature) in features.iter().enumerate() {
             match feature.geometry_type {
                 GeometryType::Point => {
                     Self::write_point_feature(&mut poi_layer, feature, field_mapping)
@@ -688,21 +744,36 @@ impl MpWriter {
                     if feature.geometry.len() < 2 {
                         continue;
                     }
+
+                    // Retrieve NodEntries for this feature (empty if non-routable).
+                    let feature_nods = routing_graph.per_feature.get(feat_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+
                     // Pré-découpe à 249 pts : même limite que imgforge MAX_POINTS_IN_ELEMENT.
                     // Évite qu'imgforge scinde les courbes à des positions arbitraires,
                     // ce qui causait des ruptures de continuité aux joints de tuile.
-                    let sub_features = split_linestring_if_needed(feature);
+                    let (sub_features, chunk_bounds) = split_linestring_with_bounds(feature);
                     let mut any_written = false;
                     let mut any_skipped = false;
-                    for sub in &sub_features {
+                    for (sub_idx, sub) in sub_features.iter().enumerate() {
                         if sub.geometry.len() < 2 {
                             continue;
                         }
+                        // Filter and remap NodEntries for this sub-feature's point range.
+                        let (start, end) = chunk_bounds[sub_idx];
+                        let sub_nods: Vec<NodEntry> = feature_nods.iter()
+                            .filter(|n| n.point_index as usize >= start && (n.point_index as usize) < end)
+                            .map(|n| NodEntry {
+                                point_index: n.point_index - start as u16,
+                                ..*n
+                            })
+                            .collect();
+
                         let written = Self::write_linestring_feature(
                             &mut polyline_layer,
                             sub,
                             field_mapping,
                             multi_geom_max,
+                            &sub_nods,
                         )
                         .context("Failed to write POLYLINE feature")?;
                         if written {
@@ -805,6 +876,7 @@ impl MpWriter {
         feature: &Feature,
         field_mapping: Option<&HashMap<String, String>>,
         multi_geom_max: Option<u8>,
+        nod_entries: &[NodEntry],
     ) -> Result<bool> {
         if feature.geometry.len() < 2 {
             return Ok(false);
@@ -891,11 +963,21 @@ impl MpWriter {
             }
         }
 
+        // Build attributes map, injecting NodN= entries for routable polylines.
+        // NodEntries are sorted by point_index (routing_graph guarantees this).
+        // N is 1-based (TD6: mkgmap RoadHelper expects Nod1, Nod2, ...).
+        let mut effective_attrs = feature.attributes.clone();
+        for (n, nod) in nod_entries.iter().enumerate() {
+            let key = format!("Nod{}", n + 1);
+            let value = format!("{},{},{}", nod.point_index, nod.node_id, nod.boundary as u8);
+            effective_attrs.insert(key, value);
+        }
+
         // Set attributes
         Self::set_feature_attributes(
             layer_defn,
             &mut ogr_feature,
-            &feature.attributes,
+            &effective_attrs,
             field_mapping,
         )?;
 

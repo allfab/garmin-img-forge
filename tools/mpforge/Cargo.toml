@@ -4,6 +4,7 @@ version = "0.8.3"
 edition = "2021"
 
 [dependencies]
+garmin-routing-graph = { path = "../garmin-routing-graph" }
 clap = { version = "4.5", features = ["derive"] }
 gdal = "0.19"
 gdal-sys = "0.12"

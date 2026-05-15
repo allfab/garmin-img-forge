@@ -1,6 +1,7 @@
 //! Unit tests for MpWriter (Story 5.4)
 
 use mpforge::pipeline::reader::{Feature, GeometryType};
+use mpforge::pipeline::routing_graph::TileRoutingGraph;
 use mpforge::pipeline::writer::MpWriter;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -115,7 +116,7 @@ fn test_write_features_empty_dataset() {
     let mut writer = MpWriter::new(output_path, None, None, None).expect("Failed to create writer");
     let features = vec![];
 
-    let result = writer.write_features(&features);
+    let result = writer.write_features(&features, &TileRoutingGraph::default());
 
     assert!(
         result.is_ok(),
@@ -138,7 +139,7 @@ fn test_write_features_poi_only() {
         create_poi_feature("Lyon", "0x0200"),
     ];
 
-    let result = writer.write_features(&features);
+    let result = writer.write_features(&features, &TileRoutingGraph::default());
 
     assert!(result.is_ok(), "write_features() should succeed");
     let stats = result.unwrap();
@@ -159,7 +160,7 @@ fn test_write_features_mixed_geometries() {
         create_polygon_feature("Zone 1", "0x0050"),
     ];
 
-    let result = writer.write_features(&features);
+    let result = writer.write_features(&features, &TileRoutingGraph::default());
 
     assert!(result.is_ok(), "write_features() should succeed");
     let stats = result.unwrap();
@@ -188,7 +189,7 @@ fn test_write_features_preserves_attributes() {
         source_layer: None,
     }];
 
-    let result = writer.write_features(&features);
+    let result = writer.write_features(&features, &TileRoutingGraph::default());
 
     assert!(
         result.is_ok(),
@@ -209,7 +210,7 @@ fn test_finalize_creates_mp_file() {
     let features = vec![create_poi_feature("Test", "0x0100")];
 
     writer
-        .write_features(&features)
+        .write_features(&features, &TileRoutingGraph::default())
         .expect("Failed to write features");
 
     let result = writer.finalize();
@@ -237,7 +238,7 @@ fn test_finalize_returns_stats() {
     ];
 
     writer
-        .write_features(&features)
+        .write_features(&features, &TileRoutingGraph::default())
         .expect("Failed to write features");
 
     let result = writer.finalize();

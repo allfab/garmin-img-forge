@@ -86,6 +86,7 @@ pub fn parse_mp(content: &str) -> Result<MpFile, ParseError> {
                 direction: false,
                 road_id: None,
                 route_param: None,
+                nodes: Vec::new(),
             });
             continue;
         }
@@ -318,6 +319,13 @@ fn parse_polyline_field(
         "dirindicator" => pl.direction = value == "1",
         "roadid" => pl.road_id = value.parse().ok(),
         "routeparam" => pl.route_param = Some(value.to_string()),
+        k if k.starts_with("nod") && k.len() > 3 && k[3..].parse::<u32>().is_ok() => {
+            // Parse NodN=<point_index>,<node_id>,<boundary>
+            // Format: mkgmap RoadHelper.java:224-231
+            if let Some(entry) = parse_nod_entry(value, line_num) {
+                pl.nodes.push(entry);
+            }
+        }
         k if k.starts_with("data") => {
             let Some(n) = parse_data_suffix(k, line_num) else {
                 return Ok(());
@@ -374,6 +382,19 @@ fn parse_polygon_field(
         _ => {}
     }
     Ok(())
+}
+
+/// Parse a NodN= value: `<point_index>,<node_id>,<boundary>`
+fn parse_nod_entry(value: &str, line_num: usize) -> Option<garmin_routing_graph::NodEntry> {
+    let parts: Vec<&str> = value.split(',').collect();
+    if parts.len() < 2 {
+        tracing::warn!(line_num = line_num + 1, value = value, "Invalid NodN value, need at least 2 fields");
+        return None;
+    }
+    let point_index = parts[0].trim().parse::<u16>().ok()?;
+    let node_id = parts[1].trim().parse::<u32>().ok()?;
+    let boundary = parts.get(2).map(|s| s.trim() != "0").unwrap_or(false);
+    Some(garmin_routing_graph::NodEntry { point_index, node_id, boundary })
 }
 
 fn parse_type(value: &str) -> u32 {
@@ -557,6 +578,39 @@ Data0=(48.57,7.75),(48.58,7.76)
         let mp = parse_mp(content).unwrap();
         assert_eq!(mp.polylines[0].road_id, Some(1234));
         assert!(mp.polylines[0].route_param.is_some());
+    }
+
+    /// AC8: Parser imgforge captures NodN= directives into nodes Vec.
+    #[test]
+    fn test_parse_nod_entries() {
+        let content = r#"
+[POLYLINE]
+Type=0x06
+Label=Test Road
+RoadID=99
+RouteParam=4,1,0,0,0,0,0,0,0,0,0,0
+Data0=(48.57,7.75),(48.58,7.76),(48.59,7.77)
+Nod1=0,123,0
+Nod2=2,124,1
+[END]
+"#;
+        let mp = parse_mp(content).unwrap();
+        assert_eq!(mp.polylines.len(), 1);
+        let pl = &mp.polylines[0];
+        assert_eq!(pl.nodes.len(), 2, "AC8: 2 NodN= directives must be parsed");
+        assert_eq!(pl.nodes[0].point_index, 0);
+        assert_eq!(pl.nodes[0].node_id, 123);
+        assert!(!pl.nodes[0].boundary);
+        assert_eq!(pl.nodes[1].point_index, 2);
+        assert_eq!(pl.nodes[1].node_id, 124);
+        assert!(pl.nodes[1].boundary);
+    }
+
+    #[test]
+    fn test_parse_nod_no_entries_for_non_routable() {
+        let content = "[POLYLINE]\nType=0x06\nData0=(48.57,7.75),(48.58,7.76)\n[END]\n";
+        let mp = parse_mp(content).unwrap();
+        assert!(mp.polylines[0].nodes.is_empty());
     }
 
     #[test]
