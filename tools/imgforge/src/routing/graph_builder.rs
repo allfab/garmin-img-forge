@@ -113,20 +113,26 @@ pub fn build_graph_with_junctions(
                         one_way: params.one_way,
                         initial_heading: fwd_heading,
                     });
-                    if !params.one_way {
-                        nodes[node_idx].arcs.push(RouteArc {
-                            dest_node_index: prev_idx,
-                            road_def_index: *road_def_idx,
-                            length_meters: len,
-                            forward: false,
-                            road_class: params.road_class,
-                            speed: params.speed,
-                            access: params.access_flags,
-                            toll: params.toll,
-                            one_way: false,
-                            initial_heading: rev_heading,
-                        });
-                    }
+                    // mkgmap-faithful : crée toujours l'arc reverse, même pour
+                    // les roads oneway (RouteNetwork.java:211-219). L'arc reverse
+                    // d'une oneway porte forward=false ; le routeur Garmin lit
+                    // l'oneway flag depuis le RoadDef (NOD2 TableA) et n'emprunte
+                    // pas l'arc à contre-sens, mais sa présence est nécessaire à
+                    // la complétude du graphe (sinon le node terminal d'une
+                    // oneway est orphelin → asymétrie start/end aléatoire en
+                    // routing BaseCamp / Alpha 100).
+                    nodes[node_idx].arcs.push(RouteArc {
+                        dest_node_index: prev_idx,
+                        road_def_index: *road_def_idx,
+                        length_meters: len,
+                        forward: false,
+                        road_class: params.road_class,
+                        speed: params.speed,
+                        access: params.access_flags,
+                        toll: params.toll,
+                        one_way: params.one_way,
+                        initial_heading: rev_heading,
+                    });
                 }
                 last_junction_idx = Some(node_idx);
                 last_junction_coord_idx = i;
