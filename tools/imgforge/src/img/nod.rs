@@ -5,6 +5,13 @@ use super::common_header::{self, CommonHeader};
 pub const NOD_HEADER_LEN: u16 = 127;
 pub const NOD_ALIGNMENT: usize = 64; // Tables aligned to 1<<6
 
+// NOD1Part subdivision constraints (mkgmap NOD1Part.java)
+const NOD1_MAX_SIZE: i32 = (1 << 16) - 0x800; // 0xF800 = 63488 (bbox max dimension)
+const NOD1_MAX_TABA: usize = 0x100 - 0x8;     // 0xF8 = 248 unique roads per center
+const NOD1_MAX_TABB: usize = 0x100 - 0x2;     // 0xFE = 254 external dest nodes per center
+const NOD1_MAX_NODES_SIZE: usize = 0x2000;    // 8192 bytes (14-bit signed NOD1 offsets)
+const NOD1_MAX_DEPTH: usize = 48;              // mkgmap discards at depth > 48 (subdivideHelper)
+
 /// A node in the routing network
 #[derive(Debug, Clone)]
 pub struct RouteNode {
@@ -233,6 +240,120 @@ struct TableBPatchInfo {
     node_index: usize,
 }
 
+/// Upper bound on the serialized size of one arc (mkgmap RouteArc.boundSize).
+/// MVP: no curves, so curvedat.length = 0.
+/// Formula: 1 (flagA) + 1-2 (dest ptr) + 1 (indexA) + 1 (heading) + lendat.length = 5 + lendat
+fn arc_bound_size(arc: &RouteArc) -> usize {
+    let raw_len = meters_to_raw_length(arc.length_meters);
+    let (_, len_data) = encode_arc_length(raw_len, false);
+    5 + len_data.len()
+}
+
+/// Upper bound on the serialized size of one node (mkgmap RouteNode.boundSize).
+/// Always assumes large offsets (4 bytes) as mkgmap does.
+fn node_bound_size(node: &RouteNode) -> usize {
+    let arcs_size: usize = node.arcs.iter().map(arc_bound_size).sum();
+    6 + arcs_size // 1 (table ptr) + 1 (flags) + 4 (large offsets assumed) + arcs
+}
+
+/// Recursive bbox-split subdivision (mkgmap NOD1Part.subdivideHelper).
+///
+/// Splits `indices` into RouteCenters satisfying all 5 constraints.
+/// Center coord = bbox midpoint (mkgmap Area.getCenter).
+/// Nodes are sorted lon-major then lat within each center (mkgmap Coord.compareTo).
+fn subdivide_nodes(
+    nodes: &[RouteNode],
+    indices: &[usize],
+    depth: usize,
+    centers: &mut Vec<RouteCenter>,
+) {
+    if indices.is_empty() {
+        return;
+    }
+
+    // Compute bboxActual: extend with BBox(co) which adds +1 to max (mkgmap convention)
+    let mut min_lat = i32::MAX;
+    let mut max_lat = i32::MIN;
+    let mut min_lon = i32::MAX;
+    let mut max_lon = i32::MIN;
+    for &i in indices {
+        let n = &nodes[i];
+        if n.lat < min_lat { min_lat = n.lat; }
+        if n.lat + 1 > max_lat { max_lat = n.lat + 1; }
+        if n.lon < min_lon { min_lon = n.lon; }
+        if n.lon + 1 > max_lon { max_lon = n.lon + 1; }
+    }
+
+    let width = max_lon - min_lon;
+    let height = max_lat - min_lat;
+    let bbox_max_dim = width.max(height);
+
+    // tabA: unique road_def_indexes across all arcs in this group
+    let mut road_defs = std::collections::HashSet::new();
+    // tabB: external dest node indices (dest not in this group).
+    // index_set is rebuilt each recursion level — O(n·depth) total. Acceptable for BDTOPO tile sizes.
+    let index_set: std::collections::HashSet<usize> = indices.iter().copied().collect();
+    let mut dest_nodes_ext = std::collections::HashSet::new();
+    let mut nodes_size: usize = 0;
+    for &i in indices {
+        nodes_size += node_bound_size(&nodes[i]);
+        for arc in &nodes[i].arcs {
+            road_defs.insert(arc.road_def_index);
+            if !index_set.contains(&arc.dest_node_index) {
+                dest_nodes_ext.insert(arc.dest_node_index);
+            }
+        }
+    }
+
+    // tabC is always 0 in MVP (no turn restrictions)
+    let constraints_ok = bbox_max_dim < NOD1_MAX_SIZE
+        && road_defs.len() < NOD1_MAX_TABA
+        && dest_nodes_ext.len() < NOD1_MAX_TABB
+        && nodes_size < NOD1_MAX_NODES_SIZE;
+
+    if constraints_ok {
+        // Sort nodes lon-major then lat (mkgmap Coord.compareTo)
+        let mut sorted = indices.to_vec();
+        sorted.sort_by(|&a, &b| {
+            nodes[a].lon.cmp(&nodes[b].lon).then(nodes[a].lat.cmp(&nodes[b].lat))
+        });
+        centers.push(RouteCenter {
+            center_lat: (min_lat + max_lat) / 2,
+            center_lon: (min_lon + max_lon) / 2,
+            nodes: sorted,
+        });
+        return;
+    }
+
+    if depth > NOD1_MAX_DEPTH {
+        tracing::error!(
+            "NOD1Part: subdivision depth {} exceeded, discarding {} nodes near lat={} lon={}",
+            depth, indices.len(), min_lat, min_lon
+        );
+        return;
+    }
+
+    // Split on widest dimension of bboxActual (mkgmap uses bboxActual, not bbox)
+    let (left, right): (Vec<usize>, Vec<usize>) = if width > height {
+        // Longitude split: left gets lon < mid, right gets lon >= mid
+        let mid = (min_lon + max_lon) / 2;
+        (
+            indices.iter().copied().filter(|&i| nodes[i].lon < mid).collect(),
+            indices.iter().copied().filter(|&i| nodes[i].lon >= mid).collect(),
+        )
+    } else {
+        // Latitude split: bottom gets lat < mid, top gets lat >= mid
+        let mid = (min_lat + max_lat) / 2;
+        (
+            indices.iter().copied().filter(|&i| nodes[i].lat < mid).collect(),
+            indices.iter().copied().filter(|&i| nodes[i].lat >= mid).collect(),
+        )
+    };
+
+    subdivide_nodes(nodes, &left, depth + 1, centers);
+    subdivide_nodes(nodes, &right, depth + 1, centers);
+}
+
 /// NOD file writer — mkgmap-faithful binary format
 pub struct NodWriter {
     pub nodes: Vec<RouteNode>,
@@ -273,27 +394,17 @@ impl NodWriter {
         idx
     }
 
-    /// Group nodes into route centers (max 256 nodes per center).
-    /// TODO: mkgmap uses spatial clustering (K-nearest) for better locality.
-    /// Sequential batching can produce large coordinate deltas within a center.
+    /// Group nodes into RouteCenters using mkgmap bbox-split subdivision (NOD1Part.subdivideHelper).
     pub fn build_centers(&mut self) {
         self.centers.clear();
         if self.nodes.is_empty() {
             return;
         }
-        let mut current_nodes = Vec::new();
-        for i in 0..self.nodes.len() {
-            current_nodes.push(i);
-            if current_nodes.len() >= 256 {
-                let center = self.make_center(&current_nodes);
-                self.centers.push(center);
-                current_nodes.clear();
-            }
-        }
-        if !current_nodes.is_empty() {
-            let center = self.make_center(&current_nodes);
-            self.centers.push(center);
-        }
+        let all_indices: Vec<usize> = (0..self.nodes.len()).collect();
+        let mut centers = Vec::new();
+        subdivide_nodes(&self.nodes, &all_indices, 0, &mut centers);
+        tracing::debug!("NOD1Part: {} nodes → {} RouteCenters", self.nodes.len(), centers.len());
+        self.centers = centers;
     }
 
     /// Set NOD2 data (populated by caller)
@@ -327,23 +438,6 @@ impl NodWriter {
             nod1[byte_pos] = b[0];
             nod1[byte_pos + 1] = b[1];
             nod1[byte_pos + 2] = b[2];
-        }
-    }
-
-    fn make_center(&self, node_indices: &[usize]) -> RouteCenter {
-        // Center coordinates in 24-bit map units (NOT semicircles!)
-        // mkgmap stores center in map units and writes with put3s/put3sLongitude
-        let mut sum_lat: i64 = 0;
-        let mut sum_lon: i64 = 0;
-        for &idx in node_indices {
-            sum_lat += self.nodes[idx].lat as i64;
-            sum_lon += self.nodes[idx].lon as i64;
-        }
-        let n = node_indices.len() as i64;
-        RouteCenter {
-            center_lat: (sum_lat / n) as i32,
-            center_lon: (sum_lon / n) as i32,
-            nodes: node_indices.to_vec(),
         }
     }
 
@@ -520,15 +614,18 @@ impl NodWriter {
                 // Deltas in 24-bit map units (same units as center)
                 let delta_lat = node.lat - center.center_lat;
                 let delta_lon = node.lon - center.center_lon;
-                let large = delta_lat.unsigned_abs() > 0x7FF || delta_lon.unsigned_abs() > 0x7FF;
+                let delta_large = delta_lat.unsigned_abs() > 0x7FF || delta_lon.unsigned_abs() > 0x7FF;
                 let mut flags: u8 = node.node_class & 0x07;
                 if !node.arcs.is_empty() { flags |= F_ARCS; }
-                if large { flags |= F_LARGE_OFFSETS; }
+                if delta_large { flags |= F_LARGE_OFFSETS; }
                 if node.is_boundary { flags |= F_BOUNDARY; }
+                // mkgmap: avoid byte0=0 + flags=0 for isolated class-0 nodes
+                if flags == 0 { flags |= F_LARGE_OFFSETS; }
                 data.push(flags);
 
                 // Coords: 3B (12-bit packed) or 4B (16-bit packed), LE
-                if large {
+                let use_large = (flags & F_LARGE_OFFSETS) != 0;
+                if use_large {
                     let packed = ((delta_lat as i32) << 16) | ((delta_lon as i32) & 0xFFFF);
                     data.extend_from_slice(&packed.to_le_bytes());
                 } else {
@@ -1026,22 +1123,38 @@ mod tests {
 
     #[test]
     fn test_write_node_small_offsets() {
-        // Coords delta ≤ 0x7FF → 3B encoding, no F_LARGE_OFFSETS
+        // mkgmap rule: node with no arcs + class 0 + no boundary → flags==0 →
+        // F_LARGE_OFFSETS is forced to avoid byte0=0 AND flags=0 both zero.
+        // Node with arcs (F_ARCS set) should NOT have F_LARGE_OFFSETS for small deltas.
         let mut nod = NodWriter::new();
+        // Node 0: has an arc → F_ARCS set → flags ≠ 0 → small offsets stay 3B
         nod.add_node(RouteNode {
-            lat: 100000, lon: 200000, arcs: Vec::new(),
+            lat: 100000, lon: 200000,
+            arcs: vec![RouteArc {
+                dest_node_index: 1, road_def_index: 0, length_meters: 50,
+                forward: true, road_class: 0, speed: 0,
+                access: 0, toll: false, one_way: false, initial_heading: 0,
+            }],
             is_boundary: false, node_class: 0,
         });
+        // Node 1: no arcs → flags==0 → F_LARGE_OFFSETS forced (mkgmap behavior)
         nod.add_node(RouteNode {
             lat: 100010, lon: 200010, arcs: Vec::new(),
             is_boundary: false, node_class: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
-        // Node 0 starts at offset 0. Byte 1 = flags.
-        let node0_offset = nod.node_offsets()[0] as usize;
-        let flags = nod1[node0_offset + 1];
-        assert_eq!(flags & F_LARGE_OFFSETS, 0, "Small offsets should not have F_LARGE_OFFSETS");
+
+        // Node 0 has F_ARCS → flags ≠ 0 → no forced F_LARGE_OFFSETS for small delta
+        let n0 = nod.node_offsets()[0] as usize;
+        let flags0 = nod1[n0 + 1];
+        assert_ne!(flags0 & F_ARCS, 0, "Node 0 should have F_ARCS");
+        assert_eq!(flags0 & F_LARGE_OFFSETS, 0, "Node 0: small offsets, F_ARCS set → no forced F_LARGE_OFFSETS");
+
+        // Node 1: class 0, no arcs, no boundary → flags==0 → F_LARGE_OFFSETS forced (mkgmap)
+        let n1 = nod.node_offsets()[1] as usize;
+        let flags1 = nod1[n1 + 1];
+        assert_ne!(flags1 & F_LARGE_OFFSETS, 0, "Node 1: flags==0 case → F_LARGE_OFFSETS forced per mkgmap");
     }
 
     #[test]
