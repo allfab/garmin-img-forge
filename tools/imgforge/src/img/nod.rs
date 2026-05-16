@@ -657,7 +657,11 @@ impl NodWriter {
                     let (len_flag_bits, len_data) = encode_arc_length(raw_len, false);
 
                     // flagA: dest_class(0-2) | length_bits(3-5) | forward(6) | hasnet(7)
-                    let mut flag_a: u8 = arc.road_class & 0x07;
+                    // dest_class = min(arc.road_class, dest_node.node_class)
+                    // (mkgmap RouteArc.getArcDestClass — RouteArc.java:235-237)
+                    let dest_node_class = self.nodes[arc.dest_node_index].node_class;
+                    let dest_class = arc.road_class.min(dest_node_class);
+                    let mut flag_a: u8 = dest_class & 0x07;
                     flag_a |= len_flag_bits;
                     if arc.forward { flag_a |= FLAG_FORWARD; }
                     // FLAG_HASNET (mkgmap RouteArc.java:237-246):
