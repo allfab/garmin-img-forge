@@ -395,14 +395,39 @@ impl NodWriter {
     }
 
     /// Group nodes into RouteCenters using mkgmap bbox-split subdivision (NOD1Part.subdivideHelper).
+    ///
+    /// mkgmap-faithful (RoadNetwork.splitCenters:240-265) : les nodes sont
+    /// regroupés par class **avant** subdivision, dans l'ordre arc-less,
+    /// class 0, 1, 2, 3, 4. Les centers résultants sont donc écrits dans
+    /// cet ordre, condition nécessaire pour que `class_boundaries[c]` =
+    /// position du premier center contenant un node de class > c (sinon
+    /// le tracking `min(center_start)` collapse tout à 0 si un node de
+    /// haute class apparaît dans le 1er center).
     pub fn build_centers(&mut self) {
         self.centers.clear();
         if self.nodes.is_empty() {
             return;
         }
-        let all_indices: Vec<usize> = (0..self.nodes.len()).collect();
         let mut centers = Vec::new();
-        subdivide_nodes(&self.nodes, &all_indices, 0, &mut centers);
+
+        // 1) Nodes sans arcs (mkgmap RoadNetwork.java:252)
+        let arc_less: Vec<usize> = (0..self.nodes.len())
+            .filter(|&i| self.nodes[i].arcs.is_empty())
+            .collect();
+        if !arc_less.is_empty() {
+            subdivide_nodes(&self.nodes, &arc_less, 0, &mut centers);
+        }
+
+        // 2) Nodes groupés par node_class (0..=4) (mkgmap RoadNetwork.java:257-265)
+        for group in 0u8..=4u8 {
+            let group_nodes: Vec<usize> = (0..self.nodes.len())
+                .filter(|&i| !self.nodes[i].arcs.is_empty() && self.nodes[i].node_class == group)
+                .collect();
+            if !group_nodes.is_empty() {
+                subdivide_nodes(&self.nodes, &group_nodes, 0, &mut centers);
+            }
+        }
+
         tracing::debug!("NOD1Part: {} nodes → {} RouteCenters", self.nodes.len(), centers.len());
         self.centers = centers;
     }
