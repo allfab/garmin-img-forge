@@ -48,7 +48,7 @@ impl RoadDef {
 
     /// Write NET1 record — variable length.
     /// Returns (data, level_div_offset) where level_div_offset is the byte position
-    /// of the polyline_num placeholder within the returned data.
+    /// of the first polyline_num byte within the returned data.
     pub fn write_net1(&self) -> (Vec<u8>, usize) {
         let mut buf = Vec::new();
 
@@ -79,13 +79,23 @@ impl RoadDef {
         buf.push(lb[1]);
         buf.push(lb[2]);
 
-        // Level counts + level divs (mkgmap RoadDef.writeLevelCount + writeLevelDivs)
-        // Always reserve 4 bytes: level_count(1B=0x81) + polyline_num(1B) + subdiv_num(2B)
-        // This ensures NET1 offsets are stable and can be patched after RGN encoding.
-        buf.push(0x81); // 1 polyline at level 0, last level
-        let level_div_offset = buf.len(); // position of polyline_num placeholder
-        buf.push(0x00); // polyline_num placeholder (patched later)
-        buf.extend_from_slice(&0u16.to_le_bytes()); // subdiv_num placeholder (patched later)
+        // Level counts + level divs (mkgmap RoadDef.writeLevelCount + writeLevelDivs).
+        // imgforge currently emits routable geometry only at level 0. A single logical
+        // road can still be split into multiple RGN polylines/subdivisions; BaseCamp
+        // uses this table to map a clicked geometry segment back to the RoadDef.
+        let refs = self.subdiv_refs.first().map(|v| v.as_slice()).unwrap_or(&[]);
+        let count = refs.len().max(1).min(0x7f);
+        buf.push(0x80 | (count as u8)); // level 0 is the max/last level
+        let level_div_offset = buf.len();
+        if refs.is_empty() {
+            buf.push(0x00);
+            buf.extend_from_slice(&0u16.to_le_bytes());
+        } else {
+            for &(polyline_num, subdiv_num) in refs.iter().take(0x7f) {
+                buf.push(polyline_num);
+                buf.extend_from_slice(&subdiv_num.to_le_bytes());
+            }
+        }
 
         // NOD2 offset — variable-length encoding (mkgmap RoadDef.java:296-306)
         if let Some(nod2) = self.nod2_offset {
@@ -112,7 +122,7 @@ pub struct NetWriter {
     net1_offsets: Vec<u32>,
     /// Built NET data (available after build() for patching)
     pub built_data: Option<Vec<u8>>,
-    /// Per-road: byte offset within NET data of the level div placeholder (polyline_num byte)
+    /// Per-road: byte offset within NET data of the first level div entry (polyline_num byte)
     /// = NET_HEADER_LEN + NET1 offset + (label bytes + flags + length + level_count_byte)
     level_div_positions: Vec<usize>,
 }
@@ -196,26 +206,6 @@ impl NetWriter {
         // Consider returning &[u8] or removing the return to avoid this clone.
         self.built_data = Some(buf.clone());
         buf
-    }
-
-    /// Patch level div entries in the built NET data.
-    /// `subdiv_refs` maps road_index → (polyline_num, subdiv_num).
-    /// Call after RGN encoding has determined which subdivision each road is in.
-    /// Returns the patched NET data.
-    pub fn patch_level_divs(&mut self, subdiv_refs: &[(u8, u16)]) -> Vec<u8> {
-        let data = self.built_data.as_mut()
-            .expect("patch_level_divs called before build()");
-
-        for (road_idx, &(polyline_num, subdiv_num)) in subdiv_refs.iter().enumerate() {
-            if road_idx >= self.level_div_positions.len() { break; }
-            let pos = self.level_div_positions[road_idx];
-            data[pos] = polyline_num;
-            let sb = subdiv_num.to_le_bytes();
-            data[pos + 1] = sb[0];
-            data[pos + 2] = sb[1];
-        }
-
-        data.clone()
     }
 
     /// Build NET3 sorted index — 3B per road = NET1 offset, sorted by label

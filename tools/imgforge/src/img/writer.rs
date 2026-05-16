@@ -166,27 +166,49 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
     let tre_header_bounds = bounds_override.unwrap_or(feature_bounds);
 
     // 4. Pre-compute routing → RoutingContext + net_writer + nod_data
-    let (routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);
+    let (mut routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);
 
     // 5. Build multi-level subdivision hierarchy + encode RGN (with routing context)
     let mut rgn = RgnWriter::new();
-    let (all_subdivisions, tre_levels, ext_type_offsets_data, subdiv_road_refs) = build_multilevel_hierarchy(
+    let (mut all_subdivisions, mut tre_levels, mut ext_type_offsets_data, subdiv_road_refs) = build_multilevel_hierarchy(
         mp, &feature_bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
         routing_ctx.as_ref(),
     )?;
 
-    // 5b. Patch NET1 level/div entries with subdivision references collected during RGN encoding
+    // 5b. Rebuild NET with all level/div references collected during RGN encoding.
+    // mkgmap writes one RoadIndex for each RGN polyline segment of a road. NET1
+    // offsets can change when those variable-length records grow, so after the
+    // rebuild we re-encode RGN once with the final NET1 offsets.
     if let Some(ref mut net_writer) = net_writer_opt {
         if !subdiv_road_refs.is_empty() {
-            // Build per-road refs: (polyline_num, subdiv_num) — use the first ref for each road
             let num_roads = net_writer.roads.len();
-            let mut road_refs: Vec<(u8, u16)> = vec![(0, 0); num_roads];
+            let mut road_refs: Vec<Vec<(u8, u16)>> = vec![Vec::new(); num_roads];
             for &(road_idx, polyline_num, subdiv_num) in &subdiv_road_refs {
                 if road_idx < num_roads {
-                    road_refs[road_idx] = (polyline_num, subdiv_num);
+                    road_refs[road_idx].push((polyline_num, subdiv_num));
                 }
             }
-            net_writer.patch_level_divs(&road_refs);
+            for (road, refs) in net_writer.roads.iter_mut().zip(road_refs.into_iter()) {
+                road.subdiv_refs = vec![refs];
+            }
+            let _ = net_writer.build();
+            if let Some(ref mut ctx) = routing_ctx {
+                for (mp_idx, road_idx) in &ctx.mp_index_to_road_idx {
+                    if let Some(&net1_off) = net_writer.net1_offsets().get(*road_idx) {
+                        ctx.net1_offsets_by_mp_index.insert(*mp_idx, net1_off);
+                    }
+                }
+            }
+
+            rgn = RgnWriter::new();
+            let rebuilt = build_multilevel_hierarchy(
+                mp, &feature_bounds, &levels, &point_labels, &line_labels, &poly_labels, &mut rgn,
+                routing_ctx.as_ref(),
+            )?;
+            let (rebuilt_subdivisions, rebuilt_levels, rebuilt_ext_offsets, _) = rebuilt;
+            let _ = std::mem::replace(&mut all_subdivisions, rebuilt_subdivisions);
+            let _ = std::mem::replace(&mut tre_levels, rebuilt_levels);
+            let _ = std::mem::replace(&mut ext_type_offsets_data, rebuilt_ext_offsets);
         }
     }
 
@@ -1164,13 +1186,35 @@ fn encode_subdivision_rgn(
         pl.direction = mp_line.direction;
 
         // P3: RGN→NET link at leaf level. The label field is REPLACED by
-        // NET1 offset (mkgmap patches LBL→NET after NET is built).
-        // No extra bytes after bitstream — blen is bitstream only.
+        // NET1 offset (mkgmap patches LBL→NET after NET is built). For full
+        // routing, mkgmap also sets FLAG_EXTRABIT and writes one bit per
+        // encoded point when a level-0 road segment contains internal route
+        // nodes, or when this is not the last segment of a split road.
+        let mut extra_bit = false;
+        let mut split_node_flags: Option<Vec<bool>> = None;
         if is_leaf_level && !is_ext {
             if let Some(ctx) = routing_ctx {
                 if let Some(&net1_off) = ctx.net1_offsets_by_mp_index.get(&split_line.mp_index) {
                     pl.has_net_info = true;
                     pl.net_offset = net1_off;
+                    if let Some((orig_points, orig_flags)) =
+                        ctx.node_flags_by_mp_index.get(&split_line.mp_index)
+                    {
+                        if let Some((flags, is_last_segment)) =
+                            align_node_flags_to_split(orig_points, orig_flags, &split_line.points)
+                        {
+                            let has_internal_nodes = flags
+                                .iter()
+                                .enumerate()
+                                .skip(1)
+                                .take(flags.len().saturating_sub(2))
+                                .any(|(_, &flag)| flag);
+                            extra_bit = has_internal_nodes || !is_last_segment;
+                            if extra_bit {
+                                split_node_flags = Some(flags);
+                            }
+                        }
+                    }
                     // Track subdiv ref for NET1 level/div patching
                     if let Some(&road_idx) = ctx.mp_index_to_road_idx.get(&split_line.mp_index) {
                         let polyline_num = polyline_counter as u8;
@@ -1181,14 +1225,16 @@ fn encode_subdivision_rgn(
         }
 
         let deltas = compute_deltas(&split_line.points, subdiv);
-        if let Some(bitstream) = line_preparer::prepare_line(&deltas, false, None, is_ext) {
+        if let Some(bitstream) =
+            line_preparer::prepare_line(&deltas, extra_bit, split_node_flags.as_deref(), is_ext)
+        {
             if is_ext {
                 rgn.write_ext_polyline(
                     &pl.write_ext(subdiv.center_lat, subdiv.center_lon, shift, &bitstream),
                 );
             } else {
                 polylines_data.extend_from_slice(
-                    &pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, false),
+                    &pl.write(subdiv.center_lat, subdiv.center_lon, shift, &bitstream, extra_bit),
                 );
                 polyline_counter += 1;
             }
@@ -1406,12 +1452,38 @@ fn compute_deltas(points: &[Coord], subdiv: &Subdivision) -> Vec<(i32, i32)> {
     deltas
 }
 
+fn align_node_flags_to_split(
+    original_points: &[Coord],
+    original_flags: &[bool],
+    split_points: &[Coord],
+) -> Option<(Vec<bool>, bool)> {
+    if split_points.is_empty()
+        || original_points.len() != original_flags.len()
+        || split_points.len() > original_points.len()
+    {
+        return None;
+    }
+
+    let start = original_points
+        .windows(split_points.len())
+        .position(|window| window == split_points)?;
+    let end = start + split_points.len();
+    let flags = original_flags[start..end].to_vec();
+    Some((flags, end == original_points.len()))
+}
+
 /// Routing context computed before RGN encoding, providing NET1 offsets and node_flags
 /// for each routable polyline (keyed by mp_index into mp.polylines).
 struct RoutingContext {
     net1_offsets_by_mp_index: HashMap<usize, u32>,
     /// mp_index → road_idx (index in the NET writer's road list)
     mp_index_to_road_idx: HashMap<usize, usize>,
+    /// mp_index → detailed routing geometry + per-vertex RouteNode flags.
+    ///
+    /// mkgmap writes an extra bitstream on level-0 road polylines when internal
+    /// routing nodes have to be discoverable from RGN geometry. BaseCamp uses
+    /// this RGN-side node marking when snapping route points to roads.
+    node_flags_by_mp_index: HashMap<usize, (Vec<Coord>, Vec<bool>)>,
 }
 
 fn pre_compute_routing(
@@ -1549,9 +1621,17 @@ fn pre_compute_routing(
         for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
             mp_index_to_road_idx.insert(mp_idx, road_idx);
         }
+        let mut node_flags_by_mp_index = HashMap::new();
+        for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+            node_flags_by_mp_index.insert(
+                mp_idx,
+                (road_polylines[road_idx].0.clone(), Vec::new()),
+            );
+        }
         let routing_ctx = RoutingContext {
             net1_offsets_by_mp_index,
             mp_index_to_road_idx,
+            node_flags_by_mp_index,
         };
         return (Some(routing_ctx), Some(net_writer), None);
     }
@@ -1617,9 +1697,17 @@ fn pre_compute_routing(
     for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
         mp_index_to_road_idx.insert(mp_idx, road_idx);
     }
+    let mut node_flags_by_mp_index = HashMap::new();
+    for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
+        node_flags_by_mp_index.insert(
+            mp_idx,
+            (road_polylines[road_idx].0.clone(), all_node_flags[road_idx].clone()),
+        );
+    }
     let routing_ctx = RoutingContext {
         net1_offsets_by_mp_index,
         mp_index_to_road_idx,
+        node_flags_by_mp_index,
     };
 
     (Some(routing_ctx), Some(net_writer), Some(nod_data))
