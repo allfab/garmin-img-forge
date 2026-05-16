@@ -1481,20 +1481,16 @@ fn pre_compute_routing(
         }
     }
 
-    // Junction set : NodN= directives mpforge sont la vérité du graphe routing
-    // (mpforge a déjà identifié les vraies intersections via la passe de junction
-    // detection en amont). Le heuristique find_junctions sur-détecte (tout endpoint
-    // de polyline isolée devient junction → RouteNodes parasites → BaseCamp galère
-    // à snapper sur la bonne route → toile d'araignée).
-    //
-    // Fallback heuristic uniquement si AUCUNE NodN= n'est présente dans le .mp
-    // (cas d'un .mp source non-mpforge).
-    let has_nod_n = road_nod_entries.iter().any(|v| !v.is_empty());
-    let mut junctions: std::collections::HashSet<(i32, i32)> = if has_nod_n {
-        std::collections::HashSet::new()
-    } else {
-        find_junctions(&road_polylines)
-    };
+    // Junction set : UNION de find_junctions (endpoints + coords partagées par 2+
+    // roads, comportement mkgmap-faithful — start/end of way est toujours un
+    // CoordNode) ET des NodN= directives mpforge (apportent boundary flag et
+    // IDs partagés cross-tile). Le commit 29293d1 avait substitué les deux
+    // (NodN OU find_junctions) au lieu de les unir : conséquence, tout
+    // endpoint isolé (cul-de-sac, fin de route en bordure de tile) sans NodN
+    // explicite n'avait pas de RouteNode → segment final invisible au routing
+    // → toile d'araignée.
+    let mut junctions: std::collections::HashSet<(i32, i32)> =
+        find_junctions(&road_polylines);
 
     let mut boundary_coords: std::collections::HashSet<(i32, i32)> =
         std::collections::HashSet::new();
