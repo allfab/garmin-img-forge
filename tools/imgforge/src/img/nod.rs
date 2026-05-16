@@ -512,6 +512,17 @@ impl NodWriter {
         let nod4_offset = nod3_offset + nod3_data.len() as u32;
         common_header::write_section(&mut buf, nod4_offset, nod4_data.len() as u32);
 
+        // Clamp class_boundaries to nodes_len (mkgmap NODFile.writeNodes:103-106).
+        // Unused class slots are initialized to i32::MAX and never updated by the
+        // min-semantics pass in build_nod1; without this clamp, the delta encoding
+        // produces wrap-around values that the firmware reads as nonsensical class
+        // ranges → BaseCamp routing hangs on "Initialisation de l'itinéraire".
+        for i in 0..5 {
+            if self.class_boundaries[i] > nod1_size {
+                self.class_boundaries[i] = nod1_size;
+            }
+        }
+
         // Class boundaries: 5 × u32 (first absolute, then deltas)
         let mut prev: u32 = 0;
         for i in 0..5 {
