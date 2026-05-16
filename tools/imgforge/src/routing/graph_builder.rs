@@ -85,6 +85,16 @@ pub fn build_graph_with_junctions(
             if let Some(&node_idx) = junctions.get(&key) {
                 if let Some(prev_idx) = last_junction_idx {
                     let len = distance_from_last as u32;
+                    // Skip degenerate arcs: self-loops or zero-length segments.
+                    // These are poison for Dijkstra (zero-cost edges cause arbitrary path
+                    // selection / cycle traversal) and arise when two adjacent polyline
+                    // vertices land on the same junction key after coordinate quantization.
+                    if prev_idx == node_idx || len == 0 {
+                        last_junction_idx = Some(node_idx);
+                        last_junction_coord_idx = i;
+                        distance_from_last = 0.0;
+                        continue;
+                    }
                     let fwd_heading = direction_from_degrees(
                         coords[last_junction_coord_idx].bearing_to(&coords[last_junction_coord_idx + 1])
                     );
