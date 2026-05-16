@@ -1481,20 +1481,25 @@ fn pre_compute_routing(
         }
     }
 
-    // Heuristic junction detection (shared endpoints between roads).
-    let mut junctions = find_junctions(&road_polylines);
+    // Junction set : NodN= directives mpforge sont la vérité du graphe routing
+    // (mpforge a déjà identifié les vraies intersections via la passe de junction
+    // detection en amont). Le heuristique find_junctions sur-détecte (tout endpoint
+    // de polyline isolée devient junction → RouteNodes parasites → BaseCamp galère
+    // à snapper sur la bonne route → toile d'araignée).
+    //
+    // Fallback heuristic uniquement si AUCUNE NodN= n'est présente dans le .mp
+    // (cas d'un .mp source non-mpforge).
+    let has_nod_n = road_nod_entries.iter().any(|v| !v.is_empty());
+    let mut junctions: std::collections::HashSet<(i32, i32)> = if has_nod_n {
+        std::collections::HashSet::new()
+    } else {
+        find_junctions(&road_polylines)
+    };
 
-    // Collect boundary node coordinates from NodEntries flagged boundary=true.
-    // Only nodes that actually lie on the tile's geographic edge should be
-    // emitted into the NOD3 boundary section (mpforge computes this via
-    // is_boundary_point). Marking every junction as boundary (the previous
-    // behaviour) bloats NOD3 by ~10×, makes the cross-tile snap pick wrong
-    // nodes, and breaks routing on BaseCamp / Alpha 100.
     let mut boundary_coords: std::collections::HashSet<(i32, i32)> =
         std::collections::HashSet::new();
 
-    // Enrich with NodEntry-specified junction points (mpforge-produced .mp files).
-    // For polylines without NodEntries the heuristic already covers their endpoints.
+    // Collect junctions from NodEntry directives.
     for (road_idx, nods) in road_nod_entries.iter().enumerate() {
         if !nods.is_empty() {
             let coords = &road_polylines[road_idx].0;
