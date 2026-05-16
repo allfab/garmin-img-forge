@@ -1484,6 +1484,15 @@ fn pre_compute_routing(
     // Heuristic junction detection (shared endpoints between roads).
     let mut junctions = find_junctions(&road_polylines);
 
+    // Collect boundary node coordinates from NodEntries flagged boundary=true.
+    // Only nodes that actually lie on the tile's geographic edge should be
+    // emitted into the NOD3 boundary section (mpforge computes this via
+    // is_boundary_point). Marking every junction as boundary (the previous
+    // behaviour) bloats NOD3 by ~10×, makes the cross-tile snap pick wrong
+    // nodes, and breaks routing on BaseCamp / Alpha 100.
+    let mut boundary_coords: std::collections::HashSet<(i32, i32)> =
+        std::collections::HashSet::new();
+
     // Enrich with NodEntry-specified junction points (mpforge-produced .mp files).
     // For polylines without NodEntries the heuristic already covers their endpoints.
     for (road_idx, nods) in road_nod_entries.iter().enumerate() {
@@ -1492,7 +1501,11 @@ fn pre_compute_routing(
             for nod in nods {
                 let idx = nod.point_index as usize;
                 if idx < coords.len() {
-                    junctions.insert((coords[idx].latitude(), coords[idx].longitude()));
+                    let key = (coords[idx].latitude(), coords[idx].longitude());
+                    junctions.insert(key);
+                    if nod.boundary {
+                        boundary_coords.insert(key);
+                    }
                 }
             }
         }
@@ -1501,7 +1514,8 @@ fn pre_compute_routing(
     let all_node_flags = compute_node_flags(&road_polylines, &junctions);
 
     // Build routing graph (enriched with heading + node_class)
-    let route_nodes = graph_builder::build_graph_with_junctions(&road_polylines, &junctions);
+    let route_nodes =
+        graph_builder::build_graph_with_junctions(&road_polylines, &junctions, &boundary_coords);
 
     // Build NOD writer and prepare NOD1 (needed for NOD2 first_node offsets)
     let mut nod_writer = NodWriter::new();

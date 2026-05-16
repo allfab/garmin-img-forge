@@ -40,10 +40,15 @@ pub fn compute_node_flags(
 
 // ── Full graph builder (imgforge-internal, uses IMG types) ─────────────────
 
-/// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call)
+/// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call).
+///
+/// `boundary_coords` flags which junction coordinates are actual tile-edge nodes
+/// — only those go into the NOD3 boundary section. The previous behaviour of
+/// flagging every junction broke cross-tile routing in BaseCamp / Alpha 100.
 pub fn build_graph_with_junctions(
     road_polylines: &[(Vec<Coord>, usize, RouteParams)],
     junction_set: &HashSet<(i32, i32)>,
+    boundary_coords: &HashSet<(i32, i32)>,
 ) -> Vec<RouteNode> {
     if road_polylines.is_empty() {
         return Vec::new();
@@ -56,14 +61,13 @@ pub fn build_graph_with_junctions(
         .map(|(idx, key)| (key, idx))
         .collect();
 
-    // Create route nodes — indexed by enumeration index.
-    // All nodes are marked as boundary (required for NOD3).
     let mut nodes: Vec<RouteNode> = vec![
         RouteNode { lat: 0, lon: 0, arcs: Vec::new(), is_boundary: false, node_class: 0 };
         junctions.len()
     ];
     for (&(lat, lon), &idx) in &junctions {
-        nodes[idx] = RouteNode { lat, lon, arcs: Vec::new(), is_boundary: true, node_class: 0 };
+        let is_boundary = boundary_coords.contains(&(lat, lon));
+        nodes[idx] = RouteNode { lat, lon, arcs: Vec::new(), is_boundary, node_class: 0 };
     }
 
     for (coords, road_def_idx, params) in road_polylines {
@@ -171,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_empty_graph() {
-        let nodes = build_graph_with_junctions(&[], &HashSet::new());
+        let nodes = build_graph_with_junctions(&[], &HashSet::new(), &HashSet::new());
         assert!(nodes.is_empty());
     }
 
@@ -186,7 +190,7 @@ mod tests {
             (road2, 1, RouteParams::default()),
         ];
         let junctions = find_junctions(&roads);
-        let nodes = build_graph_with_junctions(&roads, &junctions);
+        let nodes = build_graph_with_junctions(&roads, &junctions, &HashSet::new());
 
         assert!(!nodes.is_empty());
         let junction = nodes.iter().find(|n| n.lat == 100 && n.lon == 100);

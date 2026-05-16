@@ -259,7 +259,11 @@ impl NodWriter {
             table_a_positions: Vec::new(),
             nod1_data: None,
             node_offsets: Vec::new(),
-            class_boundaries: [u32::MAX; 5], // mkgmap: Integer.MAX_VALUE
+            // mkgmap initializes with Integer.MAX_VALUE (Java signed int = 0x7FFFFFFF).
+            // Using u32::MAX (0xFFFFFFFF) here caused the written delta classBoundaries[1] − [0]
+            // to be 0xFFFFFFFF, which the Garmin firmware reads as int32 = -1 and rejects the
+            // routing graph. Match mkgmap exactly.
+            class_boundaries: [i32::MAX as u32; 5],
         }
     }
 

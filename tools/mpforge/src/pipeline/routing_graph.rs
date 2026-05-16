@@ -143,6 +143,16 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
         // Sort by point_index (ascending) — required by mkgmap spec (TD6).
         nods.sort_by_key(|e| e.point_index);
 
+        // Dedup consecutive NodEntries sharing the same node_id.
+        // Two distinct source vertices can quantize to the same grid cell (BDTOPO
+        // is sometimes denser than our quantization grid), producing identical
+        // node_id values for consecutive nodes. mkgmap rejects this with
+        // "consecutive identical nodes - routing will be broken" and the Garmin
+        // firmware likewise refuses to build a route across such an arc (zero-length
+        // self-loop). Keep the first occurrence (lowest point_index) — it's the
+        // earliest endpoint/junction on the road segment.
+        nods.dedup_by_key(|e| e.node_id);
+
         per_feature[*feat_idx] = nods;
         let _ = road_idx; // suppress unused warning
     }
