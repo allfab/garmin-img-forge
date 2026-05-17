@@ -166,7 +166,8 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
     let tre_header_bounds = bounds_override.unwrap_or(feature_bounds);
 
     // 4. Pre-compute routing → RoutingContext + net_writer + nod_data
-    let (mut routing_ctx, mut net_writer_opt, nod_data) = pre_compute_routing(mp, &line_labels);
+    let (mut routing_ctx, mut net_writer_opt, mut nod_data, nod_patch_info) =
+        pre_compute_routing(mp, &line_labels);
 
     // 5. Build multi-level subdivision hierarchy + encode RGN (with routing context)
     let mut rgn = RgnWriter::new();
@@ -209,6 +210,15 @@ fn build_subfiles_inner(mp: &MpFile, bounds_override: Option<Area>) -> Result<Ti
             let _ = std::mem::replace(&mut all_subdivisions, rebuilt_subdivisions);
             let _ = std::mem::replace(&mut tre_levels, rebuilt_levels);
             let _ = std::mem::replace(&mut ext_type_offsets_data, rebuilt_ext_offsets);
+
+            // NET1 offsets can move when RoadIndex lists are inserted into NET1.
+            // NOD1 Table A stores NET1 offsets too, so it must be patched after
+            // the final NET build, not only during the initial routing pre-pass.
+            if let (Some(ref mut nod), Some(ref patch_info)) =
+                (nod_data.as_mut(), nod_patch_info.as_ref())
+            {
+                patch_nod_table_a_offsets(nod, patch_info, net_writer.net1_offsets());
+            }
         }
     }
 
@@ -1238,7 +1248,12 @@ fn encode_subdivision_rgn(
                     }
                     // Track subdiv ref for NET1 level/div patching
                     if let Some(&road_idx) = ctx.mp_index_to_road_idx.get(&split_line.mp_index) {
-                        let polyline_num = polyline_counter as u8;
+                        // mkgmap Subdivision.setPolylineNumber() stores 1-based
+                        // standard polyline numbers; NET RoadIndex writes that
+                        // value verbatim. BaseCamp uses it to attach RGN geometry
+                        // to a RoadDef, so a 0-based value snaps to the previous
+                        // or next logical road in dense subdivisions.
+                        let polyline_num = (polyline_counter + 1) as u8;
                         subdiv_road_refs.push((road_idx, polyline_num, subdiv.number));
                     }
                 }
@@ -1510,25 +1525,70 @@ struct RoutingContext {
     canonical_points_by_mp_index: HashMap<usize, Vec<Coord>>,
 }
 
+struct NodTableAPatchInfo {
+    /// Byte offsets inside the NOD1 section, paired with road_def_index.
+    table_a_positions: Vec<(usize, usize)>,
+}
+
+fn patch_nod_table_a_offsets(
+    nod_data: &mut [u8],
+    patch_info: &NodTableAPatchInfo,
+    net1_offsets: &[u32],
+) {
+    let nod1_base = super::nod::NOD_HEADER_LEN as usize;
+    for &(nod1_pos, road_idx) in &patch_info.table_a_positions {
+        let Some(&offset) = net1_offsets.get(road_idx) else {
+            tracing::warn!(
+                road_idx,
+                "NOD final patch: road_def_index out of range, Table A entry left unchanged"
+            );
+            continue;
+        };
+        let pos = nod1_base + nod1_pos;
+        if pos + 2 >= nod_data.len() {
+            tracing::warn!(
+                byte_pos = pos,
+                road_idx,
+                "NOD final patch: Table A byte position out of NOD bounds"
+            );
+            continue;
+        }
+
+        let existing = (nod_data[pos] as u32)
+            | ((nod_data[pos + 1] as u32) << 8)
+            | ((nod_data[pos + 2] as u32) << 16);
+        let patched = (offset & 0x3FFFFF) | (existing & 0xC00000);
+        let b = patched.to_le_bytes();
+        nod_data[pos] = b[0];
+        nod_data[pos + 1] = b[1];
+        nod_data[pos + 2] = b[2];
+    }
+}
+
 fn pre_compute_routing(
     mp: &MpFile,
     line_labels: &[u32],
-) -> (Option<RoutingContext>, Option<NetWriter>, Option<Vec<u8>>) {
+) -> (
+    Option<RoutingContext>,
+    Option<NetWriter>,
+    Option<Vec<u8>>,
+    Option<NodTableAPatchInfo>,
+) {
     use crate::parser::mp_types::RoutingMode;
     use super::nod::{write_nod2_records, Nod2RoadInfo};
 
     // Routing mode check
     match mp.header.routing_mode {
-        RoutingMode::Disabled => return (None, None, None),
+        RoutingMode::Disabled => return (None, None, None, None),
         RoutingMode::Auto => {
             if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
-                return (None, None, None);
+                return (None, None, None, None);
             }
         }
         RoutingMode::Route | RoutingMode::NetOnly => {
             if !mp.polylines.iter().any(|pl| pl.road_id.is_some()) {
                 tracing::info!("--route/--net specified but no RoadID found in .mp data — Routing inactif dans cette tuile : aucun tronçon routable (RoadID inexistant)");
-                return (None, None, None);
+                return (None, None, None, None);
             }
         }
     }
@@ -1626,14 +1686,19 @@ fn pre_compute_routing(
         }
     }
 
-    let all_node_flags = if has_explicit_nod_entries {
+    let all_node_flags: Vec<Vec<bool>> = if has_explicit_nod_entries {
         road_polylines
             .iter()
-            .map(|(coords, _, _)| {
-                coords
-                    .iter()
-                    .map(|coord| junctions.contains(&(coord.latitude(), coord.longitude())))
-                    .collect()
+            .zip(road_nod_entries.iter())
+            .map(|((coords, _, _), nods)| {
+                let mut flags = vec![false; coords.len()];
+                for nod in nods {
+                    let idx = nod.point_index as usize;
+                    if idx < flags.len() {
+                        flags[idx] = true;
+                    }
+                }
+                flags
             })
             .collect()
     } else {
@@ -1641,8 +1706,11 @@ fn pre_compute_routing(
     };
 
     // Build routing graph (enriched with heading + node_class)
-    let route_nodes =
-        graph_builder::build_graph_with_junctions(&road_polylines, &junctions, &boundary_coords);
+    let route_nodes = if has_explicit_nod_entries {
+        graph_builder::build_graph_with_node_flags(&road_polylines, &all_node_flags, &boundary_coords)
+    } else {
+        graph_builder::build_graph_with_junctions(&road_polylines, &junctions, &boundary_coords)
+    };
 
     // Build NOD writer and prepare NOD1 (needed for NOD2 first_node offsets)
     let mut nod_writer = NodWriter::new();
@@ -1690,7 +1758,7 @@ fn pre_compute_routing(
             node_flags_by_mp_index,
             canonical_points_by_mp_index,
         };
-        return (Some(routing_ctx), Some(net_writer), None);
+        return (Some(routing_ctx), Some(net_writer), None, None);
     }
 
     // Full routing pipeline:
@@ -1743,6 +1811,9 @@ fn pre_compute_routing(
     nod_writer.patch_net1_offsets(&net1_offsets);
 
     // 5. Build final NOD
+    let nod_patch_info = NodTableAPatchInfo {
+        table_a_positions: nod_writer.table_a_positions().to_vec(),
+    };
     let nod_data = nod_writer.build();
 
     // Build RoutingContext for RGN
@@ -1770,7 +1841,12 @@ fn pre_compute_routing(
         canonical_points_by_mp_index,
     };
 
-    (Some(routing_ctx), Some(net_writer), Some(nod_data))
+    (
+        Some(routing_ctx),
+        Some(net_writer),
+        Some(nod_data),
+        Some(nod_patch_info),
+    )
 }
 
 /// Find the NOD1 offset of the first RouteNode encountered along a road's vertices.
@@ -2171,6 +2247,36 @@ Nod2=1,1003,1
         let img = build_img(&mp).unwrap();
         assert!(find_subfile_in_img(&img, "NET"), "NodEntry .mp must produce NET");
         assert!(find_subfile_in_img(&img, "NOD"), "NodEntry .mp must produce NOD");
+    }
+
+    #[test]
+    fn road_index_polyline_numbers_are_one_based() {
+        let content = r#"
+[IMG ID]
+ID=99990101
+Name=RoadIndex Numbering Test
+Levels=24
+[END-IMG ID]
+[POLYLINE]
+Type=0x06
+Label=Route A
+RoadID=1
+RouteParam=4,3,0,0,0,0,0,0,0,0,0,0
+Data0=(48.57,7.75),(48.58,7.76)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+        let net = result.net.expect("routing build must produce NET");
+        let net1_off = u32::from_le_bytes([net[0x15], net[0x16], net[0x17], net[0x18]]) as usize;
+
+        // NET1 record layout for this fixture:
+        // label(3), flags(1), length(3), level_count(1), RoadIndex(polyline, subdiv).
+        let road_index_polyline_num = net[net1_off + 3 + 1 + 3 + 1];
+        assert_eq!(
+            road_index_polyline_num, 1,
+            "RoadIndex.polyline_num must match mkgmap's 1-based Subdivision.setPolylineNumber()"
+        );
     }
 
     #[test]
@@ -2614,5 +2720,27 @@ mod split_tests {
         assert!(result.len() >= 4); // 1 + ≥2 + 1
         // First and last should be the small ones (FIFO order)
         assert_eq!(result[0].points.len(), 10);
+    }
+
+    #[test]
+    fn final_nod_table_a_patch_uses_final_net1_offset() {
+        let patch_info = NodTableAPatchInfo {
+            table_a_positions: vec![(10, 0)],
+        };
+        let pos = crate::img::nod::NOD_HEADER_LEN as usize + 10;
+        let mut nod_data = vec![0u8; pos + 3];
+
+        // Preserve Table A access-top bits in bits 22-23 while replacing the
+        // 22-bit NET1 offset payload.
+        nod_data[pos] = 0x11;
+        nod_data[pos + 1] = 0x22;
+        nod_data[pos + 2] = 0xC0;
+
+        patch_nod_table_a_offsets(&mut nod_data, &patch_info, &[0x003456]);
+
+        let patched = (nod_data[pos] as u32)
+            | ((nod_data[pos + 1] as u32) << 8)
+            | ((nod_data[pos + 2] as u32) << 16);
+        assert_eq!(patched, 0xC0_3456);
     }
 }
