@@ -1200,9 +1200,20 @@ fn encode_subdivision_rgn(
                     if let Some((orig_points, orig_flags)) =
                         ctx.node_flags_by_mp_index.get(&split_line.mp_index)
                     {
-                        if let Some((mut flags, is_last_segment)) =
+                        if let Some((mut flags, is_last_segment, start, end)) =
                             align_node_flags_to_split(orig_points, orig_flags, &split_line.points)
                         {
+                            let points = if let Some(canonical_points) =
+                                ctx.canonical_points_by_mp_index.get(&split_line.mp_index)
+                            {
+                                if end <= canonical_points.len() {
+                                    canonical_points[start..end].to_vec()
+                                } else {
+                                    split_line.points.clone()
+                                }
+                            } else {
+                                split_line.points.clone()
+                            };
                             let has_internal_nodes = flags
                                 .iter()
                                 .enumerate()
@@ -1222,6 +1233,7 @@ fn encode_subdivision_rgn(
                                 }
                                 split_node_flags = Some(flags);
                             }
+                            pl.points = points;
                         }
                     }
                     // Track subdiv ref for NET1 level/div patching
@@ -1233,7 +1245,7 @@ fn encode_subdivision_rgn(
             }
         }
 
-        let deltas = compute_deltas(&split_line.points, subdiv);
+        let deltas = compute_deltas(&pl.points, subdiv);
         if let Some(bitstream) =
             line_preparer::prepare_line(&deltas, extra_bit, split_node_flags.as_deref(), is_ext)
         {
@@ -1465,7 +1477,7 @@ fn align_node_flags_to_split(
     original_points: &[Coord],
     original_flags: &[bool],
     split_points: &[Coord],
-) -> Option<(Vec<bool>, bool)> {
+) -> Option<(Vec<bool>, bool, usize, usize)> {
     if split_points.is_empty()
         || original_points.len() != original_flags.len()
         || split_points.len() > original_points.len()
@@ -1478,7 +1490,7 @@ fn align_node_flags_to_split(
         .position(|window| window == split_points)?;
     let end = start + split_points.len();
     let flags = original_flags[start..end].to_vec();
-    Some((flags, end == original_points.len()))
+    Some((flags, end == original_points.len(), start, end))
 }
 
 /// Routing context computed before RGN encoding, providing NET1 offsets and node_flags
@@ -1493,6 +1505,9 @@ struct RoutingContext {
     /// routing nodes have to be discoverable from RGN geometry. BaseCamp uses
     /// this RGN-side node marking when snapping route points to roads.
     node_flags_by_mp_index: HashMap<usize, (Vec<Coord>, Vec<bool>)>,
+    /// mp_index → Data0 geometry after applying mkgmap-style CoordNode
+    /// canonicalization by NodN node_id.
+    canonical_points_by_mp_index: HashMap<usize, Vec<Coord>>,
 }
 
 fn pre_compute_routing(
@@ -1559,6 +1574,25 @@ fn pre_compute_routing(
             road_params.push(params);
             mp_indices.push(i);
             road_nod_entries.push(mp_line.nodes.clone());
+        }
+    }
+
+    let original_road_points: Vec<Vec<Coord>> = road_polylines
+        .iter()
+        .map(|(coords, _, _)| coords.clone())
+        .collect();
+
+    // mkgmap RoadHelper interns Polish NodN node IDs into shared CoordNode
+    // objects. Later roads with the same node_id reuse the first coordinate,
+    // so RGN, NET and NOD all see exactly the same junction coordinate.
+    let mut coord_by_node_id: HashMap<u32, Coord> = HashMap::new();
+    for (road_idx, nods) in road_nod_entries.iter().enumerate() {
+        for nod in nods {
+            let idx = nod.point_index as usize;
+            if let Some(coord) = road_polylines[road_idx].0.get(idx).copied() {
+                let canonical = *coord_by_node_id.entry(nod.node_id).or_insert(coord);
+                road_polylines[road_idx].0[idx] = canonical;
+            }
         }
     }
 
@@ -1642,16 +1676,19 @@ fn pre_compute_routing(
             mp_index_to_road_idx.insert(mp_idx, road_idx);
         }
         let mut node_flags_by_mp_index = HashMap::new();
+        let mut canonical_points_by_mp_index = HashMap::new();
         for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
             node_flags_by_mp_index.insert(
                 mp_idx,
-                (road_polylines[road_idx].0.clone(), Vec::new()),
+                (original_road_points[road_idx].clone(), Vec::new()),
             );
+            canonical_points_by_mp_index.insert(mp_idx, road_polylines[road_idx].0.clone());
         }
         let routing_ctx = RoutingContext {
             net1_offsets_by_mp_index,
             mp_index_to_road_idx,
             node_flags_by_mp_index,
+            canonical_points_by_mp_index,
         };
         return (Some(routing_ctx), Some(net_writer), None);
     }
@@ -1718,16 +1755,19 @@ fn pre_compute_routing(
         mp_index_to_road_idx.insert(mp_idx, road_idx);
     }
     let mut node_flags_by_mp_index = HashMap::new();
+    let mut canonical_points_by_mp_index = HashMap::new();
     for (road_idx, &mp_idx) in mp_indices.iter().enumerate() {
         node_flags_by_mp_index.insert(
             mp_idx,
-            (road_polylines[road_idx].0.clone(), all_node_flags[road_idx].clone()),
+            (original_road_points[road_idx].clone(), all_node_flags[road_idx].clone()),
         );
+        canonical_points_by_mp_index.insert(mp_idx, road_polylines[road_idx].0.clone());
     }
     let routing_ctx = RoutingContext {
         net1_offsets_by_mp_index,
         mp_index_to_road_idx,
         node_flags_by_mp_index,
+        canonical_points_by_mp_index,
     };
 
     (Some(routing_ctx), Some(net_writer), Some(nod_data))
