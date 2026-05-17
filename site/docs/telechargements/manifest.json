@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-16T13:22:48Z",
+  "generated_at": "2026-05-17T17:35:21Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,9 +9,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-16T13:22:48Z",
-          "size_bytes": 160591872,
-          "sha256": "ad6512ba559bed34182ae87f18e7e9071575f06eceee310aaf6871ec15df5ab4",
+          "published_at": "2026-05-17T17:35:21Z",
+          "size_bytes": 161644544,
+          "sha256": "6bf9fe92661c68f8a43f759b5be56b08d119e85b634507c36ad90c50c0045431",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
@@ -29,7 +29,7 @@
             "code_page": "1252",
             "levels": "24,23,22,21,20,18,16",
             "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
-            "packaging": "gmp",
+            "packaging": "legacy",
             "product_id": "1",
             "publish_target": "s3",
             "reduce_point_density": "",
