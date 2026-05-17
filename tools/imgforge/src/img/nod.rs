@@ -538,7 +538,7 @@ impl NodWriter {
 
         // NOD4 section @0x3F — high-class boundary nodes
         // mkgmap layout: writeSectionInfo (offset+size only = 8B), no itemSize
-        let nod4_offset = nod3_offset + nod3_data.len() as u32;
+        let nod4_offset = align_u32(nod3_offset + nod3_data.len() as u32, 0x200);
         common_header::write_section(&mut buf, nod4_offset, nod4_data.len() as u32);
 
         // Clamp class_boundaries to nodes_len (mkgmap NODFile.writeNodes:103-106).
@@ -572,6 +572,9 @@ impl NodWriter {
         buf.extend_from_slice(&nod1_data);
         buf.extend_from_slice(&nod2_data);
         buf.extend_from_slice(&nod3_data);
+        while (buf.len() as u32) < nod4_offset {
+            buf.push(0);
+        }
         buf.extend_from_slice(&nod4_data);
 
         buf
@@ -844,47 +847,73 @@ impl NodWriter {
 
     fn build_nod3(&self, node_offsets: &[u32]) -> Vec<u8> {
         let mut data = Vec::new();
-        for (i, node) in self.nodes.iter().enumerate() {
-            if node.is_boundary {
-                let lon_b = node.lon.to_le_bytes();
-                data.push(lon_b[0]);
-                data.push(lon_b[1]);
-                data.push(lon_b[2]);
-                let lat_b = node.lat.to_le_bytes();
-                data.push(lat_b[0]);
-                data.push(lat_b[1]);
-                data.push(lat_b[2]);
-                let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
-                let ob = off.to_le_bytes();
-                data.push(ob[0]);
-                data.push(ob[1]);
-                data.push(ob[2]);
-            }
+        for i in self.sorted_boundary_node_indices(false) {
+            let node = &self.nodes[i];
+            let lon_b = node.lon.to_le_bytes();
+            data.push(lon_b[0]);
+            data.push(lon_b[1]);
+            data.push(lon_b[2]);
+            let lat_b = node.lat.to_le_bytes();
+            data.push(lat_b[0]);
+            data.push(lat_b[1]);
+            data.push(lat_b[2]);
+            let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
+            let ob = off.to_le_bytes();
+            data.push(ob[0]);
+            data.push(ob[1]);
+            data.push(ob[2]);
         }
         data
     }
 
     fn build_nod4(&self, node_offsets: &[u32]) -> Vec<u8> {
         let mut data = Vec::new();
-        for (i, node) in self.nodes.iter().enumerate() {
-            if node.is_boundary && node.node_group > 0 {
-                let lon_b = node.lon.to_le_bytes();
-                data.push(lon_b[0]);
-                data.push(lon_b[1]);
-                data.push(lon_b[2]);
-                let lat_b = node.lat.to_le_bytes();
-                data.push(lat_b[0]);
-                data.push(lat_b[1]);
-                data.push(lat_b[2]);
-                let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
-                let ob = off.to_le_bytes();
-                data.push(ob[0]);
-                data.push(ob[1]);
-                data.push(ob[2]);
-            }
+        for i in self.sorted_boundary_node_indices(true) {
+            let node = &self.nodes[i];
+            let lon_b = node.lon.to_le_bytes();
+            data.push(lon_b[0]);
+            data.push(lon_b[1]);
+            data.push(lon_b[2]);
+            let lat_b = node.lat.to_le_bytes();
+            data.push(lat_b[0]);
+            data.push(lat_b[1]);
+            data.push(lat_b[2]);
+            let off = if i < node_offsets.len() { node_offsets[i] } else { 0 };
+            let ob = off.to_le_bytes();
+            data.push(ob[0]);
+            data.push(ob[1]);
+            data.push(ob[2]);
         }
         data
     }
+
+    fn sorted_boundary_node_indices(&self, high_class_only: bool) -> Vec<usize> {
+        let mut indices: Vec<usize> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, node)| {
+                if node.is_boundary && (!high_class_only || node.node_group > 0) {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // mkgmap RouteNode.compareTo delegates to Coord.compareTo:
+        // lexicographic longitude, then latitude. NOD3/NOD4 consumers rely on
+        // this ordering for boundary-node lookup across adjacent tiles.
+        indices.sort_by_key(|&i| {
+            let node = &self.nodes[i];
+            (node.lon, node.lat)
+        });
+        indices
+    }
+}
+
+fn align_u32(value: u32, align: u32) -> u32 {
+    debug_assert!(align.is_power_of_two());
+    (value + align - 1) & !(align - 1)
 }
 
 /// calcLowByte — mkgmap RouteCenter.java:159-171
@@ -949,6 +978,50 @@ mod tests {
         let data = nod.build();
         // Should have NOD3 data (9 bytes per boundary node)
         assert!(data.len() >= NOD_HEADER_LEN as usize + 9);
+    }
+
+    #[test]
+    fn nod3_boundary_nodes_are_sorted_and_nod4_is_aligned() {
+        let mut nod = NodWriter::new();
+        nod.add_node(RouteNode {
+            lat: 20,
+            lon: 30,
+            arcs: Vec::new(),
+            is_boundary: true,
+            node_class: 0,
+            node_group: 0,
+        });
+        nod.add_node(RouteNode {
+            lat: 10,
+            lon: 20,
+            arcs: Vec::new(),
+            is_boundary: true,
+            node_class: 0,
+            node_group: 0,
+        });
+        nod.add_node(RouteNode {
+            lat: 5,
+            lon: 20,
+            arcs: Vec::new(),
+            is_boundary: true,
+            node_class: 0,
+            node_group: 0,
+        });
+
+        let data = nod.build();
+        let nod3_offset = u32::from_le_bytes(data[0x31..0x35].try_into().unwrap()) as usize;
+        let nod3_size = u32::from_le_bytes(data[0x35..0x39].try_into().unwrap()) as usize;
+        let nod4_offset = u32::from_le_bytes(data[0x3F..0x43].try_into().unwrap()) as usize;
+
+        assert_eq!(nod3_size, 27);
+        assert_eq!(nod4_offset % 0x200, 0);
+        let records = &data[nod3_offset..nod3_offset + nod3_size];
+        assert_eq!(&records[0..3], &[20, 0, 0]);
+        assert_eq!(&records[3..6], &[5, 0, 0]);
+        assert_eq!(&records[9..12], &[20, 0, 0]);
+        assert_eq!(&records[12..15], &[10, 0, 0]);
+        assert_eq!(&records[18..21], &[30, 0, 0]);
+        assert_eq!(&records[21..24], &[20, 0, 0]);
     }
 
     #[test]
