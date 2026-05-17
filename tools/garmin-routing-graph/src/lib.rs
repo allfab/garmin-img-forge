@@ -116,22 +116,32 @@ pub fn compute_node_flags(
     }).collect()
 }
 
-/// Deterministic node ID from quantized coordinates.
+/// Deterministic node ID from quantized coordinates and topology level.
 ///
-/// Uses FNV-1a hash of (lat_q, lon_q) masked to 31 bits to fit Java signed int
-/// (mkgmap RoadHelper parses Nod1 nodeId via Integer.parseInt, max 0x7FFFFFFF).
-/// The Garmin firmware also reads node identifiers as signed int32; values with
-/// the high bit set are interpreted as negative offsets and break routing.
+/// Uses FNV-1a hash of (lat_q, lon_q, level) masked to 31 bits to fit Java
+/// signed int (mkgmap RoadHelper parses Nod1 nodeId via Integer.parseInt, max
+/// 0x7FFFFFFF). The Garmin firmware also reads node identifiers as signed int32;
+/// values with the high bit set are interpreted as negative offsets and break routing.
 /// Result is always in [1, 0x7FFFFFFF] (0 reserved as "no node" sentinel).
-pub fn coord_to_node_id(lat_q: i32, lon_q: i32) -> u32 {
+pub fn coord_to_node_id_with_level(lat_q: i32, lon_q: i32, level: i32) -> u32 {
     const FNV_OFFSET: u64 = 14695981039346656037;
     const FNV_PRIME: u64 = 1099511628211;
     let mut hash = FNV_OFFSET;
-    for b in lat_q.to_le_bytes().iter().chain(lon_q.to_le_bytes().iter()) {
+    for b in lat_q
+        .to_le_bytes()
+        .iter()
+        .chain(lon_q.to_le_bytes().iter())
+        .chain(level.to_le_bytes().iter())
+    {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     ((hash & 0x7FFF_FFFF) as u32).max(1)
+}
+
+/// Deterministic node ID from quantized coordinates at ground level.
+pub fn coord_to_node_id(lat_q: i32, lon_q: i32) -> u32 {
+    coord_to_node_id_with_level(lat_q, lon_q, 0)
 }
 
 #[cfg(test)]
@@ -212,6 +222,21 @@ mod tests {
         let id1 = coord_to_node_id(45_5000000, 5_7000000);
         let id2 = coord_to_node_id(45_5000001, 5_7000000);
         assert_ne!(id1, id2, "different coords should give different IDs");
+    }
+
+    #[test]
+    fn test_coord_to_node_id_level_zero_compatibility() {
+        assert_eq!(
+            coord_to_node_id(45_5000000, 5_7000000),
+            coord_to_node_id_with_level(45_5000000, 5_7000000, 0)
+        );
+    }
+
+    #[test]
+    fn test_coord_to_node_id_distinct_levels() {
+        let ground = coord_to_node_id_with_level(45_5000000, 5_7000000, 0);
+        let bridge = coord_to_node_id_with_level(45_5000000, 5_7000000, 1);
+        assert_ne!(ground, bridge, "same coords on different levels must not connect");
     }
 
     #[test]
