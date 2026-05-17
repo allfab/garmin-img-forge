@@ -1,12 +1,12 @@
 // Routing topology stage for the mpforge pipeline.
 //
 // Computes NodN= entries for each routable polyline in a tile.
-// Uses deterministic coordinate-based node IDs (FNV hash of quantized WGS84)
-// so the same geographic point always gets the same node ID across tiles —
-// no post-tiling reconciliation pass required.
+// Uses deterministic topology-based node IDs (FNV hash of quantized WGS84 and
+// source ground level) so the same routable point always gets the same node ID
+// across tiles — no post-tiling reconciliation pass required.
 
-use std::collections::HashSet;
-use garmin_routing_graph::{NodEntry, coord_to_node_id, find_junctions};
+use std::collections::{HashMap, HashSet};
+use garmin_routing_graph::{NodEntry, coord_to_node_id_with_level};
 
 use crate::pipeline::reader::Feature;
 use crate::pipeline::tiler::TileBounds;
@@ -32,6 +32,35 @@ pub fn quantize(deg: f64) -> i32 {
     (deg * 1e7).round() as i32
 }
 
+type TopologyKey = (i32, i32, i32); // (lat_q, lon_q, level)
+
+fn topology_level(feature: &Feature) -> i32 {
+    feature
+        .attributes
+        .get("POS_SOL")
+        .and_then(|value| value.trim().parse::<i32>().ok())
+        .unwrap_or(0)
+}
+
+fn find_topology_junctions(roads: &[Vec<TopologyKey>]) -> HashSet<TopologyKey> {
+    let mut point_count: HashMap<TopologyKey, Vec<(usize, usize, bool)>> = HashMap::new();
+
+    for (road_idx, coords) in roads.iter().enumerate() {
+        for (pt_idx, &key) in coords.iter().enumerate() {
+            let is_endpoint = pt_idx == 0 || pt_idx == coords.len() - 1;
+            point_count.entry(key).or_default().push((road_idx, pt_idx, is_endpoint));
+        }
+    }
+
+    point_count
+        .into_iter()
+        .filter(|(_, refs_list)| {
+            refs_list.len() >= 2 || refs_list.iter().any(|(_, _, is_ep)| *is_ep)
+        })
+        .map(|(key, _)| key)
+        .collect()
+}
+
 /// Check whether a WGS84 point lies on or within epsilon of the tile's strict boundary.
 ///
 /// The strict boundary is the tile without overlap (overlap stripped from each side).
@@ -52,30 +81,31 @@ fn is_boundary_point(lat: f64, lon: f64, tile: &TileBounds) -> bool {
 /// Compute the routing graph for a tile.
 ///
 /// Iterates over all features, identifies routable polylines (those with a
-/// `RoadID` attribute), computes junction points using the shared
-/// `garmin_routing_graph::find_junctions`, then assigns `NodEntry` values to
+/// `RoadID` attribute), computes junction points using the route topology key
+/// `(lat, lon, POS_SOL)`, then assigns `NodEntry` values to
 /// each junction point of each polyline.
 pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> TileRoutingGraph {
     // Collect routable features and their quantized geometries.
-    // Each entry: (feature_index, Vec<(lat_q, lon_q)>)
-    let routable: Vec<(usize, Vec<(i32, i32)>)> = features
+    // Each entry: (feature_index, Vec<(lat_q, lon_q, level)>)
+    let routable: Vec<(usize, Vec<TopologyKey>)> = features
         .iter()
         .enumerate()
         .filter(|(_, f)| f.attributes.contains_key("RoadID") && f.geometry.len() >= 2)
         .map(|(i, f)| {
+            let level = topology_level(f);
             let quantized = f
                 .geometry
                 .iter()
                 // geometry stores (lon, lat) per reader.rs convention
-                .map(|&(lon, lat)| (quantize(lat), quantize(lon)))
+                .map(|&(lon, lat)| (quantize(lat), quantize(lon), level))
                 .collect();
             (i, quantized)
         })
         .collect();
 
     // Run junction detection on all routable geometries.
-    let raw_roads: Vec<Vec<(i32, i32)>> = routable.iter().map(|(_, q)| q.clone()).collect();
-    let junctions: HashSet<(i32, i32)> = find_junctions(&raw_roads);
+    let raw_roads: Vec<Vec<TopologyKey>> = routable.iter().map(|(_, q)| q.clone()).collect();
+    let junctions: HashSet<TopologyKey> = find_topology_junctions(&raw_roads);
 
     let mut per_feature: Vec<Vec<NodEntry>> = vec![Vec::new(); features.len()];
     let mut total_nodes: u32 = 0;
@@ -88,9 +118,9 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
 
         // Determine which points in this polyline are nodes.
         // A point is a node if it's an endpoint OR appears in the junctions set.
-        for (pt_idx, &(lat_q, lon_q)) in quantized.iter().enumerate() {
+        for (pt_idx, &(lat_q, lon_q, level)) in quantized.iter().enumerate() {
             let is_endpoint = pt_idx == 0 || pt_idx == n - 1;
-            let is_junction = junctions.contains(&(lat_q, lon_q));
+            let is_junction = junctions.contains(&(lat_q, lon_q, level));
 
             if !is_endpoint && !is_junction {
                 continue;
@@ -101,7 +131,7 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
             let (lon_deg, lat_deg) = features[*feat_idx].geometry[pt_idx];
             let on_boundary = is_boundary_point(lat_deg, lon_deg, tile);
 
-            let node_id = coord_to_node_id(lat_q, lon_q);
+            let node_id = coord_to_node_id_with_level(lat_q, lon_q, level);
 
             nods.push(NodEntry {
                 point_index: pt_idx as u16,
@@ -126,15 +156,16 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
             let (lon_last, lat_last) = features[*feat_idx].geometry[n - 1];
             let (lat0_q, lon0_q) = (quantize(lat0), quantize(lon0));
             let (lat_last_q, lon_last_q) = (quantize(lat_last), quantize(lon_last));
+            let level = topology_level(&features[*feat_idx]);
 
             nods.push(NodEntry {
                 point_index: 0,
-                node_id: coord_to_node_id(lat0_q, lon0_q),
+                node_id: coord_to_node_id_with_level(lat0_q, lon0_q, level),
                 boundary: is_boundary_point(lat0, lon0, tile),
             });
             nods.push(NodEntry {
                 point_index: (n - 1) as u16,
-                node_id: coord_to_node_id(lat_last_q, lon_last_q),
+                node_id: coord_to_node_id_with_level(lat_last_q, lon_last_q, level),
                 boundary: is_boundary_point(lat_last, lon_last, tile),
             });
             total_nodes += 2;
@@ -167,12 +198,13 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
 
 /// Reconcile boundary node IDs across tiles.
 ///
-/// For each pair of tiles sharing a boundary point (same quantized coordinate),
+/// For each pair of tiles sharing a boundary point (same quantized coordinate
+/// and same topology level),
 /// the canonical ID is chosen deterministically (lowest tile index wins).
 /// This function mutates the TileRoutingGraph values in place.
 ///
-/// Note: in the current pipeline, deterministic coord-based IDs (FNV hash) make
-/// reconciliation optional — same coordinate always produces the same ID.
+/// Note: in the current pipeline, deterministic topology-based IDs (FNV hash) make
+/// reconciliation optional — same coordinate and same level always produce the same ID.
 /// This function is provided for correctness testing (AC4) and future use.
 pub struct ReconciliationStats {
     pub nodes_reconciled: u32,
@@ -184,7 +216,7 @@ pub fn reconcile_boundary_nodes(
 ) -> ReconciliationStats {
     use std::collections::HashMap;
 
-    // Build index: coordinate → Vec<(tile_idx_in_slice, nod position in per_feature)>
+    // Build index: node ID → Vec<(tile_idx_in_slice, nod position in per_feature)>
     // We index by (feat_idx, nod_pos) within each tile.
     type NodeRef = (usize, usize, usize); // (slice_idx, feat_idx, nod_pos)
     let mut coord_map: HashMap<u32, Vec<NodeRef>> = HashMap::new();
@@ -205,7 +237,7 @@ pub fn reconcile_boundary_nodes(
     let mut nodes_reconciled: u32 = 0;
     let mut boundary_pairs_processed: u32 = 0;
 
-    // For each shared ID (same coord = same hash), ensure all tiles agree.
+    // For each shared ID (same topology key = same hash), ensure all tiles agree.
     // With deterministic hash IDs this should be a no-op in practice.
     for (canonical_id, refs) in &coord_map {
         if refs.len() < 2 {
@@ -251,6 +283,12 @@ mod tests {
         }
     }
 
+    fn routable_feature_with_pos_sol(geometry: Vec<(f64, f64)>, pos_sol: &str) -> Feature {
+        let mut feature = routable_feature(geometry);
+        feature.attributes.insert("POS_SOL".to_string(), pos_sol.to_string());
+        feature
+    }
+
     #[test]
     fn test_single_road_two_endpoints() {
         // AC2: road with no junctions → exactly 2 NodEntries (endpoints)
@@ -279,6 +317,64 @@ mod tests {
         let id0_start = graph.per_feature[0][0].node_id;
         let id1_start = graph.per_feature[1][0].node_id;
         assert_eq!(id0_start, id1_start, "shared endpoint must have same node_id");
+    }
+
+    #[test]
+    fn test_shared_coordinate_different_pos_sol_distinct_node_id() {
+        // A bridge/underpass can share the same 2D coordinate without being connected.
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+        let road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "0");
+        let mut road_bridge =
+            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "1");
+        road_bridge.attributes.insert("RoadID".to_string(), "2".to_string());
+
+        let features = vec![road_ground, road_bridge];
+        let graph = compute_tile_routing_graph(&features, &tile);
+
+        let ground_start = graph.per_feature[0][0].node_id;
+        let bridge_start = graph.per_feature[1][0].node_id;
+        assert_ne!(
+            ground_start, bridge_start,
+            "same coordinate on different POS_SOL levels must not connect"
+        );
+    }
+
+    #[test]
+    fn test_midpoint_crossing_different_pos_sol_is_not_junction() {
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+        let road_ground =
+            routable_feature_with_pos_sol(vec![(5.4, 45.5), (5.5, 45.5), (5.6, 45.5)], "0");
+        let mut road_bridge =
+            routable_feature_with_pos_sol(vec![(5.5, 45.4), (5.5, 45.5), (5.5, 45.6)], "1");
+        road_bridge.attributes.insert("RoadID".to_string(), "2".to_string());
+
+        let features = vec![road_ground, road_bridge];
+        let graph = compute_tile_routing_graph(&features, &tile);
+
+        assert!(
+            graph.per_feature[0].iter().all(|nod| nod.point_index != 1),
+            "ground midpoint must not become a junction solely from bridge crossing"
+        );
+        assert!(
+            graph.per_feature[1].iter().all(|nod| nod.point_index != 1),
+            "bridge midpoint must not become a junction solely from ground crossing"
+        );
+    }
+
+    #[test]
+    fn test_missing_pos_sol_defaults_to_ground_level() {
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+        let road_default = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
+        let mut road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "0");
+        road_ground.attributes.insert("RoadID".to_string(), "2".to_string());
+
+        let features = vec![road_default, road_ground];
+        let graph = compute_tile_routing_graph(&features, &tile);
+
+        assert_eq!(
+            graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
+            "missing POS_SOL must behave like POS_SOL=0"
+        );
     }
 
     #[test]
