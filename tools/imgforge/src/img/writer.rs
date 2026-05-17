@@ -1200,7 +1200,7 @@ fn encode_subdivision_rgn(
                     if let Some((orig_points, orig_flags)) =
                         ctx.node_flags_by_mp_index.get(&split_line.mp_index)
                     {
-                        if let Some((flags, is_last_segment)) =
+                        if let Some((mut flags, is_last_segment)) =
                             align_node_flags_to_split(orig_points, orig_flags, &split_line.points)
                         {
                             let has_internal_nodes = flags
@@ -1211,6 +1211,15 @@ fn encode_subdivision_rgn(
                                 .any(|(_, &flag)| flag);
                             extra_bit = has_internal_nodes || !is_last_segment;
                             if extra_bit {
+                                // mkgmap does not mark the final point of the final
+                                // split segment in the extra-bit stream. Non-final
+                                // split segments keep their end node marker so the
+                                // continuation is visible from RGN.
+                                if is_last_segment {
+                                    if let Some(last) = flags.last_mut() {
+                                        *last = false;
+                                    }
+                                }
                                 split_node_flags = Some(flags);
                             }
                         }
@@ -1553,17 +1562,16 @@ fn pre_compute_routing(
         }
     }
 
-    // Junction set : UNION de find_junctions (endpoints + coords partagées par 2+
-    // roads, comportement mkgmap-faithful — start/end of way est toujours un
-    // CoordNode) ET des NodN= directives mpforge (apportent boundary flag et
-    // IDs partagés cross-tile). Le commit 29293d1 avait substitué les deux
-    // (NodN OU find_junctions) au lieu de les unir : conséquence, tout
-    // endpoint isolé (cul-de-sac, fin de route en bordure de tile) sans NodN
-    // explicite n'avait pas de RouteNode → segment final invisible au routing
-    // → toile d'araignée.
-    let mut junctions: std::collections::HashSet<(i32, i32)> =
-        find_junctions(&road_polylines);
-
+    // Polish MP mkgmap-faithful mode: when NodN= directives are present, mkgmap's
+    // RoadHelper promotes only those coordinates to CoordNode. It does not infer
+    // endpoints/shared coordinates on top of the MP node list. Fall back to the
+    // topology heuristic only for MP inputs without explicit routing nodes.
+    let has_explicit_nod_entries = road_nod_entries.iter().any(|nodes| !nodes.is_empty());
+    let mut junctions: std::collections::HashSet<(i32, i32)> = if has_explicit_nod_entries {
+        std::collections::HashSet::new()
+    } else {
+        find_junctions(&road_polylines)
+    };
     let mut boundary_coords: std::collections::HashSet<(i32, i32)> =
         std::collections::HashSet::new();
 
@@ -1584,7 +1592,19 @@ fn pre_compute_routing(
         }
     }
 
-    let all_node_flags = compute_node_flags(&road_polylines, &junctions);
+    let all_node_flags = if has_explicit_nod_entries {
+        road_polylines
+            .iter()
+            .map(|(coords, _, _)| {
+                coords
+                    .iter()
+                    .map(|coord| junctions.contains(&(coord.latitude(), coord.longitude())))
+                    .collect()
+            })
+            .collect()
+    } else {
+        compute_node_flags(&road_polylines, &junctions)
+    };
 
     // Build routing graph (enriched with heading + node_class)
     let route_nodes =

@@ -67,7 +67,7 @@ pub fn parse_route_param(param: &str) -> RouteParams {
 
     RouteParams {
         speed: parts.first().and_then(|s| s.trim().parse::<u8>().ok()).unwrap_or(0).min(7),
-        road_class: parts.get(1).and_then(|s| s.trim().parse::<u8>().ok()).unwrap_or(0).min(7),
+        road_class: parts.get(1).and_then(|s| s.trim().parse::<u8>().ok()).unwrap_or(0).min(4),
         one_way: parts.get(2).map(|s| s.trim() == "1").unwrap_or(false),
         toll: parts.get(3).map(|s| s.trim() == "1").unwrap_or(false),
         access_flags,

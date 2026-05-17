@@ -37,6 +37,12 @@ pub fn prepare_line(
     let y_same_sign_initial = !(min_dy < 0 && max_dy > 0);
     let x_sign_negative = min_dx < 0;
     let y_sign_negative = min_dy < 0;
+    let normalized_node_flags = if extra_bit {
+        node_flags.map(|flags| normalize_extra_node_flags(deltas, flags))
+    } else {
+        None
+    };
+    let node_flags = normalized_node_flags.as_deref();
 
     // Try optimization: reduce base and disable same_sign to find shortest bitstream
     let bs_simple = make_bit_stream(
@@ -149,7 +155,7 @@ fn make_bit_stream(
         if dx == 0 && dy == 0 {
             if extra_bit {
                 if let Some(flags) = node_flags {
-                    if !flags[i + 1] && i + 1 != deltas.len() {
+                    if !flags.get(i + 1).copied().unwrap_or(false) && i + 1 != deltas.len() {
                         continue; // skip non-node zero delta
                     }
                 }
@@ -171,7 +177,7 @@ fn make_bit_stream(
 
         if extra_bit {
             if let Some(flags) = node_flags {
-                bw.put1(flags[i + 1]);
+                bw.put1(flags.get(i + 1).copied().unwrap_or(false));
             }
         }
     }
@@ -181,6 +187,26 @@ fn make_bit_stream(
     }
 
     Some(bw.bytes().to_vec())
+}
+
+/// Reproduce mkgmap LinePreparer's `nodes[firstsame] |= extra` pass.
+fn normalize_extra_node_flags(deltas: &[(i32, i32)], node_flags: &[bool]) -> Vec<bool> {
+    let point_count = deltas.len() + 1;
+    let mut encoded_flags = vec![false; point_count];
+    let mut first_same = 0usize;
+
+    for i in 1..point_count {
+        let (dx, dy) = deltas[i - 1];
+        let is_special_node = node_flags.get(i).copied().unwrap_or(false);
+        if dx != 0 || dy != 0 || is_special_node {
+            first_same = i;
+        }
+        if is_special_node && first_same < encoded_flags.len() {
+            encoded_flags[first_same] = true;
+        }
+    }
+
+    encoded_flags
 }
 
 /// Number of bits needed to hold |val| — mkgmap LinePreparer.bitsNeeded
@@ -288,5 +314,21 @@ mod tests {
     fn test_prepare_empty() {
         let result = prepare_line(&[], false, None, false);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_normalize_extra_node_flags_keeps_special_zero_delta() {
+        let deltas = vec![(10, 0), (0, 0), (5, 0)];
+        let flags = vec![true, false, true, true];
+        let normalized = normalize_extra_node_flags(&deltas, &flags);
+        assert_eq!(normalized, vec![false, false, true, true]);
+    }
+
+    #[test]
+    fn test_normalize_extra_node_flags_accumulates_duplicate_run() {
+        let deltas = vec![(10, 0), (0, 0), (0, 0), (5, 0)];
+        let flags = vec![true, false, true, false, true];
+        let normalized = normalize_extra_node_flags(&deltas, &flags);
+        assert_eq!(normalized, vec![false, false, true, false, true]);
     }
 }

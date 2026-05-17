@@ -19,7 +19,11 @@ pub struct RouteNode {
     pub lon: i32,
     pub arcs: Vec<RouteArc>,
     pub is_boundary: bool,
+    /// Maximum outgoing road class. mkgmap writes this into the NOD1 node flags.
     pub node_class: u8,
+    /// mkgmap RouteNode.getGroup(): hierarchy bucket used for center grouping
+    /// and arc destination class.
+    pub node_group: u8,
 }
 
 /// An arc connecting two route nodes
@@ -366,7 +370,7 @@ pub struct NodWriter {
     nod1_data: Option<Vec<u8>>,
     /// Node offsets within NOD1 (node_index → byte offset in NOD1 section)
     node_offsets: Vec<u32>,
-    /// Max node offset per class (for NOD header class boundaries)
+    /// Max node offset per node group (for NOD header class boundaries)
     class_boundaries: [u32; 5],
 }
 
@@ -397,7 +401,7 @@ impl NodWriter {
     /// Group nodes into RouteCenters using mkgmap bbox-split subdivision (NOD1Part.subdivideHelper).
     ///
     /// mkgmap-faithful (RoadNetwork.splitCenters:240-265) : les nodes sont
-    /// regroupés par class **avant** subdivision, dans l'ordre arc-less,
+    /// regroupés par node group **avant** subdivision, dans l'ordre arc-less,
     /// class 0, 1, 2, 3, 4. Les centers résultants sont donc écrits dans
     /// cet ordre, condition nécessaire pour que `class_boundaries[c]` =
     /// position du premier center contenant un node de class > c (sinon
@@ -418,10 +422,10 @@ impl NodWriter {
             subdivide_nodes(&self.nodes, &arc_less, 0, &mut centers);
         }
 
-        // 2) Nodes groupés par node_class (0..=4) (mkgmap RoadNetwork.java:257-265)
+        // 2) Nodes groupés par node_group (0..=4) (mkgmap RoadNetwork.java:257-265)
         for group in 0u8..=4u8 {
             let group_nodes: Vec<usize> = (0..self.nodes.len())
-                .filter(|&i| !self.nodes[i].arcs.is_empty() && self.nodes[i].node_class == group)
+                .filter(|&i| !self.nodes[i].arcs.is_empty() && self.nodes[i].node_group == group)
                 .collect();
             if !group_nodes.is_empty() {
                 subdivide_nodes(&self.nodes, &group_nodes, 0, &mut centers);
@@ -631,9 +635,9 @@ impl NodWriter {
                 node_offsets[node_idx] = node_start as u32;
 
                 // Track class boundaries: mkgmap uses center_start (min semantics)
-                let nc = (self.nodes[node_idx].node_class as usize).min(4);
-                if nc > 0 {
-                    for c in (0..nc).rev() {
+                let group = (self.nodes[node_idx].node_group as usize).min(4);
+                if group > 0 {
+                    for c in (0..group).rev() {
                         if (center_start as u32) < self.class_boundaries[c] {
                             self.class_boundaries[c] = center_start as u32;
                         }
@@ -682,10 +686,10 @@ impl NodWriter {
                     let (len_flag_bits, len_data) = encode_arc_length(raw_len, false);
 
                     // flagA: dest_class(0-2) | length_bits(3-5) | forward(6) | hasnet(7)
-                    // dest_class = min(arc.road_class, dest_node.node_class)
+                    // dest_class = min(arc.road_class, dest_node.node_group)
                     // (mkgmap RouteArc.getArcDestClass — RouteArc.java:235-237)
-                    let dest_node_class = self.nodes[arc.dest_node_index].node_class;
-                    let dest_class = arc.road_class.min(dest_node_class);
+                    let dest_node_group = self.nodes[arc.dest_node_index].node_group;
+                    let dest_class = arc.road_class.min(dest_node_group);
                     let mut flag_a: u8 = dest_class & 0x07;
                     flag_a |= len_flag_bits;
                     if arc.forward { flag_a |= FLAG_FORWARD; }
@@ -863,7 +867,7 @@ impl NodWriter {
     fn build_nod4(&self, node_offsets: &[u32]) -> Vec<u8> {
         let mut data = Vec::new();
         for (i, node) in self.nodes.iter().enumerate() {
-            if node.is_boundary && node.node_class > 0 {
+            if node.is_boundary && node.node_group > 0 {
                 let lon_b = node.lon.to_le_bytes();
                 data.push(lon_b[0]);
                 data.push(lon_b[1]);
@@ -919,15 +923,13 @@ mod tests {
             lat: 100000,
             lon: 200000,
             arcs: Vec::new(),
-            is_boundary: false,
-            node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100,
             lon: 200100,
             arcs: Vec::new(),
-            is_boundary: false,
-            node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         let data = nod.build();
         assert!(data.len() > NOD_HEADER_LEN as usize);
@@ -942,6 +944,7 @@ mod tests {
             arcs: Vec::new(),
             is_boundary: true,
             node_class: 0,
+            node_group: 0,
         });
         let data = nod.build();
         // Should have NOD3 data (9 bytes per boundary node)
@@ -976,11 +979,11 @@ mod tests {
                 one_way: true,
                 initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
@@ -1004,11 +1007,11 @@ mod tests {
                 forward: true, road_class: 0, speed: 0,
                 access, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
@@ -1029,11 +1032,11 @@ mod tests {
                 forward: true, road_class: 0, speed: 0,
                 access, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
@@ -1055,11 +1058,11 @@ mod tests {
                 forward: true, road_class: 0, speed: 0,
                 access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
 
@@ -1106,11 +1109,11 @@ mod tests {
                 forward: true, road_class: 2, speed: 3,
                 access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
 
         nod.prepare();
@@ -1175,12 +1178,12 @@ mod tests {
                 forward: true, road_class: 0, speed: 0,
                 access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         // Node 1: no arcs → flags==0 → F_LARGE_OFFSETS forced (mkgmap behavior)
         nod.add_node(RouteNode {
             lat: 100010, lon: 200010, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
@@ -1207,11 +1210,11 @@ mod tests {
         let mut nod = NodWriter::new();
         nod.add_node(RouteNode {
             lat: 0, lon: 0, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100000, lon: 100000, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
@@ -1237,11 +1240,11 @@ mod tests {
                 forward: true, road_class: 1, speed: 3,
                 access: 0, toll: false, one_way: false, initial_heading: 0,
             }],
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.add_node(RouteNode {
             lat: 100100, lon: 200100, arcs: Vec::new(),
-            is_boundary: false, node_class: 0,
+            is_boundary: false, node_class: 0, node_group: 0,
         });
         nod.prepare();
         let nod1 = nod.nod1_data.as_ref().unwrap();
