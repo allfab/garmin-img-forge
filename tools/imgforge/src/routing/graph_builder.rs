@@ -62,12 +62,26 @@ pub fn build_graph_with_junctions(
         .collect();
 
     let mut nodes: Vec<RouteNode> = vec![
-        RouteNode { lat: 0, lon: 0, arcs: Vec::new(), is_boundary: false, node_class: 0 };
+        RouteNode {
+            lat: 0,
+            lon: 0,
+            arcs: Vec::new(),
+            is_boundary: false,
+            node_class: 0,
+            node_group: 0,
+        };
         junctions.len()
     ];
     for (&(lat, lon), &idx) in &junctions {
         let is_boundary = boundary_coords.contains(&(lat, lon));
-        nodes[idx] = RouteNode { lat, lon, arcs: Vec::new(), is_boundary, node_class: 0 };
+        nodes[idx] = RouteNode {
+            lat,
+            lon,
+            arcs: Vec::new(),
+            is_boundary,
+            node_class: 0,
+            node_group: 0,
+        };
     }
 
     for (coords, road_def_idx, params) in road_polylines {
@@ -143,6 +157,7 @@ pub fn build_graph_with_junctions(
 
     for node in &mut nodes {
         node.node_class = calculate_node_class(&node.arcs);
+        node.node_group = calculate_node_group(&node.arcs);
     }
 
     nodes
@@ -153,17 +168,26 @@ pub fn direction_from_degrees(deg: f64) -> i8 {
     ((deg * 256.0 / 360.0).round() as i32) as i8
 }
 
-/// Calculate node_class using mkgmap's getGroup() algorithm.
+/// Calculate node_class: maximum outgoing road class written into RouteNode flags.
 pub fn calculate_node_class(arcs: &[RouteArc]) -> u8 {
+    arcs.iter().map(|arc| arc.road_class.min(4)).max().unwrap_or(0)
+}
+
+/// Calculate node_group using mkgmap RouteNode.getGroup().
+///
+/// `node_class` and `node_group` are deliberately different. mkgmap writes
+/// node_class into NOD1 node flags, but uses node_group for RouteCenter grouping
+/// and arc destination class hierarchy.
+pub fn calculate_node_group(arcs: &[RouteArc]) -> u8 {
     if arcs.is_empty() {
         return 0;
     }
-    let mut class_roads: [HashSet<usize>; 8] = Default::default();
+    let mut class_roads: [HashSet<usize>; 5] = Default::default();
     for arc in arcs {
-        class_roads[arc.road_class as usize].insert(arc.road_def_index);
+        class_roads[arc.road_class.min(4) as usize].insert(arc.road_def_index);
     }
 
-    let used_classes: Vec<u8> = (0..8u8)
+    let used_classes: Vec<u8> = (0..5u8)
         .rev()
         .filter(|&c| !class_roads[c as usize].is_empty())
         .collect();
@@ -333,13 +357,30 @@ mod tests {
             RouteArc { dest_node_index: 3, road_def_index: 2, length_meters: 100,
                 forward: true, road_class: 4, speed: 0, access: 0, toll: false, one_way: false, initial_heading: 0 },
         ];
-        assert_eq!(calculate_node_class(&arcs), 3);
+        assert_eq!(calculate_node_class(&arcs), 4);
+        assert_eq!(calculate_node_group(&arcs), 3);
 
         let arcs_single = vec![
             RouteArc { dest_node_index: 1, road_def_index: 0, length_meters: 100,
                 forward: true, road_class: 2, speed: 0, access: 0, toll: false, one_way: false, initial_heading: 0 },
         ];
         assert_eq!(calculate_node_class(&arcs_single), 2);
+        assert_eq!(calculate_node_group(&arcs_single), 2);
         assert_eq!(calculate_node_class(&[]), 0);
+        assert_eq!(calculate_node_group(&[]), 0);
+    }
+
+    #[test]
+    fn test_node_class_and_group_diverge_for_mixed_junction() {
+        use crate::img::nod::RouteArc;
+        let arcs = vec![
+            RouteArc { dest_node_index: 1, road_def_index: 0, length_meters: 100,
+                forward: true, road_class: 4, speed: 0, access: 0, toll: false, one_way: false, initial_heading: 0 },
+            RouteArc { dest_node_index: 2, road_def_index: 1, length_meters: 100,
+                forward: true, road_class: 1, speed: 0, access: 0, toll: false, one_way: false, initial_heading: 0 },
+        ];
+
+        assert_eq!(calculate_node_class(&arcs), 4);
+        assert_eq!(calculate_node_group(&arcs), 1);
     }
 }
