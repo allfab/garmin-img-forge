@@ -50,16 +50,42 @@ pub fn build_graph_with_junctions(
     junction_set: &HashSet<(i32, i32)>,
     boundary_coords: &HashSet<(i32, i32)>,
 ) -> Vec<RouteNode> {
+    let node_flags: Vec<Vec<bool>> = road_polylines
+        .iter()
+        .map(|(coords, _, _)| {
+            coords
+                .iter()
+                .map(|coord| junction_set.contains(&(coord.latitude(), coord.longitude())))
+                .collect()
+        })
+        .collect();
+    build_graph_with_node_flags(road_polylines, &node_flags, boundary_coords)
+}
+
+/// Build route nodes using per-road node flags.
+///
+/// This is required for Polish MP files with explicit NodN entries. mkgmap
+/// promotes only the coordinates referenced by a road's own NodN directives to
+/// CoordNode objects; it does not promote every matching coordinate globally.
+pub fn build_graph_with_node_flags(
+    road_polylines: &[(Vec<Coord>, usize, RouteParams)],
+    node_flags: &[Vec<bool>],
+    boundary_coords: &HashSet<(i32, i32)>,
+) -> Vec<RouteNode> {
     if road_polylines.is_empty() {
         return Vec::new();
     }
 
-    let junctions: HashMap<(i32, i32), usize> = junction_set
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(idx, key)| (key, idx))
-        .collect();
+    let mut junctions: HashMap<(i32, i32), usize> = HashMap::new();
+    for ((coords, _, _), flags) in road_polylines.iter().zip(node_flags.iter()) {
+        for (coord, &is_node) in coords.iter().zip(flags.iter()) {
+            if is_node {
+                let key = (coord.latitude(), coord.longitude());
+                let next = junctions.len();
+                junctions.entry(key).or_insert(next);
+            }
+        }
+    }
 
     let mut nodes: Vec<RouteNode> = vec![
         RouteNode {
@@ -84,7 +110,7 @@ pub fn build_graph_with_junctions(
         };
     }
 
-    for (coords, road_def_idx, params) in road_polylines {
+    for ((coords, road_def_idx, params), flags) in road_polylines.iter().zip(node_flags.iter()) {
         let mut last_junction_idx: Option<usize> = None;
         let mut last_junction_coord_idx: usize = 0;
         let mut distance_from_last: f64 = 0.0;
@@ -96,7 +122,10 @@ pub fn build_graph_with_junctions(
                 distance_from_last += coords[i - 1].distance(&coords[i]);
             }
 
-            if let Some(&node_idx) = junctions.get(&key) {
+            if flags.get(i).copied().unwrap_or(false) {
+                let Some(&node_idx) = junctions.get(&key) else {
+                    continue;
+                };
                 if let Some(prev_idx) = last_junction_idx {
                     let len = distance_from_last as u32;
                     // Skip degenerate arcs: self-loops or zero-length segments.
