@@ -51,7 +51,7 @@ Ce qui est **absent du miroir** (et donc inaccessible depuis GitHub) :
 - `docs/` (planning-artifacts, implementation-artifacts, brainstorming)
 - `pipeline/data/`, `pipeline/output/` (artefacts volumineux, générés)
 - `.woodpecker/` (pipelines Woodpecker internes, non pertinents hors homelab)
-- `.claude/`, `.vscode/`, `CLAUDE.md`, `.mcp.json` (configuration dev locale)
+- `.claude/`, `.vscode/`, `CLAUDE.md`, `AGENTS.md`, `.mcp.json` (configuration dev locale et directives agents IA)
 - Tous les fichiers `.env*` à tous les niveaux de l'arbre
 
 Si votre PR nécessite des modifications dans un de ces chemins, ouvrez plutôt une
