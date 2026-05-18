@@ -10,12 +10,6 @@ use crate::rules::{self, RulesFile};
 use std::collections::HashMap;
 use tracing::debug;
 
-/// Internal routing-only topology level attribute.
-///
-/// Its value is produced declaratively by routing rules. This key is
-/// deliberately skipped by the MP writer.
-pub const TOPOLOGY_LEVEL_ATTR: &str = "__mpforge_pos_sol";
-
 /// Thread-local road ID counter for sequential assignment within a tile.
 pub struct RoadIdCounter {
     next_id: u32,
@@ -589,8 +583,8 @@ mod tests {
             "Level should no longer be injected"
         );
         assert!(
-            result.get(TOPOLOGY_LEVEL_ATTR).is_none(),
-            "POS_SOL must not split routing topology by default"
+            !result.contains_key("__mpforge_pos_sol"),
+            "POS_SOL must not split routing topology — endpoint-only junctions"
         );
     }
 
