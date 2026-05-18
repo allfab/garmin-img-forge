@@ -229,6 +229,11 @@ Here is the complete structure, based on the production `sources.yaml` file:
 ```yaml
 version: 1
 
+# Routable layer declaration (optional — see "Declarative routing" section)
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: pipeline/configs/ign-bdtopo/routing-rules.yaml
+
 grid:
   cell_size: 0.15       # ~16.5 km per tile (recommended for mkgmap/Garmin)
   overlap: 0.005        # Slight overlap to avoid edge artifacts
@@ -453,6 +458,11 @@ Each **ruleset** targets a source layer (`source_layer`) and contains a list of 
 | Starts-with (case-insensitive) | `"^i:prefix"` | Same, case-insensitive |
 | Not-starts-with | `"!^prefix"` | Field does not start with `prefix` |
 | Not-equal | `"!value"` | Different from `value` |
+| Less than | `"<N"` | Numeric value < N (e.g. `"<10"`) |
+| Less than or equal | `"<=N"` | Numeric value ≤ N |
+| Greater than | `">N"` | Numeric value > N (e.g. `">0"`) |
+| Greater than or equal | `">=N"` | Numeric value ≥ N (e.g. `">=95"`) |
+| Range | `"range:A..B"` | A ≤ value < B — upper bound excluded (e.g. `"range:45..60"`) |
 
 #### Field substitution
 
@@ -490,6 +500,113 @@ Garmin prefixes (`~[0xNN]`) are preserved: only the text part is transformed.
         Label: "${GRAPHIE}"
       label_case: "upper"    # Override: summits in uppercase
 ```
+
+## Declarative routing (`routing-rules.yaml`)
+
+!!! danger "Experimental routing"
+    The road network is **routable for experimental purposes only**. Computed routes are **indicative and non-prescriptive** — do not rely on them for navigation.
+
+BDTOPO routing is fully declarative: a top-level `routing:` block in `sources.yaml` points to a dedicated `routing-rules.yaml` file, separate from the cartographic `garmin-rules.yaml`.
+
+### `routing:` block in `sources.yaml`
+
+```yaml
+version: 1
+
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: ../routing-rules.yaml
+
+inputs:
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    ...
+```
+
+| Key | Description | Required |
+|-----|-------------|----------|
+| `source_layer` | GDAL layer name identified as the routable network | yes |
+| `rules` | Relative path to the routing rules file | yes |
+
+!!! warning "Load-time validation"
+    If `TRONCON_DE_ROUTE` is present in `inputs[]` without a top-level `routing:` block, `mpforge validate` rejects the configuration with an explicit error. This guard prevents silently forgetting the routing declaration.
+
+### `routing-rules.yaml` structure
+
+The routing rules file uses the same format as `garmin-rules.yaml` (rulesets, first-match-wins), but targets Polish Map attributes specific to routing:
+
+```yaml
+version: 1
+
+rulesets:
+  - name: speed_from_vit
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { VIT_MOY_VL: "<10" }
+        set: { Speed: "0" }
+      - match: { VIT_MOY_VL: "range:45..60" }
+        set: { Speed: "4" }
+      - match: { VIT_MOY_VL: ">=95" }
+        set: { Speed: "7" }
+      - match: { VIT_MOY_VL: "*" }
+        set: { Speed: "0" }
+
+  - name: oneway_from_sens
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { SENS: "Sens direct" }
+        set: { Oneway: "1", DirIndicator: "1" }
+      - match: { SENS: "Sens inverse" }
+        set: { Oneway: "1", DirIndicator: "1", __reverse_geometry: "1" }
+      - match: { SENS: "*" }
+        set: { Oneway: "0", DirIndicator: "0" }
+```
+
+### Available routing attributes in `set:`
+
+| Attribute | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `RoadClass` | integer | `"0"`–`"4"` | Road class (0 = track, 4 = motorway) |
+| `Speed` | integer | `"0"`–`"7"` | Reference speed (0 = < 10 km/h, 7 = ≥ 95 km/h) |
+| `Oneway` | boolean | `"0"` / `"1"` | One-way |
+| `DirIndicator` | boolean | `"0"` / `"1"` | Direction indicator (accompanies `Oneway`) |
+| `Toll` | boolean | `"0"` / `"1"` | Toll road |
+| `Roundabout` | boolean | `"0"` / `"1"` | Roundabout |
+| `denied_car` | boolean | `"0"` / `"1"` | Car access denied |
+| `denied_bus` | boolean | `"0"` / `"1"` | Bus access denied |
+| `denied_truck` | boolean | `"0"` / `"1"` | Truck access denied |
+| `denied_foot` | boolean | `"0"` / `"1"` | Pedestrian access denied |
+| `MaxHeightMeters` | decimal | `"${RESTR_H}"` | Maximum height in metres |
+| `MaxWeightTonnes` | decimal | `"${RESTR_P}"` | Maximum weight in tonnes |
+| `MaxWidthMeters` | decimal | `"${RESTR_LAR}"` | Maximum width in metres |
+| `MaxLengthMeters` | decimal | `"${RESTR_LON}"` | Maximum length in metres |
+
+### `__reverse_geometry` pseudo-attribute
+
+The special attribute `__reverse_geometry: "1"` in a `set:` block tells `mpforge` to reverse the polyligne coordinates before Polish Map encoding. It is used for `SENS=Sens inverse` BDTOPO segments, whose IGN geometry is oriented opposite to the allowed direction of travel.
+
+```yaml
+- match: { SENS: "Sens inverse" }
+  set: { Oneway: "1", DirIndicator: "1", __reverse_geometry: "1" }
+```
+
+This pseudo-attribute produces no entry in the `.mp` file — it only drives geometry reversal inside `mpforge`.
+
+### Production BDTOPO rulesets
+
+The file `pipeline/configs/ign-bdtopo/routing-rules.yaml` contains 10 rulesets shared across all scopes (`departement/`, `france-quadrant/`, `outre-mer/*/`):
+
+| Ruleset | BDTOPO field | Produced attributes |
+|---------|-------------|---------------------|
+| `speed_from_vit` | `VIT_MOY_VL` | `Speed` (0–7) |
+| `class_from_admin` | `CL_ADMIN`, `NATURE` | `RoadClass` (0–4) |
+| `oneway_from_sens` | `SENS` | `Oneway`, `DirIndicator`, `__reverse_geometry` |
+| `access_from_vl` | `ACCES_VL` | `Toll`, `denied_car`, `denied_bus`, `denied_truck` |
+| `access_from_ped` | `ACCES_PED` | `denied_foot` |
+| `roundabout` | `NATURE` | `Roundabout` |
+| `restrictions_height` | `RESTR_H` | `MaxHeightMeters` |
+| `restrictions_weight` | `RESTR_P` | `MaxWeightTonnes` |
+| `restrictions_width` | `RESTR_LAR` | `MaxWidthMeters` |
+| `restrictions_length` | `RESTR_LON` | `MaxLengthMeters` |
 
 ## Supported sources
 

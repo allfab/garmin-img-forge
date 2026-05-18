@@ -229,6 +229,11 @@ Voici la structure complète, basée sur le fichier de production `sources.yaml`
 ```yaml
 version: 1
 
+# Déclaration de la couche routable (optionnel — voir section "Routing déclaratif")
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: pipeline/configs/ign-bdtopo/routing-rules.yaml
+
 grid:
   cell_size: 0.15       # ~16.5 km par tuile (recommandé pour mkgmap/Garmin)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
@@ -453,6 +458,11 @@ Chaque **ruleset** cible une couche source (`source_layer`) et contient une list
 | Starts-with (insensible) | `"^i:prefix"` | Idem, insensible à la casse |
 | Not-starts-with | `"!^prefix"` | Le champ ne commence pas par `prefix` |
 | Not-equal | `"!valeur"` | Différent de `valeur` |
+| Inférieur strict | `"<N"` | Valeur numérique < N (ex: `"<10"`) |
+| Inférieur ou égal | `"<=N"` | Valeur numérique ≤ N |
+| Supérieur strict | `">N"` | Valeur numérique > N (ex: `">0"`) |
+| Supérieur ou égal | `">=N"` | Valeur numérique ≥ N (ex: `">=95"`) |
+| Intervalle | `"range:A..B"` | A ≤ valeur < B — borne supérieure exclue (ex: `"range:45..60"`) |
 
 #### Substitution de champs
 
@@ -490,6 +500,113 @@ Les préfixes Garmin (`~[0xNN]`) sont préservés : seule la partie texte est tr
         Label: "${GRAPHIE}"
       label_case: "upper"    # Override : sommets en majuscules
 ```
+
+## Routing déclaratif (`routing-rules.yaml`)
+
+!!! danger "Routing expérimental"
+    Le réseau routier est **routable à titre expérimental uniquement**. Les itinéraires calculés sont **indicatifs et non prescriptifs** — ne vous y fiez pas pour la navigation.
+
+Le routing BDTOPO est entièrement déclaratif : un bloc racine `routing:` dans `sources.yaml` pointe vers un fichier `routing-rules.yaml` dédié, distinct du fichier `garmin-rules.yaml` cartographique.
+
+### Bloc `routing:` dans `sources.yaml`
+
+```yaml
+version: 1
+
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: ../routing-rules.yaml
+
+inputs:
+  - path: "${DATA_ROOT}/{${ZONES}}/TRANSPORT/TRONCON_DE_ROUTE.shp"
+    ...
+```
+
+| Clé | Description | Obligatoire |
+|-----|-------------|-------------|
+| `source_layer` | Nom de la couche GDAL identifiée comme réseau routable | oui |
+| `rules` | Chemin relatif vers le fichier de règles de routing | oui |
+
+!!! warning "Validation au chargement"
+    Si `TRONCON_DE_ROUTE` est présent dans `inputs[]` sans bloc `routing:` racine, `mpforge validate` rejette la configuration avec une erreur explicite. Cette garde protège contre un oubli silencieux de la déclaration routable.
+
+### Structure du `routing-rules.yaml`
+
+Le fichier de règles de routing utilise le même format que `garmin-rules.yaml` (rulesets, first-match-wins), mais cible des attributs Polish Map spécifiques au routing :
+
+```yaml
+version: 1
+
+rulesets:
+  - name: speed_from_vit
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { VIT_MOY_VL: "<10" }
+        set: { Speed: "0" }
+      - match: { VIT_MOY_VL: "range:45..60" }
+        set: { Speed: "4" }
+      - match: { VIT_MOY_VL: ">=95" }
+        set: { Speed: "7" }
+      - match: { VIT_MOY_VL: "*" }
+        set: { Speed: "0" }
+
+  - name: oneway_from_sens
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { SENS: "Sens direct" }
+        set: { Oneway: "1", DirIndicator: "1" }
+      - match: { SENS: "Sens inverse" }
+        set: { Oneway: "1", DirIndicator: "1", __reverse_geometry: "1" }
+      - match: { SENS: "*" }
+        set: { Oneway: "0", DirIndicator: "0" }
+```
+
+### Attributs de routing disponibles dans `set:`
+
+| Attribut | Type | Valeurs | Description |
+|----------|------|---------|-------------|
+| `RoadClass` | entier | `"0"`–`"4"` | Classe de route (0 = chemin, 4 = autoroute) |
+| `Speed` | entier | `"0"`–`"7"` | Vitesse de référence (0 = < 10 km/h, 7 = ≥ 95 km/h) |
+| `Oneway` | booléen | `"0"` / `"1"` | Sens unique |
+| `DirIndicator` | booléen | `"0"` / `"1"` | Indicateur de direction (accompagne `Oneway`) |
+| `Toll` | booléen | `"0"` / `"1"` | Route à péage |
+| `Roundabout` | booléen | `"0"` / `"1"` | Rond-point |
+| `denied_car` | booléen | `"0"` / `"1"` | Accès voiture interdit |
+| `denied_bus` | booléen | `"0"` / `"1"` | Accès bus interdit |
+| `denied_truck` | booléen | `"0"` / `"1"` | Accès camion interdit |
+| `denied_foot` | booléen | `"0"` / `"1"` | Accès piéton interdit |
+| `MaxHeightMeters` | décimal | `"${RESTR_H}"` | Hauteur maximale en mètres |
+| `MaxWeightTonnes` | décimal | `"${RESTR_P}"` | Masse maximale en tonnes |
+| `MaxWidthMeters` | décimal | `"${RESTR_LAR}"` | Largeur maximale en mètres |
+| `MaxLengthMeters` | décimal | `"${RESTR_LON}"` | Longueur maximale en mètres |
+
+### Pseudo-attribut `__reverse_geometry`
+
+L'attribut spécial `__reverse_geometry: "1"` dans un bloc `set:` demande à `mpforge` d'inverser les coordonnées de la polyligne avant l'encodage Polish Map. Il est utilisé pour les segments `SENS=Sens inverse` de la BDTOPO, dont la géométrie IGN est orientée dans le sens contraire à la circulation autorisée.
+
+```yaml
+- match: { SENS: "Sens inverse" }
+  set: { Oneway: "1", DirIndicator: "1", __reverse_geometry: "1" }
+```
+
+Ce pseudo-attribut ne produit aucune entrée dans le fichier `.mp` — il pilote uniquement l'inversion de géométrie dans `mpforge`.
+
+### Rulesets BDTOPO de production
+
+Le fichier `pipeline/configs/ign-bdtopo/routing-rules.yaml` contient 10 rulesets partagés par tous les scopes (`departement/`, `france-quadrant/`, `outre-mer/*/`) :
+
+| Ruleset | Champ BDTOPO | Attributs produits |
+|---------|-------------|-------------------|
+| `speed_from_vit` | `VIT_MOY_VL` | `Speed` (0–7) |
+| `class_from_admin` | `CL_ADMIN`, `NATURE` | `RoadClass` (0–4) |
+| `oneway_from_sens` | `SENS` | `Oneway`, `DirIndicator`, `__reverse_geometry` |
+| `access_from_vl` | `ACCES_VL` | `Toll`, `denied_car`, `denied_bus`, `denied_truck` |
+| `access_from_ped` | `ACCES_PED` | `denied_foot` |
+| `roundabout` | `NATURE` | `Roundabout` |
+| `restrictions_height` | `RESTR_H` | `MaxHeightMeters` |
+| `restrictions_weight` | `RESTR_P` | `MaxWeightTonnes` |
+| `restrictions_width` | `RESTR_LAR` | `MaxWidthMeters` |
+| `restrictions_length` | `RESTR_LON` | `MaxLengthMeters` |
 
 ## Sources supportées
 
