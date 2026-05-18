@@ -262,58 +262,6 @@ fn split_linestring_with_bounds(feature: &Feature) -> (Vec<Feature>, Vec<(usize,
     (result, data0_bounds)
 }
 
-/// Découpe une feature LineString en plusieurs features si sa géométrie Data0
-/// dépasse MAX_POINTS_PER_LINE. Chaque tronçon hérite des mêmes attributs et
-/// source_layer. Les additional_geometries (Data1..DataN) sont découpées
-/// proportionnellement aux intervalles de Data0 pour conserver l'alignement
-/// géographique entre niveaux de zoom. Si `additional_geometries` est vide,
-/// aucun calcul supplémentaire n'est effectué (F6).
-fn split_linestring_if_needed(feature: &Feature) -> Vec<Feature> {
-    let n0 = feature.geometry.len();
-    if n0 <= MAX_POINTS_PER_LINE {
-        return vec![feature.clone()];
-    }
-    let data0_bounds = chunk_boundaries(n0);
-    let n_chunks = data0_bounds.len();
-
-    // Calcul proportionnel des intervalles DataN uniquement si nécessaire (F6)
-    let add_prop: BTreeMap<u8, Vec<(usize, usize)>> = if !feature.additional_geometries.is_empty() {
-        feature
-            .additional_geometries
-            .iter()
-            .map(|(&lvl, coords)| {
-                (lvl, proportional_bounds(&data0_bounds, n0, coords.len()))
-            })
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
-
-    let mut result = Vec::with_capacity(n_chunks);
-    for (i, &(s0, e0)) in data0_bounds.iter().enumerate() {
-        let additional_geometries: BTreeMap<u8, Vec<(f64, f64)>> = add_prop
-            .iter()
-            .filter_map(|(&lvl, bounds)| {
-                let &(s_n, e_n) = bounds.get(i)?;
-                if e_n >= s_n + 2 {
-                    let coords = feature.additional_geometries.get(&lvl)?;
-                    Some((lvl, coords[s_n..e_n].to_vec()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        result.push(Feature {
-            geometry_type: feature.geometry_type,
-            geometry: feature.geometry[s0..e0].to_vec(),
-            additional_geometries,
-            attributes: feature.attributes.clone(),
-            source_layer: feature.source_layer.clone(),
-        });
-    }
-    result
-}
-
 /// Writes Polish Map (.mp) files using GDAL PolishMap driver.
 pub struct MpWriter {
     output_path: PathBuf,
@@ -1272,7 +1220,7 @@ mod tests {
         assert_eq!(sanitize_for_cp1252("\u{1F600}"), "?"); // emoji
     }
 
-    // ── Tests chunk_geometry / split_linestring_if_needed ──────────────────
+    // ── Tests chunk_geometry / split_linestring_with_bounds ────────────────
 
     fn make_coords(n: usize) -> Vec<(f64, f64)> {
         (0..n).map(|i| (i as f64 * 0.001, 45.0)).collect()
@@ -1346,7 +1294,7 @@ mod tests {
             attributes: HashMap::new(),
             source_layer: None,
         };
-        let parts = split_linestring_if_needed(&feature);
+        let (parts, _) = split_linestring_with_bounds(&feature);
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0].geometry, feature.geometry);
     }
@@ -1370,7 +1318,7 @@ mod tests {
             },
             source_layer: Some("COURBE".to_string()),
         };
-        let parts = split_linestring_if_needed(&feature);
+        let (parts, _) = split_linestring_with_bounds(&feature);
         assert!(parts.len() >= 2, "500 pts doit produire ≥ 2 tronçons");
         for p in &parts {
             assert!(p.geometry.len() <= MAX_POINTS_PER_LINE);
@@ -1395,27 +1343,27 @@ mod tests {
     }
 
     #[test]
-    fn split_linestring_proportional_dataN_large() {
+    fn split_linestring_proportional_data_n_large() {
         // F5 : Data0=500pts, DataN=400pts — vérifie l'alignement géographique
         // entre les tronçons Data0 et leurs contreparties DataN.
         let n0 = 500usize;
         let nn = 400usize;
         // Coordonnées linéaires : x croît uniformément pour mesurer l'alignement.
         let data0: Vec<(f64, f64)> = (0..n0).map(|i| (i as f64, 0.0)).collect();
-        let dataN: Vec<(f64, f64)> = (0..nn).map(|i| (i as f64, 1.0)).collect();
+        let data_n: Vec<(f64, f64)> = (0..nn).map(|i| (i as f64, 1.0)).collect();
         let feature = Feature {
             geometry_type: GeometryType::LineString,
             geometry: data0.clone(),
             additional_geometries: {
                 let mut m = BTreeMap::new();
-                m.insert(1u8, dataN.clone());
+                m.insert(1u8, data_n.clone());
                 m
             },
             attributes: HashMap::new(),
             source_layer: None,
         };
 
-        let parts = split_linestring_if_needed(&feature);
+        let (parts, _) = split_linestring_with_bounds(&feature);
         assert!(parts.len() >= 2, "500 pts doit produire ≥ 2 tronçons");
 
         // Chaque tronçon doit avoir ≤ MAX_POINTS_PER_LINE dans Data0
@@ -1430,28 +1378,28 @@ mod tests {
             let frac0 = x0_start / (n0 - 1) as f64;
             if let Some(dn) = p.additional_geometries.get(&1u8) {
                 if !dn.is_empty() {
-                    let xN_start = dn[0].0;
-                    let fracN = xN_start / (nn - 1) as f64;
+                    let x_n_start = dn[0].0;
+                    let frac_n = x_n_start / (nn - 1) as f64;
                     // Tolérance : 1 point d'écart max sur la fraction [0,1]
                     let tolerance = 1.0 / (nn - 1) as f64;
                     assert!(
-                        (frac0 - fracN).abs() <= tolerance + 1e-9,
+                        (frac0 - frac_n).abs() <= tolerance + 1e-9,
                         "désalignement géographique Data0/DataN: frac0={:.4} fracN={:.4}",
-                        frac0, fracN
+                        frac0, frac_n
                     );
                 }
             }
         }
 
         // Couverture totale : union des DataN doit couvrir [0, nn-1]
-        let all_dataN: Vec<(f64, f64)> = parts
+        let all_data_n: Vec<(f64, f64)> = parts
             .iter()
             .filter_map(|p| p.additional_geometries.get(&1u8))
             .flat_map(|v| v.iter().copied())
             .collect();
-        assert!(!all_dataN.is_empty(), "DataN ne doit pas être vide");
-        let min_x = all_dataN.iter().map(|(x, _)| *x as i64).min().unwrap();
-        let max_x = all_dataN.iter().map(|(x, _)| *x as i64).max().unwrap();
+        assert!(!all_data_n.is_empty(), "DataN ne doit pas être vide");
+        let min_x = all_data_n.iter().map(|(x, _)| *x as i64).min().unwrap();
+        let max_x = all_data_n.iter().map(|(x, _)| *x as i64).max().unwrap();
         assert_eq!(min_x, 0, "DataN doit commencer à x=0");
         assert_eq!(max_x, (nn - 1) as i64, "DataN doit finir à x=nn-1");
     }
