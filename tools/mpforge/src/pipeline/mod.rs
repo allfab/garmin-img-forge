@@ -13,7 +13,9 @@ pub mod writer;
 
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
-use crate::pipeline::geometry_smoother::{fill_level_gaps, generalize_features_with_profiles};
+use crate::pipeline::geometry_smoother::{
+    apply_oneway_reversal, fill_level_gaps, generalize_features_with_profiles,
+};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{Feature, MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
@@ -646,6 +648,18 @@ fn process_single_tile(
     } else {
         ctx.header_config
     };
+
+    // 7a. Réécriture géométrique des oneway "Sens inverse" (convention mkgmap).
+    // STRICTEMENT avant compute_tile_routing_graph : les NodEntry.point_index
+    // sont ordinaux, inverser après désynchroniserait les NodN= émis.
+    let reversed = apply_oneway_reversal(&mut clipped_features);
+    if reversed > 0 {
+        tracing::debug!(
+            tile_id = %tile_id,
+            reversed_features = reversed,
+            "Applied oneway geometry reversal"
+        );
+    }
 
     // 7b. Compute routing graph (NodN= topology) for routable polylines in this tile.
     let tile_routing_graph =

@@ -265,6 +265,40 @@ pub fn fill_level_gaps(feature: &mut Feature, max_n: u8) {
     }
 }
 
+/// Inverse la géométrie (tous paliers) pour chaque feature portant l'attribut
+/// transient `__reverse_geometry=1`, puis retire ce marqueur.
+///
+/// Doit être appelée **AVANT** [`crate::pipeline::routing_graph::compute_tile_routing_graph`]
+/// pour que les `NodEntry.point_index` soient calculés sur la géométrie inversée
+/// (sinon les ordinaux décalés cassent l'index NodN= dans le `.mp`).
+///
+/// Convention mkgmap : un tronçon `SENS=Sens inverse` est encodé par
+/// `RouteParam[2]=1` (oneway dans le sens des points) ; pour respecter le sens
+/// légal il faut donc inverser la liste des points en amont. Le format IMG
+/// Garmin n'a qu'un seul bit de direction (`0x40` du type-byte polyline) — pas
+/// de moyen d'exprimer "oneway dans le sens géométrique inverse".
+///
+/// Retourne le nombre de features inversées.
+pub fn apply_oneway_reversal(features: &mut [Feature]) -> usize {
+    let mut count = 0;
+    for feature in features.iter_mut() {
+        let should_reverse = feature
+            .attributes
+            .get("__reverse_geometry")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+        if should_reverse {
+            feature.geometry.reverse();
+            for geom in feature.additional_geometries.values_mut() {
+                geom.reverse();
+            }
+            feature.attributes.remove("__reverse_geometry");
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Arrondit une coordonnée à la grille 1e-6° (≈ 11 cm à 45°N).
 ///
 /// Utilisé pour la détection de vertices partagés afin de tolérer la dérive
@@ -1364,6 +1398,121 @@ levels:
         });
         assert!(has_mid_f1, "f1 n=1 doit contenir le vertex partagé (1.0, 0.5)");
         assert!(has_mid_f2, "f2 n=1 doit contenir le vertex partagé (1.0, 0.5)");
+    }
+
+    // =================================================================
+    // apply_oneway_reversal — fix oneway "Sens inverse"
+    // =================================================================
+    mod oneway_reversal_tests {
+        use super::*;
+
+        fn route_feature(
+            geometry: Vec<(f64, f64)>,
+            additional: BTreeMap<u8, Vec<(f64, f64)>>,
+            attrs: HashMap<String, String>,
+        ) -> Feature {
+            Feature {
+                geometry_type: GeometryType::LineString,
+                geometry,
+                additional_geometries: additional,
+                attributes: attrs,
+                source_layer: Some("TRONCON_DE_ROUTE".to_string()),
+            }
+        }
+
+        #[test]
+        fn test_reverses_geometry_when_marker_present() {
+            let attrs = HashMap::from([("__reverse_geometry".to_string(), "1".to_string())]);
+            let mut features = vec![route_feature(
+                vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)],
+                BTreeMap::new(),
+                attrs,
+            )];
+            let count = apply_oneway_reversal(&mut features);
+            assert_eq!(count, 1);
+            assert_eq!(features[0].geometry, vec![(3.0, 3.0), (2.0, 2.0), (1.0, 1.0)]);
+        }
+
+        #[test]
+        fn test_no_op_without_marker() {
+            let mut features = vec![route_feature(
+                vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)],
+                BTreeMap::new(),
+                HashMap::new(),
+            )];
+            let count = apply_oneway_reversal(&mut features);
+            assert_eq!(count, 0);
+            assert_eq!(features[0].geometry, vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
+        }
+
+        #[test]
+        fn test_no_op_when_marker_zero() {
+            let attrs = HashMap::from([("__reverse_geometry".to_string(), "0".to_string())]);
+            let mut features = vec![route_feature(
+                vec![(1.0, 1.0), (2.0, 2.0)],
+                BTreeMap::new(),
+                attrs,
+            )];
+            let count = apply_oneway_reversal(&mut features);
+            assert_eq!(count, 0);
+            assert_eq!(features[0].geometry, vec![(1.0, 1.0), (2.0, 2.0)]);
+            // Marker laissé en place : seuls les "1" sont consommés.
+            assert_eq!(features[0].attributes.get("__reverse_geometry").map(|s| s.as_str()), Some("0"));
+        }
+
+        #[test]
+        fn test_reverses_all_levels() {
+            let attrs = HashMap::from([("__reverse_geometry".to_string(), "1".to_string())]);
+            let mut additional = BTreeMap::new();
+            additional.insert(1u8, vec![(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)]);
+            additional.insert(2u8, vec![(100.0, 100.0), (200.0, 200.0)]);
+            let mut features = vec![route_feature(
+                vec![(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)],
+                additional,
+                attrs,
+            )];
+            apply_oneway_reversal(&mut features);
+            assert_eq!(features[0].geometry, vec![(3.0, 3.0), (2.0, 2.0), (1.0, 1.0)]);
+            assert_eq!(
+                features[0].additional_geometries.get(&1).unwrap(),
+                &vec![(30.0, 30.0), (20.0, 20.0), (10.0, 10.0)]
+            );
+            assert_eq!(
+                features[0].additional_geometries.get(&2).unwrap(),
+                &vec![(200.0, 200.0), (100.0, 100.0)]
+            );
+        }
+
+        #[test]
+        fn test_marker_removed_after_pass() {
+            let attrs = HashMap::from([
+                ("__reverse_geometry".to_string(), "1".to_string()),
+                ("Oneway".to_string(), "1".to_string()),
+            ]);
+            let mut features = vec![route_feature(
+                vec![(1.0, 1.0), (2.0, 2.0)],
+                BTreeMap::new(),
+                attrs,
+            )];
+            apply_oneway_reversal(&mut features);
+            assert!(features[0].attributes.get("__reverse_geometry").is_none());
+            // Les autres attrs sont préservés.
+            assert_eq!(features[0].attributes.get("Oneway").map(|s| s.as_str()), Some("1"));
+        }
+
+        #[test]
+        fn test_count_returned() {
+            let mk = |reverse: bool| {
+                let mut attrs = HashMap::new();
+                if reverse {
+                    attrs.insert("__reverse_geometry".to_string(), "1".to_string());
+                }
+                route_feature(vec![(0.0, 0.0), (1.0, 0.0)], BTreeMap::new(), attrs)
+            };
+            let mut features = vec![mk(true), mk(false), mk(true)];
+            let count = apply_oneway_reversal(&mut features);
+            assert_eq!(count, 2);
+        }
     }
 
     #[test]

@@ -49,7 +49,7 @@ rulesets:
       - match: { SENS: "Sens direct" }
         set: { Oneway: "1", DirIndicator: "1" }
       - match: { SENS: "Sens inverse" }
-        set: { Oneway: "1", DirIndicator: "-1" }
+        set: { Oneway: "1", DirIndicator: "1", __reverse_geometry: "1" }
       - match: { SENS: "*" }
         set: { Oneway: "0", DirIndicator: "0" }
 

@@ -1059,6 +1059,12 @@ impl MpWriter {
         let mut sorted_keys: Vec<&String> = attributes.keys().collect();
         sorted_keys.sort();
         for source_key in sorted_keys {
+            // Skip attributs transients à préfixe `__` (convention mpforge) :
+            // marqueurs internes consommés par les passes pipeline, jamais
+            // sérialisés dans le `.mp`. Cf. tech-spec fix-oneway-sens-inverse.
+            if source_key.starts_with("__") {
+                continue;
+            }
             let value = &attributes[source_key];
             // Story 7.4: Transform field name using mapping if provided
             let target_key = if let Some(mapping) = field_mapping {

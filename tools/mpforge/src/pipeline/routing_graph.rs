@@ -393,4 +393,65 @@ mod tests {
         assert!(graph.per_feature[0].is_empty());
     }
 
+    // =================================================================
+    // AC7 — Cohérence NodEntry.point_index post-inversion (fix oneway).
+    //
+    // Simule la séquence pipeline réelle :
+    //   1. apply_oneway_reversal inverse la géométrie des features marquées.
+    //   2. compute_tile_routing_graph détecte jonctions et émet les NodN=.
+    //
+    // Vérifie que deux features connectées en un point P partagent bien le
+    // même `node_id` (position-based), même quand l'une a été inversée. Le
+    // `point_index` de la jonction interne reflète la géométrie inversée
+    // (ordinal sur la liste de coords post-reverse).
+    // =================================================================
+    #[test]
+    fn test_routing_graph_coherent_after_oneway_reversal() {
+        use crate::pipeline::geometry_smoother::apply_oneway_reversal;
+
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+
+        // Feature A : [A, M, P] — non inversée. P endpoint à point_index=2.
+        let a = routable_feature(vec![(5.10, 45.10), (5.30, 45.30), (5.50, 45.50)]);
+
+        // Feature B : [P, X, Y] dans le source SHP, puis marquée Sens inverse.
+        // Post-inversion : [Y, X, P] → P passe de point_index=0 à point_index=2.
+        // Endpoint-only junction detection : P doit être endpoint des deux après
+        // inversion pour que la jonction soit reconnue (count=2).
+        let mut b = routable_feature(vec![(5.50, 45.50), (5.70, 45.30), (5.80, 45.20)]);
+        b.attributes
+            .insert("RoadID".to_string(), "2".to_string());
+        b.attributes
+            .insert("__reverse_geometry".to_string(), "1".to_string());
+
+        let mut features = vec![a, b];
+
+        // Étape pipeline : inversion AVANT graph computation.
+        let reversed = apply_oneway_reversal(&mut features);
+        assert_eq!(reversed, 1);
+        assert_eq!(
+            features[1].geometry,
+            vec![(5.80, 45.20), (5.70, 45.30), (5.50, 45.50)],
+            "feature B doit être inversée"
+        );
+        // Marker retiré.
+        assert!(features[1].attributes.get("__reverse_geometry").is_none());
+
+        let graph = compute_tile_routing_graph(&features, &tile);
+
+        // P est endpoint des deux features post-inversion : point_index=2 partout.
+        let p_node_a = graph.per_feature[0]
+            .iter()
+            .find(|e| e.point_index == 2)
+            .expect("feature A doit avoir un NodEntry à point_index=2 (P)");
+        let p_node_b = graph.per_feature[1]
+            .iter()
+            .find(|e| e.point_index == 2)
+            .expect("feature B (post-inversion) doit avoir un NodEntry à point_index=2 (P)");
+
+        assert_eq!(
+            p_node_a.node_id, p_node_b.node_id,
+            "node_id partagé au point P entre A et B (position-based, robuste à l'inversion)"
+        );
+    }
 }

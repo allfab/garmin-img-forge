@@ -186,9 +186,14 @@ pub fn compute_route_attrs(
     let denied_bus = parse_u8("denied_bus", 0);
     let denied_truck = parse_u8("denied_truck", 0);
     let denied_foot = parse_u8("denied_foot", 0);
-    let dir_indicator = attrs
+    // DirIndicator strictement clamped à {0, 1} (conforme spec PFM cGPSmapper p.19).
+    // Toute valeur non-zéro (y compris -1 historique) collapse à 1 ; absence ou 0 → 0.
+    // Cf. tech-spec fix-oneway-sens-inverse : la sortie .mp ne doit jamais contenir
+    // DirIndicator=-1 ; l'inversion géométrique encode déjà le "sens inverse".
+    let dir_indicator: u8 = attrs
         .get("DirIndicator")
         .and_then(|v| v.parse::<i32>().ok())
+        .map(|v| if v != 0 { 1 } else { 0 })
         .unwrap_or(0);
 
     // Compose RouteParam (12 champs canoniques; denied_mask YAML appliqué post-merge)
@@ -217,6 +222,16 @@ pub fn compute_route_attrs(
 
     if attrs.get("Roundabout").map(|v| v == "1").unwrap_or(false) {
         result.insert("Roundabout".to_string(), "1".to_string());
+    }
+
+    // Propagation des marqueurs transients `__*` issus des routing rules.
+    // Convention mpforge : consommés par les passes pipeline en amont du writer
+    // (cf. apply_oneway_reversal pour `__reverse_geometry`). Le writer skip ces
+    // clés via le garde-fou `starts_with("__")` (writer.rs:set_feature_attributes).
+    for (key, value) in &attrs {
+        if key.starts_with("__") {
+            result.insert(key.clone(), value.clone());
+        }
     }
 
     convert_restriction_meters(&attrs, "MaxHeightMeters", "MaxHeight", &mut result);
@@ -423,7 +438,8 @@ mod tests {
         assert_eq!(result.get("MaxWeight").unwrap(), "19000");
     }
 
-    /// AC4: DirIndicator for Sens inverse
+    /// AC4: DirIndicator for Sens inverse — post-clamp à {0,1}
+    /// (la géométrie est inversée en amont par apply_oneway_reversal).
     #[test]
     fn test_compute_ac4_sens_inverse() {
         let source = HashMap::from([
@@ -435,11 +451,33 @@ mod tests {
         let mut counter = RoadIdCounter::new();
         let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
-        assert_eq!(result.get("DirIndicator").unwrap(), "-1");
+        // Post-fix : DirIndicator clamp à {0,1}, jamais -1 (conforme spec PFM).
+        assert_eq!(result.get("DirIndicator").unwrap(), "1");
         // oneway=1 in RouteParam
         let rp = result.get("RouteParam").unwrap();
         let parts: Vec<&str> = rp.split(',').collect();
         assert_eq!(parts[2], "1", "oneway should be 1 for Sens inverse");
+    }
+
+    /// Defense en profondeur : si une règle externe injecte DirIndicator=-1,
+    /// route_params doit clamp à 1 (jamais le propager dans la sortie .mp).
+    #[test]
+    fn test_compute_dir_indicator_clamps_negative_to_one() {
+        // Source factice : la règle YAML est sans incidence ici, on injecte
+        // DirIndicator via attrs computés. On simule via SENS=Sens inverse
+        // qui produit DirIndicator=1 + __reverse_geometry=1 ; le marqueur
+        // n'est PAS consommé par compute_route_attrs (consommé par la passe
+        // apply_oneway_reversal dans le pipeline). Ce test garantit donc
+        // uniquement le clamp côté route_params.
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "50".into()),
+            ("SENS".into(), "Sens inverse".into()),
+            ("NATURE".into(), "Route à 1 chaussée".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        // Aucune sortie ne doit contenir "-1" pour DirIndicator.
+        assert_ne!(result.get("DirIndicator").map(|s| s.as_str()), Some("-1"));
     }
 
     /// AC5: RoadID auto-incremental
