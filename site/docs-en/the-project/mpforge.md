@@ -630,7 +630,7 @@ The static binary includes **PROJ 9.3.1, GEOS 3.13.0, GDAL 3.10.1 and the ogr-po
 
 ```bash
 # Download and extract the archive
-wget https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.5.0/mpforge-linux-amd64.tar.gz
+wget https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.9.0/mpforge-linux-amd64.tar.gz
 tar xzf mpforge-linux-amd64.tar.gz
 
 chmod +x mpforge

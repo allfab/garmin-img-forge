@@ -361,7 +361,7 @@ imgforge typ decompile bdtopo.typ --encoding cp1252 --output bdtopo.txt
 
 ```bash
 # Download and extract the archive
-wget https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.5.1/imgforge-linux-amd64.tar.gz
+wget https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.9.0/imgforge-linux-amd64.tar.gz
 tar xzf imgforge-linux-amd64.tar.gz
 
 chmod +x imgforge

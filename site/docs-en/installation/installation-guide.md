@@ -10,7 +10,7 @@ Two approaches: **pre-compiled binaries** (quick, recommended) or **compiling fr
 
 ```bash
 # Download and extract the archive
-wget https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.5.0/mpforge-linux-amd64.tar.gz
+wget https://github.com/allfab/garmin-img-forge/releases/download/mpforge-v0.9.0/mpforge-linux-amd64.tar.gz
 tar xzf mpforge-linux-amd64.tar.gz
 
 # Make executable
@@ -21,7 +21,7 @@ sudo mv mpforge /usr/local/bin/
 
 # Verify
 mpforge --version
-# → mpforge 0.5.0
+# → mpforge 0.9.0
 ```
 
 !!! success "Zero configuration"
@@ -31,7 +31,7 @@ mpforge --version
 
 ```bash
 # Download and extract the archive
-wget https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.5.1/imgforge-linux-amd64.tar.gz
+wget https://github.com/allfab/garmin-img-forge/releases/download/imgforge-v0.9.0/imgforge-linux-amd64.tar.gz
 tar xzf imgforge-linux-amd64.tar.gz
 
 # Make executable
@@ -42,7 +42,7 @@ sudo mv imgforge /usr/local/bin/
 
 # Verify
 imgforge --version
-# → imgforge v0.5.1
+# → imgforge v0.9.0
 ```
 
 ---
