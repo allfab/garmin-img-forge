@@ -571,8 +571,8 @@ mod tests {
 
     // =========================================================================
     // POS_SOL — no public Level field is injected (driver ogr-polishmap does
-    // not support "Level", only "EndLevel"). The routing rules can still set
-    // the internal topology attribute declaratively.
+    // not support "Level", only "EndLevel"). The default IGN routing rules do
+    // not convert POS_SOL into an internal topology level.
     // =========================================================================
 
     #[test]
@@ -588,7 +588,10 @@ mod tests {
             result.get("Level").is_none(),
             "Level should no longer be injected"
         );
-        assert_eq!(result.get(TOPOLOGY_LEVEL_ATTR).unwrap(), "1");
+        assert!(
+            result.get(TOPOLOGY_LEVEL_ATTR).is_none(),
+            "POS_SOL must not split routing topology by default"
+        );
     }
 
     /// Test MaxWidth and MaxLength

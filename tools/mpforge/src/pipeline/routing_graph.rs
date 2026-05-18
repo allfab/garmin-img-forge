@@ -1,10 +1,10 @@
 // Routing topology stage for the mpforge pipeline.
 //
 // Computes NodN= entries for each routable polyline in a tile.
-// Uses deterministic topology-based node IDs (FNV hash of quantized WGS84 and
-// source ground level) for internal nodes. Boundary nodes deliberately use a
-// coordinate-only identity because final IMG NOD3/NOD4 records are looked up by
-// coordinate across tiles.
+// Uses deterministic topology-based node IDs (FNV hash of quantized WGS84, plus
+// an optional explicit topology level) for internal nodes. Boundary nodes
+// deliberately use a coordinate-only identity because final IMG NOD3/NOD4
+// records are looked up by coordinate across tiles.
 
 use garmin_routing_graph::{coord_to_node_id, coord_to_node_id_with_level, NodEntry};
 use std::collections::{HashMap, HashSet};
@@ -40,15 +40,14 @@ fn topology_level(feature: &Feature) -> i32 {
     let raw = feature
         .attributes
         .get(TOPOLOGY_LEVEL_ATTR)
-        .or_else(|| feature.attributes.get("POS_SOL"))
         .map(|value| value.trim())
         .unwrap_or("");
     match raw {
         "" | "Gué ou radier" => 0,
         value => value.parse::<i32>().unwrap_or_else(|_| {
             tracing::warn!(
-                pos_sol = value,
-                "POS_SOL non-numérique ignoré, fallback niveau 0"
+                topology_level = value,
+                "niveau topologique non-numérique ignoré, fallback niveau 0"
             );
             0
         }),
@@ -110,7 +109,7 @@ fn topology_node_id(lat_q: i32, lon_q: i32, level: i32, boundary: bool) -> u32 {
 ///
 /// Iterates over all features, identifies routable polylines (those with a
 /// `RoadID` attribute), computes junction points using the route topology key
-/// `(lat, lon, POS_SOL)`, then assigns `NodEntry` values to
+/// `(lat, lon, optional topology level)`, then assigns `NodEntry` values to
 /// each junction point of each polyline.
 pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> TileRoutingGraph {
     // Collect routable features and their quantized geometries.
@@ -328,6 +327,14 @@ mod tests {
         feature
     }
 
+    fn routable_feature_with_topology_level(geometry: Vec<(f64, f64)>, level: &str) -> Feature {
+        let mut feature = routable_feature(geometry);
+        feature
+            .attributes
+            .insert(TOPOLOGY_LEVEL_ATTR.to_string(), level.to_string());
+        feature
+    }
+
     #[test]
     fn test_single_road_two_endpoints() {
         // AC2: road with no junctions → exactly 2 NodEntries (endpoints)
@@ -368,8 +375,10 @@ mod tests {
     }
 
     #[test]
-    fn test_shared_coordinate_different_pos_sol_distinct_node_id() {
-        // A bridge/underpass can share the same 2D coordinate without being connected.
+    fn test_raw_pos_sol_does_not_split_source_topology() {
+        // POS_SOL is a rendering/source attribute in BDTOPO. It must not split
+        // routable topology unless a rule explicitly maps it to the internal
+        // topology-level attribute.
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "0");
         let mut road_bridge = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "1");
@@ -382,45 +391,39 @@ mod tests {
 
         let ground_start = graph.per_feature[0][0].node_id;
         let bridge_start = graph.per_feature[1][0].node_id;
-        assert_ne!(
+        assert_eq!(
             ground_start, bridge_start,
-            "same coordinate on different POS_SOL levels must not connect"
+            "raw POS_SOL must not create a separate routable node"
         );
     }
 
     #[test]
     fn test_internal_topology_level_survives_rule_attribute_replacement() {
-        // Routing graph runs after public rules have replaced BDTOPO attributes.
-        // routing-rules.yaml preserves POS_SOL under this internal key.
+        // Routing graph runs after public rules. Only the private attribute can
+        // opt into vertical topology separation.
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
-        let mut road_ground = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
-        road_ground
-            .attributes
-            .insert(TOPOLOGY_LEVEL_ATTR.to_string(), "0".to_string());
-
-        let mut road_bridge = routable_feature(vec![(5.5, 45.5), (5.4, 45.4)]);
+        let road_ground = routable_feature_with_topology_level(vec![(5.5, 45.5), (5.6, 45.6)], "0");
+        let mut road_bridge =
+            routable_feature_with_topology_level(vec![(5.5, 45.5), (5.4, 45.4)], "1");
         road_bridge
             .attributes
             .insert("RoadID".to_string(), "2".to_string());
-        road_bridge
-            .attributes
-            .insert(TOPOLOGY_LEVEL_ATTR.to_string(), "1".to_string());
 
         let graph = compute_tile_routing_graph(&[road_ground, road_bridge], &tile);
 
         assert_ne!(
             graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
-            "internal POS_SOL copy must keep overpass topology levels distinct"
+            "explicit internal topology levels must keep route nodes distinct"
         );
     }
 
     #[test]
-    fn test_midpoint_crossing_different_pos_sol_is_not_junction() {
+    fn test_midpoint_crossing_different_topology_level_is_not_junction() {
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road_ground =
-            routable_feature_with_pos_sol(vec![(5.4, 45.5), (5.5, 45.5), (5.6, 45.5)], "0");
+            routable_feature_with_topology_level(vec![(5.4, 45.5), (5.5, 45.5), (5.6, 45.5)], "0");
         let mut road_bridge =
-            routable_feature_with_pos_sol(vec![(5.5, 45.4), (5.5, 45.5), (5.5, 45.6)], "1");
+            routable_feature_with_topology_level(vec![(5.5, 45.4), (5.5, 45.5), (5.5, 45.6)], "1");
         road_bridge
             .attributes
             .insert("RoadID".to_string(), "2".to_string());
@@ -439,10 +442,11 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_pos_sol_defaults_to_ground_level() {
+    fn test_missing_topology_level_defaults_to_ground_level() {
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road_default = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
-        let mut road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "0");
+        let mut road_ground =
+            routable_feature_with_topology_level(vec![(5.5, 45.5), (5.4, 45.4)], "0");
         road_ground
             .attributes
             .insert("RoadID".to_string(), "2".to_string());
@@ -452,24 +456,26 @@ mod tests {
 
         assert_eq!(
             graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
-            "missing POS_SOL must behave like POS_SOL=0"
+            "missing topology level must behave like level 0"
         );
     }
 
     #[test]
-    fn test_pos_sol_gue_radier_mapped_to_ground() {
+    fn test_topology_level_gue_radier_mapped_to_ground() {
         let feature =
-            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "Gué ou radier");
+            routable_feature_with_topology_level(vec![(5.5, 45.5), (5.6, 45.6)], "Gué ou radier");
         assert_eq!(topology_level(&feature), 0);
     }
 
     #[tracing_test::traced_test]
     #[test]
-    fn test_pos_sol_unknown_value_warns_and_defaults_to_zero() {
-        let feature =
-            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "valeur_inconnue_XYZ");
+    fn test_topology_level_unknown_value_warns_and_defaults_to_zero() {
+        let feature = routable_feature_with_topology_level(
+            vec![(5.5, 45.5), (5.6, 45.6)],
+            "valeur_inconnue_XYZ",
+        );
         assert_eq!(topology_level(&feature), 0);
-        assert!(logs_contain("POS_SOL non-numérique ignoré"));
+        assert!(logs_contain("niveau topologique non-numérique ignoré"));
     }
 
     #[test]
@@ -494,9 +500,9 @@ mod tests {
         // Keep one NodN identity for a tile-edge coordinate before imgforge
         // builds the route graph.
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
-        let road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.0), (5.5, 45.5)], "0");
+        let road_ground = routable_feature_with_topology_level(vec![(5.5, 45.0), (5.5, 45.5)], "0");
         let mut road_bridge =
-            routable_feature_with_pos_sol(vec![(5.5, 45.0), (5.6, 45.5)], "1");
+            routable_feature_with_topology_level(vec![(5.5, 45.0), (5.6, 45.5)], "1");
         road_bridge
             .attributes
             .insert("RoadID".to_string(), "2".to_string());
