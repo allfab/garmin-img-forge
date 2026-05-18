@@ -19,7 +19,7 @@ Produire et maintenir des cartes topographiques Garmin de qualité demande un in
 
 Vous pouvez faire un don libre (montant au choix, à partir de 2 €) via la plateforme LemonSqueezy. Le paiement est sécurisé et la TVA est gérée automatiquement.
 
-<a href="https://allfab.lemonsqueezy.com/checkout/buy/ddbaa15a-b06a-4cb4-8fbe-2c71213c3134?embed=1" class="md-button md-button--primary zn-donate-inline lemonsqueezy-button">
+<a href="https://allfab.lemonsqueezy.com/checkout/buy/35b16524-39fd-4581-a018-6104c956d4fc?embed=1" class="md-button md-button--primary zn-donate-inline lemonsqueezy-button">
   Faire un don — Financer un sommet &#x26F0;&#xFE0F;
 </a>
 

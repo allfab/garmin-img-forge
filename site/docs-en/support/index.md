@@ -19,7 +19,7 @@ Producing and maintaining quality Garmin topographic maps requires a real invest
 
 You can make a free donation (amount of your choice, from €2) via the LemonSqueezy platform. Payment is secure and VAT is handled automatically.
 
-<a href="https://allfab.lemonsqueezy.com/checkout/buy/ddbaa15a-b06a-4cb4-8fbe-2c71213c3134?embed=1" class="md-button md-button--primary zn-donate-inline lemonsqueezy-button">
+<a href="https://allfab.lemonsqueezy.com/checkout/buy/35b16524-39fd-4581-a018-6104c956d4fc?embed=1" class="md-button md-button--primary zn-donate-inline lemonsqueezy-button">
   Make a donation — Fund a summit &#x26F0;&#xFE0F;
 </a>
 
