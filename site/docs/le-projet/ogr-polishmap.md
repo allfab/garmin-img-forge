@@ -173,7 +173,15 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
 # Installation comme plugin GDAL
-sudo cp ogr_PolishMap.so $(gdal-config --plugindir)/
+mkdir -pv ~/.gdal/plugins
+sudo cp ogr_PolishMap.so ~/.gdal/plugins/
+
+# Ajout du répertoire de plugins GDAL personnels
+cat >> ~/.bashrc << 'EOF'
+# Ajout du répertoire de plugins GDAL personnels
+export GDAL_DRIVER_PATH="${GDAL_DRIVER_PATH:+${GDAL_DRIVER_PATH}:}$HOME/.gdal/plugins"
+EOF
+source ~/.bashrc
 
 # Vérification
 ogrinfo --formats | grep -i polish
