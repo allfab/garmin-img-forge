@@ -46,6 +46,12 @@ pub struct ExplicitRouteGraph {
     pub node_indices_by_road_point: Vec<Vec<Option<usize>>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ExplicitNodeKey {
+    NodeId(u32),
+    BoundaryCoord(i32, i32),
+}
+
 /// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call).
 ///
 /// `boundary_coords` flags which junction coordinates are actual tile-edge nodes
@@ -208,7 +214,7 @@ pub fn build_graph_with_nod_entries(
     road_polylines: &[(Vec<Coord>, usize, RouteParams)],
     road_nod_entries: &[Vec<NodEntry>],
 ) -> ExplicitRouteGraph {
-    let mut node_idx_by_id: HashMap<u32, usize> = HashMap::new();
+    let mut node_idx_by_key: HashMap<ExplicitNodeKey, usize> = HashMap::new();
     let mut nodes: Vec<RouteNode> = Vec::new();
     let mut node_indices_by_road_point: Vec<Vec<Option<usize>>> = road_polylines
         .iter()
@@ -221,14 +227,22 @@ pub fn build_graph_with_nod_entries(
             let Some(coord) = coords.get(point_idx) else {
                 continue;
             };
-            let node_idx = if let Some(&idx) = node_idx_by_id.get(&nod.node_id) {
+            let key = if nod.boundary {
+                // NOD3/NOD4 boundary records carry coordinates, not NodN node_id.
+                // Keep one boundary RouteNode per coordinate so adjacent tiles can
+                // still resolve the external node unambiguously.
+                ExplicitNodeKey::BoundaryCoord(coord.latitude(), coord.longitude())
+            } else {
+                ExplicitNodeKey::NodeId(nod.node_id)
+            };
+            let node_idx = if let Some(&idx) = node_idx_by_key.get(&key) {
                 if nod.boundary {
                     nodes[idx].is_boundary = true;
                 }
                 idx
             } else {
                 let idx = nodes.len();
-                node_idx_by_id.insert(nod.node_id, idx);
+                node_idx_by_key.insert(key, idx);
                 nodes.push(RouteNode {
                     lat: coord.latitude(),
                     lon: coord.longitude(),
@@ -417,6 +431,39 @@ mod tests {
         assert_eq!(graph.node_indices_by_road_point[1][1], Some(4));
         assert!(shared_nodes[0].arcs.iter().all(|arc| arc.road_def_index == 0));
         assert!(shared_nodes[1].arcs.iter().all(|arc| arc.road_def_index == 1));
+    }
+
+    #[test]
+    fn test_explicit_boundary_nodes_share_coordinate_identity_for_nod3() {
+        let shared = Coord::new(100, 100);
+        let roads = vec![
+            (vec![Coord::new(0, 0), shared], 0, RouteParams::default()),
+            (vec![Coord::new(0, 200), shared], 1, RouteParams::default()),
+        ];
+        let nods = vec![
+            vec![
+                NodEntry { point_index: 0, node_id: 10, boundary: false },
+                NodEntry { point_index: 1, node_id: 11, boundary: true },
+            ],
+            vec![
+                NodEntry { point_index: 0, node_id: 20, boundary: false },
+                NodEntry { point_index: 1, node_id: 21, boundary: true },
+            ],
+        ];
+
+        let graph = build_graph_with_nod_entries(&roads, &nods);
+        let shared_nodes: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter(|node| node.lat == 100 && node.lon == 100)
+            .collect();
+
+        assert_eq!(shared_nodes.len(), 1);
+        assert!(shared_nodes[0].is_boundary);
+        assert_eq!(
+            graph.node_indices_by_road_point[0][1],
+            graph.node_indices_by_road_point[1][1]
+        );
     }
 
     #[test]
