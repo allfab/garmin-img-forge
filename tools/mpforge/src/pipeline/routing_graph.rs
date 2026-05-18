@@ -2,10 +2,11 @@
 //
 // Computes NodN= entries for each routable polyline in a tile.
 // Uses deterministic topology-based node IDs (FNV hash of quantized WGS84 and
-// source ground level) so the same routable point always gets the same node ID
-// across tiles — no post-tiling reconciliation pass required.
+// source ground level) for internal nodes. Boundary nodes deliberately use a
+// coordinate-only identity because final IMG NOD3/NOD4 records are looked up by
+// coordinate across tiles.
 
-use garmin_routing_graph::{coord_to_node_id_with_level, NodEntry};
+use garmin_routing_graph::{coord_to_node_id, coord_to_node_id_with_level, NodEntry};
 use std::collections::{HashMap, HashSet};
 
 use crate::pipeline::reader::Feature;
@@ -93,6 +94,18 @@ fn is_boundary_point(lat: f64, lon: f64, tile: &TileBounds) -> bool {
         || (lon - smax_lon).abs() < EPS
 }
 
+fn topology_node_id(lat_q: i32, lon_q: i32, level: i32, boundary: bool) -> u32 {
+    if boundary {
+        // Garmin NOD3/NOD4 boundary records are matched by coordinate. They do
+        // not carry the Polish NodN node_id, so all route nodes emitted at the
+        // same tile-edge coordinate must share one identity before imgforge sees
+        // them. Keep POS_SOL in node ids for internal topology only.
+        coord_to_node_id(lat_q, lon_q)
+    } else {
+        coord_to_node_id_with_level(lat_q, lon_q, level)
+    }
+}
+
 /// Compute the routing graph for a tile.
 ///
 /// Iterates over all features, identifies routable polylines (those with a
@@ -146,7 +159,7 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
             let (lon_deg, lat_deg) = features[*feat_idx].geometry[pt_idx];
             let on_boundary = is_boundary_point(lat_deg, lon_deg, tile);
 
-            let node_id = coord_to_node_id_with_level(lat_q, lon_q, level);
+            let node_id = topology_node_id(lat_q, lon_q, level, on_boundary);
 
             nods.push(NodEntry {
                 point_index: pt_idx as u16,
@@ -172,16 +185,18 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
             let (lat0_q, lon0_q) = (quantize(lat0), quantize(lon0));
             let (lat_last_q, lon_last_q) = (quantize(lat_last), quantize(lon_last));
             let level = topology_level(&features[*feat_idx]);
+            let first_boundary = is_boundary_point(lat0, lon0, tile);
+            let last_boundary = is_boundary_point(lat_last, lon_last, tile);
 
             nods.push(NodEntry {
                 point_index: 0,
-                node_id: coord_to_node_id_with_level(lat0_q, lon0_q, level),
-                boundary: is_boundary_point(lat0, lon0, tile),
+                node_id: topology_node_id(lat0_q, lon0_q, level, first_boundary),
+                boundary: first_boundary,
             });
             nods.push(NodEntry {
                 point_index: (n - 1) as u16,
-                node_id: coord_to_node_id_with_level(lat_last_q, lon_last_q, level),
-                boundary: is_boundary_point(lat_last, lon_last, tile),
+                node_id: topology_node_id(lat_last_q, lon_last_q, level, last_boundary),
+                boundary: last_boundary,
             });
             total_nodes += 2;
         }
@@ -213,13 +228,12 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
 
 /// Reconcile boundary node IDs across tiles.
 ///
-/// For each pair of tiles sharing a boundary point (same quantized coordinate
-/// and same topology level),
+/// For each pair of tiles sharing a boundary point (same canonical boundary ID),
 /// the canonical ID is chosen deterministically (lowest tile index wins).
 /// This function mutates the TileRoutingGraph values in place.
 ///
 /// Note: in the current pipeline, deterministic topology-based IDs (FNV hash) make
-/// reconciliation optional — same coordinate and same level always produce the same ID.
+/// reconciliation optional — boundary coordinates always produce the same ID.
 /// This function is provided for correctness testing (AC4) and future use.
 pub struct ReconciliationStats {
     pub nodes_reconciled: u32,
@@ -471,6 +485,29 @@ mod tests {
         assert!(
             start_nod.boundary,
             "point on tile edge must be boundary=true"
+        );
+    }
+
+    #[test]
+    fn test_boundary_nodes_same_coordinate_share_node_id_across_pos_sol() {
+        // NOD3/NOD4 boundary records are coordinate-indexed in the final IMG.
+        // Keep one NodN identity for a tile-edge coordinate before imgforge
+        // builds the route graph.
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+        let road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.0), (5.5, 45.5)], "0");
+        let mut road_bridge =
+            routable_feature_with_pos_sol(vec![(5.5, 45.0), (5.6, 45.5)], "1");
+        road_bridge
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
+
+        let graph = compute_tile_routing_graph(&[road_ground, road_bridge], &tile);
+
+        assert!(graph.per_feature[0][0].boundary);
+        assert!(graph.per_feature[1][0].boundary);
+        assert_eq!(
+            graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
+            "same boundary coordinate must have a single node_id for NOD3 lookup"
         );
     }
 
