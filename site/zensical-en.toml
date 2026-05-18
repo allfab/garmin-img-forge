@@ -121,6 +121,7 @@ Installation = [
 generator = false
 copyright = "Documentation under <a href=\"https://creativecommons.org/licenses/by-sa/4.0/\">CC BY-SA 4.0</a> — Tools under MIT and GPL v3 licenses &nbsp;|&nbsp; <a href=\"/en/legal/\">Legal Notice</a> &nbsp;·&nbsp; <a href=\"/en/legal/terms-of-use/\">Terms of Use</a> &nbsp;·&nbsp; <a href=\"/en/legal/support-conditions/\">Support Conditions</a>"
 comentario_url = "https://comentario.allfabox.fr/comentario.js"
+lemonsqueezy_checkout_url = "https://allfab.lemonsqueezy.com/checkout/buy/35b16524-39fd-4581-a018-6104c956d4fc?embed=1"
 alternate = [
   { name = "Français", link = "/", lang = "fr" },
   { name = "English", link = "/en/", lang = "en" }
