@@ -73,7 +73,7 @@ pub fn build_graph_with_junctions(
 /// This is required for Polish MP files with explicit NodN entries. mkgmap
 /// promotes only the coordinates referenced by a road's own NodN directives to
 /// CoordNode objects; it does not promote every matching coordinate globally.
-pub fn build_graph_with_node_flags(
+fn build_graph_with_node_flags(
     road_polylines: &[(Vec<Coord>, usize, RouteParams)],
     node_flags: &[Vec<bool>],
     boundary_coords: &HashSet<(i32, i32)>,

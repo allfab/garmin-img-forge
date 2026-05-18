@@ -195,66 +195,6 @@ pub fn compute_tile_routing_graph(features: &[Feature], tile: &TileBounds) -> Ti
     }
 }
 
-/// Reconcile boundary node IDs across tiles.
-///
-/// For each pair of tiles sharing a boundary point (same canonical boundary ID),
-/// the canonical ID is chosen deterministically (lowest tile index wins).
-/// This function mutates the TileRoutingGraph values in place.
-///
-/// Note: in the current pipeline, deterministic topology-based IDs (FNV hash) make
-/// reconciliation optional — boundary coordinates always produce the same ID.
-/// This function is provided for correctness testing (AC4) and future use.
-pub struct ReconciliationStats {
-    pub nodes_reconciled: u32,
-    pub boundary_pairs_processed: u32,
-}
-
-pub fn reconcile_boundary_nodes(tiles: &mut [(usize, TileRoutingGraph)]) -> ReconciliationStats {
-    use std::collections::HashMap;
-
-    // Build index: node ID → Vec<(tile_idx_in_slice, nod position in per_feature)>
-    // We index by (feat_idx, nod_pos) within each tile.
-    type NodeRef = (usize, usize, usize); // (slice_idx, feat_idx, nod_pos)
-    let mut coord_map: HashMap<u32, Vec<NodeRef>> = HashMap::new();
-
-    for (slice_idx, (_, graph)) in tiles.iter().enumerate() {
-        for (feat_idx, nods) in graph.per_feature.iter().enumerate() {
-            for (nod_pos, nod) in nods.iter().enumerate() {
-                if nod.boundary {
-                    coord_map
-                        .entry(nod.node_id)
-                        .or_default()
-                        .push((slice_idx, feat_idx, nod_pos));
-                }
-            }
-        }
-    }
-
-    let mut nodes_reconciled: u32 = 0;
-    let mut boundary_pairs_processed: u32 = 0;
-
-    // For each shared ID (same topology key = same hash), ensure all tiles agree.
-    // With deterministic hash IDs this should be a no-op in practice.
-    for (canonical_id, refs) in &coord_map {
-        if refs.len() < 2 {
-            continue;
-        }
-        boundary_pairs_processed += 1;
-        for &(slice_idx, feat_idx, nod_pos) in refs {
-            let nod = &mut tiles[slice_idx].1.per_feature[feat_idx][nod_pos];
-            if nod.node_id != *canonical_id {
-                nod.node_id = *canonical_id;
-                nodes_reconciled += 1;
-            }
-        }
-    }
-
-    ReconciliationStats {
-        nodes_reconciled,
-        boundary_pairs_processed,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,20 +393,4 @@ mod tests {
         assert!(graph.per_feature[0].is_empty());
     }
 
-    #[test]
-    fn test_reconcile_boundary_nodes_same_id_noop() {
-        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
-        let road_a = routable_feature(vec![(5.5, 45.5), (6.0, 45.5)]);
-        let road_b = routable_feature(vec![(6.0, 45.5), (6.5, 45.5)]);
-
-        let graph_a = compute_tile_routing_graph(&[road_a], &tile);
-        let tile_b = make_tile(6.0, 45.0, 7.0, 46.0);
-        let graph_b = compute_tile_routing_graph(&[road_b], &tile_b);
-
-        let mut tiles = vec![(0usize, graph_a), (1usize, graph_b)];
-        let stats = reconcile_boundary_nodes(&mut tiles);
-
-        // With hash IDs, same coord → same ID → reconciliation = no-op
-        assert_eq!(stats.nodes_reconciled, 0);
-    }
 }

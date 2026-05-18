@@ -215,13 +215,6 @@ pub fn compute_route_attrs(
     let road_id = road_id_counter.next_id();
     result.insert("RoadID".to_string(), road_id.to_string());
 
-    result.extend(
-        attrs
-            .iter()
-            .filter(|(key, _)| key.starts_with("__mpforge_"))
-            .map(|(key, value)| (key.clone(), value.clone())),
-    );
-
     if attrs.get("Roundabout").map(|v| v == "1").unwrap_or(false) {
         result.insert("Roundabout".to_string(), "1".to_string());
     }

@@ -1059,9 +1059,6 @@ impl MpWriter {
         let mut sorted_keys: Vec<&String> = attributes.keys().collect();
         sorted_keys.sort();
         for source_key in sorted_keys {
-            if source_key.starts_with("__mpforge_") {
-                continue;
-            }
             let value = &attributes[source_key];
             // Story 7.4: Transform field name using mapping if provided
             let target_key = if let Some(mapping) = field_mapping {
