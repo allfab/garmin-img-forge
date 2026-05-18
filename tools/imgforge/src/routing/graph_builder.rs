@@ -40,6 +40,12 @@ pub fn compute_node_flags(
 
 // ── Full graph builder (imgforge-internal, uses IMG types) ─────────────────
 
+/// Route graph built from explicit Polish `NodN=` directives.
+pub struct ExplicitRouteGraph {
+    pub nodes: Vec<RouteNode>,
+    pub node_indices_by_road_point: Vec<Vec<Option<usize>>>,
+}
+
 /// Build route nodes using a pre-computed junction set (avoids redundant find_junctions call).
 ///
 /// `boundary_coords` flags which junction coordinates are actual tile-edge nodes
@@ -192,6 +198,119 @@ pub fn build_graph_with_node_flags(
     nodes
 }
 
+/// Build route nodes from explicit Polish `NodN=` directives, preserving
+/// `node_id` as the topological identity.
+///
+/// Coordinates are only the node payload. Distinct `node_id` values at the same
+/// coordinate must remain distinct route nodes, otherwise separated topologies
+/// are connected again during IMG generation.
+pub fn build_graph_with_nod_entries(
+    road_polylines: &[(Vec<Coord>, usize, RouteParams)],
+    road_nod_entries: &[Vec<NodEntry>],
+) -> ExplicitRouteGraph {
+    let mut node_idx_by_id: HashMap<u32, usize> = HashMap::new();
+    let mut nodes: Vec<RouteNode> = Vec::new();
+    let mut node_indices_by_road_point: Vec<Vec<Option<usize>>> = road_polylines
+        .iter()
+        .map(|(coords, _, _)| vec![None; coords.len()])
+        .collect();
+
+    for (road_idx, ((coords, _, _), nods)) in road_polylines.iter().zip(road_nod_entries.iter()).enumerate() {
+        for nod in nods {
+            let point_idx = nod.point_index as usize;
+            let Some(coord) = coords.get(point_idx) else {
+                continue;
+            };
+            let node_idx = if let Some(&idx) = node_idx_by_id.get(&nod.node_id) {
+                if nod.boundary {
+                    nodes[idx].is_boundary = true;
+                }
+                idx
+            } else {
+                let idx = nodes.len();
+                node_idx_by_id.insert(nod.node_id, idx);
+                nodes.push(RouteNode {
+                    lat: coord.latitude(),
+                    lon: coord.longitude(),
+                    arcs: Vec::new(),
+                    is_boundary: nod.boundary,
+                    node_class: 0,
+                    node_group: 0,
+                });
+                idx
+            };
+            node_indices_by_road_point[road_idx][point_idx] = Some(node_idx);
+        }
+    }
+
+    for (road_idx, (coords, road_def_idx, params)) in road_polylines.iter().enumerate() {
+        let mut last_node_idx: Option<usize> = None;
+        let mut last_node_coord_idx: usize = 0;
+        let mut distance_from_last: f64 = 0.0;
+
+        for i in 0..coords.len() {
+            if i > 0 {
+                distance_from_last += coords[i - 1].distance(&coords[i]);
+            }
+
+            if let Some(node_idx) = node_indices_by_road_point[road_idx][i] {
+                if let Some(prev_idx) = last_node_idx {
+                    let len = distance_from_last as u32;
+                    if prev_idx == node_idx || len == 0 {
+                        last_node_idx = Some(node_idx);
+                        last_node_coord_idx = i;
+                        distance_from_last = 0.0;
+                        continue;
+                    }
+                    let fwd_heading = direction_from_degrees(
+                        coords[last_node_coord_idx].bearing_to(&coords[last_node_coord_idx + 1])
+                    );
+                    let rev_heading = direction_from_degrees(
+                        coords[i].bearing_to(&coords[i - 1])
+                    );
+                    nodes[prev_idx].arcs.push(RouteArc {
+                        dest_node_index: node_idx,
+                        road_def_index: *road_def_idx,
+                        length_meters: len,
+                        forward: true,
+                        road_class: params.road_class,
+                        speed: params.speed,
+                        access: params.access_flags,
+                        toll: params.toll,
+                        one_way: params.one_way,
+                        initial_heading: fwd_heading,
+                    });
+                    nodes[node_idx].arcs.push(RouteArc {
+                        dest_node_index: prev_idx,
+                        road_def_index: *road_def_idx,
+                        length_meters: len,
+                        forward: false,
+                        road_class: params.road_class,
+                        speed: params.speed,
+                        access: params.access_flags,
+                        toll: params.toll,
+                        one_way: params.one_way,
+                        initial_heading: rev_heading,
+                    });
+                }
+                last_node_idx = Some(node_idx);
+                last_node_coord_idx = i;
+                distance_from_last = 0.0;
+            }
+        }
+    }
+
+    for node in &mut nodes {
+        node.node_class = calculate_node_class(&node.arcs);
+        node.node_group = calculate_node_group(&node.arcs);
+    }
+
+    ExplicitRouteGraph {
+        nodes,
+        node_indices_by_road_point,
+    }
+}
+
 /// Convert bearing in degrees to Garmin direction byte: round(deg * 256 / 360) as i8.
 pub fn direction_from_degrees(deg: f64) -> i8 {
     ((deg * 256.0 / 360.0).round() as i32) as i8
@@ -264,6 +383,40 @@ mod tests {
         assert!(!nodes.is_empty());
         let junction = nodes.iter().find(|n| n.lat == 100 && n.lon == 100);
         assert!(junction.is_some());
+    }
+
+    #[test]
+    fn test_explicit_nod_entries_keep_distinct_node_ids_at_same_coordinate() {
+        let shared = Coord::new(100, 100);
+        let roads = vec![
+            (vec![Coord::new(0, 0), shared, Coord::new(200, 200)], 0, RouteParams::default()),
+            (vec![Coord::new(0, 200), shared, Coord::new(200, 0)], 1, RouteParams::default()),
+        ];
+        let nods = vec![
+            vec![
+                NodEntry { point_index: 0, node_id: 10, boundary: false },
+                NodEntry { point_index: 1, node_id: 11, boundary: false },
+                NodEntry { point_index: 2, node_id: 12, boundary: false },
+            ],
+            vec![
+                NodEntry { point_index: 0, node_id: 20, boundary: false },
+                NodEntry { point_index: 1, node_id: 21, boundary: false },
+                NodEntry { point_index: 2, node_id: 22, boundary: false },
+            ],
+        ];
+
+        let graph = build_graph_with_nod_entries(&roads, &nods);
+        let shared_nodes: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter(|node| node.lat == 100 && node.lon == 100)
+            .collect();
+
+        assert_eq!(shared_nodes.len(), 2);
+        assert_eq!(graph.node_indices_by_road_point[0][1], Some(1));
+        assert_eq!(graph.node_indices_by_road_point[1][1], Some(4));
+        assert!(shared_nodes[0].arcs.iter().all(|arc| arc.road_def_index == 0));
+        assert!(shared_nodes[1].arcs.iter().all(|arc| arc.road_def_index == 1));
     }
 
     #[test]

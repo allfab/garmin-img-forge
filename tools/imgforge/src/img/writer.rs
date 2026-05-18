@@ -1705,9 +1705,20 @@ fn pre_compute_routing(
         compute_node_flags(&road_polylines, &junctions)
     };
 
-    // Build routing graph (enriched with heading + node_class)
-    let route_nodes = if has_explicit_nod_entries {
-        graph_builder::build_graph_with_node_flags(&road_polylines, &all_node_flags, &boundary_coords)
+    // Build routing graph (enriched with heading + node_class).
+    // Explicit NodN entries carry topological identity in node_id. In that mode
+    // coordinates are payload only; two distinct node_id values may legally share
+    // the same quantized Garmin coordinate.
+    let explicit_route_graph = if has_explicit_nod_entries {
+        Some(graph_builder::build_graph_with_nod_entries(
+            &road_polylines,
+            &road_nod_entries,
+        ))
+    } else {
+        None
+    };
+    let route_nodes = if let Some(graph) = &explicit_route_graph {
+        graph.nodes.clone()
     } else {
         graph_builder::build_graph_with_junctions(&road_polylines, &junctions, &boundary_coords)
     };
@@ -1770,13 +1781,24 @@ fn pre_compute_routing(
     for (road_idx, flags) in all_node_flags.iter().enumerate() {
         let params = &road_params[road_idx];
         // Find the first RouteNode on this road to get its NOD1 offset
-        let first_node_offset = find_first_route_node_offset(
-            &road_polylines[road_idx].0,
-            &junctions,
-            &route_nodes,
-            nod_writer.node_offsets(),
-            road_idx,
-        );
+        let first_node_offset = if let Some(graph) = &explicit_route_graph {
+            first_explicit_route_node_offset(
+                graph
+                    .node_indices_by_road_point
+                    .get(road_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]),
+                nod_writer.node_offsets(),
+            )
+        } else {
+            find_first_route_node_offset(
+                &road_polylines[road_idx].0,
+                &junctions,
+                &route_nodes,
+                nod_writer.node_offsets(),
+                road_idx,
+            )
+        };
         let num_route_nodes = flags.iter().filter(|&&f| f).count() as u16;
         let starts_with_node = flags.first().copied().unwrap_or(false);
         nod2_road_infos.push(Nod2RoadInfo {
@@ -1881,6 +1903,17 @@ fn find_first_route_node_offset(
     }
 
     fallback.unwrap_or(0)
+}
+
+fn first_explicit_route_node_offset(
+    node_indices_by_point: &[Option<usize>],
+    node_offsets: &[u32],
+) -> u32 {
+    node_indices_by_point
+        .iter()
+        .flatten()
+        .find_map(|&node_idx| node_offsets.get(node_idx).copied())
+        .unwrap_or(0)
 }
 
 /// Contour line types: 0x20–0x25 inclusive (mkgmap GType.isContourLine).
