@@ -1142,6 +1142,18 @@ run_mpforge() {
 
     if [[ "$exit_code" -ne 0 ]]; then
         log_error "mpforge a échoué (exit code : $exit_code)"
+        if [[ "$exit_code" -eq 137 ]]; then
+            log_error "mpforge a été tué par SIGKILL (137), le plus souvent par l'OOM killer."
+            log_warn "La Phase 1.5 de pré-simplification topologique charge globalement"
+            log_warn "  les couches avec profils topology=true (routes/communes) et peut consommer"
+            log_warn "  beaucoup de RAM, indépendamment du nombre de tuiles."
+            log_info "Relance de diagnostic conseillée : ajoutez --disable-profiles"
+            log_info "  ou exportez MPFORGE_PROFILES=off pour bypasser le catalogue"
+            log_info "  generalize_profiles_path. Si cela passe, le blocage est bien lié"
+            log_info "  aux profils multi-niveaux/topologiques."
+        elif [[ "$exit_code" -eq 143 ]]; then
+            log_error "mpforge a reçu SIGTERM (143), probablement arrêt externe ou limite système."
+        fi
         show_report_errors "$_REPORT_FILE"
         log_error "Pipeline arrêté — imgforge NON lancé"
         exit "$exit_code"

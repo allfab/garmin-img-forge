@@ -107,6 +107,7 @@ fn make_config(input: InputSource) -> Config {
         error_handling: "continue".to_string(),
         header: None,
         rules: None,
+        routing: None,
         default_dedup_by_field: None,
         generalize_profiles_path: None,
         resolved_profile_map: Default::default(),

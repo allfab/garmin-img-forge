@@ -4,6 +4,10 @@ version: 1
 # aux niveaux n=0..3 pour préserver le détail routier à l'échelle départementale.
 generalize_profiles_path: "./generalize-profiles.yaml"
 
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: ../routing-rules.yaml
+
 # BDTOPO livre parfois chaque feature en double — dedup_by_field: ID dédoublonne
 # sur le CLEABS IGN (DBF/SHP tronque "cleabs" → "ID" à la livraison).
 

@@ -1,0 +1,104 @@
+version: 1
+
+rulesets:
+  - name: speed_from_vit
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { VIT_MOY_VL: "<10" }
+        set: { Speed: "0" }
+      - match: { VIT_MOY_VL: "range:10..20" }
+        set: { Speed: "1" }
+      - match: { VIT_MOY_VL: "range:20..30" }
+        set: { Speed: "2" }
+      - match: { VIT_MOY_VL: "range:30..45" }
+        set: { Speed: "3" }
+      - match: { VIT_MOY_VL: "range:45..60" }
+        set: { Speed: "4" }
+      - match: { VIT_MOY_VL: "range:60..75" }
+        set: { Speed: "5" }
+      - match: { VIT_MOY_VL: "range:75..95" }
+        set: { Speed: "6" }
+      - match: { VIT_MOY_VL: ">=95" }
+        set: { Speed: "7" }
+      - match: { VIT_MOY_VL: "*" }
+        set: { Speed: "0" }
+
+  - name: class_from_admin
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { CL_ADMIN: "Autoroute" }
+        set: { RoadClass: "4" }
+      - match: { CL_ADMIN: "Nationale" }
+        set: { RoadClass: "3" }
+      - match: { CL_ADMIN: "Départementale" }
+        set: { RoadClass: "2" }
+      - match: { CL_ADMIN: "Route intercommunale" }
+        set: { RoadClass: "1" }
+      - match: { NATURE: "Type autoroutier" }
+        set: { RoadClass: "4" }
+      - match: { NATURE: "in:Route à 2 chaussées,Route à 1 chaussée,Bretelle" }
+        set: { RoadClass: "1" }
+      - match: { NATURE: "in:Route empierrée,Chemin,Sentier,Escalier,Bac ou liaison maritime,Bac auto,Bac piéton" }
+        set: { RoadClass: "0" }
+      - match: { NATURE: "*" }
+        set: { RoadClass: "1" }
+
+  - name: oneway_from_sens
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { SENS: "Sens direct" }
+        set: { Oneway: "1", DirIndicator: "1" }
+      - match: { SENS: "Sens inverse" }
+        set: { Oneway: "1", DirIndicator: "-1" }
+      - match: { SENS: "*" }
+        set: { Oneway: "0", DirIndicator: "0" }
+
+  - name: access_from_vl
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { ACCES_VL: "in:A péage,À péage" }
+        set: { Toll: "1", denied_car: "0", denied_bus: "0", denied_truck: "0" }
+      - match: { ACCES_VL: "Physiquement impossible" }
+        set: { Toll: "0", denied_car: "1", denied_bus: "1", denied_truck: "1" }
+      - match: { ACCES_VL: "*" }
+        set: { Toll: "0", denied_car: "0", denied_bus: "0", denied_truck: "0" }
+
+  - name: access_from_ped
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { ACCES_PED: "Libre" }
+        set: { denied_foot: "0" }
+      - match: { ACCES_PED: "" }
+        set: { denied_foot: "0" }
+      - match: { ACCES_PED: "*" }
+        set: { denied_foot: "1" }
+
+  - name: roundabout
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { NATURE: "Rond-point" }
+        set: { Roundabout: "1" }
+
+  - name: restrictions_height
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { RESTR_H: ">0" }
+        set: { MaxHeightMeters: "${RESTR_H}" }
+
+  - name: restrictions_weight
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { RESTR_P: ">0" }
+        set: { MaxWeightTonnes: "${RESTR_P}" }
+
+  - name: restrictions_width
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { RESTR_LAR: ">0" }
+        set: { MaxWidthMeters: "${RESTR_LAR}" }
+
+  - name: restrictions_length
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { RESTR_LON: ">0" }
+        set: { MaxLengthMeters: "${RESTR_LON}" }

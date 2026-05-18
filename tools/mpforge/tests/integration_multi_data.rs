@@ -86,6 +86,19 @@ fn write_sources_yaml(tmp: &TempDir, shp: &Path, tiles_dir: &Path) -> PathBuf {
 "#,
     )
     .unwrap();
+    let routing_yaml = tmp.path().join("routing-rules.yaml");
+    fs::write(
+        &routing_yaml,
+        r#"version: 1
+rulesets:
+  - name: synthetic_route
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { CL_ADMIN: "Autoroute" }
+        set: { Speed: "7", RoadClass: "4" }
+"#,
+    )
+    .unwrap();
 
     let sources = format!(
         r#"version: 1
@@ -93,6 +106,9 @@ grid:
   cell_size: 0.5
   overlap: 0.0
 generalize_profiles_path: "generalize-profiles.yaml"
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: "routing-rules.yaml"
 inputs:
   - path: "{shp}"
     layer_alias: "TRONCON_DE_ROUTE"

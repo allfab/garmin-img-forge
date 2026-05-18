@@ -5,8 +5,8 @@
 // source ground level) so the same routable point always gets the same node ID
 // across tiles — no post-tiling reconciliation pass required.
 
+use garmin_routing_graph::{coord_to_node_id_with_level, NodEntry};
 use std::collections::{HashMap, HashSet};
-use garmin_routing_graph::{NodEntry, coord_to_node_id_with_level};
 
 use crate::pipeline::reader::Feature;
 use crate::pipeline::tiler::TileBounds;
@@ -35,11 +35,21 @@ pub fn quantize(deg: f64) -> i32 {
 type TopologyKey = (i32, i32, i32); // (lat_q, lon_q, level)
 
 fn topology_level(feature: &Feature) -> i32 {
-    feature
+    let raw = feature
         .attributes
         .get("POS_SOL")
-        .and_then(|value| value.trim().parse::<i32>().ok())
-        .unwrap_or(0)
+        .map(|value| value.trim())
+        .unwrap_or("");
+    match raw {
+        "" | "Gué ou radier" => 0,
+        value => value.parse::<i32>().unwrap_or_else(|_| {
+            tracing::warn!(
+                pos_sol = value,
+                "POS_SOL non-numérique ignoré, fallback niveau 0"
+            );
+            0
+        }),
+    }
 }
 
 fn find_topology_junctions(roads: &[Vec<TopologyKey>]) -> HashSet<TopologyKey> {
@@ -48,7 +58,10 @@ fn find_topology_junctions(roads: &[Vec<TopologyKey>]) -> HashSet<TopologyKey> {
     for (road_idx, coords) in roads.iter().enumerate() {
         for (pt_idx, &key) in coords.iter().enumerate() {
             let is_endpoint = pt_idx == 0 || pt_idx == coords.len() - 1;
-            point_count.entry(key).or_default().push((road_idx, pt_idx, is_endpoint));
+            point_count
+                .entry(key)
+                .or_default()
+                .push((road_idx, pt_idx, is_endpoint));
         }
     }
 
@@ -211,9 +224,7 @@ pub struct ReconciliationStats {
     pub boundary_pairs_processed: u32,
 }
 
-pub fn reconcile_boundary_nodes(
-    tiles: &mut [(usize, TileRoutingGraph)],
-) -> ReconciliationStats {
+pub fn reconcile_boundary_nodes(tiles: &mut [(usize, TileRoutingGraph)]) -> ReconciliationStats {
     use std::collections::HashMap;
 
     // Build index: node ID → Vec<(tile_idx_in_slice, nod position in per_feature)>
@@ -253,7 +264,10 @@ pub fn reconcile_boundary_nodes(
         }
     }
 
-    ReconciliationStats { nodes_reconciled, boundary_pairs_processed }
+    ReconciliationStats {
+        nodes_reconciled,
+        boundary_pairs_processed,
+    }
 }
 
 #[cfg(test)]
@@ -264,8 +278,12 @@ mod tests {
 
     fn make_tile(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> TileBounds {
         TileBounds {
-            col: 0, row: 0,
-            min_lon, min_lat, max_lon, max_lat,
+            col: 0,
+            row: 0,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
             overlap: 0.0,
         }
     }
@@ -273,7 +291,10 @@ mod tests {
     fn routable_feature(geometry: Vec<(f64, f64)>) -> Feature {
         let mut attrs = HashMap::new();
         attrs.insert("RoadID".to_string(), "1".to_string());
-        attrs.insert("RouteParam".to_string(), "4,1,0,0,0,0,0,0,0,0,0,0".to_string());
+        attrs.insert(
+            "RouteParam".to_string(),
+            "4,1,0,0,0,0,0,0,0,0,0,0".to_string(),
+        );
         Feature {
             geometry_type: GeometryType::LineString,
             geometry,
@@ -285,7 +306,9 @@ mod tests {
 
     fn routable_feature_with_pos_sol(geometry: Vec<(f64, f64)>, pos_sol: &str) -> Feature {
         let mut feature = routable_feature(geometry);
-        feature.attributes.insert("POS_SOL".to_string(), pos_sol.to_string());
+        feature
+            .attributes
+            .insert("POS_SOL".to_string(), pos_sol.to_string());
         feature
     }
 
@@ -298,7 +321,11 @@ mod tests {
 
         assert_eq!(graph.per_feature.len(), 1);
         let nods = &graph.per_feature[0];
-        assert_eq!(nods.len(), 2, "isolated road must have exactly 2 NodEntries");
+        assert_eq!(
+            nods.len(),
+            2,
+            "isolated road must have exactly 2 NodEntries"
+        );
         assert_eq!(nods[0].point_index, 0);
         assert_eq!(nods[1].point_index, 1);
     }
@@ -309,14 +336,19 @@ mod tests {
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road1 = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
         let mut road2 = routable_feature(vec![(5.5, 45.5), (5.4, 45.4)]);
-        road2.attributes.insert("RoadID".to_string(), "2".to_string());
+        road2
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
 
         let features = vec![road1, road2];
         let graph = compute_tile_routing_graph(&features, &tile);
 
         let id0_start = graph.per_feature[0][0].node_id;
         let id1_start = graph.per_feature[1][0].node_id;
-        assert_eq!(id0_start, id1_start, "shared endpoint must have same node_id");
+        assert_eq!(
+            id0_start, id1_start,
+            "shared endpoint must have same node_id"
+        );
     }
 
     #[test]
@@ -324,9 +356,10 @@ mod tests {
         // A bridge/underpass can share the same 2D coordinate without being connected.
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "0");
-        let mut road_bridge =
-            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "1");
-        road_bridge.attributes.insert("RoadID".to_string(), "2".to_string());
+        let mut road_bridge = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "1");
+        road_bridge
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
 
         let features = vec![road_ground, road_bridge];
         let graph = compute_tile_routing_graph(&features, &tile);
@@ -346,7 +379,9 @@ mod tests {
             routable_feature_with_pos_sol(vec![(5.4, 45.5), (5.5, 45.5), (5.6, 45.5)], "0");
         let mut road_bridge =
             routable_feature_with_pos_sol(vec![(5.5, 45.4), (5.5, 45.5), (5.5, 45.6)], "1");
-        road_bridge.attributes.insert("RoadID".to_string(), "2".to_string());
+        road_bridge
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
 
         let features = vec![road_ground, road_bridge];
         let graph = compute_tile_routing_graph(&features, &tile);
@@ -366,7 +401,9 @@ mod tests {
         let tile = make_tile(5.0, 45.0, 6.0, 46.0);
         let road_default = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
         let mut road_ground = routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.4, 45.4)], "0");
-        road_ground.attributes.insert("RoadID".to_string(), "2".to_string());
+        road_ground
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
 
         let features = vec![road_default, road_ground];
         let graph = compute_tile_routing_graph(&features, &tile);
@@ -375,6 +412,22 @@ mod tests {
             graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
             "missing POS_SOL must behave like POS_SOL=0"
         );
+    }
+
+    #[test]
+    fn test_pos_sol_gue_radier_mapped_to_ground() {
+        let feature =
+            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "Gué ou radier");
+        assert_eq!(topology_level(&feature), 0);
+    }
+
+    #[tracing_test::traced_test]
+    #[test]
+    fn test_pos_sol_unknown_value_warns_and_defaults_to_zero() {
+        let feature =
+            routable_feature_with_pos_sol(vec![(5.5, 45.5), (5.6, 45.6)], "valeur_inconnue_XYZ");
+        assert_eq!(topology_level(&feature), 0);
+        assert!(logs_contain("POS_SOL non-numérique ignoré"));
     }
 
     #[test]
@@ -387,7 +440,10 @@ mod tests {
 
         let nods = &graph.per_feature[0];
         let start_nod = nods.iter().find(|n| n.point_index == 0).unwrap();
-        assert!(start_nod.boundary, "point on tile edge must be boundary=true");
+        assert!(
+            start_nod.boundary,
+            "point on tile edge must be boundary=true"
+        );
     }
 
     #[test]

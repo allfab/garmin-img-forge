@@ -7,6 +7,10 @@ version: 1
 # `generalize:` et dans le catalogue externe.
 generalize_profiles_path: "../generalize-profiles.yaml"
 
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: ../../routing-rules.yaml
+
 # Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
 # BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque
 # les noms de colonnes à 10 chars, donc "cleabs" → "ID" à la livraison).

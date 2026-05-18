@@ -6,6 +6,7 @@
 //! This module implements Approach 2 (dedicated post-processor) as recommended
 //! in the story Dev Notes, avoiding combinatorial explosion in the rules YAML.
 
+use crate::rules::{self, RulesFile};
 use std::collections::HashMap;
 use tracing::debug;
 
@@ -34,92 +35,6 @@ impl RoadIdCounter {
     }
 }
 
-/// Convert BDTOPO VIT_MOY_VL (km/h) to Garmin Speed class (0-7).
-///
-/// Continuous ranges (no gaps):
-/// - [0, 10)   → 0 (Chemin/Sentier)
-/// - [10, 20)  → 1 (Route empierrée lente)
-/// - [20, 30)  → 2 (Zone 30/résidentiel)
-/// - [30, 45)  → 3 (Urbain standard)
-/// - [45, 60)  → 4 (Route communale)
-/// - [60, 75)  → 5 (Départementale)
-/// - [75, 95)  → 6 (Nationale/express)
-/// - [95, +∞)  → 7 (Autoroute)
-pub fn vit_to_speed(vit_moy_vl: f64) -> u8 {
-    if vit_moy_vl < 10.0 {
-        0
-    } else if vit_moy_vl < 20.0 {
-        1
-    } else if vit_moy_vl < 30.0 {
-        2
-    } else if vit_moy_vl < 45.0 {
-        3
-    } else if vit_moy_vl < 60.0 {
-        4
-    } else if vit_moy_vl < 75.0 {
-        5
-    } else if vit_moy_vl < 95.0 {
-        6
-    } else {
-        7
-    }
-}
-
-/// Convert BDTOPO CL_ADMIN + NATURE to Garmin Road Class (0-4).
-///
-/// Priority: CL_ADMIN first, then NATURE fallback.
-pub fn admin_nature_to_class(cl_admin: &str, nature: &str) -> u8 {
-    // CL_ADMIN-based classification (highest priority)
-    match cl_admin {
-        "Autoroute" => 4,
-        "Nationale" => 3,
-        "Départementale" => 2,
-        "Route intercommunale" => 1,
-        _ => {
-            // NATURE-based fallback when CL_ADMIN is empty or unrecognized
-            match nature {
-                "Type autoroutier" => 4,
-                "Route à 2 chaussées" | "Route à 1 chaussée" | "Bretelle" => 1,
-                "Route empierrée" | "Chemin" | "Sentier" | "Escalier"
-                | "Bac ou liaison maritime" | "Bac auto" | "Bac piéton" => 0,
-                // Default for unrecognized NATURE: class 1
-                _ => 1,
-            }
-        }
-    }
-}
-
-/// Convert BDTOPO SENS to (oneway, dir_indicator).
-///
-/// Returns (oneway_bit, dir_indicator_value).
-pub fn sens_to_oneway(sens: &str) -> (u8, i32) {
-    match sens {
-        "Sens direct" => (1, 1),
-        "Sens inverse" => (1, -1),
-        "Double sens" | "Sans objet" | "" => (0, 0),
-        _ => (0, 0),
-    }
-}
-
-/// Convert BDTOPO ACCES_VL to (toll, denied_car, denied_bus, denied_truck).
-pub fn acces_vl_to_bits(acces_vl: &str) -> (u8, u8, u8, u8) {
-    match acces_vl {
-        "A péage" | "À péage" => (1, 0, 0, 0),
-        "Physiquement impossible" => (0, 1, 1, 1),
-        // "Libre" and "Restreint aux ayants droit" → all zeros
-        _ => (0, 0, 0, 0),
-    }
-}
-
-/// Convert BDTOPO ACCES_PED to denied_foot bit.
-pub fn acces_ped_to_denied_foot(acces_ped: &str) -> u8 {
-    match acces_ped {
-        "Libre" | "" => 0,
-        // "Restreint", "Passage difficile", "A péage" → denied
-        _ => 1,
-    }
-}
-
 /// Convert BDTOPO restriction values to Polish Map format (centimeters for height, centithons for weight).
 ///
 /// RESTR_H (meters) → MaxHeight (centimeters as integer)
@@ -129,12 +44,18 @@ pub fn acces_ped_to_denied_foot(acces_ped: &str) -> u8 {
 ///
 /// Panics: values must be non-negative. Caller must guard with `> 0.0`.
 pub fn meters_to_centimeters(value_m: f64) -> u32 {
-    debug_assert!(value_m >= 0.0, "meters_to_centimeters: negative input {value_m}");
+    debug_assert!(
+        value_m >= 0.0,
+        "meters_to_centimeters: negative input {value_m}"
+    );
     (value_m * 100.0).round() as u32
 }
 
 pub fn tonnes_to_centithons(value_t: f64) -> u32 {
-    debug_assert!(value_t >= 0.0, "tonnes_to_centithons: negative input {value_t}");
+    debug_assert!(
+        value_t >= 0.0,
+        "tonnes_to_centithons: negative input {value_t}"
+    );
     (value_t * 1000.0).round() as u32
 }
 
@@ -155,8 +76,8 @@ pub struct RouteParamComponents {
     pub denied_car: u8,
     pub denied_bus: u8,
     pub denied_taxi: u8,
-    pub denied_foot: u8,   // denied_pedestrian
-    pub denied_bike: u8,   // denied_bicycle
+    pub denied_foot: u8, // denied_pedestrian
+    pub denied_bike: u8, // denied_bicycle
     pub denied_truck: u8,
 }
 
@@ -168,10 +89,18 @@ pub struct RouteParamComponents {
 pub fn compose_route_param(c: &RouteParamComponents) -> String {
     format!(
         "{},{},{},{},{},{},{},{},{},{},{},{}",
-        c.speed, c.road_class, c.oneway, c.toll,
-        c.denied_emergency, c.denied_delivery,
-        c.denied_car, c.denied_bus, c.denied_taxi,
-        c.denied_foot, c.denied_bike, c.denied_truck
+        c.speed,
+        c.road_class,
+        c.oneway,
+        c.toll,
+        c.denied_emergency,
+        c.denied_delivery,
+        c.denied_car,
+        c.denied_bus,
+        c.denied_taxi,
+        c.denied_foot,
+        c.denied_bike,
+        c.denied_truck
     )
 }
 
@@ -186,7 +115,10 @@ pub fn compose_route_param(c: &RouteParamComponents) -> String {
 /// invalid or RouteParam is absent.
 pub fn apply_denied_mask(route_param: &str, denied_mask: &str) -> String {
     if denied_mask.len() != 8 || !denied_mask.chars().all(|c| c == '0' || c == '1') {
-        tracing::warn!(denied_mask = denied_mask, "invalid denied_mask format, must be 8 binary chars");
+        tracing::warn!(
+            denied_mask = denied_mask,
+            "invalid denied_mask format, must be 8 binary chars"
+        );
         return route_param.to_string();
     }
 
@@ -195,11 +127,24 @@ pub fn apply_denied_mask(route_param: &str, denied_mask: &str) -> String {
         return route_param.to_string();
     }
 
-    let bits: Vec<u8> = denied_mask.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    let bits: Vec<u8> = denied_mask
+        .chars()
+        .map(|c| if c == '1' { 1 } else { 0 })
+        .collect();
     format!(
         "{},{},{},{},{},{},{},{},{},{},{},{}",
-        parts[0], parts[1], parts[2], parts[3],
-        bits[0], bits[1], bits[2], bits[3], bits[4], bits[5], bits[6], bits[7]
+        parts[0],
+        parts[1],
+        parts[2],
+        parts[3],
+        bits[0],
+        bits[1],
+        bits[2],
+        bits[3],
+        bits[4],
+        bits[5],
+        bits[6],
+        bits[7]
     )
 }
 
@@ -211,37 +156,47 @@ pub fn apply_denied_mask(route_param: &str, denied_mask: &str) -> String {
 /// Only computes routing for features from TRONCON_DE_ROUTE layer.
 pub fn compute_route_attrs(
     source_attrs: &HashMap<String, String>,
+    routing_rules: &RulesFile,
     road_id_counter: &mut RoadIdCounter,
 ) -> HashMap<String, String> {
     let mut result = HashMap::new();
+    let mut attrs = HashMap::new();
+    for ruleset in &routing_rules.rulesets {
+        match rules::evaluate_feature(ruleset, source_attrs) {
+            Ok(Some(values)) => attrs.extend(values),
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, ruleset = ?ruleset.name, "routing rule ignored");
+            }
+        }
+    }
 
-    // Speed from VIT_MOY_VL
-    let vit_moy_vl: f64 = source_attrs
-        .get("VIT_MOY_VL")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0);
-    let speed = vit_to_speed(vit_moy_vl);
+    let parse_u8 = |key: &str, default: u8| -> u8 {
+        attrs
+            .get(key)
+            .and_then(|v| v.parse::<u8>().ok())
+            .unwrap_or(default)
+    };
 
-    // Road class from CL_ADMIN + NATURE
-    let cl_admin = source_attrs.get("CL_ADMIN").map(|s| s.as_str()).unwrap_or("");
-    let nature = source_attrs.get("NATURE").map(|s| s.as_str()).unwrap_or("");
-    let road_class = admin_nature_to_class(cl_admin, nature);
-
-    // Oneway + DirIndicator from SENS
-    let sens = source_attrs.get("SENS").map(|s| s.as_str()).unwrap_or("");
-    let (oneway, dir_indicator) = sens_to_oneway(sens);
-
-    // Toll + denied_car/bus/truck from ACCES_VL
-    let acces_vl = source_attrs.get("ACCES_VL").map(|s| s.as_str()).unwrap_or("");
-    let (toll, denied_car, denied_bus, denied_truck) = acces_vl_to_bits(acces_vl);
-
-    // Denied foot from ACCES_PED
-    let acces_ped = source_attrs.get("ACCES_PED").map(|s| s.as_str()).unwrap_or("");
-    let denied_foot = acces_ped_to_denied_foot(acces_ped);
+    let speed = parse_u8("Speed", 0);
+    let road_class = parse_u8("RoadClass", 1);
+    let oneway = parse_u8("Oneway", 0);
+    let toll = parse_u8("Toll", 0);
+    let denied_car = parse_u8("denied_car", 0);
+    let denied_bus = parse_u8("denied_bus", 0);
+    let denied_truck = parse_u8("denied_truck", 0);
+    let denied_foot = parse_u8("denied_foot", 0);
+    let dir_indicator = attrs
+        .get("DirIndicator")
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(0);
 
     // Compose RouteParam (12 champs canoniques; denied_mask YAML appliqué post-merge)
     let route_param = compose_route_param(&RouteParamComponents {
-        speed, road_class, oneway, toll,
+        speed,
+        road_class,
+        oneway,
+        toll,
         denied_emergency: 0,
         denied_delivery: 0,
         denied_car,
@@ -260,32 +215,14 @@ pub fn compute_route_attrs(
     let road_id = road_id_counter.next_id();
     result.insert("RoadID".to_string(), road_id.to_string());
 
-    // Roundabout detection
-    if nature == "Rond-point" {
+    if attrs.get("Roundabout").map(|v| v == "1").unwrap_or(false) {
         result.insert("Roundabout".to_string(), "1".to_string());
     }
 
-    // Physical restrictions (custom extension, AC3)
-    if let Some(restr_h) = source_attrs.get("RESTR_H").and_then(|v| v.parse::<f64>().ok()) {
-        if restr_h > 0.0 {
-            result.insert("MaxHeight".to_string(), meters_to_centimeters(restr_h).to_string());
-        }
-    }
-    if let Some(restr_p) = source_attrs.get("RESTR_P").and_then(|v| v.parse::<f64>().ok()) {
-        if restr_p > 0.0 {
-            result.insert("MaxWeight".to_string(), tonnes_to_centithons(restr_p).to_string());
-        }
-    }
-    if let Some(restr_lar) = source_attrs.get("RESTR_LAR").and_then(|v| v.parse::<f64>().ok()) {
-        if restr_lar > 0.0 {
-            result.insert("MaxWidth".to_string(), meters_to_centimeters(restr_lar).to_string());
-        }
-    }
-    if let Some(restr_lon) = source_attrs.get("RESTR_LON").and_then(|v| v.parse::<f64>().ok()) {
-        if restr_lon > 0.0 {
-            result.insert("MaxLength".to_string(), meters_to_centimeters(restr_lon).to_string());
-        }
-    }
+    convert_restriction_meters(&attrs, "MaxHeightMeters", "MaxHeight", &mut result);
+    convert_restriction_tonnes(&attrs, "MaxWeightTonnes", "MaxWeight", &mut result);
+    convert_restriction_meters(&attrs, "MaxWidthMeters", "MaxWidth", &mut result);
+    convert_restriction_meters(&attrs, "MaxLengthMeters", "MaxLength", &mut result);
 
     debug!(
         route_param = %result.get("RouteParam").unwrap(),
@@ -297,226 +234,46 @@ pub fn compute_route_attrs(
     result
 }
 
-/// Check if a source layer is routable (should receive routing attributes).
-pub fn is_routable_layer(layer_name: &str) -> bool {
-    layer_name == "TRONCON_DE_ROUTE"
+fn convert_restriction_meters(
+    attrs: &HashMap<String, String>,
+    source_key: &str,
+    target_key: &str,
+    result: &mut HashMap<String, String>,
+) {
+    if let Some(value) = attrs.get(source_key).and_then(|v| v.parse::<f64>().ok()) {
+        if value > 0.0 {
+            result.insert(
+                target_key.to_string(),
+                meters_to_centimeters(value).to_string(),
+            );
+        }
+    }
+}
+
+fn convert_restriction_tonnes(
+    attrs: &HashMap<String, String>,
+    source_key: &str,
+    target_key: &str,
+    result: &mut HashMap<String, String>,
+) {
+    if let Some(value) = attrs.get(source_key).and_then(|v| v.parse::<f64>().ok()) {
+        if value > 0.0 {
+            result.insert(
+                target_key.to_string(),
+                tonnes_to_centithons(value).to_string(),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // =========================================================================
-    // Task 1.5: Speed conversion tests (8 speed classes)
-    // =========================================================================
-
-    #[test]
-    fn test_vit_to_speed_class_0_chemin() {
-        assert_eq!(vit_to_speed(0.0), 0);
-        assert_eq!(vit_to_speed(5.0), 0);
-        assert_eq!(vit_to_speed(8.0), 0);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_1_empierree() {
-        assert_eq!(vit_to_speed(10.0), 1);
-        assert_eq!(vit_to_speed(15.0), 1);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_2_zone30() {
-        assert_eq!(vit_to_speed(20.0), 2);
-        assert_eq!(vit_to_speed(25.0), 2);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_3_urbain() {
-        assert_eq!(vit_to_speed(30.0), 3);
-        assert_eq!(vit_to_speed(40.0), 3);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_4_communale() {
-        assert_eq!(vit_to_speed(45.0), 4);
-        assert_eq!(vit_to_speed(50.0), 4);
-        assert_eq!(vit_to_speed(55.0), 4);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_5_departementale() {
-        assert_eq!(vit_to_speed(60.0), 5);
-        assert_eq!(vit_to_speed(70.0), 5);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_6_nationale() {
-        assert_eq!(vit_to_speed(75.0), 6);
-        assert_eq!(vit_to_speed(80.0), 6);
-        assert_eq!(vit_to_speed(90.0), 6);
-    }
-
-    #[test]
-    fn test_vit_to_speed_class_7_autoroute() {
-        assert_eq!(vit_to_speed(95.0), 7);
-        assert_eq!(vit_to_speed(110.0), 7);
-        assert_eq!(vit_to_speed(130.0), 7);
-    }
-
-    // =========================================================================
-    // Task 1.5: Road class conversion tests (5 classes)
-    // =========================================================================
-
-    #[test]
-    fn test_class_autoroute() {
-        assert_eq!(admin_nature_to_class("Autoroute", ""), 4);
-        assert_eq!(admin_nature_to_class("Autoroute", "Route à 2 chaussées"), 4);
-    }
-
-    #[test]
-    fn test_class_nationale() {
-        assert_eq!(admin_nature_to_class("Nationale", ""), 3);
-        assert_eq!(admin_nature_to_class("Nationale", "Rond-point"), 3);
-    }
-
-    #[test]
-    fn test_class_departementale() {
-        assert_eq!(admin_nature_to_class("Départementale", ""), 2);
-    }
-
-    #[test]
-    fn test_class_intercommunale() {
-        assert_eq!(admin_nature_to_class("Route intercommunale", ""), 1);
-    }
-
-    #[test]
-    fn test_class_nature_type_autoroutier() {
-        assert_eq!(admin_nature_to_class("", "Type autoroutier"), 4);
-    }
-
-    #[test]
-    fn test_class_nature_2_chaussees() {
-        assert_eq!(admin_nature_to_class("", "Route à 2 chaussées"), 1);
-    }
-
-    #[test]
-    fn test_class_nature_1_chaussee() {
-        assert_eq!(admin_nature_to_class("", "Route à 1 chaussée"), 1);
-    }
-
-    #[test]
-    fn test_class_nature_bretelle() {
-        assert_eq!(admin_nature_to_class("", "Bretelle"), 1);
-    }
-
-    #[test]
-    fn test_class_nature_empierree() {
-        assert_eq!(admin_nature_to_class("", "Route empierrée"), 0);
-    }
-
-    #[test]
-    fn test_class_nature_chemin() {
-        assert_eq!(admin_nature_to_class("", "Chemin"), 0);
-    }
-
-    #[test]
-    fn test_class_nature_sentier() {
-        assert_eq!(admin_nature_to_class("", "Sentier"), 0);
-    }
-
-    #[test]
-    fn test_class_nature_bac() {
-        assert_eq!(admin_nature_to_class("", "Bac ou liaison maritime"), 0);
-    }
-
-    // =========================================================================
-    // Task 1.5: SENS conversion tests (4 values)
-    // =========================================================================
-
-    #[test]
-    fn test_sens_double_sens() {
-        let (oneway, dir) = sens_to_oneway("Double sens");
-        assert_eq!(oneway, 0);
-        assert_eq!(dir, 0);
-    }
-
-    #[test]
-    fn test_sens_direct() {
-        let (oneway, dir) = sens_to_oneway("Sens direct");
-        assert_eq!(oneway, 1);
-        assert_eq!(dir, 1);
-    }
-
-    #[test]
-    fn test_sens_inverse() {
-        let (oneway, dir) = sens_to_oneway("Sens inverse");
-        assert_eq!(oneway, 1);
-        assert_eq!(dir, -1);
-    }
-
-    #[test]
-    fn test_sens_sans_objet() {
-        let (oneway, dir) = sens_to_oneway("Sans objet");
-        assert_eq!(oneway, 0);
-        assert_eq!(dir, 0);
-    }
-
-    #[test]
-    fn test_sens_empty() {
-        let (oneway, dir) = sens_to_oneway("");
-        assert_eq!(oneway, 0);
-        assert_eq!(dir, 0);
-    }
-
-    // =========================================================================
-    // Task 1.5: ACCES_VL conversion tests (4 values)
-    // =========================================================================
-
-    #[test]
-    fn test_acces_vl_libre() {
-        let (toll, car, bus, truck) = acces_vl_to_bits("Libre");
-        assert_eq!((toll, car, bus, truck), (0, 0, 0, 0));
-    }
-
-    #[test]
-    fn test_acces_vl_peage() {
-        let (toll, car, bus, truck) = acces_vl_to_bits("A péage");
-        assert_eq!((toll, car, bus, truck), (1, 0, 0, 0));
-    }
-
-    #[test]
-    fn test_acces_vl_restreint() {
-        let (toll, car, bus, truck) = acces_vl_to_bits("Restreint aux ayants droit");
-        assert_eq!((toll, car, bus, truck), (0, 0, 0, 0));
-    }
-
-    #[test]
-    fn test_acces_vl_impossible() {
-        let (toll, car, bus, truck) = acces_vl_to_bits("Physiquement impossible");
-        assert_eq!((toll, car, bus, truck), (0, 1, 1, 1));
-    }
-
-    // =========================================================================
-    // Task 1.5: ACCES_PED conversion tests
-    // =========================================================================
-
-    #[test]
-    fn test_acces_ped_libre() {
-        assert_eq!(acces_ped_to_denied_foot("Libre"), 0);
-    }
-
-    #[test]
-    fn test_acces_ped_restreint() {
-        assert_eq!(acces_ped_to_denied_foot("Restreint"), 1);
-    }
-
-    #[test]
-    fn test_acces_ped_passage_difficile() {
-        assert_eq!(acces_ped_to_denied_foot("Passage difficile"), 1);
-    }
-
-    #[test]
-    fn test_acces_ped_empty() {
-        assert_eq!(acces_ped_to_denied_foot(""), 0);
+    fn test_routing_rules() -> RulesFile {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../pipeline/configs/ign-bdtopo/routing-rules.yaml");
+        rules::load_rules(&path).expect("routing rules fixture must load")
     }
 
     // =========================================================================
@@ -543,10 +300,18 @@ mod tests {
 
     fn full_components(speed: u8, road_class: u8, oneway: u8, toll: u8) -> RouteParamComponents {
         RouteParamComponents {
-            speed, road_class, oneway, toll,
-            denied_emergency: 0, denied_delivery: 0,
-            denied_car: 0, denied_bus: 0, denied_taxi: 0,
-            denied_foot: 0, denied_bike: 0, denied_truck: 0,
+            speed,
+            road_class,
+            oneway,
+            toll,
+            denied_emergency: 0,
+            denied_delivery: 0,
+            denied_car: 0,
+            denied_bus: 0,
+            denied_taxi: 0,
+            denied_foot: 0,
+            denied_bike: 0,
+            denied_truck: 0,
         }
     }
 
@@ -567,10 +332,18 @@ mod tests {
     fn test_compose_route_param_denied_partial() {
         // AC6 variant: denied_car=1, denied_bus=1, denied_foot=1, denied_truck=1
         let rp = compose_route_param(&RouteParamComponents {
-            speed: 3, road_class: 2, oneway: 0, toll: 0,
-            denied_emergency: 0, denied_delivery: 0,
-            denied_car: 1, denied_bus: 1, denied_taxi: 0,
-            denied_foot: 1, denied_bike: 0, denied_truck: 1,
+            speed: 3,
+            road_class: 2,
+            oneway: 0,
+            toll: 0,
+            denied_emergency: 0,
+            denied_delivery: 0,
+            denied_car: 1,
+            denied_bus: 1,
+            denied_taxi: 0,
+            denied_foot: 1,
+            denied_bike: 0,
+            denied_truck: 1,
         });
         assert_eq!(rp, "3,2,0,0,0,0,1,1,0,1,0,1");
     }
@@ -612,7 +385,7 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(result.get("RouteParam").unwrap(), "6,3,1,1,0,0,0,0,0,0,0,0");
         assert_eq!(result.get("DirIndicator").unwrap(), "1");
@@ -629,7 +402,7 @@ mod tests {
             ("SENS".into(), "Sens direct".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(result.get("Roundabout").unwrap(), "1");
     }
@@ -644,7 +417,7 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(result.get("MaxHeight").unwrap(), "350");
         assert_eq!(result.get("MaxWeight").unwrap(), "19000");
@@ -660,7 +433,7 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(result.get("DirIndicator").unwrap(), "-1");
         // oneway=1 in RouteParam
@@ -678,9 +451,9 @@ mod tests {
         ]);
         let mut counter = RoadIdCounter::new();
 
-        let r1 = compute_route_attrs(&source, &mut counter);
-        let r2 = compute_route_attrs(&source, &mut counter);
-        let r3 = compute_route_attrs(&source, &mut counter);
+        let r1 = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        let r2 = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        let r3 = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(r1.get("RoadID").unwrap(), "1");
         assert_eq!(r2.get("RoadID").unwrap(), "2");
@@ -697,20 +470,11 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         let rp = result.get("RouteParam").unwrap();
         // speed=3, class=1, oneway=0, toll=0, 0, 0, denied_car=1, denied_bus=1, 0, denied_foot=1, 0, denied_truck=1
         assert_eq!(rp, "3,1,0,0,0,0,1,1,0,1,0,1");
-    }
-
-    /// Test is_routable_layer
-    #[test]
-    fn test_is_routable_layer() {
-        assert!(is_routable_layer("TRONCON_DE_ROUTE"));
-        assert!(!is_routable_layer("COURS_D_EAU"));
-        assert!(!is_routable_layer("BATIMENT"));
-        assert!(!is_routable_layer(""));
     }
 
     /// Test no restrictions when RESTR_ fields are absent
@@ -721,7 +485,7 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert!(!result.contains_key("MaxHeight"));
         assert!(!result.contains_key("MaxWeight"));
@@ -737,7 +501,7 @@ mod tests {
             ("NATURE".into(), "Route à 1 chaussée".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert!(!result.contains_key("Roundabout"));
     }
@@ -752,7 +516,7 @@ mod tests {
             ("RESTR_P".into(), "0.00".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert!(!result.contains_key("MaxHeight"));
         assert!(!result.contains_key("MaxWeight"));
@@ -777,14 +541,17 @@ mod tests {
             ("NATURE".into(), "Type autoroutier".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let routing = compute_route_attrs(&source, &mut counter);
+        let routing = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         // Merge: routing wins for RouteParam, rule output kept for Type/Label
         rule_output.extend(routing);
 
         assert_eq!(rule_output.get("Type").unwrap(), "0x01");
         assert_eq!(rule_output.get("Label").unwrap(), "A6");
-        assert_eq!(rule_output.get("RouteParam").unwrap(), "7,4,0,0,0,0,0,0,0,0,0,0");
+        assert_eq!(
+            rule_output.get("RouteParam").unwrap(),
+            "7,4,0,0,0,0,0,0,0,0,0,0"
+        );
         assert!(rule_output.contains_key("RoadID"));
         assert!(rule_output.contains_key("DirIndicator"));
     }
@@ -803,8 +570,11 @@ mod tests {
             ("POS_SOL".into(), "1".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
-        assert!(result.get("Level").is_none(), "Level should no longer be injected");
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        assert!(
+            result.get("Level").is_none(),
+            "Level should no longer be injected"
+        );
     }
 
     /// Test MaxWidth and MaxLength
@@ -817,7 +587,7 @@ mod tests {
             ("RESTR_LON".into(), "12.00".into()),
         ]);
         let mut counter = RoadIdCounter::new();
-        let result = compute_route_attrs(&source, &mut counter);
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
 
         assert_eq!(result.get("MaxWidth").unwrap(), "250");
         assert_eq!(result.get("MaxLength").unwrap(), "1200");

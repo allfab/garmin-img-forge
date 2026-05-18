@@ -13,13 +13,13 @@ pub mod writer;
 
 use crate::cli::BuildArgs;
 use crate::config::{Config, ErrorMode, HeaderConfig, AUTO_ID};
-use crate::rules::{self, RuleStats, RulesFile};
-use crate::pipeline::geometry_smoother::{generalize_features_with_profiles, fill_level_gaps};
+use crate::pipeline::geometry_smoother::{fill_level_gaps, generalize_features_with_profiles};
 use crate::pipeline::geometry_validator::ValidationStats;
 use crate::pipeline::reader::{Feature, MultiGeometryStats, SourceReader, UnsupportedTypeStats};
 use crate::pipeline::tile_naming::resolve_tile_pattern;
-use crate::pipeline::tiler::{clip_feature_to_tile, TileProcessor, TileBounds};
+use crate::pipeline::tiler::{clip_feature_to_tile, TileBounds, TileProcessor};
 use crate::pipeline::writer::{ExportStats, MpWriter};
+use crate::rules::{self, RuleStats, RulesFile};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -158,32 +158,61 @@ impl SharedAccumulators {
 
     /// Extrait un TileExportSummary en consommant les Mutex.
     /// Appelé une fois après la fin du pipeline parallèle.
-    pub fn into_summary(self) -> (TileExportSummary, usize, UnsupportedTypeStats, MultiGeometryStats, RuleStats) {
+    pub fn into_summary(
+        self,
+    ) -> (
+        TileExportSummary,
+        usize,
+        UnsupportedTypeStats,
+        MultiGeometryStats,
+        RuleStats,
+    ) {
         let tiles_succeeded = self.tiles_succeeded.load(Ordering::Relaxed);
         let tiles_failed = self.tiles_failed.load(Ordering::Relaxed);
         let tiles_skipped = self.tiles_skipped.load(Ordering::Relaxed);
         let tiles_skipped_existing = self.tiles_skipped_existing.load(Ordering::Relaxed);
 
-        let global_stats = self.global_stats.into_inner()
+        let global_stats = self
+            .global_stats
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        let export_errors = self.export_errors.into_inner()
+        let export_errors = self
+            .export_errors
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        let global_validation_stats = self.global_validation_stats.into_inner()
+        let global_validation_stats = self
+            .global_validation_stats
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        let all_unsupported = self.all_unsupported.into_inner()
+        let all_unsupported = self
+            .all_unsupported
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        let all_multi_geom = self.all_multi_geom.into_inner()
+        let all_multi_geom = self
+            .all_multi_geom
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
-        let rules_stats = self.rules_stats.into_inner()
+        let rules_stats = self
+            .rules_stats
+            .into_inner()
             .unwrap_or_else(|e| e.into_inner());
 
         let mut summary = TileExportSummary::new(
-            tiles_succeeded, tiles_failed, tiles_skipped,
-            global_stats, export_errors,
+            tiles_succeeded,
+            tiles_failed,
+            tiles_skipped,
+            global_stats,
+            export_errors,
         );
         summary.validation_stats = Some(global_validation_stats);
 
-        (summary, tiles_skipped_existing, all_unsupported, all_multi_geom, rules_stats)
+        (
+            summary,
+            tiles_skipped_existing,
+            all_unsupported,
+            all_multi_geom,
+            rules_stats,
+        )
     }
 }
 
@@ -192,6 +221,7 @@ impl SharedAccumulators {
 struct TileContext<'a> {
     config: &'a Config,
     rules: Option<Arc<RulesFile>>,
+    routing_rules: Option<Arc<RulesFile>>,
     error_mode: ErrorMode,
     should_skip_existing: bool,
     dry_run: bool,
@@ -235,10 +265,13 @@ fn topo_feature_intersects_tile(feature: &Feature, tile: &TileBounds) -> bool {
         return false;
     }
     let (min_x, min_y, max_x, max_y) = feature.geometry.iter().fold(
-        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
-        |(mnx, mny, mxx, mxy), &(x, y)| {
-            (mnx.min(x), mny.min(y), mxx.max(x), mxy.max(y))
-        },
+        (
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ),
+        |(mnx, mny, mxx, mxy), &(x, y)| (mnx.min(x), mny.min(y), mxx.max(x), mxy.max(y)),
     );
     !(max_x < tile.min_lon || min_x > tile.max_lon || max_y < tile.min_lat || min_y > tile.max_lat)
 }
@@ -273,7 +306,11 @@ fn process_single_tile(
     }
 
     // 1. Load features filtered for this tile (each call opens its own GDAL datasets)
-    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(ctx.config, tile_bounds, &ctx.spatial_filter_geometries) {
+    let (features, unsupported, multi_geom) = match SourceReader::read_features_for_tile(
+        ctx.config,
+        tile_bounds,
+        &ctx.spatial_filter_geometries,
+    ) {
         Ok(result) => result,
         Err(e) => {
             if ctx.error_mode == ErrorMode::FailFast {
@@ -307,11 +344,22 @@ fn process_single_tile(
 
             // Story 14.1: Compute routing attributes from source BDTOPO attributes
             // BEFORE rules replace them (first-match-wins replaces all attributes).
-            let routing_attrs = if route_params::is_routable_layer(&layer_name) {
-                Some(route_params::compute_route_attrs(&feature.attributes, &mut road_id_counter))
-            } else {
-                None
-            };
+            let routing_attrs = ctx
+                .routing_rules
+                .as_ref()
+                .filter(|_| {
+                    ctx.config
+                        .routing
+                        .as_ref()
+                        .is_some_and(|routing| routing.source_layer == layer_name)
+                })
+                .map(|routing_rules| {
+                    route_params::compute_route_attrs(
+                        &feature.attributes,
+                        routing_rules,
+                        &mut road_id_counter,
+                    )
+                });
 
             match rules::find_ruleset(rules_file, &layer_name) {
                 None => {
@@ -399,7 +447,10 @@ fn process_single_tile(
             if ctx.error_mode == ErrorMode::FailFast {
                 return Err(TileExportError {
                     tile_id: tile_id.clone(),
-                    error_message: format!("Failed to create tile polygon for tile {}: {}", tile_id, e),
+                    error_message: format!(
+                        "Failed to create tile polygon for tile {}: {}",
+                        tile_id, e
+                    ),
                 });
             }
             warn!(
@@ -446,10 +497,8 @@ fn process_single_tile(
     // Les couches topology: true sont exclues ici (non_topo_profile_map) car
     // leurs additional_geometries ont déjà été calculées globalement en Phase 1.5.
     if !ctx.non_topo_profile_map.is_empty() {
-        let gen_count = generalize_features_with_profiles(
-            &mut clipped_features,
-            &ctx.non_topo_profile_map,
-        );
+        let gen_count =
+            generalize_features_with_profiles(&mut clipped_features, &ctx.non_topo_profile_map);
         tracing::debug!(
             tile_id = %tile_id,
             features_generalized = gen_count,
@@ -466,7 +515,9 @@ fn process_single_tile(
     // Pour les couches topology: true, on complète aussi les trous éventuels dus
     // à un clip multi-fragment (clip_level_coords_to_bbox → None pour ce niveau).
     for feature in clipped_features.iter_mut() {
-        let Some(layer_name) = feature.source_layer.as_deref() else { continue };
+        let Some(layer_name) = feature.source_layer.as_deref() else {
+            continue;
+        };
         if ctx.profile_map.contains_key(layer_name) {
             // Couche avec profil : on ne touche pas aux niveaux non-topology.
             // Pour les couches topology, combler les trous éventuels jusqu'au
@@ -480,7 +531,9 @@ fn process_single_tile(
             }
             continue;
         }
-        let end_level = feature.attributes.get("EndLevel")
+        let end_level = feature
+            .attributes
+            .get("EndLevel")
             .and_then(|s| s.parse::<u8>().ok())
             .unwrap_or(0);
         if end_level > 0 {
@@ -493,16 +546,13 @@ fn process_single_tile(
     }
 
     // 4. Resolve filename and check skip-existing
-    let tile_filename = resolve_tile_pattern(
-        ctx.filename_pattern,
-        tile_bounds.col,
-        tile_bounds.row,
-        seq,
-    )
-    .map_err(|e| TileExportError {
-        tile_id: tile_id.clone(),
-        error_message: format!("Failed to resolve filename pattern: {}", e),
-    })?;
+    let tile_filename =
+        resolve_tile_pattern(ctx.filename_pattern, tile_bounds.col, tile_bounds.row, seq).map_err(
+            |e| TileExportError {
+                tile_id: tile_id.clone(),
+                error_message: format!("Failed to resolve filename pattern: {}", e),
+            },
+        )?;
     let tile_path = PathBuf::from(ctx.output_directory).join(&tile_filename);
 
     if ctx.should_skip_existing && tile_path.exists() {
@@ -540,14 +590,21 @@ fn process_single_tile(
     // 7. Auto-generate unique tile ID if base_id is configured
     //    + resolve variable substitution on header.name ({col}, {row}, {seq})
     let tile_header_config;
-    let needs_name_resolve = ctx.config.header.as_ref()
+    let needs_name_resolve = ctx
+        .config
+        .header
+        .as_ref()
         .and_then(|h| h.name.as_deref())
         .map_or(false, |name| name.contains('{'));
 
     let needs_clone = needs_name_resolve || {
-        ctx.config.output.base_id.is_some() && ctx.config.header.as_ref()
-            .and_then(|h| h.id.as_deref())
-            .map_or(true, |id| id == AUTO_ID)
+        ctx.config.output.base_id.is_some()
+            && ctx
+                .config
+                .header
+                .as_ref()
+                .and_then(|h| h.id.as_deref())
+                .map_or(true, |id| id == AUTO_ID)
     };
 
     let effective_header = if needs_clone {
@@ -574,15 +631,12 @@ fn process_single_tile(
         // Resolve variable substitution on header.name ({col}, {row}, {seq})
         if let Some(ref name_pattern) = header.name {
             if name_pattern.contains('{') {
-                let resolved = resolve_tile_pattern(
-                    name_pattern,
-                    tile_bounds.col,
-                    tile_bounds.row,
-                    seq,
-                ).map_err(|e| TileExportError {
-                    tile_id: tile_id.clone(),
-                    error_message: format!("Failed to resolve header.name pattern: {}", e),
-                })?;
+                let resolved =
+                    resolve_tile_pattern(name_pattern, tile_bounds.col, tile_bounds.row, seq)
+                        .map_err(|e| TileExportError {
+                            tile_id: tile_id.clone(),
+                            error_message: format!("Failed to resolve header.name pattern: {}", e),
+                        })?;
                 header.name = Some(resolved);
             }
         }
@@ -594,7 +648,8 @@ fn process_single_tile(
     };
 
     // 7b. Compute routing graph (NodN= topology) for routable polylines in this tile.
-    let tile_routing_graph = routing_graph::compute_tile_routing_graph(&clipped_features, tile_bounds);
+    let tile_routing_graph =
+        routing_graph::compute_tile_routing_graph(&clipped_features, tile_bounds);
     if tile_routing_graph.total_nodes > 0 {
         info!(
             tile_id = %tile_id,
@@ -642,7 +697,10 @@ fn process_single_tile(
             if ctx.error_mode == ErrorMode::FailFast {
                 Err(TileExportError {
                     tile_id: tile_id.clone(),
-                    error_message: format!("Tile export failed (fail-fast mode): tile {}: {}", tile_id, e),
+                    error_message: format!(
+                        "Tile export failed (fail-fast mode): tile {}: {}",
+                        tile_id, e
+                    ),
                 })
             } else {
                 Ok(TileOutcome::Failed(TileExportError {
@@ -663,14 +721,20 @@ pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators
         TileOutcome::Success(result) => {
             accumulators.tiles_succeeded.fetch_add(1, Ordering::Relaxed);
             {
-                let mut stats = accumulators.global_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut stats = accumulators
+                    .global_stats
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 stats.point_count += result.stats.point_count;
                 stats.linestring_count += result.stats.linestring_count;
                 stats.polygon_count += result.stats.polygon_count;
                 stats.skipped_additional_geom += result.stats.skipped_additional_geom;
             }
             {
-                let mut vs = accumulators.global_validation_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut vs = accumulators
+                    .global_validation_stats
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 vs.valid_count += result.validation_stats.valid_count;
                 vs.repaired_make_valid += result.validation_stats.repaired_make_valid;
                 vs.repaired_buffer_zero += result.validation_stats.repaired_buffer_zero;
@@ -678,15 +742,24 @@ pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators
                 vs.rejected_irrecoverable += result.validation_stats.rejected_irrecoverable;
             }
             {
-                let mut us = accumulators.all_unsupported.lock().unwrap_or_else(|e| e.into_inner());
+                let mut us = accumulators
+                    .all_unsupported
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 us.merge(&result.unsupported);
             }
             {
-                let mut mg = accumulators.all_multi_geom.lock().unwrap_or_else(|e| e.into_inner());
+                let mut mg = accumulators
+                    .all_multi_geom
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 mg.merge(&result.multi_geom);
             }
             {
-                let mut rs = accumulators.rules_stats.lock().unwrap_or_else(|e| e.into_inner());
+                let mut rs = accumulators
+                    .rules_stats
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 rs.matched += result.rules_stats.matched;
                 rs.ignored += result.rules_stats.ignored;
                 rs.errors += result.rules_stats.errors;
@@ -701,12 +774,18 @@ pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators
         TileOutcome::Skipped { existing } => {
             accumulators.tiles_skipped.fetch_add(1, Ordering::Relaxed);
             if existing {
-                accumulators.tiles_skipped_existing.fetch_add(1, Ordering::Relaxed);
+                accumulators
+                    .tiles_skipped_existing
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
         TileOutcome::Failed(err) => {
             accumulators.tiles_failed.fetch_add(1, Ordering::Relaxed);
-            accumulators.export_errors.lock().unwrap_or_else(|e| e.into_inner()).push(err);
+            accumulators
+                .export_errors
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(err);
         }
     }
 }
@@ -730,7 +809,10 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Story 11.1: Log parallelism mode
     if args.jobs > 1 {
-        info!(jobs = args.jobs, "Pipeline parallèle : {} workers rayon", args.jobs);
+        info!(
+            jobs = args.jobs,
+            "Pipeline parallèle : {} workers rayon", args.jobs
+        );
     } else {
         info!("Pipeline séquentiel : 1 thread");
     }
@@ -738,8 +820,20 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // Load rules file if configured (Story 9.1: fail-fast before expensive processing)
     // Story 9.3: rules used for attribute transformation in the per-feature loop
     let rules: Option<RulesFile> = if let Some(rules_path) = &config.rules {
-        Some(rules::load_rules(rules_path)
-            .with_context(|| format!("Failed to load rules file: {}", rules_path.display()))?)
+        Some(
+            rules::load_rules(rules_path)
+                .with_context(|| format!("Failed to load rules file: {}", rules_path.display()))?,
+        )
+    } else {
+        None
+    };
+    let routing_rules: Option<RulesFile> = if let Some(routing) = &config.routing {
+        Some(rules::load_rules(&routing.rules).with_context(|| {
+            format!(
+                "Failed to load routing rules file: {}",
+                routing.rules.display()
+            )
+        })?)
     } else {
         None
     };
@@ -767,8 +861,12 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     // spatial filter envelope (prevents COURBE tiles from inflating the grid).
     // F2: Deduplicate by (source, buffer) to avoid rebuilding for wildcard-expanded sources
     // ========================================================================
-    let mut sf_cache: std::collections::HashMap<String, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
-    let mut spatial_filter_geometries: std::collections::HashMap<usize, reader::SpatialFilterGeometry> = std::collections::HashMap::new();
+    let mut sf_cache: std::collections::HashMap<String, reader::SpatialFilterGeometry> =
+        std::collections::HashMap::new();
+    let mut spatial_filter_geometries: std::collections::HashMap<
+        usize,
+        reader::SpatialFilterGeometry,
+    > = std::collections::HashMap::new();
     for (idx, input) in config.inputs.iter().enumerate() {
         if let Some(ref sf) = input.spatial_filter {
             let cache_key = format!("{}|{}", sf.source, sf.buffer);
@@ -782,10 +880,12 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
                     "Building spatial filter geometry for source"
                 );
                 let built = SourceReader::build_spatial_filter_from_pattern(&sf.source, sf.buffer)
-                    .with_context(|| format!(
-                        "Failed to build spatial filter geometry from '{}' for source index {}",
-                        sf.source, idx
-                    ))?;
+                    .with_context(|| {
+                        format!(
+                            "Failed to build spatial filter geometry from '{}' for source index {}",
+                            sf.source, idx
+                        )
+                    })?;
                 sf_cache.insert(cache_key, built.clone());
                 built
             };
@@ -836,7 +936,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Build envelope map for scan_extents: source_index → [minx, miny, maxx, maxy] in source SRS
     let sf_envelopes: std::collections::HashMap<usize, ([f64; 4], Option<String>)> =
-        spatial_filter_geometries.iter()
+        spatial_filter_geometries
+            .iter()
             .map(|(&idx, sf)| (idx, (sf.envelope, sf.srs.clone())))
             .collect();
 
@@ -939,8 +1040,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let accumulators = Arc::new(SharedAccumulators::new());
 
     // Story 8.3: Pre-calculate skip-existing flag
-    let should_skip_existing =
-        args.skip_existing || config.output.overwrite == Some(false);
+    let should_skip_existing = args.skip_existing || config.output.overwrite == Some(false);
 
     // Tech-spec #2 Task 10 : unified profile map (inline + external YAML)
     // résolue à `load_config`. Source de vérité UNIQUE pour la généralisation.
@@ -954,7 +1054,11 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             .filter_map(|p| p.max_level_index())
             .max()
             .unwrap_or(0);
-        if k > 0 { Some(k) } else { None }
+        if k > 0 {
+            Some(k)
+        } else {
+            None
+        }
     };
     if !profile_map.is_empty() {
         let layer_list: Vec<&str> = profile_map.keys().map(|s| s.as_str()).collect();
@@ -1014,19 +1118,20 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     let phase_15_start = Instant::now();
-    let spinner_15: Option<ProgressBar> = if !topo_layer_names.is_empty() && !all_tiles_exist && args.verbose < 2 {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.cyan}  {msg}")
-                .expect("valid spinner style"),
-        );
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Phase 1.5 : Pré-simplification topologique…");
-        Some(pb)
-    } else {
-        None
-    };
+    let spinner_15: Option<ProgressBar> =
+        if !topo_layer_names.is_empty() && !all_tiles_exist && args.verbose < 2 {
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.cyan}  {msg}")
+                    .expect("valid spinner style"),
+            );
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb.set_message("Phase 1.5 : Pré-simplification topologique…");
+            Some(pb)
+        } else {
+            None
+        };
 
     let topo_presimplified: Arc<Vec<Feature>> = if topo_layer_names.is_empty() || all_tiles_exist {
         Arc::new(Vec::new())
@@ -1037,19 +1142,17 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         );
         // Lire toutes les features (filtre spatial = globe entier → aucun filtre).
         let global_tb = TileBounds {
-            col: 0, row: 0,
+            col: 0,
+            row: 0,
             min_lon: global_extent.min_x - 1.0,
             min_lat: global_extent.min_y - 1.0,
             max_lon: global_extent.max_x + 1.0,
             max_lat: global_extent.max_y + 1.0,
             overlap: 0.0,
         };
-        let (mut all_features, _, _) = SourceReader::read_features_for_tile(
-            config,
-            &global_tb,
-            &*spatial_filter_geometries,
-        )
-        .context("Phase 1.5: lecture globale des couches topologiques")?;
+        let (mut all_features, _, _) =
+            SourceReader::read_features_for_tile(config, &global_tb, &*spatial_filter_geometries)
+                .context("Phase 1.5: lecture globale des couches topologiques")?;
 
         // Garder uniquement les couches topology.
         all_features.retain(|f| {
@@ -1065,14 +1168,21 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             let mut dummy_road_id = route_params::RoadIdCounter::new();
             for mut feature in all_features.into_iter() {
                 let layer_name = feature.source_layer.clone().unwrap_or_default();
-                let routing_attrs = if route_params::is_routable_layer(&layer_name) {
-                    Some(route_params::compute_route_attrs(
-                        &feature.attributes,
-                        &mut dummy_road_id,
-                    ))
-                } else {
-                    None
-                };
+                let routing_attrs = routing_rules
+                    .as_ref()
+                    .filter(|_| {
+                        config
+                            .routing
+                            .as_ref()
+                            .is_some_and(|routing| routing.source_layer == layer_name)
+                    })
+                    .map(|routing_rules| {
+                        route_params::compute_route_attrs(
+                            &feature.attributes,
+                            routing_rules,
+                            &mut dummy_road_id,
+                        )
+                    });
                 match rules::find_ruleset(rules_file, &layer_name) {
                     None => {
                         if let Some(r) = routing_attrs {
@@ -1105,10 +1215,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             .collect();
 
         // VW global : collect_shared_vertices voit toutes les communes ensemble.
-        let n = generalize_features_with_profiles(
-            &mut all_features,
-            &topo_profile_map,
-        );
+        let n = generalize_features_with_profiles(&mut all_features, &topo_profile_map);
         info!(
             features = all_features.len(),
             generalized = n,
@@ -1134,6 +1241,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     let ctx = TileContext {
         config,
         rules: rules.map(Arc::new),
+        routing_rules: routing_rules.map(Arc::new),
         error_mode,
         should_skip_existing,
         dry_run: args.dry_run,
@@ -1151,7 +1259,9 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
     // Inform user when no header section is configured
     if config.header.is_none() {
-        info!("Pas de section 'header' dans la config — les tuiles auront des métadonnées par défaut");
+        info!(
+            "Pas de section 'header' dans la config — les tuiles auront des métadonnées par défaut"
+        );
     }
 
     // Ces messages sont informatifs : le comportement est attendu pour une configuration valide.
@@ -1228,15 +1338,12 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         // Sequential mode: no rayon overhead (AC2)
         if fail_fast {
             for (idx, tile_bounds) in tiles.iter().enumerate() {
-                process_and_aggregate(
-                    tile_bounds, idx, &ctx, &progress, &accumulators,
-                ).map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
+                process_and_aggregate(tile_bounds, idx, &ctx, &progress, &accumulators)
+                    .map_err(|e| anyhow::anyhow!("{}", e.error_message))?;
             }
         } else {
             for (idx, tile_bounds) in tiles.iter().enumerate() {
-                let _ = process_and_aggregate(
-                    tile_bounds, idx, &ctx, &progress, &accumulators,
-                );
+                let _ = process_and_aggregate(tile_bounds, idx, &ctx, &progress, &accumulators);
             }
         }
     } else {
@@ -1248,17 +1355,16 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
         let parallel_result = pool.install(|| {
             if fail_fast {
-                tiles.par_iter().enumerate().try_for_each(|(idx, tile_bounds)| {
-                    process_and_aggregate(
-                        tile_bounds, idx, &ctx, &progress, &accumulators,
-                    )
-                })
+                tiles
+                    .par_iter()
+                    .enumerate()
+                    .try_for_each(|(idx, tile_bounds)| {
+                        process_and_aggregate(tile_bounds, idx, &ctx, &progress, &accumulators)
+                    })
             } else {
                 // Continue mode: process all tiles, collect errors
                 tiles.par_iter().enumerate().for_each(|(idx, tile_bounds)| {
-                    let _ = process_and_aggregate(
-                        tile_bounds, idx, &ctx, &progress, &accumulators,
-                    );
+                    let _ = process_and_aggregate(tile_bounds, idx, &ctx, &progress, &accumulators);
                 });
                 Ok(())
             }
@@ -1266,7 +1372,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
 
         if let Err(e) = parallel_result {
             return Err(anyhow::anyhow!(
-                "Parallel export failed (fail-fast): {}", e.error_message
+                "Parallel export failed (fail-fast): {}",
+                e.error_message
             ));
         }
     }
@@ -1351,7 +1458,8 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             })
             .collect(),
         quality,
-        rules_stats: if rules_stats.matched > 0 || rules_stats.ignored > 0 || rules_stats.errors > 0 {
+        rules_stats: if rules_stats.matched > 0 || rules_stats.ignored > 0 || rules_stats.errors > 0
+        {
             Some(rules_stats.clone())
         } else {
             None
@@ -1372,7 +1480,13 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
     }
 
     // Console summary
-    print_console_summary(&report, &config.output.directory, args, tiles_skipped_existing, &rules_stats);
+    print_console_summary(
+        &report,
+        &config.output.directory,
+        args,
+        tiles_skipped_existing,
+        &rules_stats,
+    );
 
     if !summary.is_success() {
         warn!(

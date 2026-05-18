@@ -149,17 +149,11 @@ fn validate_rules(rules_file: &RulesFile) -> anyhow::Result<()> {
         let ruleset_name = ruleset.name.as_deref().unwrap_or(&default_name);
 
         if ruleset.source_layer.is_empty() {
-            anyhow::bail!(
-                "Ruleset '{}': missing source_layer",
-                ruleset_name
-            );
+            anyhow::bail!("Ruleset '{}': missing source_layer", ruleset_name);
         }
 
         if ruleset.rules.is_empty() {
-            anyhow::bail!(
-                "Ruleset '{}': at least one rule is required",
-                ruleset_name
-            );
+            anyhow::bail!("Ruleset '{}': at least one rule is required", ruleset_name);
         }
 
         for (j, rule) in ruleset.rules.iter().enumerate() {
@@ -210,6 +204,9 @@ pub fn find_ruleset<'a>(rules: &'a RulesFile, layer_name: &str) -> Option<&'a Ru
 /// - `"^i:prefix"` → value starts with prefix (case-insensitive)
 /// - `"!^prefix"` → value does NOT start with prefix (case-sensitive)
 /// - `"!^i:prefix"` → value does NOT start with prefix (case-insensitive)
+/// - `"<N"`, `"<=N"`, `">N"`, `">=N"` → numeric comparison
+/// - `"range:A..B"` → numeric semi-open range (A <= value < B)
+/// - `"!<numeric-pattern>"` → negated numeric comparison/range
 /// - `"!<value>"` → not equal to `<value>`
 /// - anything else → strict equality
 pub fn evaluate_match(
@@ -217,12 +214,11 @@ pub fn evaluate_match(
     feature_attrs: &HashMap<String, String>,
 ) -> bool {
     for (field, pattern) in match_conditions {
-        let attr_value = feature_attrs
-            .get(field)
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let attr_value = feature_attrs.get(field).map(|s| s.as_str()).unwrap_or("");
 
-        let matches = if pattern == "*" {
+        let matches = if let Some(numeric) = evaluate_numeric_match(pattern, attr_value) {
+            numeric
+        } else if pattern == "*" {
             // Wildcard: always true
             true
         } else if pattern == "!!" {
@@ -239,13 +235,17 @@ pub fn evaluate_match(
             !list.split(',').any(|v| v.trim() == attr_value)
         } else if let Some(prefix) = pattern.strip_prefix("!^i:") {
             // Not-starts-with case-insensitive
-            !attr_value.to_lowercase().starts_with(&prefix.to_lowercase())
+            !attr_value
+                .to_lowercase()
+                .starts_with(&prefix.to_lowercase())
         } else if let Some(prefix) = pattern.strip_prefix("!^") {
             // Not-starts-with case-sensitive
             !attr_value.starts_with(prefix)
         } else if let Some(prefix) = pattern.strip_prefix("^i:") {
             // Starts-with case-insensitive
-            attr_value.to_lowercase().starts_with(&prefix.to_lowercase())
+            attr_value
+                .to_lowercase()
+                .starts_with(&prefix.to_lowercase())
         } else if let Some(prefix) = pattern.strip_prefix('^') {
             // Starts-with case-sensitive
             attr_value.starts_with(prefix)
@@ -264,6 +264,64 @@ pub fn evaluate_match(
     true
 }
 
+fn evaluate_numeric_match(pattern: &str, field_value: &str) -> Option<bool> {
+    if let Some(inner) = pattern.strip_prefix('!') {
+        if is_numeric_pattern(inner) {
+            if field_value.trim().parse::<f64>().is_err() {
+                return Some(false);
+            }
+            return evaluate_numeric_match(inner, field_value).map(|matched| !matched);
+        }
+        return None;
+    }
+
+    if let Some(range) = pattern.strip_prefix("range:") {
+        let value = match field_value.trim().parse::<f64>() {
+            Ok(value) => value,
+            Err(_) => return Some(false),
+        };
+        let (start, end) = range.split_once("..")?;
+        let start = start.trim().parse::<f64>().ok()?;
+        let end = end.trim().parse::<f64>().ok()?;
+        return Some(value >= start && value < end);
+    }
+
+    if let Some(threshold) = pattern.strip_prefix("<=") {
+        let value = match field_value.trim().parse::<f64>() {
+            Ok(value) => value,
+            Err(_) => return Some(false),
+        };
+        return Some(value <= threshold.trim().parse::<f64>().ok()?);
+    }
+    if let Some(threshold) = pattern.strip_prefix(">=") {
+        let value = match field_value.trim().parse::<f64>() {
+            Ok(value) => value,
+            Err(_) => return Some(false),
+        };
+        return Some(value >= threshold.trim().parse::<f64>().ok()?);
+    }
+    if let Some(threshold) = pattern.strip_prefix('<') {
+        let value = match field_value.trim().parse::<f64>() {
+            Ok(value) => value,
+            Err(_) => return Some(false),
+        };
+        return Some(value < threshold.trim().parse::<f64>().ok()?);
+    }
+    if let Some(threshold) = pattern.strip_prefix('>') {
+        let value = match field_value.trim().parse::<f64>() {
+            Ok(value) => value,
+            Err(_) => return Some(false),
+        };
+        return Some(value > threshold.trim().parse::<f64>().ok()?);
+    }
+
+    None
+}
+
+fn is_numeric_pattern(pattern: &str) -> bool {
+    pattern.starts_with("range:") || pattern.starts_with('<') || pattern.starts_with('>')
+}
+
 /// Apply set transformations to produce output attributes.
 ///
 /// Substitutes `${FIELD}` patterns with values from feature attributes.
@@ -278,10 +336,7 @@ pub fn apply_set(
         let value = SUBST_RE
             .replace_all(template, |caps: &regex::Captures| {
                 let field_name = &caps[1];
-                feature_attrs
-                    .get(field_name)
-                    .cloned()
-                    .unwrap_or_default()
+                feature_attrs.get(field_name).cloned().unwrap_or_default()
             })
             .to_string();
 
@@ -417,6 +472,52 @@ rulesets:
             Some(&"0x01".to_string())
         );
         assert!(validate_rules(&rules).is_ok());
+    }
+
+    fn matches_one(field_value: &str, pattern: &str) -> bool {
+        evaluate_match(
+            &HashMap::from([("FIELD".to_string(), pattern.to_string())]),
+            &HashMap::from([("FIELD".to_string(), field_value.to_string())]),
+        )
+    }
+
+    #[test]
+    fn test_numeric_match_lt() {
+        assert!(matches_one("5", "<10"));
+        assert!(matches_one("9.99", "<10"));
+        assert!(!matches_one("10", "<10"));
+        assert!(!matches_one("abc", "<10"));
+        assert!(!matches_one("", "<10"));
+    }
+
+    #[test]
+    fn test_numeric_match_lte() {
+        assert!(matches_one("10", "<=10"));
+        assert!(!matches_one("10.01", "<=10"));
+    }
+
+    #[test]
+    fn test_numeric_match_gte() {
+        assert!(matches_one("95", ">=95"));
+        assert!(matches_one("130", ">=95"));
+        assert!(!matches_one("94.9", ">=95"));
+    }
+
+    #[test]
+    fn test_numeric_match_range() {
+        assert!(matches_one("30", "range:30..45"));
+        assert!(matches_one("44", "range:30..45"));
+        assert!(matches_one("44.99", "range:30..45"));
+        assert!(!matches_one("45", "range:30..45"));
+        assert!(!matches_one("29.9", "range:30..45"));
+    }
+
+    #[test]
+    fn test_numeric_match_negation() {
+        assert!(matches_one("10", "!<10"));
+        assert!(!matches_one("9", "!<10"));
+        assert!(matches_one("45", "!range:30..45"));
+        assert!(!matches_one("abc", "!<10"));
     }
 
     #[test]
@@ -600,7 +701,9 @@ rulesets: []
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("test_rules.yaml");
         let mut f = std::fs::File::create(&file_path).unwrap();
-        write!(f, r#"version: 1
+        write!(
+            f,
+            r#"version: 1
 rulesets:
   - name: "Test"
     source_layer: "LAYER"
@@ -609,7 +712,9 @@ rulesets:
           FIELD: "value"
         set:
           Type: "0x01"
-"#).unwrap();
+"#
+        )
+        .unwrap();
         let result = load_rules(&file_path);
         assert!(result.is_ok());
         let rules_file = result.unwrap();
@@ -801,7 +906,10 @@ rulesets:
 
     #[test]
     fn test_match_in_list_with_spaces() {
-        let conditions = HashMap::from([("NATURE".into(), "in:Lieu-dit habité, Quartier, Ruines".into())]);
+        let conditions = HashMap::from([(
+            "NATURE".into(),
+            "in:Lieu-dit habité, Quartier, Ruines".into(),
+        )]);
         let attrs = HashMap::from([("NATURE".into(), "Quartier".into())]);
         assert!(evaluate_match(&conditions, &attrs));
     }
@@ -1218,7 +1326,10 @@ rulesets:
         label_case: "title"
 "#;
         let rules: RulesFile = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(rules.rulesets[0].rules[0].label_case, Some(LabelCase::Title));
+        assert_eq!(
+            rules.rulesets[0].rules[0].label_case,
+            Some(LabelCase::Title)
+        );
     }
 
     #[test]
@@ -1261,27 +1372,42 @@ rulesets:
 
     #[test]
     fn test_label_case_upper() {
-        assert_eq!(apply_label_case("mont blanc", LabelCase::Upper), "MONT BLANC");
+        assert_eq!(
+            apply_label_case("mont blanc", LabelCase::Upper),
+            "MONT BLANC"
+        );
     }
 
     #[test]
     fn test_label_case_lower() {
-        assert_eq!(apply_label_case("MONT BLANC", LabelCase::Lower), "mont blanc");
+        assert_eq!(
+            apply_label_case("MONT BLANC", LabelCase::Lower),
+            "mont blanc"
+        );
     }
 
     #[test]
     fn test_label_case_title() {
-        assert_eq!(apply_label_case("mont blanc", LabelCase::Title), "Mont Blanc");
+        assert_eq!(
+            apply_label_case("mont blanc", LabelCase::Title),
+            "Mont Blanc"
+        );
     }
 
     #[test]
     fn test_label_case_capitalize() {
-        assert_eq!(apply_label_case("mont blanc", LabelCase::Capitalize), "Mont blanc");
+        assert_eq!(
+            apply_label_case("mont blanc", LabelCase::Capitalize),
+            "Mont blanc"
+        );
     }
 
     #[test]
     fn test_label_case_none() {
-        assert_eq!(apply_label_case("Mont Blanc", LabelCase::None), "Mont Blanc");
+        assert_eq!(
+            apply_label_case("Mont Blanc", LabelCase::None),
+            "Mont Blanc"
+        );
     }
 
     // --- Unicode accent tests ---

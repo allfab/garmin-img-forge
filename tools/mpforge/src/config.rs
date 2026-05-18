@@ -11,9 +11,8 @@ use std::sync::LazyLock;
 use tracing::{debug, info, warn};
 
 /// Matches `${VAR_NAME}` placeholders (POSIX-valid variable names only).
-static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap()
-});
+static ENV_VAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap());
 
 #[derive(Debug, Deserialize)]
 // L6 code review : `deny_unknown_fields` signale une typo comme
@@ -37,6 +36,9 @@ pub struct Config {
     /// Optional path to YAML rules file for attribute transformation (Story 9.1)
     #[serde(default)]
     pub rules: Option<PathBuf>,
+    /// Optional routing post-processor configuration.
+    #[serde(default)]
+    pub routing: Option<RoutingConfig>,
     /// Global default: name of a field whose value uniquely identifies a feature
     /// within a single layer read. When set, features with duplicate values are
     /// skipped during reading. Features missing the field are always kept.
@@ -112,6 +114,12 @@ pub struct GridConfig {
     pub overlap: f64,
     #[serde(default)]
     pub origin: Option<[f64; 2]>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RoutingConfig {
+    pub source_layer: String,
+    pub rules: PathBuf,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -339,7 +347,11 @@ impl GeneralizeProfile {
     /// to size `MAX_DATA_LEVEL`.
     pub fn max_level_index(&self) -> Option<u8> {
         let default_max = self.levels.iter().map(|l| l.n).max();
-        let when_max = self.when.iter().flat_map(|w| w.levels.iter().map(|l| l.n)).max();
+        let when_max = self
+            .when
+            .iter()
+            .flat_map(|w| w.levels.iter().map(|l| l.n))
+            .max();
         match (default_max, when_max) {
             (Some(a), Some(b)) => Some(a.max(b)),
             (Some(a), None) => Some(a),
@@ -589,7 +601,7 @@ impl Config {
     ///   - conflict between an inline profile and an external profile on the
     ///     same layer name (motivates F4 semantics clarity);
     ///   - per-level out-of-range values (Task 6 bounds);
-    ///   - routable layers (`is_routable_layer`) that do not emit `n: 0` in
+    ///   - the configured routing source layer when it does not emit `n: 0` in
     ///     at least every reachable branch (F4 Tech-spec #1).
     pub fn build_profile_map(
         &self,
@@ -602,7 +614,9 @@ impl Config {
         //    level at n=0 (cf. `impl From<GeneralizeConfig>`).
         for input in &self.inputs {
             if let Some(ref inline) = input.generalize {
-                let Some(layer_name) = input.effective_layer_name() else { continue; };
+                let Some(layer_name) = input.effective_layer_name() else {
+                    continue;
+                };
                 let origin = input
                     .path
                     .clone()
@@ -627,12 +641,13 @@ impl Config {
                     full.display()
                 )
             })?;
-            let file: GeneralizeProfilesFile = serde_yml::from_str(&content).with_context(|| {
-                format!(
-                    "failed to parse generalize-profiles YAML: {}",
-                    full.display()
-                )
-            })?;
+            let file: GeneralizeProfilesFile =
+                serde_yml::from_str(&content).with_context(|| {
+                    format!(
+                        "failed to parse generalize-profiles YAML: {}",
+                        full.display()
+                    )
+                })?;
             for (layer, profile) in file.profiles {
                 if let Some(inline_path) = inline_origins.get(&layer) {
                     anyhow::bail!(
@@ -648,7 +663,10 @@ impl Config {
         // 3) Per-profile validation + F4 routing guard.
         for (layer, profile) in &map {
             profile.validate(&format!("generalize profile '{}'", layer))?;
-            if crate::pipeline::route_params::is_routable_layer(layer)
+            if self
+                .routing
+                .as_ref()
+                .is_some_and(|routing| routing.source_layer == *layer)
                 && !profile.every_branch_has_n0()
             {
                 anyhow::bail!(
@@ -715,7 +733,9 @@ impl Config {
                         map.insert(name, gen_config.clone());
                     }
                     None => {
-                        let source = input.path.as_deref()
+                        let source = input
+                            .path
+                            .as_deref()
                             .or(input.connection.as_deref())
                             .unwrap_or("<unknown>");
                         warn!(
@@ -774,7 +794,8 @@ impl Config {
                 if sf.buffer < 0.0 {
                     anyhow::bail!(
                         "InputSource #{}: spatial_filter.buffer must not be negative, got {}",
-                        i, sf.buffer
+                        i,
+                        sf.buffer
                     );
                 }
             }
@@ -791,7 +812,8 @@ impl Config {
                     if tol <= 0.0 {
                         anyhow::bail!(
                             "InputSource #{}: generalize.simplify must be positive, got {}",
-                            i, tol
+                            i,
+                            tol
                         );
                     }
                 }
@@ -800,9 +822,36 @@ impl Config {
                         anyhow::bail!(
                             "InputSource #{}: unknown generalize.smooth algorithm '{}' \
                              (supported: \"chaikin\")",
-                            i, algo
+                            i,
+                            algo
                         );
                     }
+                }
+            }
+        }
+
+        if let Some(routing) = &self.routing {
+            if routing.source_layer.trim().is_empty() {
+                anyhow::bail!("routing.source_layer must not be empty");
+            }
+            if routing.rules.as_os_str().is_empty() {
+                anyhow::bail!("routing.rules must not be empty");
+            }
+            let layer_present = self.inputs.iter().any(|input| {
+                input.effective_layer_name().as_deref() == Some(routing.source_layer.as_str())
+            });
+            if !layer_present {
+                anyhow::bail!(
+                    "routing.source_layer '{}' déclaré mais aucune entrée inputs[] ne correspond",
+                    routing.source_layer
+                );
+            }
+        } else {
+            for input in &self.inputs {
+                if input.effective_layer_name().as_deref() == Some("TRONCON_DE_ROUTE") {
+                    anyhow::bail!(
+                        "couche routable 'TRONCON_DE_ROUTE' présente en inputs[] mais aucun bloc racine routing: configuré"
+                    );
                 }
             }
         }
@@ -870,8 +919,12 @@ impl Config {
         }
 
         // Filename pattern validation (Story 8.2)
-        tile_naming::validate_tile_pattern(&self.output.filename_pattern)
-            .with_context(|| format!("Invalid filename_pattern: '{}'", self.output.filename_pattern))?;
+        tile_naming::validate_tile_pattern(&self.output.filename_pattern).with_context(|| {
+            format!(
+                "Invalid filename_pattern: '{}'",
+                self.output.filename_pattern
+            )
+        })?;
 
         // Output field_mapping_path validation removed (Story 7.4)
         // Validation moved to MpWriter::new() to avoid race condition in parallel mode
@@ -904,7 +957,10 @@ impl Config {
                                 min = min,
                                 max = max,
                                 "header.{} = {} hors de la plage recommandée [{}, {}]",
-                                field_name, n, min, max
+                                field_name,
+                                n,
+                                min,
+                                max
                             );
                         }
                         Err(_) => {
@@ -1098,6 +1154,13 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     }
     config.inputs = expanded_inputs;
 
+    let base_dir = path.parent().unwrap_or(Path::new("."));
+    if let Some(routing) = &mut config.routing {
+        if !routing.rules.is_absolute() {
+            routing.rules = base_dir.join(&routing.rules);
+        }
+    }
+
     // Validation error context (after wildcard expansion so input count is accurate)
     config
         .validate()
@@ -1106,9 +1169,11 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     // Tech-spec #2 Task 7: resolve external generalize profiles (if any) and
     // merge with inline entries. Fails fast on conflicts, invalid bounds, or
     // routable-layer violations (F4). Stored on the Config for downstream use.
-    let base_dir = path.parent().unwrap_or(Path::new("."));
     config.resolved_profile_map = config.build_profile_map(base_dir).with_context(|| {
-        format!("generalize profile resolution failed for: {}", path.display())
+        format!(
+            "generalize profile resolution failed for: {}",
+            path.display()
+        )
     })?;
 
     // Log source type for each input
@@ -1141,9 +1206,7 @@ pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
 /// 5. Header template existence
 ///
 /// If `load_config()` fails (YAML syntax or semantic error), remaining checks are skipped.
-pub fn run_validate(
-    config_path: &str,
-) -> anyhow::Result<crate::report::ValidationReport> {
+pub fn run_validate(config_path: &str) -> anyhow::Result<crate::report::ValidationReport> {
     use crate::report::*;
 
     let mut checks = Vec::new();
@@ -1236,6 +1299,13 @@ pub fn run_validate(
     }
     config.inputs = expanded_inputs;
 
+    let config_base_dir = Path::new(config_path).parent().unwrap_or(Path::new("."));
+    if let Some(routing) = &mut config.routing {
+        if !routing.rules.is_absolute() {
+            routing.rules = config_base_dir.join(&routing.rules);
+        }
+    }
+
     // Step 1c: Semantic validation (structurally separate from YAML parsing)
     if let Err(e) = config.validate() {
         let err_msg = format!("{:#}", e);
@@ -1294,7 +1364,9 @@ pub fn run_validate(
     }
 
     if input_count == 0 {
-        warnings.push("No input file paths to check (all inputs may be PostGIS connections)".to_string());
+        warnings.push(
+            "No input file paths to check (all inputs may be PostGIS connections)".to_string(),
+        );
     }
 
     // Step 3: Rules file (optional)
@@ -1330,6 +1402,39 @@ pub fn run_validate(
         });
     }
 
+    if let Some(ref routing) = config.routing {
+        match crate::rules::load_rules(&routing.rules) {
+            Ok(rules_file) => {
+                let total_rules: usize = rules_file.rulesets.iter().map(|rs| rs.rules.len()).sum();
+                checks.push(ValidationCheck {
+                    name: "routing_rules_file".to_string(),
+                    status: CheckStatus::Pass,
+                    details: format!(
+                        "{} rulesets, {} rules total for source_layer {}",
+                        rules_file.rulesets.len(),
+                        total_rules,
+                        routing.source_layer
+                    ),
+                });
+            }
+            Err(e) => {
+                let err_msg = format!("Routing rules file error: {:#}", e);
+                checks.push(ValidationCheck {
+                    name: "routing_rules_file".to_string(),
+                    status: CheckStatus::Fail,
+                    details: err_msg.clone(),
+                });
+                errors.push(err_msg);
+            }
+        }
+    } else {
+        checks.push(ValidationCheck {
+            name: "routing_rules_file".to_string(),
+            status: CheckStatus::Skipped,
+            details: "Not configured".to_string(),
+        });
+    }
+
     // Step 4: Field mapping (optional)
     if let Some(ref mapping_path) = config.output.field_mapping_path {
         match crate::pipeline::writer::validate_field_mapping(mapping_path) {
@@ -1355,7 +1460,8 @@ pub fn run_validate(
             name: "field_mapping".to_string(),
             status: CheckStatus::Skipped,
             details: "Not configured (optional — renomme les clés d'attributs GDAL bruts \
-                      avant l'application des règles garmin-rules.yaml)".to_string(),
+                      avant l'application des règles garmin-rules.yaml)"
+                .to_string(),
         });
     }
 
@@ -1489,7 +1595,11 @@ pub fn run_validate(
             }
             checks.push(ValidationCheck {
                 name: "spatial_filter".to_string(),
-                status: if all_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if all_ok {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 details: details_parts.join("\n"),
             });
         }
@@ -1514,14 +1624,13 @@ pub fn run_validate(
                 base_dir_gen.join(path)
             };
             if resolved.exists() {
-                let (profile_count, level_count) =
-                    match config.build_profile_map(base_dir_gen) {
-                        Ok(map) => {
-                            let lc: usize = map.values().map(|p| p.levels.len()).sum();
-                            (map.len(), lc)
-                        }
-                        Err(_) => (0, 0),
-                    };
+                let (profile_count, level_count) = match config.build_profile_map(base_dir_gen) {
+                    Ok(map) => {
+                        let lc: usize = map.values().map(|p| p.levels.len()).sum();
+                        (map.len(), lc)
+                    }
+                    Err(_) => (0, 0),
+                };
                 gen_details.push(format!(
                     "catalog: {} ({} profil(s), {} niveau(x))",
                     path.display(),
@@ -1565,10 +1674,16 @@ pub fn run_validate(
                 details: "Not configured".to_string(),
             });
         } else {
-            let all_ok = !errors.iter().any(|e| e.contains("generalize_profiles_path"));
+            let all_ok = !errors
+                .iter()
+                .any(|e| e.contains("generalize_profiles_path"));
             checks.push(ValidationCheck {
                 name: "generalize".to_string(),
-                status: if all_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if all_ok {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 details: gen_details.join("\n"),
             });
         }
@@ -1631,10 +1746,7 @@ pub fn run_validate(
                 let profile_count = profile_map.len();
                 let level_count: usize = profile_map
                     .values()
-                    .map(|p| {
-                        p.levels.len()
-                            + p.when.iter().map(|w| w.levels.len()).sum::<usize>()
-                    })
+                    .map(|p| p.levels.len() + p.when.iter().map(|w| w.levels.len()).sum::<usize>())
                     .sum();
                 checks.push(ValidationCheck {
                     name: "profile_catalog".to_string(),
@@ -1647,10 +1759,7 @@ pub fn run_validate(
                 });
             }
             Err(e) => {
-                let err_msg = format!(
-                    "profile_catalog : chargement échoué\n  → {:#}",
-                    e
-                );
+                let err_msg = format!("profile_catalog : chargement échoué\n  → {:#}", e);
                 checks.push(ValidationCheck {
                     name: "profile_catalog".to_string(),
                     status: CheckStatus::Fail,
@@ -1967,6 +2076,7 @@ output:
             error_handling: "continue".to_string(),
             header: None,
             rules: None,
+            routing: None,
             default_dedup_by_field: None,
             generalize_profiles_path: None,
             resolved_profile_map: Default::default(),
@@ -2057,7 +2167,10 @@ filters:
             path: Some("/data/LIEUX_NOMMES/ZONE_D_HABITATION.shp".to_string()),
             ..Default::default()
         };
-        assert_eq!(input.effective_layer_name(), Some("ZONE_D_HABITATION".to_string()));
+        assert_eq!(
+            input.effective_layer_name(),
+            Some("ZONE_D_HABITATION".to_string())
+        );
     }
 
     #[test]
@@ -2189,7 +2302,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("iterations must be >= 1"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("iterations must be >= 1"));
     }
 
     #[test]
@@ -2208,7 +2324,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("simplify must be positive"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("simplify must be positive"));
     }
 
     #[test]
@@ -2227,7 +2346,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown generalize.smooth algorithm"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unknown generalize.smooth algorithm"));
     }
 
     #[test]
@@ -2399,14 +2521,8 @@ output:
         );
 
         // Empty alternatives are filtered out
-        assert_eq!(
-            expand_braces("data/{D038,}/file"),
-            vec!["data/D038/file"]
-        );
-        assert_eq!(
-            expand_braces("data/{,D038}/file"),
-            vec!["data/D038/file"]
-        );
+        assert_eq!(expand_braces("data/{D038,}/file"), vec!["data/D038/file"]);
+        assert_eq!(expand_braces("data/{,D038}/file"), vec!["data/D038/file"]);
     }
 
     // Story 7.4: field_mapping_path tests
@@ -2558,7 +2674,10 @@ header:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         // Should pass - validation happens at usage time in MpWriter::new()
-        assert!(result.is_ok(), "Config validation should not check template existence (TOCTOU fix)");
+        assert!(
+            result.is_ok(),
+            "Config validation should not check template existence (TOCTOU fix)"
+        );
     }
 
     #[test]
@@ -2598,6 +2717,65 @@ inputs:
 output:
   directory: "tiles/"
   filename_pattern: "{col:03}_{row:03}.mp"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_validate_troncon_de_route_requires_routing_block() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/TRONCON_DE_ROUTE.shp"
+output:
+  directory: "tiles/"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("couche routable 'TRONCON_DE_ROUTE' présente en inputs[] mais aucun bloc racine routing: configuré"),
+            "error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_config_validate_routing_source_layer_must_match_input() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/COMMUNE.shp"
+output:
+  directory: "tiles/"
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: "routing-rules.yaml"
+"#;
+        let config: Config = serde_yml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("routing.source_layer 'TRONCON_DE_ROUTE' déclaré mais aucune entrée inputs[] ne correspond"),
+            "error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_config_validate_routing_source_layer_nominal() {
+        let yaml = r#"
+version: 1
+grid:
+  cell_size: 0.15
+inputs:
+  - path: "data/TRONCON_DE_ROUTE.shp"
+output:
+  directory: "tiles/"
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: "routing-rules.yaml"
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
         assert!(config.validate().is_ok());
@@ -2704,14 +2882,8 @@ output:
   directory: "tiles/"
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(
-            config.inputs[0].source_srs,
-            Some("EPSG:2154".to_string())
-        );
-        assert_eq!(
-            config.inputs[0].target_srs,
-            Some("EPSG:4326".to_string())
-        );
+        assert_eq!(config.inputs[0].source_srs, Some("EPSG:2154".to_string()));
+        assert_eq!(config.inputs[0].target_srs, Some("EPSG:4326".to_string()));
         assert!(config.validate().is_ok());
     }
 
@@ -2728,10 +2900,7 @@ output:
   directory: "tiles/"
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(
-            config.inputs[0].source_srs,
-            Some("EPSG:2154".to_string())
-        );
+        assert_eq!(config.inputs[0].source_srs, Some("EPSG:2154".to_string()));
         assert!(config.inputs[0].target_srs.is_none());
         assert!(config.validate().is_ok());
     }
@@ -2809,10 +2978,7 @@ output:
 "#;
         let config: Config = serde_yml::from_str(yaml).unwrap();
         assert!(config.inputs[0].source_srs.is_none());
-        assert_eq!(
-            config.inputs[0].target_srs,
-            Some("EPSG:4326".to_string())
-        );
+        assert_eq!(config.inputs[0].target_srs, Some("EPSG:4326".to_string()));
         // Should validate OK (warning only, not error)
         assert!(config.validate().is_ok());
     }
@@ -2968,8 +3134,8 @@ header:
     #[test]
     fn test_run_validate_valid_minimal_config() {
         use crate::report::{CheckStatus, ValidationStatus};
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         // Create a minimal valid YAML config with an existing file as input
         let mut input_file = NamedTempFile::new().unwrap();
@@ -3000,19 +3166,36 @@ output:
 
         // Should have yaml_syntax (pass), semantic (pass), input_files (pass),
         // plus skipped checks for rules, field_mapping, header_template
-        let passed: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Pass).collect();
-        assert!(passed.len() >= 3, "Expected at least 3 passed checks, got {}", passed.len());
+        let passed: Vec<_> = report
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Pass)
+            .collect();
+        assert!(
+            passed.len() >= 3,
+            "Expected at least 3 passed checks, got {}",
+            passed.len()
+        );
 
-        let skipped: Vec<_> = report.checks.iter().filter(|c| c.status == CheckStatus::Skipped).collect();
-        // profile_catalog retourne Pass (carte vide OK) — 5 skipped : rules, field_mapping, header_template, spatial_filter, generalize
-        assert_eq!(skipped.len(), 5, "Expected 5 skipped checks (rules, field_mapping, header_template, spatial_filter, generalize)");
+        let skipped: Vec<_> = report
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Skipped)
+            .collect();
+        // profile_catalog retourne Pass (carte vide OK) — 6 skipped : rules,
+        // routing_rules, field_mapping, header_template, spatial_filter, generalize
+        assert_eq!(
+            skipped.len(),
+            6,
+            "Expected 6 skipped checks (rules, routing_rules, field_mapping, header_template, spatial_filter, generalize)"
+        );
     }
 
     #[test]
     fn test_run_validate_invalid_yaml_syntax() {
         use crate::report::{CheckStatus, ValidationStatus};
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let yaml = "grid:\n  cell_size: [invalid yaml\n  broken:";
         let mut config_file = NamedTempFile::new().unwrap();
@@ -3023,15 +3206,19 @@ output:
         assert_eq!(report.status, ValidationStatus::Invalid);
         assert!(!report.errors.is_empty());
 
-        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        let yaml_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "yaml_syntax")
+            .unwrap();
         assert_eq!(yaml_check.status, CheckStatus::Fail);
     }
 
     #[test]
     fn test_run_validate_semantic_error() {
         use crate::report::{CheckStatus, ValidationStatus};
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         // Valid YAML but invalid semantics (negative cell_size)
         let yaml = r#"
@@ -3050,12 +3237,22 @@ output:
         let report = run_validate(&config_path).unwrap();
         assert_eq!(report.status, ValidationStatus::Invalid);
 
-        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        let yaml_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "yaml_syntax")
+            .unwrap();
         assert_eq!(yaml_check.status, CheckStatus::Pass);
 
-        let semantic_check = report.checks.iter().find(|c| c.name == "semantic_validation").unwrap();
+        let semantic_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "semantic_validation")
+            .unwrap();
         assert_eq!(semantic_check.status, CheckStatus::Fail);
-        assert!(semantic_check.details.contains("cell_size must be positive"));
+        assert!(semantic_check
+            .details
+            .contains("cell_size must be positive"));
     }
 
     #[test]
@@ -3065,7 +3262,11 @@ output:
         let report = run_validate("/nonexistent/path/config.yaml").unwrap();
         assert_eq!(report.status, ValidationStatus::Invalid);
 
-        let yaml_check = report.checks.iter().find(|c| c.name == "yaml_syntax").unwrap();
+        let yaml_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "yaml_syntax")
+            .unwrap();
         assert_eq!(yaml_check.status, CheckStatus::Fail);
     }
 
@@ -3088,7 +3289,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("buffer must not be negative"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("buffer must not be negative"));
     }
 
     #[test]
@@ -3107,7 +3311,10 @@ output:
         let config: Config = serde_yml::from_str(yaml).unwrap();
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("source must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("source must not be empty"));
     }
 
     #[test]
@@ -3132,9 +3339,9 @@ output:
 
     #[test]
     fn test_run_validate_spatial_filter_missing_file() {
-        use crate::report::{CheckStatus};
-        use tempfile::NamedTempFile;
+        use crate::report::CheckStatus;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut input_file = NamedTempFile::new().unwrap();
         write!(input_file, "dummy").unwrap();
@@ -3160,16 +3367,20 @@ output:
         let config_path = config_file.path().to_str().unwrap().to_string();
 
         let report = run_validate(&config_path).unwrap();
-        let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
+        let sf_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "spatial_filter")
+            .unwrap();
         assert_eq!(sf_check.status, CheckStatus::Fail);
         assert!(sf_check.details.contains("introuvable"));
     }
 
     #[test]
     fn test_run_validate_spatial_filter_existing_file() {
-        use crate::report::{CheckStatus};
-        use tempfile::NamedTempFile;
+        use crate::report::CheckStatus;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut input_file = NamedTempFile::new().unwrap();
         write!(input_file, "dummy").unwrap();
@@ -3199,7 +3410,11 @@ output:
         let config_path = config_file.path().to_str().unwrap().to_string();
 
         let report = run_validate(&config_path).unwrap();
-        let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
+        let sf_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "spatial_filter")
+            .unwrap();
         assert_eq!(sf_check.status, CheckStatus::Pass);
     }
 
@@ -3208,8 +3423,8 @@ output:
         // Régression : N inputs partageant le même spatial_filter.source ne doivent
         // produire qu'une seule entrée groupée dans details, pas N lignes répétées.
         use crate::report::CheckStatus;
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut input1 = NamedTempFile::new().unwrap();
         write!(input1, "dummy").unwrap();
@@ -3242,19 +3457,27 @@ output:
         write!(config_file, "{}", yaml).unwrap();
         let report = run_validate(config_file.path().to_str().unwrap()).unwrap();
 
-        let sf_check = report.checks.iter().find(|c| c.name == "spatial_filter").unwrap();
+        let sf_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "spatial_filter")
+            .unwrap();
         assert_eq!(sf_check.status, CheckStatus::Pass);
         // Deux inputs partageant la même source → une seule ligne groupée.
         let lines: Vec<&str> = sf_check.details.lines().collect();
         assert_eq!(lines.len(), 1, "got: {}", sf_check.details);
-        assert!(sf_check.details.contains("inputs #0-#1 (2)"), "got: {}", sf_check.details);
+        assert!(
+            sf_check.details.contains("inputs #0-#1 (2)"),
+            "got: {}",
+            sf_check.details
+        );
     }
 
     #[test]
     fn test_run_validate_generalize_check_present() {
-        use crate::report::{CheckStatus};
-        use tempfile::NamedTempFile;
+        use crate::report::CheckStatus;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut input_file = NamedTempFile::new().unwrap();
         write!(input_file, "dummy").unwrap();
@@ -3281,7 +3504,11 @@ output:
         let config_path = config_file.path().to_str().unwrap().to_string();
 
         let report = run_validate(&config_path).unwrap();
-        let gen_check = report.checks.iter().find(|c| c.name == "generalize").unwrap();
+        let gen_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "generalize")
+            .unwrap();
         assert_eq!(gen_check.status, CheckStatus::Pass);
         assert!(gen_check.details.contains("smooth=chaikin"));
         assert!(gen_check.details.contains("iterations=2"));
@@ -3492,14 +3719,22 @@ output:
 
         let cfg = load_config(tmp.path().join("sources.yaml")).unwrap();
         assert!(cfg.resolved_profile_map.contains_key("ZONE_D_HABITATION"));
-        assert!(cfg.resolved_profile_map.contains_key("TRONCON_HYDROGRAPHIQUE"));
-        assert_eq!(cfg.resolved_profile_map["TRONCON_HYDROGRAPHIQUE"].levels.len(), 2);
+        assert!(cfg
+            .resolved_profile_map
+            .contains_key("TRONCON_HYDROGRAPHIQUE"));
+        assert_eq!(
+            cfg.resolved_profile_map["TRONCON_HYDROGRAPHIQUE"]
+                .levels
+                .len(),
+            2
+        );
     }
 
     #[test]
     fn test_build_profile_map_conflict_fail_fast() {
         let tmp = tempfile::tempdir().unwrap();
-        let body = "profiles:\n  ZONE_D_HABITATION:\n    levels:\n      - { n: 0, simplify: 0.0001 }\n";
+        let body =
+            "profiles:\n  ZONE_D_HABITATION:\n    levels:\n      - { n: 0, simplify: 0.0001 }\n";
         write_profiles_yaml(tmp.path(), body);
         write_sources_yaml(tmp.path(), Some("generalize-profiles.yaml"));
 
@@ -3524,11 +3759,15 @@ output:
 grid:
   cell_size: 0.15
 inputs:
-  - path: "data/ROUTE.shp"
+  - path: "data/TRONCON_DE_ROUTE.shp"
 output:
   directory: "tiles/"
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: "routing-rules.yaml"
 generalize_profiles_path: "generalize-profiles.yaml"
 "#;
+        std::fs::write(tmp.path().join("routing-rules.yaml"), "version: 1\nrulesets:\n  - source_layer: TRONCON_DE_ROUTE\n    rules:\n      - match: { NATURE: \"*\" }\n        set: { Speed: \"0\" }\n").unwrap();
         std::fs::write(tmp.path().join("sources.yaml"), sources).unwrap();
         let err = format!(
             "{:#}",
@@ -3558,11 +3797,15 @@ generalize_profiles_path: "generalize-profiles.yaml"
 grid:
   cell_size: 0.15
 inputs:
-  - path: "data/ROUTE.shp"
+  - path: "data/TRONCON_DE_ROUTE.shp"
 output:
   directory: "tiles/"
+routing:
+  source_layer: TRONCON_DE_ROUTE
+  rules: "routing-rules.yaml"
 generalize_profiles_path: "generalize-profiles.yaml"
 "#;
+        std::fs::write(tmp.path().join("routing-rules.yaml"), "version: 1\nrulesets:\n  - source_layer: TRONCON_DE_ROUTE\n    rules:\n      - match: { NATURE: \"*\" }\n        set: { Speed: \"0\" }\n").unwrap();
         std::fs::write(tmp.path().join("sources.yaml"), sources).unwrap();
         let err = format!(
             "{:#}",
