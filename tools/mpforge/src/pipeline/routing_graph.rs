@@ -9,6 +9,7 @@ use garmin_routing_graph::{coord_to_node_id_with_level, NodEntry};
 use std::collections::{HashMap, HashSet};
 
 use crate::pipeline::reader::Feature;
+use crate::pipeline::route_params::TOPOLOGY_LEVEL_ATTR;
 use crate::pipeline::tiler::TileBounds;
 
 /// Routing graph computed for a single tile.
@@ -37,7 +38,8 @@ type TopologyKey = (i32, i32, i32); // (lat_q, lon_q, level)
 fn topology_level(feature: &Feature) -> i32 {
     let raw = feature
         .attributes
-        .get("POS_SOL")
+        .get(TOPOLOGY_LEVEL_ATTR)
+        .or_else(|| feature.attributes.get("POS_SOL"))
         .map(|value| value.trim())
         .unwrap_or("");
     match raw {
@@ -369,6 +371,32 @@ mod tests {
         assert_ne!(
             ground_start, bridge_start,
             "same coordinate on different POS_SOL levels must not connect"
+        );
+    }
+
+    #[test]
+    fn test_internal_topology_level_survives_rule_attribute_replacement() {
+        // Routing graph runs after public rules have replaced BDTOPO attributes.
+        // routing-rules.yaml preserves POS_SOL under this internal key.
+        let tile = make_tile(5.0, 45.0, 6.0, 46.0);
+        let mut road_ground = routable_feature(vec![(5.5, 45.5), (5.6, 45.6)]);
+        road_ground
+            .attributes
+            .insert(TOPOLOGY_LEVEL_ATTR.to_string(), "0".to_string());
+
+        let mut road_bridge = routable_feature(vec![(5.5, 45.5), (5.4, 45.4)]);
+        road_bridge
+            .attributes
+            .insert("RoadID".to_string(), "2".to_string());
+        road_bridge
+            .attributes
+            .insert(TOPOLOGY_LEVEL_ATTR.to_string(), "1".to_string());
+
+        let graph = compute_tile_routing_graph(&[road_ground, road_bridge], &tile);
+
+        assert_ne!(
+            graph.per_feature[0][0].node_id, graph.per_feature[1][0].node_id,
+            "internal POS_SOL copy must keep overpass topology levels distinct"
         );
     }
 

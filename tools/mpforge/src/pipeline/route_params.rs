@@ -10,6 +10,12 @@ use crate::rules::{self, RulesFile};
 use std::collections::HashMap;
 use tracing::debug;
 
+/// Internal routing-only topology level attribute.
+///
+/// Its value is produced declaratively by routing rules. This key is
+/// deliberately skipped by the MP writer.
+pub const TOPOLOGY_LEVEL_ATTR: &str = "__mpforge_pos_sol";
+
 /// Thread-local road ID counter for sequential assignment within a tile.
 pub struct RoadIdCounter {
     next_id: u32,
@@ -214,6 +220,13 @@ pub fn compute_route_attrs(
     // RoadID auto-incremental
     let road_id = road_id_counter.next_id();
     result.insert("RoadID".to_string(), road_id.to_string());
+
+    result.extend(
+        attrs
+            .iter()
+            .filter(|(key, _)| key.starts_with("__mpforge_"))
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
 
     if attrs.get("Roundabout").map(|v| v == "1").unwrap_or(false) {
         result.insert("Roundabout".to_string(), "1".to_string());
@@ -557,9 +570,9 @@ mod tests {
     }
 
     // =========================================================================
-    // POS_SOL — Level field no longer injected (driver ogr-polishmap does not
-    // support "Level", only "EndLevel"). graph_builder.rs reads Level from the
-    // parsed .mp other_fields but it was never written, so always defaults to 0.
+    // POS_SOL — no public Level field is injected (driver ogr-polishmap does
+    // not support "Level", only "EndLevel"). The routing rules can still set
+    // the internal topology attribute declaratively.
     // =========================================================================
 
     #[test]
@@ -575,6 +588,7 @@ mod tests {
             result.get("Level").is_none(),
             "Level should no longer be injected"
         );
+        assert_eq!(result.get(TOPOLOGY_LEVEL_ATTR).unwrap(), "1");
     }
 
     /// Test MaxWidth and MaxLength

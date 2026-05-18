@@ -1,6 +1,12 @@
 version: 1
 
 rulesets:
+  - name: topology_level_from_pos_sol
+    source_layer: TRONCON_DE_ROUTE
+    rules:
+      - match: { POS_SOL: "!!" }
+        set: { __mpforge_pos_sol: "${POS_SOL}" }
+
   - name: speed_from_vit
     source_layer: TRONCON_DE_ROUTE
     rules:

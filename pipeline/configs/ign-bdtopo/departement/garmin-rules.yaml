@@ -63,13 +63,14 @@ rulesets:
           Label: "${NUMERO}"
 
       # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
-
-      # 7. Route a 1 chaussee
+     # 7. Route a 1 chaussee
       - match:
           NATURE: "Route à 1 chaussée"
         set:
           Type: "0x06"
           EndLevel: "0"
+
+
 
       # 8. Route a 2 chaussees
       - match:
@@ -77,8 +78,7 @@ rulesets:
         set:
           Type: "0x06"
           EndLevel: "0"
-
-      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
+        # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
       - match:
           NATURE: "Rond-point"
         set:
