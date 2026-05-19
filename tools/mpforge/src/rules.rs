@@ -1267,6 +1267,22 @@ rulesets:
     // Story 9.3 - Task 2: find_ruleset tests
     // ========================================================================
 
+    /// Garantit que la section déclarative `adjacency_tags` de
+    /// `routing-rules.yaml` se déserialise correctement (struct `AdjacencyTag`)
+    /// et que le tag canonique `deny_restreint_adj_autoroute` est bien chargé.
+    #[test]
+    fn adjacency_yaml_loads_from_routing_rules() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../pipeline/configs/ign-bdtopo/routing-rules.yaml");
+        let r = load_rules(&path).expect("routing-rules.yaml must load");
+        assert!(
+            !r.adjacency_tags.is_empty(),
+            "adjacency_tags doit être non-vide dans routing-rules.yaml"
+        );
+        assert_eq!(r.adjacency_tags[0].source_layer, "TRONCON_DE_ROUTE");
+        assert_eq!(r.adjacency_tags[0].anchor.len(), 2);
+    }
+
     fn make_rules_file(layers: &[&str]) -> RulesFile {
         RulesFile {
             version: 1,

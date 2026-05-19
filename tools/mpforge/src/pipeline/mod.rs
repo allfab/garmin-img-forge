@@ -1252,6 +1252,18 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             SourceReader::read_features_for_tile(config, &global_tb, &*spatial_filter_geometries)
                 .context("Phase 1.5: lecture globale des couches topologiques")?;
 
+        // Pré-pass routing déclarative AVANT le rules engine : indispensable lorsqu'une
+        // couche routable est marquée `topology: true` (cas TRONCON_DE_ROUTE en config
+        // départementale). Sans ce passage, les features pré-simplifiées qui re-substituent
+        // les versions per-tile (étape 2b dans process_single_tile) écraseraient
+        // les RouteParam denied calculés par la pré-pass per-tile.
+        // Note : on tague AVANT le retain topology pour que les anchors (autoroutes)
+        // restent visibles à apply_adjacency_tags, car la pré-pass cherche les endpoints
+        // d'anchor parmi les features de la même `source_layer` (toutes lues ici).
+        if let Some(ref routing_rules) = routing_rules {
+            apply_adjacency_tags(&mut all_features, &routing_rules.adjacency_tags);
+        }
+
         // Garder uniquement les couches topology.
         all_features.retain(|f| {
             f.source_layer
