@@ -1,5 +1,20 @@
 version: 1
 
+# Pré-pass d'adjacence topologique (consommée par pipeline::apply_adjacency_tags).
+# Pour chaque feature `target` matchant (AND), si au moins un endpoint coïncide
+# avec un endpoint d'une feature `anchor` (OR sur la liste), les attributs `set`
+# sont injectés. Convention `__prefix` : non émis dans le `.mp` (writer skip).
+adjacency_tags:
+  - name: deny_restreint_adj_autoroute
+    source_layer: TRONCON_DE_ROUTE
+    anchor:
+      - { CL_ADMIN: "Autoroute" }
+      - { NATURE: "Type autoroutier" }
+    target:
+      ACCES_VL: "Restreint aux ayants droit"
+    set:
+      __adj_autoroute: "1"
+
 rulesets:
   - name: speed_from_vit
     source_layer: TRONCON_DE_ROUTE
@@ -59,6 +74,8 @@ rulesets:
       - match: { ACCES_VL: "in:A péage,À péage" }
         set: { Toll: "1", denied_car: "0", denied_bus: "0", denied_truck: "0" }
       - match: { ACCES_VL: "Physiquement impossible" }
+        set: { Toll: "0", denied_car: "1", denied_bus: "1", denied_truck: "1" }
+      - match: { ACCES_VL: "Restreint aux ayants droit", __adj_autoroute: "1" }
         set: { Toll: "0", denied_car: "1", denied_bus: "1", denied_truck: "1" }
       - match: { ACCES_VL: "*" }
         set: { Toll: "0", denied_car: "0", denied_bus: "0", denied_truck: "0" }

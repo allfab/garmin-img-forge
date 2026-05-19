@@ -258,6 +258,81 @@ struct TileContext<'a> {
     topo_layer_names: Arc<HashSet<String>>,
 }
 
+/// Pré-pass routing déclarative : pour chaque `AdjacencyTag` configuré,
+/// taggue les features `target` dont au moins un endpoint coïncide
+/// (quantization 1e7) avec un endpoint d'une feature `anchor` de la même
+/// `source_layer`.
+///
+/// Conception déclarative : les critères "anchor" et "target" vivent dans le
+/// YAML routing-rules (section `adjacency_tags`) et utilisent la sémantique
+/// `match` standard du moteur de règles. Le set d'attributs injectés est
+/// également déclaratif — par convention `__prefix` pour rester invisible
+/// dans le `.mp` (writer skip via `starts_with("__")`).
+///
+/// Doit être appelé AVANT la boucle rules engine (avant que `evaluate_feature`
+/// ne remplace les attributs BDTOPO source par les attributs Garmin).
+fn apply_adjacency_tags(features: &mut [Feature], tags: &[crate::rules::AdjacencyTag]) {
+    use std::collections::HashSet;
+    if tags.is_empty() {
+        return;
+    }
+
+    let endpoint_keys = |f: &Feature| -> Option<((i32, i32), (i32, i32))> {
+        let n = f.geometry.len();
+        if n == 0 {
+            return None;
+        }
+        let first = f.geometry[0];
+        let last = f.geometry[n - 1];
+        Some((
+            (
+                routing_graph::quantize(first.1),
+                routing_graph::quantize(first.0),
+            ),
+            (
+                routing_graph::quantize(last.1),
+                routing_graph::quantize(last.0),
+            ),
+        ))
+    };
+
+    for tag in tags {
+        // Collecte des endpoints des features anchor (OR sur la liste de patterns).
+        let anchor_endpoints: HashSet<(i32, i32)> = features
+            .iter()
+            .filter(|f| f.source_layer.as_deref() == Some(tag.source_layer.as_str()))
+            .filter(|f| {
+                tag.anchor
+                    .iter()
+                    .any(|conds| rules::evaluate_match(conds, &f.attributes))
+            })
+            .filter_map(|f| endpoint_keys(f).map(|(a, b)| [a, b]))
+            .flatten()
+            .collect();
+
+        if anchor_endpoints.is_empty() {
+            continue;
+        }
+
+        for feature in features.iter_mut() {
+            if feature.source_layer.as_deref() != Some(tag.source_layer.as_str()) {
+                continue;
+            }
+            if !rules::evaluate_match(&tag.target, &feature.attributes) {
+                continue;
+            }
+            let Some((q_first, q_last)) = endpoint_keys(feature) else {
+                continue;
+            };
+            if anchor_endpoints.contains(&q_first) || anchor_endpoints.contains(&q_last) {
+                for (k, v) in &tag.set {
+                    feature.attributes.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+}
+
 /// Vérifie si la bounding box d'une feature intersecte la bounding box d'une tuile.
 ///
 /// Utilisé pour filtrer les features pré-simplifiées (Phase 1.5) aux seules
@@ -332,6 +407,15 @@ fn process_single_tile(
 
     if features.is_empty() {
         return Ok(TileOutcome::Skipped { existing: false });
+    }
+
+    // 1b. Pré-pass routing déclarative : applique les `adjacency_tags` du fichier
+    //     routing-rules (taggue p. ex. les TRONCON_DE_ROUTE Restreint adjacents
+    //     à une autoroute via `__adj_autoroute=1`). Doit précéder la boucle
+    //     rules engine qui remplace les attributs BDTOPO source.
+    let mut features = features;
+    if let Some(ref routing_rules) = ctx.routing_rules {
+        apply_adjacency_tags(&mut features, &routing_rules.adjacency_tags);
     }
 
     // 2. Apply rules engine (Arc<RulesFile> is read-only, thread-safe)
@@ -1674,4 +1758,150 @@ fn print_console_summary(
     }
 
     println!("\n💡 Astuce : Utilisez -vv pour des logs de débogage détaillés");
+}
+
+#[cfg(test)]
+mod adjacency_tests {
+    //! Tests de la pré-pass routing déclarative (`apply_adjacency_tags`).
+    //! Couvre AC1-AC4 du tech-spec `routing-deny-restricted-access`.
+
+    use super::*;
+    use crate::pipeline::reader::GeometryType;
+    use crate::rules::AdjacencyTag;
+    use std::collections::HashMap;
+
+    fn restreint_adj_tag() -> AdjacencyTag {
+        AdjacencyTag {
+            name: Some("deny_restreint_adj_autoroute".into()),
+            source_layer: "TRONCON_DE_ROUTE".into(),
+            anchor: vec![
+                HashMap::from([("CL_ADMIN".into(), "Autoroute".into())]),
+                HashMap::from([("NATURE".into(), "Type autoroutier".into())]),
+            ],
+            target: HashMap::from([(
+                "ACCES_VL".into(),
+                "Restreint aux ayants droit".into(),
+            )]),
+            set: HashMap::from([("__adj_autoroute".into(), "1".into())]),
+        }
+    }
+
+    fn road(attrs: &[(&str, &str)], geom: Vec<(f64, f64)>) -> Feature {
+        Feature {
+            geometry_type: GeometryType::LineString,
+            geometry: geom,
+            additional_geometries: Default::default(),
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            source_layer: Some("TRONCON_DE_ROUTE".into()),
+        }
+    }
+
+    /// AC1 : aucune autoroute → aucun tag.
+    #[test]
+    fn ac1_no_anchor_no_tag() {
+        let mut features = vec![
+            road(
+                &[("ACCES_VL", "Restreint aux ayants droit")],
+                vec![(2.0, 45.0), (2.001, 45.001)],
+            ),
+            road(
+                &[("ACCES_VL", "Libre"), ("CL_ADMIN", "Départementale")],
+                vec![(3.0, 46.0), (3.001, 46.001)],
+            ),
+        ];
+        apply_adjacency_tags(&mut features, &[restreint_adj_tag()]);
+        assert!(!features[0].attributes.contains_key("__adj_autoroute"));
+    }
+
+    /// AC2 : Restreint partageant un endpoint avec autoroute → tag injecté.
+    #[test]
+    fn ac2_restreint_endpoint_shared_with_autoroute_is_tagged() {
+        let junction = (2.0, 45.0);
+        let mut features = vec![
+            // Autoroute (anchor via CL_ADMIN)
+            road(
+                &[("CL_ADMIN", "Autoroute")],
+                vec![junction, (2.01, 45.01)],
+            ),
+            // Restreint partageant l'endpoint initial
+            road(
+                &[("ACCES_VL", "Restreint aux ayants droit")],
+                vec![junction, (2.002, 44.999)],
+            ),
+            // Restreint partageant l'endpoint final
+            road(
+                &[("ACCES_VL", "Restreint aux ayants droit")],
+                vec![(2.5, 45.5), junction],
+            ),
+        ];
+        apply_adjacency_tags(&mut features, &[restreint_adj_tag()]);
+        assert_eq!(
+            features[1].attributes.get("__adj_autoroute"),
+            Some(&"1".to_string())
+        );
+        assert_eq!(
+            features[2].attributes.get("__adj_autoroute"),
+            Some(&"1".to_string())
+        );
+    }
+
+    /// AC2 bis : anchor via NATURE='Type autoroutier' (sémantique OR).
+    #[test]
+    fn ac2_anchor_via_nature_type_autoroutier() {
+        let junction = (1.5, 44.0);
+        let mut features = vec![
+            road(
+                &[("NATURE", "Type autoroutier")],
+                vec![junction, (1.51, 44.01)],
+            ),
+            road(
+                &[("ACCES_VL", "Restreint aux ayants droit")],
+                vec![junction, (1.502, 43.999)],
+            ),
+        ];
+        apply_adjacency_tags(&mut features, &[restreint_adj_tag()]);
+        assert_eq!(
+            features[1].attributes.get("__adj_autoroute"),
+            Some(&"1".to_string())
+        );
+    }
+
+    /// AC3 : Restreint loin de toute autoroute → pas de tag.
+    #[test]
+    fn ac3_restreint_not_adjacent_not_tagged() {
+        let mut features = vec![
+            road(
+                &[("CL_ADMIN", "Autoroute")],
+                vec![(2.0, 45.0), (2.01, 45.01)],
+            ),
+            // Endpoints distincts de l'autoroute
+            road(
+                &[("ACCES_VL", "Restreint aux ayants droit")],
+                vec![(5.0, 48.0), (5.01, 48.01)],
+            ),
+        ];
+        apply_adjacency_tags(&mut features, &[restreint_adj_tag()]);
+        assert!(!features[1].attributes.contains_key("__adj_autoroute"));
+    }
+
+    /// AC4 : Libre adjacent à une autoroute → pas de tag (target ne matche pas).
+    #[test]
+    fn ac4_libre_adjacent_not_tagged() {
+        let junction = (2.0, 45.0);
+        let mut features = vec![
+            road(
+                &[("CL_ADMIN", "Autoroute")],
+                vec![junction, (2.01, 45.01)],
+            ),
+            road(
+                &[("ACCES_VL", "Libre")],
+                vec![junction, (2.002, 44.999)],
+            ),
+        ];
+        apply_adjacency_tags(&mut features, &[restreint_adj_tag()]);
+        assert!(!features[1].attributes.contains_key("__adj_autoroute"));
+    }
 }

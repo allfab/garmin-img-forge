@@ -619,6 +619,46 @@ mod tests {
         );
     }
 
+    /// AC5 (tech-spec routing-deny-restricted-access) :
+    /// Restreint aux ayants droit adjacent à une autoroute → denied_car/bus/truck=1
+    #[test]
+    fn test_compute_restreint_adj_autoroute() {
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "50".into()),
+            ("ACCES_VL".into(), "Restreint aux ayants droit".into()),
+            ("__adj_autoroute".into(), "1".into()),
+            ("NATURE".into(), "Route à 1 chaussée".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        let rp = result.get("RouteParam").unwrap();
+        let parts: Vec<&str> = rp.split(',').collect();
+        assert_eq!(parts[6], "1", "denied_car doit être 1 (adj autoroute)");
+        assert_eq!(parts[7], "1", "denied_bus doit être 1");
+        assert_eq!(parts[11], "1", "denied_truck doit être 1");
+    }
+
+    /// AC6 (tech-spec routing-deny-restricted-access) :
+    /// Restreint aux ayants droit SANS __adj_autoroute → catch-all autorisé.
+    #[test]
+    fn test_compute_restreint_non_adj_autoroute() {
+        let source = HashMap::from([
+            ("VIT_MOY_VL".into(), "30".into()),
+            ("ACCES_VL".into(), "Restreint aux ayants droit".into()),
+            ("NATURE".into(), "Chemin".into()),
+        ]);
+        let mut counter = RoadIdCounter::new();
+        let result = compute_route_attrs(&source, &test_routing_rules(), &mut counter);
+        let rp = result.get("RouteParam").unwrap();
+        let parts: Vec<&str> = rp.split(',').collect();
+        assert_eq!(
+            parts[6], "0",
+            "denied_car doit être 0 (voie rurale non-adj)"
+        );
+        assert_eq!(parts[7], "0", "denied_bus doit être 0");
+        assert_eq!(parts[11], "0", "denied_truck doit être 0");
+    }
+
     /// Test MaxWidth and MaxLength
     #[test]
     fn test_compute_width_length_restrictions() {

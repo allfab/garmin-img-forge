@@ -28,6 +28,36 @@ pub enum LabelCase {
 pub struct RulesFile {
     pub version: u32,
     pub rulesets: Vec<Ruleset>,
+    /// Optional declarative pre-pass : tag features whose endpoints coincide
+    /// with the endpoints of "anchor" features. Consumed by
+    /// `pipeline::apply_adjacency_tags` BEFORE the rules engine runs.
+    #[serde(default)]
+    pub adjacency_tags: Vec<AdjacencyTag>,
+}
+
+/// Déclaration d'un tag d'adjacence topologique (pré-pass routing).
+///
+/// Pour chaque feature de `source_layer` :
+/// - si elle matche `target` (AND multi-champ via la sémantique `match` standard),
+/// - et qu'au moins un de ses endpoints coïncide (quantization 1e7) avec un
+///   endpoint d'une feature de la même `source_layer` matchant l'un des
+///   patterns de `anchor` (sémantique OR),
+/// - alors les attributs de `set` sont injectés dans `feature.attributes`.
+///
+/// Conçu pour rester déclaratif : les critères "qu'est-ce qu'une autoroute ?"
+/// et "qu'est-ce qu'un accès restreint ?" vivent dans le YAML routing-rules,
+/// pas hardcodés dans Rust.
+#[derive(Debug, Deserialize)]
+pub struct AdjacencyTag {
+    pub name: Option<String>,
+    pub source_layer: String,
+    /// OR : un seul match suffit (chaque entrée = AND multi-champ via `match`).
+    pub anchor: Vec<HashMap<String, String>>,
+    /// AND : toutes les conditions doivent être satisfaites.
+    pub target: HashMap<String, String>,
+    /// Attributs synthétiques à injecter (convention `__prefix` pour rester
+    /// invisible dans le `.mp` — writer skip via `starts_with("__")`).
+    pub set: HashMap<String, String>,
 }
 
 /// A ruleset targeting a specific source layer.
@@ -1249,6 +1279,7 @@ rulesets:
                     rules: vec![],
                 })
                 .collect(),
+            adjacency_tags: Vec::new(),
         }
     }
 
