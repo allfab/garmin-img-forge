@@ -59,26 +59,25 @@ rulesets:
           CL_ADMIN: "Route intercommunale"
         set:
           Type: "0x05"
-          EndLevel: "0"
+          EndLevel: "3"
           Label: "${NUMERO}"
 
-      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
-     # 7. Route a 1 chaussee
-      - match:
-          NATURE: "Route à 1 chaussée"
-        set:
-          Type: "0x06"
-          EndLevel: "0"
-
-
-
-      # 8. Route a 2 chaussees
+      # 7. Route a 2 chaussees
       - match:
           NATURE: "Route à 2 chaussées"
         set:
           Type: "0x06"
-          EndLevel: "0"
-        # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
+          EndLevel: "2"
+
+      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
+      # 8. Route a 1 chaussee
+      - match:
+          NATURE: "Route à 1 chaussée"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+
+      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
       - match:
           NATURE: "Rond-point"
         set:

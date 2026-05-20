@@ -207,7 +207,7 @@ inputs:
   - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
-    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 20) * 20"
     layer_alias: "COURBE"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
