@@ -4,142 +4,705 @@ version: 1
 rulesets:
   # ==========================================================================
   # TRANSPORT — Tronçons de route (POLYLINE)
-  # 17 règles — combinaisons CL_ADMIN × NATURE
+  # ~76 règles — IMPORTANCE pilote EndLevel, CL_ADMIN + NATURE pilotent Type et Label
   # ==========================================================================
   - name: "Routes"
     source_layer: "TRONCON_DE_ROUTE"
     rules:
-      # --- Priorité CL_ADMIN ---
+      # -----------------------------------------------------------------------
+      # BLOC 0 — Bretelle (NATURE=Bretelle, toutes CL_ADMIN)
+      # EN TÊTE ABSOLU : court-circuite les blocs CL_ADMIN suivants.
+      # EndLevel = IMP-1 (IMP=3 plafonné à 4 comme IMP=2).
+      # -----------------------------------------------------------------------
+      # 0.1 Bretelle IMPORTANCE 1
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x09"
+          EndLevel: "5"
 
-      # 1. Autoroute (toute NATURE)
+      # 0.2 Bretelle IMPORTANCE 2
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x09"
+          EndLevel: "4"
+
+      # 0.3 Bretelle IMPORTANCE 3 (plafonné — même EndLevel que IMP=2)
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x09"
+          EndLevel: "4"
+
+      # 0.4 Bretelle IMPORTANCE 4
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x09"
+          EndLevel: "3"
+
+      # 0.5 Bretelle IMPORTANCE 5
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x09"
+          EndLevel: "1"
+
+      # 0.6 Bretelle IMPORTANCE manquante ou hors table (catch-all)
+      - match:
+          NATURE: "Bretelle"
+        set:
+          Type: "0x09"
+          EndLevel: "0"
+
+      # -----------------------------------------------------------------------
+      # BLOC 1 — Autoroute (CL_ADMIN=Autoroute, NATURE≠Bretelle déjà capturée)
+      # IMPORTANCE 1-3. Rond-point → Type=0x0c sans shield.
+      # -----------------------------------------------------------------------
+      # 1.1 Autoroute Rond-point IMPORTANCE 1
       - match:
           CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x0c"
+          EndLevel: "6"
+
+      # 1.2 Autoroute Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x0c"
+          EndLevel: "5"
+
+      # 1.3 Autoroute Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x0c"
+          EndLevel: "4"
+
+      # 1.4 Autoroute IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "1"
         set:
           Type: "0x01"
           EndLevel: "6"
           Label: "~[0x04]${NUMERO}"
 
-      # 2. Nationale (hors Rond-point)
+      # 1.5 Autoroute IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
+
+      # 1.6 Autoroute IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x01"
+          EndLevel: "4"
+          Label: "~[0x04]${NUMERO}"
+
+      # 1.7 Autoroute Rond-point IMPORTANCE 4+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+        set:
+          Type: "0x0c"
+          EndLevel: "3"
+
+      # 1.8 Autoroute IMPORTANCE 4+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "3"
+          Label: "~[0x04]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 2 — Nationale (CL_ADMIN=Nationale, NATURE≠Bretelle)
+      # IMPORTANCE 1-3. Nationales IMP=2 visibles au niveau 5 (régional).
+      # -----------------------------------------------------------------------
+      # 2.1 Nationale Rond-point IMPORTANCE 1
       - match:
           CL_ADMIN: "Nationale"
-          NATURE: "!Rond-point"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x0c"
+          EndLevel: "6"
+
+      # 2.2 Nationale Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x0c"
+          EndLevel: "5"
+
+      # 2.3 Nationale Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x0c"
+          EndLevel: "4"
+
+      # 2.4 Nationale IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.5 Nationale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.6 Nationale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "3"
         set:
           Type: "0x04"
           EndLevel: "4"
           Label: "~[0x05]${NUMERO}"
 
-      # 3. Nationale Rond-point (pas de label)
+      # 2.7 Nationale Rond-point IMPORTANCE 4+ ou manquante (catch-all)
       - match:
           CL_ADMIN: "Nationale"
           NATURE: "Rond-point"
         set:
+          Type: "0x0c"
+          EndLevel: "3"
+
+      # 2.8 Nationale IMPORTANCE 4+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Nationale"
+        set:
+          Type: "0x04"
+          EndLevel: "3"
+          Label: "~[0x05]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 3 — Autoroute/Route nommée (CL_ADMIN hybride)
+      # Tronçon à double classement : Autoroute + Route nommée.
+      # -----------------------------------------------------------------------
+      # 3.1 Autoroute/Route nommée IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
+
+      # 3.2 Autoroute/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
+
+      # 3.3 Autoroute/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x01"
+          EndLevel: "4"
+          Label: "~[0x04]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 4 — Nationale/Route nommée (CL_ADMIN hybride)
+      # -----------------------------------------------------------------------
+      # 4.1 Nationale/Route nommée IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+          Label: "~[0x05]${NUMERO}"
+
+      # 4.2 Nationale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+          Label: "~[0x05]${NUMERO}"
+
+      # 4.3 Nationale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "3"
+        set:
           Type: "0x04"
           EndLevel: "4"
+          Label: "~[0x05]${NUMERO}"
 
-      # 4. Departementale (hors Rond-point)
+      # -----------------------------------------------------------------------
+      # BLOC 5 — Départementale (CL_ADMIN=Départementale, NATURE≠Bretelle)
+      # IMPORTANCE 1-5. Rond-point → Type=0x0c sans shield.
+      # -----------------------------------------------------------------------
+      # 5.1 Départementale Rond-point IMPORTANCE 1
       - match:
           CL_ADMIN: "Départementale"
-          NATURE: "!Rond-point"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x0c"
+          EndLevel: "6"
+
+      # 5.2 Départementale Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x0c"
+          EndLevel: "5"
+
+      # 5.3 Départementale Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x0c"
+          EndLevel: "4"
+
+      # 5.4 Départementale Rond-point IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x0c"
+          EndLevel: "3"
+
+      # 5.5 Départementale Rond-point IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x0c"
+          EndLevel: "1"
+
+      # 5.6 Départementale IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.7 Départementale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.8 Départementale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "3"
         set:
           Type: "0x05"
           EndLevel: "4"
           Label: "~[0x06]${NUMERO}"
 
-      # 5. Departementale Rond-point — garde Type=0x05 (couleur RD),
-      #    pas de label (cohérence avec rond-point Nationale).
+      # 5.9 Départementale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.10 Départementale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.11 Départementale Rond-point IMPORTANCE 6+ ou manquante (catch-all)
       - match:
           CL_ADMIN: "Départementale"
           NATURE: "Rond-point"
         set:
+          Type: "0x0c"
+          EndLevel: "0"
+
+      # 5.12 Départementale IMPORTANCE 6+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Départementale"
+        set:
+          Type: "0x05"
+          EndLevel: "0"
+          Label: "~[0x06]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 6 — Départementale hybrides (CL_ADMIN composites)
+      # Départementale/Route nommée : IMP 1-5
+      # Départementale/Route intercommunale : IMP 2-5 (IMP=1 inexistant per doc)
+      # -----------------------------------------------------------------------
+      # 6.1 Départementale/Route nommée IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.2 Départementale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.3 Départementale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "3"
+        set:
           Type: "0x05"
           EndLevel: "4"
+          Label: "~[0x06]${NUMERO}"
 
-      # 6. Route intercommunale (toute NATURE)
+      # 6.4 Départementale/Route nommée IMPORTANCE 4
       - match:
-          CL_ADMIN: "Route intercommunale"
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "4"
         set:
           Type: "0x05"
           EndLevel: "3"
-          Label: "${NUMERO}"
+          Label: "~[0x06]${NUMERO}"
 
-      # 7. Route a 2 chaussees
+      # 6.5 Départementale/Route nommée IMPORTANCE 5
       - match:
-          NATURE: "Route à 2 chaussées"
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.6 Départementale/Route intercommunale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.7 Départementale/Route intercommunale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.8 Départementale/Route intercommunale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.9 Départementale/Route intercommunale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 7 — Route intercommunale (CL_ADMIN=Route intercommunale)
+      # IMPORTANCE 2-5 (IMP=1 absent per sémantique intercommunale).
+      # Pas de shield — label texte nu.
+      # -----------------------------------------------------------------------
+      # 7.1 Route intercommunale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "2"
         set:
           Type: "0x06"
-          EndLevel: "2"
+          EndLevel: "5"
+          Label: "${NUMERO}"
 
-      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
-      # 8. Route a 1 chaussee
+      # 7.2 Route intercommunale IMPORTANCE 3
       - match:
-          NATURE: "Route à 1 chaussée"
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x06"
+          EndLevel: "4"
+          Label: "${NUMERO}"
+
+      # 7.3 Route intercommunale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+          Label: "${NUMERO}"
+
+      # 7.4 Route intercommunale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "5"
         set:
           Type: "0x06"
           EndLevel: "1"
+          Label: "${NUMERO}"
 
-      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
+      # -----------------------------------------------------------------------
+      # BLOC 8 — Route intercommunale/Route nommée (CL_ADMIN hybride)
+      # -----------------------------------------------------------------------
+      # 8.1 Route intercommunale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x06"
+          EndLevel: "5"
+          Label: "${NUMERO}"
+
+      # 8.2 Route intercommunale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x06"
+          EndLevel: "4"
+          Label: "${NUMERO}"
+
+      # 8.3 Route intercommunale/Route nommée IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+          Label: "${NUMERO}"
+
+      # 8.4 Route intercommunale/Route nommée IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+          Label: "${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 9 — Fallbacks NATURE
+      # Tronçons sans CL_ADMIN classé, ou CL_ADMIN=Voie communale/Chemin rural.
+      # IMPORTANCE pilote EndLevel selon la table standard.
+      # -----------------------------------------------------------------------
+
+      # --- Type autoroutier (IMPORTANCE 1-2 uniquement per doc BDTOPO p.88) ---
+      # 9.1 Type autoroutier IMPORTANCE 1
+      - match:
+          NATURE: "Type autoroutier"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
+
+      # 9.2 Type autoroutier IMPORTANCE 2 (ou tout autre IMP)
+      - match:
+          NATURE: "Type autoroutier"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
+
+      # --- Route à 2 chaussées ---
+      # 9.3 Route à 2 chaussées IMPORTANCE 1
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+
+      # 9.4 Route à 2 chaussées IMPORTANCE 2
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+
+      # 9.5 Route à 2 chaussées IMPORTANCE 3
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x04"
+          EndLevel: "4"
+
+      # 9.6 Route à 2 chaussées IMPORTANCE 4 (ou tout autre IMP)
+      - match:
+          NATURE: "Route à 2 chaussées"
+        set:
+          Type: "0x04"
+          EndLevel: "3"
+
+      # --- Route à 1 chaussée ---
+      # 9.7 Route à 1 chaussée IMPORTANCE 1
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+
+      # 9.8 Route à 1 chaussée IMPORTANCE 2
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+
+      # 9.9 Route à 1 chaussée IMPORTANCE 3
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+
+      # 9.10 Route à 1 chaussée IMPORTANCE 4
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+
+      # 9.11 Route à 1 chaussée IMPORTANCE 5
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+
+      # 9.12 Route à 1 chaussée IMPORTANCE 6 (ou catch-all)
+      - match:
+          NATURE: "Route à 1 chaussée"
+        set:
+          Type: "0x05"
+          EndLevel: "0"
+
+      # --- Rond-point générique (sans CL_ADMIN classé) ---
+      # 9.13 Rond-point générique IMPORTANCE 3 (IMP 1-2 → catch-all 9.14)
+      - match:
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x0c"
+          EndLevel: "4"
+
+      # 9.14 Rond-point générique IMPORTANCE 4 (ou catch-all)
       - match:
           NATURE: "Rond-point"
         set:
-          Type: "0x06"
-          EndLevel: "0"
+          Type: "0x0c"
+          EndLevel: "3"
 
-      # 10. Route empierree
+      # --- Route empierrée ---
+      # 9.15 Route empierrée (toute IMPORTANCE)
       - match:
           NATURE: "Route empierrée"
         set:
           Type: "0x07"
           EndLevel: "0"
 
-      # 11. Bretelle
-      - match:
-          NATURE: "Bretelle"
-        set:
-          Type: "0x09"
-          EndLevel: "4"
-
-      # 12. Type autoroutier
-      - match:
-          NATURE: "Type autoroutier"
-        set:
-          Type: "0x01"
-          EndLevel: "6"
-          Label: "~[0x04]${NUMERO}"
-
-      # 13. Chemin
+      # --- Chemins et sentiers ---
+      # 9.16 Chemin
       - match:
           NATURE: "Chemin"
         set:
           Type: "0x0a"
           EndLevel: "0"
 
-      # 14. Escalier
+      # 9.17 Escalier
       - match:
           NATURE: "Escalier"
         set:
           Type: "0x0f"
           EndLevel: "0"
 
-      # 15. Piste cyclable
-      - match:
-          NATURE: "Piste cyclable"
-        set:
-          Type: "0x0e"
-          EndLevel: "0"
-
-      # 16. Sentier
+      # 9.18 Sentier
       - match:
           NATURE: "Sentier"
         set:
           Type: "0x10"
           EndLevel: "0"
 
-      # 17. Bac ou liaison maritime
+      # --- Maritime ---
+      # 9.19 Bac ou liaison maritime (EndLevel=3 : visible à l'échelle intercommunale)
       - match:
           NATURE: "Bac ou liaison maritime"
         set:
           Type: "0x1b"
-          EndLevel: "0"
+          EndLevel: "3"
 
   # ==========================================================================
   # TRANSPORT — Voies ferrées (POLYLINE)
