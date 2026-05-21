@@ -1,8 +1,7 @@
 version: 1
 
-# Catalogue de profils de simplification — variante locale moins agressive
-# aux niveaux n=0..3 pour préserver le détail routier à l'échelle départementale.
-generalize_profiles_path: "./generalize-profiles.yaml"
+# Catalogue de profils de simplification pour BDTOPO — variante locale pour départements et outre-mer.
+# generalize_profiles_path: "./generalize-profiles.yaml"
 
 routing:
   source_layer: TRONCON_DE_ROUTE
@@ -72,6 +71,16 @@ inputs:
   - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
+  # Zones d'habitation — centroïdes POI (ACQU_PLANI="Calcul d'enveloppe urbaine")
+  # Génère des [POI] avec IMPORTANCE -> type Garmin hiérarchique (0x700..0x1100)
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "ZONE_D_HABITATION_POI"
+    geometry_transform: centroid
+    attribute_filter: "ACQU_PLANI = 'Calcul d''enveloppe urbaine'"
     dedup_by_field: ID
 
   # ==========================================================================

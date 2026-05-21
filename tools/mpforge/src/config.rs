@@ -122,6 +122,12 @@ pub struct RoutingConfig {
     pub rules: PathBuf,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeometryTransform {
+    Centroid,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct InputSource {
     pub path: Option<String>,
@@ -152,6 +158,10 @@ pub struct InputSource {
     /// Absent = pas de dedup pour cette source (et pas de warning "field not present").
     #[serde(default)]
     pub dedup_by_field: Option<String>,
+    /// Geometry transform applied after coordinate reprojection.
+    /// `centroid`: converts each Polygon to its centroid Point.
+    #[serde(default)]
+    pub geometry_transform: Option<GeometryTransform>,
 }
 
 /// Configuration for geometry generalization (smoothing + simplification).
@@ -2064,6 +2074,7 @@ output:
                 generalize: None,
                 spatial_filter: None,
                 dedup_by_field: None,
+                geometry_transform: None,
             }],
             output: OutputConfig {
                 directory: "tiles/".to_string(),
@@ -2386,6 +2397,7 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         };
         assert_eq!(input_file.source_type(), SourceType::File);
 
@@ -2402,6 +2414,7 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         };
         assert_eq!(input_pg1.source_type(), SourceType::PostGIS);
 
@@ -2418,6 +2431,7 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         };
         assert_eq!(input_pg2.source_type(), SourceType::PostGIS);
 
@@ -2434,6 +2448,7 @@ output:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         };
         assert_eq!(input_other.source_type(), SourceType::File);
     }
@@ -3119,6 +3134,7 @@ header:
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         };
         let cloned = input.clone();
         assert_eq!(cloned.path, input.path);

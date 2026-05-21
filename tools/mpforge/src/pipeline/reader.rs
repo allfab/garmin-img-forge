@@ -1,6 +1,6 @@
 //! Source data reading from GDAL-compatible formats.
 
-use crate::config::{Config, InputSource};
+use crate::config::{Config, GeometryTransform, InputSource};
 use anyhow::{anyhow, Context, Result};
 use gdal::spatial_ref::{CoordTransform, SpatialRef};
 use gdal::vector::{LayerAccess, OGRwkbGeometryType};
@@ -396,6 +396,36 @@ impl GlobalExtent {
     }
 }
 
+/// Computes the centroid of a polygon ring using the Shoelace formula.
+/// Falls back to the barycenter if the polygon is degenerate (area < 1e-12).
+fn compute_polygon_centroid(coords: &[(f64, f64)]) -> (f64, f64) {
+    let n = coords.len();
+    if n == 0 {
+        return (0.0, 0.0);
+    }
+    if n == 1 {
+        return coords[0];
+    }
+    let mut area = 0.0_f64;
+    let mut cx = 0.0_f64;
+    let mut cy = 0.0_f64;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let cross = coords[i].0 * coords[j].1 - coords[j].0 * coords[i].1;
+        area += cross;
+        cx += (coords[i].0 + coords[j].0) * cross;
+        cy += (coords[i].1 + coords[j].1) * cross;
+    }
+    area /= 2.0;
+    if area.abs() < 1e-12 {
+        let avg_x = coords.iter().map(|(x, _)| x).sum::<f64>() / n as f64;
+        let avg_y = coords.iter().map(|(_, y)| y).sum::<f64>() / n as f64;
+        return (avg_x, avg_y);
+    }
+    let factor = 1.0 / (6.0 * area);
+    (cx * factor, cy * factor)
+}
+
 /// Reads features from GDAL sources.
 ///
 /// This is a stateless utility struct - all methods are static/associated functions.
@@ -466,7 +496,7 @@ impl SourceReader {
                 // Empty list: use default layer 0 with warning
                 warn!(path = %path, "Empty layers list, using default layer 0");
                 let (features, unsupported, multi_geom) =
-                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field)?;
+                    Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field, input.geometry_transform.as_ref())?;
                 all_features.extend(features);
                 all_unsupported.merge(&unsupported);
                 // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -475,7 +505,7 @@ impl SourceReader {
                 // Multi-layers: iterate over all configured layers
                 for layer_name in layers {
                     info!(path = %path, layer = %layer_name, "Loading layer");
-                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field) {
+                    match Self::load_layer_by_name(&dataset, layer_name, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field, input.geometry_transform.as_ref()) {
                         Ok((features, unsupported, multi_geom)) => {
                             info!(
                                 path = %path,
@@ -508,7 +538,7 @@ impl SourceReader {
         } else {
             // None: default behavior (load layer 0 only, no warning)
             let (features, unsupported, multi_geom) =
-                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field)?;
+                Self::load_layer_by_index(&dataset, 0, path, &wgs84, input.source_srs.as_deref(), input.target_srs.as_deref(), input.attribute_filter.as_deref(), input.layer_alias.as_deref(), dedup_by_field, input.geometry_transform.as_ref())?;
             all_features.extend(features);
             all_unsupported.merge(&unsupported);
             // Code Review M2 Fix: Use merge() for O(T) instead of O(N) loop
@@ -553,6 +583,7 @@ impl SourceReader {
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
         dedup_by_field: Option<&str>,
+        geometry_transform: Option<&GeometryTransform>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset.layer(layer_index).with_context(|| {
             format!(
@@ -561,7 +592,7 @@ impl SourceReader {
             )
         })?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field, geometry_transform)
     }
 
     /// Load features from a layer by name.
@@ -580,12 +611,13 @@ impl SourceReader {
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
         dedup_by_field: Option<&str>,
+        geometry_transform: Option<&GeometryTransform>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut layer = dataset
             .layer_by_name(layer_name)
             .with_context(|| format!("Layer '{}' not found in dataset: {}", layer_name, path))?;
 
-        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field)
+        Self::load_features_from_layer(&mut layer, path, wgs84, source_srs, target_srs, attribute_filter, layer_alias, dedup_by_field, geometry_transform)
     }
 
     /// Load all features from a given layer with SRS transformation.
@@ -604,6 +636,7 @@ impl SourceReader {
         attribute_filter: Option<&str>,
         layer_alias: Option<&str>,
         dedup_by_field: Option<&str>,
+        geometry_transform: Option<&GeometryTransform>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         // Apply OGR SQL attribute filter if configured
         if let Some(attr_filter) = attribute_filter {
@@ -821,6 +854,27 @@ impl SourceReader {
                                     return None;
                                 }
                                 f.geometry = xs.into_iter().zip(ys).collect();
+                            }
+                            if let Some(GeometryTransform::Centroid) = geometry_transform {
+                                if f.geometry_type == GeometryType::Polygon {
+                                    let centroid = compute_polygon_centroid(&f.geometry);
+                                    debug!(
+                                        source_layer = ?f.source_layer,
+                                        centroid_x = centroid.0,
+                                        centroid_y = centroid.1,
+                                        "geometry_transform: centroid — Polygon converted to Point"
+                                    );
+                                    f.geometry = vec![centroid];
+                                    f.geometry_type = GeometryType::Point;
+                                    f.additional_geometries.clear();
+                                } else {
+                                    warn!(
+                                        source_layer = ?f.source_layer,
+                                        geometry_type = ?f.geometry_type,
+                                        "geometry_transform: centroid — non-Polygon feature skipped"
+                                    );
+                                    return None;
+                                }
                             }
                             Some(f)
                         }));
@@ -1635,6 +1689,7 @@ impl SourceReader {
                         None, // attribute_filter already set on layer above
                         input.layer_alias.as_deref(),
                         input.dedup_by_field.as_deref().or(config.default_dedup_by_field.as_deref()),
+                        input.geometry_transform.as_ref(),
                     )?;
 
                 // Clear attribute filter before clearing spatial filter
@@ -2209,6 +2264,43 @@ impl Feature {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn test_centroid_unit_square() {
+        let coords = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
+        let (cx, cy) = compute_polygon_centroid(&coords);
+        assert!((cx - 0.5).abs() < 1e-9, "cx={}", cx);
+        assert!((cy - 0.5).abs() < 1e-9, "cy={}", cy);
+    }
+
+    #[test]
+    fn test_centroid_two_vertices() {
+        let coords = vec![(0.0, 0.0), (2.0, 4.0)];
+        let (cx, cy) = compute_polygon_centroid(&coords);
+        assert!((cx - 1.0).abs() < 1e-9, "cx={}", cx);
+        assert!((cy - 2.0).abs() < 1e-9, "cy={}", cy);
+    }
+
+    #[test]
+    fn test_centroid_degenerate_polygon() {
+        let coords = vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
+        let (cx, cy) = compute_polygon_centroid(&coords);
+        assert!((cx - 1.0).abs() < 1e-9, "cx={}", cx);
+        assert!((cy - 0.0).abs() < 1e-9, "cy={}", cy);
+    }
+
+    #[test]
+    fn test_centroid_single_vertex() {
+        let coords = vec![(5.724, 45.188)];
+        let c = compute_polygon_centroid(&coords);
+        assert_eq!(c, (5.724, 45.188));
+    }
+
+    #[test]
+    fn test_centroid_empty() {
+        let c = compute_polygon_centroid(&[]);
+        assert_eq!(c, (0.0, 0.0));
+    }
 
     #[test]
     fn test_geometry_type_enum() {

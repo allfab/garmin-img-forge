@@ -26,16 +26,7 @@ fn make_config(filenames: &[&str]) -> Config {
         .iter()
         .map(|f| InputSource {
             path: Some(get_test_data_path(f)),
-            layers: None,
-            connection: None,
-            layer: None,
-            source_srs: None,
-            target_srs: None,
-                attribute_filter: None,
-                layer_alias: None,
-            generalize: None,
-            spatial_filter: None,
-            dedup_by_field: None,
+            ..Default::default()
         })
         .collect();
 
@@ -147,6 +138,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
             generalize: None,
             spatial_filter: None,
                 dedup_by_field: None,
+                geometry_transform: None,
             },
             InputSource {
                 path: Some(get_test_data_path("file1.shp")),
@@ -160,6 +152,7 @@ fn test_scan_extents_invalid_source_continue_mode() {
             generalize: None,
             spatial_filter: None,
                 dedup_by_field: None,
+                geometry_transform: None,
             },
         ],
         error_handling: "continue".to_string(),
@@ -186,6 +179,7 @@ fn test_scan_extents_invalid_source_fail_fast() {
             generalize: None,
             spatial_filter: None,
             dedup_by_field: None,
+            geometry_transform: None,
         }],
         error_handling: "fail-fast".to_string(),
         ..make_config(&[])
