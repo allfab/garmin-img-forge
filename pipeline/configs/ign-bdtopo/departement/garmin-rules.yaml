@@ -476,7 +476,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale"
           IMPORTANCE: "2"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "5"
           Label: "${NUMERO}"
 
@@ -485,7 +485,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale"
           IMPORTANCE: "3"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "4"
           Label: "${NUMERO}"
 
@@ -494,7 +494,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale"
           IMPORTANCE: "4"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "3"
           Label: "${NUMERO}"
 
@@ -503,7 +503,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale"
           IMPORTANCE: "5"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "1"
           Label: "${NUMERO}"
 
@@ -515,7 +515,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale/Route nommée"
           IMPORTANCE: "2"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "5"
           Label: "${NUMERO}"
 
@@ -524,7 +524,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale/Route nommée"
           IMPORTANCE: "3"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "4"
           Label: "${NUMERO}"
 
@@ -533,7 +533,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale/Route nommée"
           IMPORTANCE: "4"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "3"
           Label: "${NUMERO}"
 
@@ -542,7 +542,7 @@ rulesets:
           CL_ADMIN: "Route intercommunale/Route nommée"
           IMPORTANCE: "5"
         set:
-          Type: "0x06"
+          Type: "0x05"
           EndLevel: "1"
           Label: "${NUMERO}"
 
