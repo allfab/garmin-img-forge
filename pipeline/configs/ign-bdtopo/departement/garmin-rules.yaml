@@ -265,29 +265,86 @@ rulesets:
         set:
           Type: "0x54"
           EndLevel: "6"
-          Label: "${NOM}"
+          # Label: "${NOM}"
           CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
           Zip: "${CODE_POST}"
 
   # ==========================================================================
   # ADMINISTRATIF — Zones d'habitation (POLYGON)
-  # Filtre : IMPORTANCE in {1,2,3}, NATURE = "Lieu-dit habité",
-  #          TOPONYME ne commence pas par "Commune d" (insensible à la casse)
+  # Filtre commun : NATURE = "Lieu-dit habité", ACQU_PLANI = "Calcul d'enveloppe urbaine",
+  #                 TOPONYME ne commence pas par "Commune d" (insensible à la casse)
+  # EndLevel et Type calés sur IMPORTANCE IGN (1=national → 6=local)
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
     label_case: "title"
     rules:
+      # 1. IMPORTANCE 1 — rayonnement national (1:1 000 000)
       - match:
-          IMPORTANCE: "in:1,2,3"
+          IMPORTANCE: "1"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          # Label: "${TOPONYME}"
+
+      # 2. IMPORTANCE 2 — rayonnement régional (1:250 000)
+      - match:
+          IMPORTANCE: "2"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x02"
+          EndLevel: "5"
+          # Label: "${TOPONYME}"
+
+      # 3. IMPORTANCE 3 — rayonnement départemental (1:100 000)
+      - match:
+          IMPORTANCE: "3"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x02"
+          EndLevel: "4"
+          # Label: "${TOPONYME}"
+
+      # 4. IMPORTANCE 4 — rayonnement intercommunal (1:50 000)
+      - match:
+          IMPORTANCE: "4"
           NATURE: "Lieu-dit habité"
           ACQU_PLANI: "Calcul d'enveloppe urbaine"
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
-          EndLevel: "6"
-          Label: "${TOPONYME}"
+          EndLevel: "3"
+          # Label: "${TOPONYME}"
+
+      # 5. IMPORTANCE 5 — rayonnement communal (1:25 000)
+      - match:
+          IMPORTANCE: "5"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x03"
+          EndLevel: "2"
+          # Label: "${TOPONYME}"
+
+      # 6. IMPORTANCE 6 — rayonnement local (1:5 000)
+      - match:
+          IMPORTANCE: "6"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x03"
+          EndLevel: "1"
+          # Label: "${TOPONYME}"
 
   # ==========================================================================
   # HYDROGRAPHIE — Tronçons hydrographiques (POLYLINE)
