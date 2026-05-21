@@ -246,7 +246,129 @@ Seul le catalogue `generalize_profiles_path` est désactivé. Les directives `ge
 
     Les features BDTOPO majoritaires en volume (chemins ruraux, bâtiments, courbes de niveau intermédiaires) ont `EndLevel=0` — elles disparaissent aux zooms larges. Seul le réseau routier structurant (EndLevel=3..6) demeure visible à distance. Cette carte "appauvrie" est **techniquement correcte** per spec `EndLevel=0`, mais visuellement déconcertante si l'on est habitué aux profils actifs.
 
-    **Avec les profils actifs**, ces mêmes features `EndLevel=0` reçoivent `Data0..Data6` (le profil génère tous les paliers n=0..6 indépendamment de l'`EndLevel`). imgforge les inclut alors à tous les niveaux, contournant involontairement la sémantique `EndLevel=0` — la carte apparaît "plus riche" qu'elle ne devrait.
+    **Avec les profils actifs**, ces mêmes features `EndLevel=0` reçoivent temporairement `Data0..Data6` *en mémoire* (le profil génère tous les paliers n=0..6 indépendamment de l'`EndLevel`). Le writer mpforge filtre ces paliers excédentaires avant l'écriture du `.mp` via le garde-fou `end_level_cap` — seul `Data0=` est effectivement émis. Voir la section [Paradoxe profils / EndLevel=0](#paradoxe-profils-endlevel0) pour l'explication complète.
+
+---
+
+## Paradoxe profils / EndLevel=0
+
+Ce comportement n'est documenté nulle part dans les specs historiques (mkgmap, cGPSmapper). Il résulte de l'interaction entre deux systèmes orthogonaux : les **profils de généralisation** (qui opèrent sur la *couche*) et les **règles Garmin** (qui opèrent sur la *feature individuelle*).
+
+### Le problème — collision entre couche et feature
+
+Un profil de généralisation est déclaré pour une **couche entière** (`TRONCON_DE_ROUTE`). Il génère `n=0..6` pour *toutes* les features de cette couche, sans distinction d'`EndLevel`. Or, au sein de `TRONCON_DE_ROUTE`, certaines features reçoivent `EndLevel=0` via les règles Garmin (Chemin, Sentier, Escalier, Rond-point, Route empierrée…).
+
+```mermaid
+flowchart TD
+    A["Feature TRONCON_DE_ROUTE\nNATURE = 'Chemin'"] --> B["Règle garmin-rules.yaml\nType=0x0a · EndLevel='0'"]
+    A --> C["Profil generalize-profiles.yaml\nbranch CL_ADMIN=[Chemin, Sentier]\nn=0..6"]
+
+    B --> D["attributes\nEndLevel = '0'"]
+    C --> E["additional_geometries\n{ 1: […], 2: […], …, 6: […] }"]
+
+    D --> F{{"Collision en mémoire\nEndLevel=0 mais Data0..Data6 présents"}}
+    E --> F
+
+    style F fill:#f5c6cb,stroke:#dc3545
+```
+
+### L'effet si le guard n'existait pas
+
+La fonction imgforge `feature_visible_at_level` applique une sémantique différente selon la valeur d'`EndLevel` :
+
+- **`EndLevel=N` (N > 0)** → fallback range mkgmap : visibilité si un `DataK` avec `K ≤ level` existe.
+- **`EndLevel=0`** → mode **strict** : visibilité uniquement si `Data{level}` existe *exactement* dans la BTreeMap.
+
+Si le `.mp` contenait `Data0..Data6` pour une feature `EndLevel=0`, le mode strict se retournerait contre lui-même :
+
+```mermaid
+flowchart LR
+    subgraph "Cas problématique (sans garde-fou)"
+        direction TB
+        P1["feature_visible_at_level\n(Some(0), {Data0…Data6}, level=3)"]
+        P2["match end_level:\n  Some(0) | None → contains_key(3)"]
+        P3["geometries.contains_key(3) = true ✗"]
+        P4["Sentier visible au level 3\n(vue régionale 200m–3km)\nContournement EndLevel=0"]
+        P1 --> P2 --> P3 --> P4
+        style P3 fill:#f5c6cb,stroke:#dc3545
+        style P4 fill:#f5c6cb,stroke:#dc3545
+    end
+```
+
+### La résolution — `end_level_cap` dans le writer mpforge
+
+Le writer (`pipeline/writer.rs`) applique un filtre **avant** toute écriture dans le `.mp`. Pour chaque feature polyline ou polygone, il calcule un plafond `end_level_cap` à partir de l'attribut `EndLevel` :
+
+```rust
+// EndLevel=0 → seulement Data0=. EndLevel absent → pas de borne (u8::MAX).
+let end_level_cap: u8 = feature
+    .attributes
+    .get("EndLevel")
+    .and_then(|s| s.parse::<u8>().ok())
+    .unwrap_or(u8::MAX);
+
+for (n, coords) in &feature.additional_geometries {
+    if *n > end_level_cap { continue; }  // ← skippé pour tout n>0 si EndLevel=0
+    // ... écriture Data{n}
+}
+```
+
+Pour `EndLevel=0`, `end_level_cap = 0` — tous les paliers `n ≥ 1` des `additional_geometries` sont élagués. Seul `Data0=` (la géométrie principale) est émis dans le `.mp`.
+
+```mermaid
+flowchart TD
+    A["apply_profile\nTRONCON_DE_ROUTE\nfeature: Chemin · EndLevel=0"]
+    A --> B["additional_geometries\nen mémoire\n{1: …, 2: …, …, 6: …}"]
+
+    B --> C["writer.rs\nend_level_cap = 0"]
+    C --> D{{"n > end_level_cap ?"}}
+
+    D -->|"n=1..6 → true"| E["SKIP — non écrit"]
+    D -->|"n=0 → false\n(géométrie principale)"| F["Data0= écrit dans le .mp"]
+
+    F --> G["imgforge lit le .mp\ngeometries = { 0: coords }"]
+    G --> H["feature_visible_at_level\n(Some(0), {Data0}, level=3)"]
+    H --> I["contains_key(3) = false ✓\nSentier absent au level 3"]
+
+    style E fill:#fff3cd,stroke:#856404
+    style I fill:#d1e7dd,stroke:#0f5132
+```
+
+### Vue d'ensemble du pipeline complet
+
+```mermaid
+sequenceDiagram
+    participant YAML as garmin-rules.yaml<br/>+ generalize-profiles.yaml
+    participant Pipeline as mpforge pipeline
+    participant Mem as Feature en mémoire
+    participant Writer as writer.rs
+    participant MP as Fichier .mp
+    participant Imgforge as imgforge
+
+    YAML->>Pipeline: EndLevel="0" (règle Chemin)<br/>+ profil n=0..6 (TRONCON_DE_ROUTE)
+    Pipeline->>Mem: apply_profile → Data0..Data6<br/>dans additional_geometries
+    Note over Mem: Paradoxe en mémoire :<br/>EndLevel=0 mais 7 buckets
+    Mem->>Writer: Feature transmise au writer
+    Writer->>Writer: end_level_cap = 0<br/>Filtre n > 0 → SKIP
+    Writer->>MP: Écrit uniquement Data0=
+    MP->>Imgforge: geometries = {0: coords}<br/>EndLevel = Some(0)
+    Imgforge->>Imgforge: feature_visible_at_level(Some(0),<br/>{Data0}, level=3) → false ✓
+    Note over Imgforge: Sentier absent aux zooms larges<br/>Sémantique EndLevel=0 préservée
+```
+
+### Couches BDTOPO concernées (configs `departement/`)
+
+Les conditions du paradoxe — profil n=0..6 **et** règles EndLevel=0 sur la même couche — sont présentes en production :
+
+| Couche | Profil `n=0..6` | Règles EndLevel=0 | Résolu par |
+|--------|:---------------:|:-----------------:|-----------|
+| `TRONCON_DE_ROUTE` | ✅ toutes branches | Chemin, Sentier, Escalier, Rond-point, Route empierrée | `end_level_cap` writer |
+| `CONSTRUCTION_LINEAIRE` | ✅ | Majorité des règles | `end_level_cap` writer |
+| `TRONCON_HYDROGRAPHIQUE` | ✅ | Plusieurs règles | `end_level_cap` writer |
+| `ZONE_DE_VEGETATION` | ✅ | Plusieurs règles | `end_level_cap` writer |
+
+!!! note "Comportement observable sans profils (`--disable-profiles`)"
+    Avec `--disable-profiles`, `additional_geometries` reste vide pour toutes les features. Les Chemins/Sentiers (EndLevel=0) ne transportent que `Data0=` — ils disparaissent dès que l'on dézoome, comme attendu par la spec. Ce comportement est visuellement appauvrissant mais formellement correct. Avec les profils actifs, le writer filtre les paliers excédentaires et le résultat final est *identique* à `--disable-profiles` pour les features EndLevel=0.
 
 ---
 

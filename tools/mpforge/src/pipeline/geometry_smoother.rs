@@ -65,12 +65,20 @@ pub fn apply_profile(feature: &mut Feature, profile: &GeneralizeProfile) -> usiz
         return 0;
     };
 
+    // Ne pas générer de buckets que le writer écarte via end_level_cap.
+    // EndLevel absent (u8::MAX) = aucun plafond.
+    let end_level_cap: u8 = feature
+        .attributes
+        .get("EndLevel")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(u8::MAX);
+
     // Capture raw geometry once — every bucket derives from it, not from the
     // previous level's output (clarification F17 of adversarial review).
     let raw = feature.geometry.clone();
     let mut generated = 0;
 
-    for lvl in levels {
+    for lvl in levels.iter().filter(|l| l.n <= end_level_cap) {
         let derived = match feature.geometry_type {
             GeometryType::LineString => apply_level_to_line(&raw, lvl),
             GeometryType::Polygon => apply_level_to_polygon(&raw, lvl),
@@ -229,8 +237,17 @@ pub fn generalize_features_with_profiles(
                     .map(|ls| ls.iter().map(|l| l.n).max().unwrap_or(0))
                     .unwrap_or(0);
 
-                if branch_max > 0 {
-                    fill_level_gaps(feature, branch_max);
+                // Même plafond qu'apply_profile : ne pas combler de trous
+                // au-delà d'EndLevel (le writer les écarterait de toute façon).
+                let end_level_cap: u8 = feature
+                    .attributes
+                    .get("EndLevel")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(u8::MAX);
+                let effective_max = branch_max.min(end_level_cap);
+
+                if effective_max > 0 {
+                    fill_level_gaps(feature, effective_max);
                 }
                 count += 1;
             }
@@ -418,10 +435,16 @@ pub fn apply_profile_with_topology(
         return 0;
     };
 
+    let end_level_cap: u8 = feature
+        .attributes
+        .get("EndLevel")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(u8::MAX);
+
     let raw = feature.geometry.clone();
     let mut generated = 0;
 
-    for lvl in levels {
+    for lvl in levels.iter().filter(|l| l.n <= end_level_cap) {
         let derived = match feature.geometry_type {
             GeometryType::LineString => apply_level_to_line_topo(&raw, lvl, anchors),
             GeometryType::Polygon => apply_level_to_polygon_topo(&raw, lvl, anchors),
@@ -1513,6 +1536,85 @@ levels:
             let count = apply_oneway_reversal(&mut features);
             assert_eq!(count, 2);
         }
+    }
+
+    // =================================================================
+    // Option B — end_level_cap : ne pas générer au-delà d'EndLevel
+    // =================================================================
+
+    #[test]
+    fn test_apply_profile_respects_end_level_cap() {
+        // Feature TRONCON_DE_ROUTE/Chemin : EndLevel=0, profil n=0..6.
+        // apply_profile ne doit générer que n=0 (Data0).
+        let coords: Vec<(f64, f64)> = (0..20).map(|i| (i as f64 * 0.01, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        feature.attributes.insert("EndLevel".to_string(), "0".to_string());
+
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 3, simplify: 0.0001 }\n  - { n: 6, simplify: 0.0005 }\n",
+        );
+        let generated = apply_profile(&mut feature, &profile);
+        assert_eq!(generated, 1, "EndLevel=0 → seul n=0 généré");
+        assert!(feature.additional_geometries.is_empty(), "aucun bucket additionnel");
+    }
+
+    #[test]
+    fn test_apply_profile_partial_cap_at_end_level_3() {
+        // EndLevel=3, profil n=0..6 : doit générer n=0..3, pas n=4..6.
+        let coords: Vec<(f64, f64)> = (0..20).map(|i| (i as f64 * 0.01, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        feature.attributes.insert("EndLevel".to_string(), "3".to_string());
+
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 1, simplify: 0.00005 }\n  - { n: 2, simplify: 0.0001 }\n  - { n: 3, simplify: 0.0003 }\n  - { n: 4, simplify: 0.0007 }\n  - { n: 6, simplify: 0.001 }\n",
+        );
+        let generated = apply_profile(&mut feature, &profile);
+        assert_eq!(generated, 4, "EndLevel=3 → n=0,1,2,3 générés");
+        assert!(feature.additional_geometries.contains_key(&1));
+        assert!(feature.additional_geometries.contains_key(&2));
+        assert!(feature.additional_geometries.contains_key(&3));
+        assert!(!feature.additional_geometries.contains_key(&4), "n=4 absent (> EndLevel)");
+        assert!(!feature.additional_geometries.contains_key(&6), "n=6 absent (> EndLevel)");
+    }
+
+    #[test]
+    fn test_apply_profile_no_cap_when_end_level_absent() {
+        // Pas d'EndLevel dans les attributs → u8::MAX → tous les niveaux générés.
+        let coords: Vec<(f64, f64)> = (0..20).map(|i| (i as f64 * 0.01, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "TRONCON_DE_ROUTE");
+        // Pas d'EndLevel inséré.
+
+        let profile = profile_from_yaml(
+            "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 3, simplify: 0.0001 }\n  - { n: 6, simplify: 0.0005 }\n",
+        );
+        let generated = apply_profile(&mut feature, &profile);
+        assert_eq!(generated, 3, "EndLevel absent → tous les niveaux générés");
+        assert!(feature.additional_geometries.contains_key(&3));
+        assert!(feature.additional_geometries.contains_key(&6));
+    }
+
+    #[test]
+    fn test_generalize_features_with_profiles_fill_gaps_capped_at_end_level() {
+        // EndLevel=2, profil n=0..6 avec trou (n=0, n=4). fill_level_gaps ne doit
+        // combler que jusqu'à min(branch_max=4, end_level_cap=2) = 2.
+        let coords: Vec<(f64, f64)> = (0..20).map(|i| (i as f64 * 0.01, 0.0)).collect();
+        let mut feature = make_linestring_feature(coords, "ROUTE_LAYER");
+        feature.attributes.insert("EndLevel".to_string(), "2".to_string());
+        let mut features = vec![feature];
+
+        let mut map = BTreeMap::new();
+        map.insert(
+            "ROUTE_LAYER".to_string(),
+            profile_from_yaml(
+                "levels:\n  - { n: 0, simplify: 0.00001 }\n  - { n: 4, simplify: 0.0005 }\n",
+            ),
+        );
+        generalize_features_with_profiles(&mut features, &map);
+        let f = &features[0];
+        assert!(f.additional_geometries.contains_key(&1), "n=1 comblé jusqu'à EndLevel=2");
+        assert!(f.additional_geometries.contains_key(&2), "n=2 comblé jusqu'à EndLevel=2");
+        assert!(!f.additional_geometries.contains_key(&3), "n=3 absent : au-delà d'EndLevel");
+        assert!(!f.additional_geometries.contains_key(&4), "n=4 absent : au-delà d'EndLevel");
     }
 
     #[test]

@@ -607,11 +607,16 @@ fn process_single_tile(
         if ctx.profile_map.contains_key(layer_name) {
             // Couche avec profil : on ne touche pas aux niveaux non-topology.
             // Pour les couches topology, combler les trous éventuels jusqu'au
-            // max déclaré dans le profil.
+            // max déclaré dans le profil, plafonné à EndLevel.
             if ctx.topo_layer_names.contains(layer_name) {
                 if let Some(profile) = ctx.profile_map.get(layer_name) {
                     if let Some(max_n) = profile.max_level_index() {
-                        fill_level_gaps(feature, max_n);
+                        let end_level_cap: u8 = feature
+                            .attributes
+                            .get("EndLevel")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(u8::MAX);
+                        fill_level_gaps(feature, max_n.min(end_level_cap));
                     }
                 }
             }
