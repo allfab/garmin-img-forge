@@ -295,43 +295,57 @@ flowchart LR
     end
 ```
 
-### La résolution — `end_level_cap` dans le writer mpforge
+### La résolution — double garde-fou `end_level_cap`
 
-Le writer (`pipeline/writer.rs`) applique un filtre **avant** toute écriture dans le `.mp`. Pour chaque feature polyline ou polygone, il calcule un plafond `end_level_cap` à partir de l'attribut `EndLevel` :
+Le pipeline mpforge applique le plafond `EndLevel` à **deux niveaux** distincts, pour des raisons différentes.
+
+#### 1. Dans `apply_profile` / `apply_profile_with_topology` — court-circuit du calcul VW
+
+Avant de lancer les passes Visvalingam-Whyatt, `apply_profile` lit `EndLevel` depuis les attributs de la feature et filtre les niveaux du profil :
 
 ```rust
-// EndLevel=0 → seulement Data0=. EndLevel absent → pas de borne (u8::MAX).
 let end_level_cap: u8 = feature
     .attributes
     .get("EndLevel")
-    .and_then(|s| s.parse::<u8>().ok())
-    .unwrap_or(u8::MAX);
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(u8::MAX);  // absent = aucun plafond
 
+for lvl in levels.iter().filter(|l| l.n <= end_level_cap) {
+    // Passe VW uniquement pour les niveaux utiles
+}
+```
+
+`generalize_features_with_profiles` applique le même plafond à `fill_level_gaps` : `fill_level_gaps(feature, branch_max.min(end_level_cap))`. Pour une feature Chemin (`EndLevel=0`), aucune passe VW n'est exécutée au-delà de `n=0` — ni en Phase 1.5 (topologie globale) ni en passe per-tile.
+
+#### 2. Dans `writer.rs` — filet de sécurité à l'écriture
+
+Même si `additional_geometries` contenait des buckets excédentaires (edge case, flag de debug), le writer les écarterait de toute façon :
+
+```rust
+let end_level_cap: u8 = feature.attributes.get("EndLevel")
+    .and_then(|s| s.parse::<u8>().ok()).unwrap_or(u8::MAX);
 for (n, coords) in &feature.additional_geometries {
-    if *n > end_level_cap { continue; }  // ← skippé pour tout n>0 si EndLevel=0
+    if *n > end_level_cap { continue; }  // filet de sécurité
     // ... écriture Data{n}
 }
 ```
 
-Pour `EndLevel=0`, `end_level_cap = 0` — tous les paliers `n ≥ 1` des `additional_geometries` sont élagués. Seul `Data0=` (la géométrie principale) est émis dans le `.mp`.
-
 ```mermaid
 flowchart TD
     A["apply_profile\nTRONCON_DE_ROUTE\nfeature: Chemin · EndLevel=0"]
-    A --> B["additional_geometries\nen mémoire\n{1: …, 2: …, …, 6: …}"]
+    A --> B{{"end_level_cap = 0\nn > 0 → filtre immédiat"}}
 
-    B --> C["writer.rs\nend_level_cap = 0"]
-    C --> D{{"n > end_level_cap ?"}}
+    B -->|"n=1..6 → écarté\navant VW"| C["Aucun calcul VW inutile ✓"]
+    B -->|"n=0 → traité"| D["Data0= dans feature.geometry"]
 
-    D -->|"n=1..6 → true"| E["SKIP — non écrit"]
-    D -->|"n=0 → false\n(géométrie principale)"| F["Data0= écrit dans le .mp"]
+    D --> E["writer.rs\nfilet de sécurité"]
+    E --> F["Data0= écrit dans le .mp"]
 
-    F --> G["imgforge lit le .mp\ngeometries = { 0: coords }"]
-    G --> H["feature_visible_at_level\n(Some(0), {Data0}, level=3)"]
-    H --> I["contains_key(3) = false ✓\nSentier absent au level 3"]
+    F --> G["imgforge\ngeometries = { 0: coords }"]
+    G --> H["feature_visible_at_level\n(Some(0), {Data0}, level=3) → false ✓"]
 
-    style E fill:#fff3cd,stroke:#856404
-    style I fill:#d1e7dd,stroke:#0f5132
+    style C fill:#d1e7dd,stroke:#0f5132
+    style H fill:#d1e7dd,stroke:#0f5132
 ```
 
 ### Vue d'ensemble du pipeline complet
@@ -339,36 +353,38 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant YAML as garmin-rules.yaml<br/>+ generalize-profiles.yaml
-    participant Pipeline as mpforge pipeline
-    participant Mem as Feature en mémoire
+    participant AP as apply_profile<br/>(geometry_smoother.rs)
+    participant GL as fill_level_gaps
     participant Writer as writer.rs
     participant MP as Fichier .mp
     participant Imgforge as imgforge
 
-    YAML->>Pipeline: EndLevel="0" (règle Chemin)<br/>+ profil n=0..6 (TRONCON_DE_ROUTE)
-    Pipeline->>Mem: apply_profile → Data0..Data6<br/>dans additional_geometries
-    Note over Mem: Paradoxe en mémoire :<br/>EndLevel=0 mais 7 buckets
-    Mem->>Writer: Feature transmise au writer
-    Writer->>Writer: end_level_cap = 0<br/>Filtre n > 0 → SKIP
-    Writer->>MP: Écrit uniquement Data0=
+    YAML->>AP: EndLevel="0" (règle Chemin)<br/>profil n=0..6 (TRONCON_DE_ROUTE)
+    AP->>AP: end_level_cap = 0<br/>filter(|l| l.n <= 0)
+    Note over AP: Seul n=0 passe le filtre.<br/>VW n=1..6 jamais exécuté.
+    AP->>GL: feature avec Data0 seulement
+    GL->>GL: fill jusqu'à min(6, 0) = 0<br/>→ no-op
+    GL->>Writer: additional_geometries vide
+    Writer->>Writer: filet end_level_cap<br/>(rien à filtrer ici)
+    Writer->>MP: Data0= uniquement
     MP->>Imgforge: geometries = {0: coords}<br/>EndLevel = Some(0)
     Imgforge->>Imgforge: feature_visible_at_level(Some(0),<br/>{Data0}, level=3) → false ✓
-    Note over Imgforge: Sentier absent aux zooms larges<br/>Sémantique EndLevel=0 préservée
+    Note over Imgforge: Sentier absent aux zooms larges.<br/>Sémantique EndLevel=0 préservée.
 ```
 
 ### Couches BDTOPO concernées (configs `departement/`)
 
-Les conditions du paradoxe — profil n=0..6 **et** règles EndLevel=0 sur la même couche — sont présentes en production :
+Les conditions du paradoxe — profil n=0..6 **et** règles EndLevel=0 sur la même couche — sont présentes en production. Le double garde-fou les neutralise dans les deux plans (calcul et écriture) :
 
-| Couche | Profil `n=0..6` | Règles EndLevel=0 | Résolu par |
-|--------|:---------------:|:-----------------:|-----------|
-| `TRONCON_DE_ROUTE` | ✅ toutes branches | Chemin, Sentier, Escalier, Rond-point, Route empierrée | `end_level_cap` writer |
-| `CONSTRUCTION_LINEAIRE` | ✅ | Majorité des règles | `end_level_cap` writer |
-| `TRONCON_HYDROGRAPHIQUE` | ✅ | Plusieurs règles | `end_level_cap` writer |
-| `ZONE_DE_VEGETATION` | ✅ | Plusieurs règles | `end_level_cap` writer |
+| Couche | Profil `n=0..6` | Règles EndLevel=0 | Passes VW économisées |
+|--------|:---------------:|:-----------------:|:---------------------:|
+| `TRONCON_DE_ROUTE` | ✅ toutes branches | Chemin, Sentier, Escalier, Rond-point, Route empierrée | 5 passes × N features |
+| `CONSTRUCTION_LINEAIRE` | ✅ | Majorité des règles | 5 passes × N features |
+| `TRONCON_HYDROGRAPHIQUE` | ✅ | Plusieurs règles | 5 passes × N features |
+| `ZONE_DE_VEGETATION` | ✅ | Plusieurs règles | 5 passes × N features |
 
 !!! note "Comportement observable sans profils (`--disable-profiles`)"
-    Avec `--disable-profiles`, `additional_geometries` reste vide pour toutes les features. Les Chemins/Sentiers (EndLevel=0) ne transportent que `Data0=` — ils disparaissent dès que l'on dézoome, comme attendu par la spec. Ce comportement est visuellement appauvrissant mais formellement correct. Avec les profils actifs, le writer filtre les paliers excédentaires et le résultat final est *identique* à `--disable-profiles` pour les features EndLevel=0.
+    Avec `--disable-profiles`, `additional_geometries` reste vide pour toutes les features. Les Chemins/Sentiers (EndLevel=0) ne transportent que `Data0=` — ils disparaissent dès que l'on dézoome, comme attendu par la spec. Avec les profils actifs et le double garde-fou, le résultat `.mp` est **bit-identique** : seul le chemin de code (et le temps CPU) diffère.
 
 ---
 
