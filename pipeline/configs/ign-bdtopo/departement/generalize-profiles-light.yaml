@@ -1,0 +1,142 @@
+---
+profiles:
+  TRONCON_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0, simplify: 0.00001 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_DE_VEGETATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00080 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_ROUTE:
+    topology: false
+    when:
+      - field: CL_ADMIN
+        values: [Autoroute]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Nationale, "Nationale/Route nommée"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Départementale, "Départementale/Route nommée"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Communale, "Sans objet"]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+      - field: CL_ADMIN
+        values: [Chemin, Sentier]
+        levels:
+          - { n: 0 }
+          - { n: 1 }
+          - { n: 2, simplify_vw: 0.000001 }
+          - { n: 3, simplify_vw: 0.000002 }
+          - { n: 4, simplify_vw: 0.000010 }
+          - { n: 5, simplify_vw: 0.000100 }
+          - { n: 6, simplify_vw: 0.000300 }
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify_vw: 0.000001 }
+      - { n: 3, simplify_vw: 0.000002 }
+      - { n: 4, simplify_vw: 0.000010 }
+      - { n: 5, simplify_vw: 0.000100 }
+      - { n: 6, simplify_vw: 0.000300 }
+
+  COURBE:
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00002 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00006 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  CONSTRUCTION_LINEAIRE:
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  SURFACE_HYDROGRAPHIQUE:
+    levels:
+      - { n: 0}
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00004 }
+      - { n: 3, simplify: 0.00008 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  ZONE_D_HABITATION:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
+      - { n: 1, simplify: 0.00006 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00012 }
+      - { n: 4, simplify: 0.00030 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
+  TRONCON_DE_VOIE_FERREE:
+    levels:
+      - { n: 0 }
+      - { n: 1, simplify: 0.00001 }
+      - { n: 2, simplify: 0.00005 }
+      - { n: 3, simplify: 0.00010 }
+      - { n: 4, simplify: 0.00020 }
+
+  COMMUNE:
+    topology: false
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify_vw: 0.00013 }
+      - { n: 3, simplify_vw: 0.00020 }
+      - { n: 4 }
+      - { n: 5 }
+      - { n: 6 }
