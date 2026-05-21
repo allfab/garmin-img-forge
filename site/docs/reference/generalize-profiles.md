@@ -104,9 +104,11 @@ L'algorithme Visvalingam-Whyatt (`simplify_vw`) est contraint topologiquement : 
 !!! warning "Consommation mémoire à grande échelle"
     La Phase 1.5 charge le **graphe de vertices partagés de la totalité des données** en RAM avant toute parallélisation. Ce comportement est indépendant de `--mpforge-jobs`.
 
-    Sur un département (~40 tuiles), le graphe topologique tient facilement en mémoire. Sur un **quadrant France** (~25 départements, 1000+ tuiles), il peut dépasser 40 Go et déclencher l'OOM killer (exit code 137) même avec 32 Go RAM + ZRAM.
+    Sur un département (~40 tuiles), le graphe topologique tient facilement en mémoire sur un poste natif avec 16+ Go RAM. Sur un **quadrant France** (~25 départements, 1000+ tuiles), il peut dépasser 40 Go et déclencher l'OOM killer (exit code 137) même avec 32 Go RAM + ZRAM.
 
-    **Solution** : utiliser un catalogue bifurqué sans `topology: true` pour les scopes à grande emprise. Voir [Catalogues bifurqués par scope](#catalogues-bifurques-par-scope) ci-dessous.
+    **Environnements contraints (WSL2, VMs légères) :** WSL2 alloue par défaut 50–80 % de la RAM système (configurable via `.wslconfig`). Sur un poste 16 Go avec WSL2 limité à 8–12 Go, la Phase 1.5 peut déclencher l'OOM killer **même sur un seul département** si `topology: true` est actif sur `TRONCON_DE_ROUTE` et `COMMUNE` simultanément. Contournement : commenter `generalize_profiles_path:` dans `sources.yaml` ou utiliser `--disable-profiles` — avec les conséquences visuelles décrites dans [Opt-out du catalogue](#opt-out-du-catalogue).
+
+    **Solution générale** : utiliser un catalogue bifurqué sans `topology: true` pour les scopes à grande emprise. Voir [Catalogues bifurqués par scope](#catalogues-bifurques-par-scope) ci-dessous.
 
 ---
 
@@ -235,6 +237,16 @@ MPFORGE_PROFILES=off mpforge build --config config.yaml
 ```
 
 Seul le catalogue `generalize_profiles_path` est désactivé. Les directives `generalize:` inline dans `sources.yaml` restent actives.
+
+!!! warning "Conséquences visuelles du désactivation des profils"
+    Sans profils, chaque feature ne transporte que `Data0=`. Le comportement d'imgforge dépend alors de l'`EndLevel` déclaré dans `garmin-rules.yaml` :
+
+    - **`EndLevel=0`** (Chemin, Rond-point, Route empierrée, Bâtiment, Courbe intermédiaire…) — imgforge applique le **mode strict** : la feature n'est incluse dans la RGN d'un niveau L que si `DataL=` existe explicitement. Avec uniquement `Data0=`, ces features sont **visibles uniquement au zoom maximal** (level 0, 24 bits ≈ 25–350 m). La carte paraît vide dès qu'on dézoome.
+    - **`EndLevel=N` (N > 0)** (Autoroutes EndLevel=6, Nationales/Départementales EndLevel=4…) — imgforge applique le **fallback range** : `Data0=` est réutilisé comme géométrie de secours pour tous les niveaux 0..N. Ces axes restent visibles aux zooms intermédiaires (non simplifiés, mais présents).
+
+    Les features BDTOPO majoritaires en volume (chemins ruraux, bâtiments, courbes de niveau intermédiaires) ont `EndLevel=0` — elles disparaissent aux zooms larges. Seul le réseau routier structurant (EndLevel=3..6) demeure visible à distance. Cette carte "appauvrie" est **techniquement correcte** per spec `EndLevel=0`, mais visuellement déconcertante si l'on est habitué aux profils actifs.
+
+    **Avec les profils actifs**, ces mêmes features `EndLevel=0` reçoivent `Data0..Data6` (le profil génère tous les paliers n=0..6 indépendamment de l'`EndLevel`). imgforge les inclut alors à tous les niveaux, contournant involontairement la sémantique `EndLevel=0` — la carte apparaît "plus riche" qu'elle ne devrait.
 
 ---
 

@@ -162,6 +162,14 @@ Profils mpforge actifs, filtres imgforge par défaut. C'est la configuration de 
 
 Profils désactivés, imgforge par défaut. Permet de mesurer l'apport des profils de généralisation sur la taille et la fluidité de la carte.
 
+!!! warning "Carte visuellement appauvrie sans profils"
+    Sans profils, chaque feature n'a que `Data0=`. L'impact sur le rendu dépend des `EndLevel` déclarés dans `garmin-rules.yaml` :
+
+    - **Features `EndLevel=0`** (Chemin, Rond-point, Route empierrée, Bâtiment, Courbes intermédiaires…) — imgforge les inclut uniquement aux niveaux où `DataN` existe explicitement. Avec seulement `Data0=`, elles ne sont visibles **qu'au zoom maximal** (level 0, 24 bits). La carte paraît vide dès qu'on dézoome.
+    - **Features `EndLevel=N` (N > 0)** (Autoroutes, Nationales, Départementales…) — imgforge applique un fallback : `Data0=` est réutilisé pour tous les niveaux 0..N. Ces axes restent visibles aux zooms intermédiaires.
+
+    Les features BDTOPO majoritaires en volume (chemins ruraux, bâtiments, courbes de niveau intermédiaires) ont `EndLevel=0`. Désactiver les profils produit donc une carte qui semble vide dès le premier dézoom. Voir [Opt-out du catalogue](generalize-profiles.md#opt-out-du-catalogue) pour le détail du mécanisme.
+
 === "build-garmin-map.sh (recommandé)"
 
     ```bash

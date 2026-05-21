@@ -104,9 +104,11 @@ The Visvalingam-Whyatt algorithm (`simplify_vw`) is topologically constrained: i
 !!! warning "Memory usage at large scale"
     Phase 1.5 loads the **entire shared-vertex graph of all data** into RAM before any parallelization. This behavior is independent of `--mpforge-jobs`.
 
-    On a department (~40 tiles), the topological graph easily fits in memory. On a **France quadrant** (~25 departments, 1000+ tiles), it can exceed 40 GB and trigger the OOM killer (exit code 137) even with 32 GB RAM + ZRAM.
+    On a department (~40 tiles), the topological graph easily fits in memory on a native host with 16+ GB RAM. On a **France quadrant** (~25 departments, 1000+ tiles), it can exceed 40 GB and trigger the OOM killer (exit code 137) even with 32 GB RAM + ZRAM.
 
-    **Solution**: use a bifurcated catalog without `topology: true` for large-scale scopes. See [Bifurcated catalogs by scope](#bifurcated-catalogs-by-scope) below.
+    **Constrained environments (WSL2, lightweight VMs):** WSL2 allocates 50–80% of system RAM by default (configurable via `.wslconfig`). On a 16 GB machine with WSL2 capped at 8–12 GB, Phase 1.5 may trigger the OOM killer **even on a single department** when `topology: true` is active on both `TRONCON_DE_ROUTE` and `COMMUNE`. Workaround: comment out `generalize_profiles_path:` in `sources.yaml` or use `--disable-profiles` — with the visual consequences described in [Opting out of the catalog](#opting-out-of-the-catalog).
+
+    **General solution**: use a bifurcated catalog without `topology: true` for large-scale scopes. See [Bifurcated catalogs by scope](#bifurcated-catalogs-by-scope) below.
 
 ---
 
@@ -235,6 +237,16 @@ MPFORGE_PROFILES=off mpforge build --config config.yaml
 ```
 
 Only the `generalize_profiles_path` catalog is disabled. Inline `generalize:` directives in `sources.yaml` remain active.
+
+!!! warning "Visual impact of disabling profiles"
+    Without profiles, each feature only carries `Data0=`. imgforge's rendering behavior then depends on the `EndLevel` declared in `garmin-rules.yaml`:
+
+    - **`EndLevel=0`** (footpaths, roundabouts, unpaved roads, buildings, intermediate contours…) — imgforge applies **strict mode**: the feature is only included in level L's RGN if `DataL=` exists explicitly. With only `Data0=`, these features are **visible at maximum zoom only** (level 0, 24 bits ≈ 25–350 m). The map appears empty as soon as you zoom out.
+    - **`EndLevel=N` (N > 0)** (motorways EndLevel=6, national/departmental roads EndLevel=4…) — imgforge applies the **fallback range**: `Data0=` is reused as fallback geometry for all levels 0..N. These roads remain visible at intermediate zoom levels (unsimplified, but present).
+
+    The BDTOPO features that make up the vast majority by volume (rural paths, buildings, intermediate contours) have `EndLevel=0` — they vanish at wide zoom. Only the structural road network (EndLevel=3..6) remains visible at distance. This "sparse" map is **technically correct** per the `EndLevel=0` spec, but visually surprising if you are used to profiles being active.
+
+    **With active profiles**, these same `EndLevel=0` features receive `Data0..Data6` (the profile generates all tiers n=0..6 regardless of `EndLevel`). imgforge then includes them at all levels, inadvertently bypassing `EndLevel=0` semantics — the map appears "richer" than it should.
 
 ---
 

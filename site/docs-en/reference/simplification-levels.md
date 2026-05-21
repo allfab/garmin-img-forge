@@ -162,6 +162,14 @@ mpforge profiles active, imgforge default filters. This is the reference configu
 
 Profiles disabled, imgforge defaults. Allows measuring the contribution of generalization profiles on map size and smoothness.
 
+!!! warning "Visually sparse map without profiles"
+    Without profiles, each feature only has `Data0=`. The rendering impact depends on `EndLevel` values in `garmin-rules.yaml`:
+
+    - **`EndLevel=0` features** (footpaths, roundabouts, buildings, intermediate contours…) — imgforge only includes them in levels where `DataN=` exists explicitly. With only `Data0=`, they are visible **at maximum zoom only** (level 0, 24 bits). The map appears empty as soon as you zoom out.
+    - **`EndLevel=N` (N > 0) features** (motorways, national/departmental roads…) — imgforge falls back to `Data0=` for all levels 0..N. These roads remain visible at intermediate zoom.
+
+    The majority of BDTOPO features by volume (rural paths, buildings, intermediate contours) have `EndLevel=0`. Disabling profiles produces a map that looks empty beyond the first zoom-out. See [Opting out of the catalog](generalize-profiles.md#opting-out-of-the-catalog) for a full explanation of the mechanism.
+
 === "build-garmin-map.sh (recommended)"
 
     ```bash
