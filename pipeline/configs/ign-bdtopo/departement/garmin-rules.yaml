@@ -2096,7 +2096,7 @@ rulesets:
           NATURE: "Col"
         set:
           Type: "0x06601"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 29. Crete
@@ -2105,7 +2105,7 @@ rulesets:
           NATURE: "Crête"
         set:
           Type: "0x06613"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 30. Depression
@@ -2240,7 +2240,7 @@ rulesets:
           NATURE: "Sommet"
         set:
           Type: "0x06616"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 45. Terril
@@ -3045,7 +3045,7 @@ rulesets:
           NATURE: "Refuge"
         set:
           Type: "0x02b04"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 133. Salle de danse ou de jeux
