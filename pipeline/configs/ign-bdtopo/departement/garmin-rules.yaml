@@ -1825,8 +1825,9 @@ rulesets:
           Label: "${TOPONYME}"
 
       # 3. Bien inscrit sur la liste du patrimoine mondial de l'UNESCO
+      # Tronqué C,48 : 59 bytes → "Bien inscrit sur la liste du patrimoine mondial"
       - match:
-          NATURE: "Bien inscrit sur la liste du patrimoine mondial de l'UNESCO"
+          NATURE: "Bien inscrit sur la liste du patrimoine mondial"
         set:
           Type: "0x14"
           EndLevel: "5"
@@ -1905,8 +1906,9 @@ rulesets:
           Label: "${TOPONYME}"
 
       # 13. Site acquis ou assimilé des conservatoires d'espaces naturels
+      # Tronqué C,48 : 62 bytes → "Site acquis ou assimilé des conservatoires d'es"
       - match:
-          NATURE: "Site acquis ou assimilé des conservatoires d'espaces naturels"
+          NATURE: "Site acquis ou assimilé des conservatoires d'es"
         set:
           Type: "0x16"
           EndLevel: "2"
