@@ -52,6 +52,7 @@ DEM_DIR=""              # défaut: ${DATA_DIR}/dem
 OSM_DIR=""              # défaut: ${DATA_DIR}/osm
 CADASTRE_DIR=""         # défaut: ${DATA_DIR}/cadastre
 HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
+OCSGE_DIR=""            # défaut: ${DATA_DIR}/ocsge
 
 # mpforge
 CONFIG_FILE=""          # si vide : utilise sources.yaml avec envsubst
@@ -149,6 +150,7 @@ _DEM_DATA_ROOT=""
 _OSM_DATA_ROOT=""
 _CADASTRE_DATA_ROOT=""
 _HIKING_TRAILS_DATA_ROOT=""
+_OCSGE_DATA_ROOT=""
 _OUTPUT_DIR=""
 _REPORT_FILE=""
 _IMGFORGE_REPORT_FILE=""
@@ -333,6 +335,7 @@ CHEMINS :
     --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
     --cadastre-dir DIR      Racine données cadastre (défaut: ${data-dir}/cadastre)
     --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
+    --ocsge-dir DIR         Racine données OCS-GE (défaut: ${data-dir}/ocsge)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
     --config FILE           Config YAML mpforge custom (défaut auto-résolu :
                               - Quadrant Garmin (FRANCE-SE/SO/NE/NO) → france-quadrant/sources.yaml
@@ -449,6 +452,7 @@ parse_args() {
             --osm-dir)       OSM_DIR="$2"; shift 2 ;;
             --cadastre-dir)  CADASTRE_DIR="$2"; shift 2 ;;
             --hiking-trails-dir) HIKING_TRAILS_DIR="$2"; shift 2 ;;
+            --ocsge-dir)     OCSGE_DIR="$2"; shift 2 ;;
             --output-base)   OUTPUT_BASE="$2"; shift 2 ;;
             --config)        CONFIG_FILE="$2"; shift 2 ;;
             --jobs)          JOBS="$2"; shift 2 ;;
@@ -772,6 +776,7 @@ resolve_paths() {
     _OSM_DATA_ROOT="${OSM_DIR:-${DATA_DIR}/osm}"
     _CADASTRE_DATA_ROOT="${CADASTRE_DIR:-${DATA_DIR}/cadastre}"
     _HIKING_TRAILS_DATA_ROOT="${HIKING_TRAILS_DIR:-${DATA_DIR}/hiking-trails}"
+    _OCSGE_DATA_ROOT="${OCSGE_DIR:-${DATA_DIR}/ocsge}"
 
     # Nom de la carte pour l'output
     local zones_label
@@ -1058,6 +1063,7 @@ prepare_config() {
     export OSM_DATA_ROOT="$_OSM_DATA_ROOT"
     export CADASTRE_DATA_ROOT="$_CADASTRE_DATA_ROOT"
     export HIKING_TRAILS_DATA_ROOT="$_HIKING_TRAILS_DATA_ROOT"
+    export OCSGE_DATA_ROOT="$_OCSGE_DATA_ROOT"
     export OUTPUT_DIR="$_OUTPUT_DIR"
     export BASE_ID
     export ZONES

@@ -216,25 +216,25 @@ inputs:
   #     buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # Contours PARC_OU_RESERVE — anneau extérieur → [POLYLINE] contour épais simulé
-  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    layer_alias: "PARC_OU_RESERVE_CONTOUR"
-    geometry_transform: boundary
-    dedup_by_field: ID
-    spatial_filter:
-      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "PARC_OU_RESERVE_CONTOUR"
+  #   geometry_transform: boundary
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500
 
   # PARC_OU_RESERVE label transparent — même SHP, type polygone sans fond, affiche TOPONYME
-  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    layer_alias: "PARC_OU_RESERVE_LABEL"
-    dedup_by_field: ID
-    spatial_filter:
-      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "PARC_OU_RESERVE_LABEL"
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500
 
   # Forêts publiques
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
@@ -327,6 +327,17 @@ inputs:
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
     layer_alias: "TSURF_id"
     attribute_filter: "SYM = '65'"
+
+  # ==========================================================================
+  # OCSGE — Sols nus CS1.2.1 (GPKG EPSG:2154)
+  # Source : IGN OCS-GE — couche OCCUPATION_SOL filtrée code_cs='CS1.2.1'
+  # Couvre sable, galets, rochers, surfaces pierreuses et matériaux minéraux.
+  # ==========================================================================
+  - path: "${OCSGE_DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL.gpkg"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "OCCUPATION_SOL"
+    attribute_filter: "code_cs = 'CS1.2.1'"
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)

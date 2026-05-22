@@ -832,7 +832,6 @@ rulesets:
 
   - name: "Communes"
     source_layer: "COMMUNE"
-    label_case: "title"
     rules:
       # 1. Toute commune (mapping statique)
       - match:
@@ -853,7 +852,6 @@ rulesets:
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
-    label_case: "title"
     rules:
       # 1. IMPORTANCE 1 — rayonnement national (1:1 000 000)
       - match:
@@ -1010,7 +1008,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x18"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "${NOM_C_EAU}"
 
   # ==========================================================================
@@ -1224,91 +1222,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "2"
+          EndLevel: "1"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "2"
+          EndLevel: "1"
 
   # ==========================================================================
   # BATI — Cimetières (POLYGON)
@@ -2014,6 +2012,22 @@ rulesets:
   #         Type: "0x10a0c"
   #         EndLevel: "4"
   #         Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # OCSGE — Sols nus CS1.2.1 (POLYGON)
+  # Source : IGN OCS-GE — couche OCCUPATION_SOL, filtrée code_cs='CS1.2.1' dans sources.yaml
+  # Sols couverts de sable, galets, rochers, surfaces pierreuses, matériaux minéraux.
+  # Enrichit les zones montagneuses et abords des glaciers.
+  # 0x11014 = SAND/bare ground (tan #907C60) — type Garmin standard, déjà dans TYP.
+  # ==========================================================================
+  - name: "OCSGE"
+    source_layer: "OCCUPATION_SOL"
+    rules:
+      - match:
+          code_cs: "CS1.2.1"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
 
   # ==========================================================================
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
