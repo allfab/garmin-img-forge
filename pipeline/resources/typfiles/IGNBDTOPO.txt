@@ -1,13 +1,13 @@
-; IGNBDTOPO.typ
-; Longueur: 116620 octets
-; Fichier TYP compilï¿½     18/09/2025     16:21:42
-; Dï¿½compilï¿½ le 10/04/2026 ï¿½ 15:30:06
+; I0002387.TYP
+; Longueur: 816991 octets
+; Fichier TYP compilé     22/03/2021     15:23:18
+; Décompilé le 22/05/2026 à 09:01:43
 
 [_id]
 ProductCode=1
-FID=1100
+FID=9095
 CodePage=1252
-[End]
+ [End]
 
 ;=========== COMMENTAIRES ======
 [_comments]
@@ -19,6 +19,8 @@ CodePage=1252
 ;=========== POLYGONES : PRIORITE DANS L'AFFICHAGE ======
 [_drawOrder]
 Type=0x054,1
+Type=0x4c,1
+Type=0x4d,1
 Type=0x10400,1
 Type=0x10409,1
 Type=0x10500,1
@@ -32,7 +34,7 @@ Type=0x10613,1
 Type=0x10614,1
 Type=0x10700,1
 Type=0x10c07,1
-Type=0x032,1
+Type=0x032,2
 Type=0x10b02,2
 Type=0x001,3
 Type=0x002,3
@@ -109,7 +111,7 @@ Type=0x04f,6
 Type=0x050,6
 Type=0x1090c,6
 Type=0x10a00,6
-Type=0x10a04,12
+Type=0x10a04,6
 Type=0x10a05,6
 Type=0x10a06,6
 Type=0x10a07,6
@@ -158,6 +160,7 @@ Type=0x1150d,7
 Type=0x1150e,7
 Type=0x1150f,7
 Type=0x11510,7
+Type=0x11511,7
 Type=0x11512,7
 Type=0x11513,7
 Type=0x11514,7
@@ -1120,7 +1123,6 @@ Type=0x11010,8
 Type=0x11013,8
 Type=0x11014,8
 Type=0x11017,8
-Type=0x11511,8
 Type=0x028,9
 Type=0x042,9
 Type=0x043,9
@@ -1197,7 +1199,7 @@ Type=0x10c05,12
 Type=0x10c06,12
 Type=0x10f02,12
 Type=0x10f03,12
-Type=0x10f04,14
+Type=0x10f04,12
 Type=0x10f05,12
 Type=0x10f06,12
 Type=0x10f07,12
@@ -1242,8 +1244,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -1257,8 +1259,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -1272,8 +1274,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -1282,7 +1284,7 @@ Type=0x04
 ;GRMN_TYPE: Large Manmade Areas/MILITARY_BASE/Military base area/Non NT
 ExtendedLabels=N
 Xpm="32 32 2 1"
-"! c #B83000"
+"! c #B83000"   alpha=00
 "  c none"
 "                               !"
 "                              ! "
@@ -1344,8 +1346,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #F8FCF8"
-"2 c #000000"
+"1 c #F8FCF8"   alpha=00
+"2 c #000000"   alpha=00
 [end]
 
 
@@ -1356,8 +1358,8 @@ String1=0x04,HARBOUR
 String2=0x01,PORTUAIRE
 ExtendedLabels=N
 Xpm="0 0 2 0"
-"1 c #7894F8"
-"2 c #0000F8"
+"1 c #7894F8"   alpha=00
+"2 c #0000F8"   alpha=00
 [end]
 
 
@@ -1447,8 +1449,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #C0C4C0"
-"2 c #303030"
+"1 c #C0C4C0"   alpha=00
+"2 c #303030"   alpha=00
 [end]
 
 
@@ -1476,7 +1478,7 @@ DaycustomColor:#00A400
 NightcustomColor:#00A400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00A400"
+"! c #00A400"   alpha=00
 "  c none"
 "     !     !    !    !    !    !"
 "    !     !    !    !    !    ! "
@@ -1524,7 +1526,7 @@ DaycustomColor:#00C400
 NightcustomColor:#00C400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00C400"
+"! c #00C400"   alpha=00
 "  c none"
 "                                "
 "                         !      "
@@ -1572,7 +1574,7 @@ DaycustomColor:#00A400
 NightcustomColor:#00A400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00A400"
+"! c #00A400"   alpha=00
 "  c none"
 "                                "
 "                    !    !    ! "
@@ -1670,9 +1672,9 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 4 1"
-"! c #000000"
+"! c #000000"   alpha=00
 "  c none"
-"3 c #F8FCF8"
+"3 c #F8FCF8"   alpha=00
 "4 c none"
 "  !               !             "
 "  !               !             "
@@ -1720,8 +1722,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1735,8 +1737,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1750,8 +1752,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1765,8 +1767,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1776,12 +1778,12 @@ Type=0x3f
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
-DaycustomColor:#BAC8F7
-NightcustomColor:#BAC8F7
+DaycustomColor:#3864F8
+NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1795,8 +1797,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1810,8 +1812,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1825,8 +1827,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1838,8 +1840,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1851,8 +1853,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1864,8 +1866,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -1875,11 +1877,11 @@ Type=0x4c
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
-DaycustomColor:#BAC8F7
-NightcustomColor:#BAC8F7
+DaycustomColor:#3864F8
+NightcustomColor:#3864F8
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #0064F8"
+"! c #0064F8"   alpha=00
 "  c none"
 "!!!!!!!!        !!!!!!!!        "
 "!!!!!!!!        !!!!!!!!        "
@@ -1945,17 +1947,14 @@ Xpm="32 32 4 1"
 "# c #D0FCB8"
 "3 c #30D000"
 "4 c #006400"
-"################################"
-"################################"
-"#####!!!!!######################"
-"####!#####!#####################"
-"###!#######!####################"
-"###!#######!####################"
-"####!#####!#####################"
-"#####!!!!!######################"
-"#######!########################"
-"#######!########################"
-"######!!!#######################"
+"###!!##############!!###########"
+"#!!##!!##########!!##!!#########"
+"#!####!##########!####!#########"
+"!######!########!######!########"
+"!######!########!######!########"
+"#!####!##########!####!#########"
+"#!!##!!##########!!##!!#########"
+"###!!##############!!###########"
 "################################"
 "################################"
 "################################"
@@ -1964,16 +1963,19 @@ Xpm="32 32 4 1"
 "################################"
 "################################"
 "################################"
+"###########!!##############!!###"
+"#########!!##!!##########!!##!!#"
+"#########!####!##########!####!#"
+"########!######!########!######!"
+"########!######!########!######!"
+"#########!####!##########!####!#"
+"#########!!##!!##########!!##!!#"
+"###########!!##############!!###"
 "################################"
-"######################!!!!!#####"
-"#####################!#####!####"
-"####################!#######!###"
-"####################!#######!###"
-"#####################!#####!####"
-"######################!!!!!#####"
-"########################!#######"
-"########################!#######"
-"#######################!!!######"
+"################################"
+"################################"
+"################################"
+"################################"
 "################################"
 "################################"
 "################################"
@@ -1991,8 +1993,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98D460"
-"2 c #006400"
+"1 c #98D460"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -2006,8 +2008,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #D0FCB8"
-"2 c #006400"
+"1 c #D0FCB8"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -2021,7 +2023,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #6064F8"
+"! c #6064F8"   alpha=00
 "  c none"
 "                                "
 "                                "
@@ -2069,8 +2071,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #F8FCF8"
-"2 c #000000"
+"1 c #F8FCF8"   alpha=00
+"2 c #000000"   alpha=00
 [end]
 
 
@@ -2098,8 +2100,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -2113,8 +2115,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -2128,8 +2130,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #E0E4E0"
-"2 c #101010"
+"1 c #E0E4E0"   alpha=00
+"2 c #101010"   alpha=00
 [end]
 
 
@@ -2152,7 +2154,7 @@ Type=0x10901
 ;GRMN_TYPE: Large Manmade Areas/MILITARY_BASE(NT)/Military base area/NT
 ExtendedLabels=N
 Xpm="32 32 2 1"
-"! c #B83000"
+"! c #B83000"   alpha=00
 "  c none"
 "                               !"
 "                              ! "
@@ -2214,8 +2216,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #F8FCF8"
-"2 c #000000"
+"1 c #F8FCF8"   alpha=00
+"2 c #000000"   alpha=00
 [end]
 
 
@@ -2226,8 +2228,8 @@ String1=0x04,HARBOUR
 String2=0x01,PORTUAIRE
 ExtendedLabels=N
 Xpm="0 0 2 0"
-"1 c #7894F8"
-"2 c #0000F8"
+"1 c #7894F8"   alpha=00
+"2 c #0000F8"   alpha=00
 [end]
 
 
@@ -2317,8 +2319,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #C0C4C0"
-"2 c #303030"
+"1 c #C0C4C0"   alpha=00
+"2 c #303030"   alpha=00
 [end]
 
 
@@ -2382,9 +2384,9 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 4 1"
-"! c #000000"
+"! c #000000"   alpha=00
 "  c none"
-"3 c #F8FCF8"
+"3 c #F8FCF8"   alpha=00
 "4 c none"
 "  !               !             "
 "  !               !             "
@@ -2432,7 +2434,7 @@ DaycustomColor:#00A400
 NightcustomColor:#00A400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00A400"
+"! c #00A400"   alpha=00
 "  c none"
 "     !     !    !    !    !    !"
 "    !     !    !    !    !    ! "
@@ -2480,7 +2482,7 @@ DaycustomColor:#00C400
 NightcustomColor:#00C400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00C400"
+"! c #00C400"   alpha=00
 "  c none"
 "                                "
 "                         !      "
@@ -2528,7 +2530,7 @@ DaycustomColor:#00A400
 NightcustomColor:#00A400
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #00A400"
+"! c #00A400"   alpha=00
 "  c none"
 "                                "
 "                    !    !    ! "
@@ -2567,54 +2569,6 @@ Xpm="32 32 2 1"
 
 
 [_polygon]
-Type=0x10a04
-;GRMN_TYPE: Park Areas/NATIONAL_FOREST(NT)/National or communal forest/NT
-ExtendedLabels=Y
-FontStyle=NormalFont
-CustomColor=DayAndNight
-DaycustomColor:#006400
-NightcustomColor:#006400
-ContourColor=No
-Xpm="32 32 2 1"
-"! c #006400"
-"# c #B8EE98"
-"################################"
-"########!#######################"
-"#######!!!######################"
-"######!!!!!#####################"
-"#####!!!!!!!####################"
-"#######!!!######################"
-"######!!!!!#####################"
-"#####!!!!!!!####################"
-"####!!!!!!!!!###################"
-"########!#######################"
-"########!#######################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"###################!############"
-"##################!!!###########"
-"#################!!!!!##########"
-"################!!!!!!!#########"
-"##################!!!###########"
-"#################!!!!!##########"
-"################!!!!!!!#########"
-"###############!!!!!!!!!########"
-"###################!############"
-"###################!############"
-"################################"
-"################################"
-"################################"
-"################################"
-;12345678901234567890123456789012
-[end]
-
-
-[_polygon]
 Type=0x10b02
 ;GRMN_TYPE: Water Areas/SEA(NT)/Sea/NT
 ExtendedLabels=Y
@@ -2624,8 +2578,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2639,8 +2593,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2654,8 +2608,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2669,8 +2623,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2684,8 +2638,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2699,8 +2653,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2714,8 +2668,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2729,8 +2683,8 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2742,8 +2696,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2755,8 +2709,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2768,8 +2722,8 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98CCF8"
-"2 c #000088"
+"1 c #98CCF8"   alpha=00
+"2 c #000088"   alpha=00
 [end]
 
 
@@ -2783,7 +2737,7 @@ DaycustomColor:#3864F8
 NightcustomColor:#3864F8
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #0064F8"
+"! c #0064F8"   alpha=00
 "  c none"
 "!!!!!!!!        !!!!!!!!        "
 "!!!!!!!!        !!!!!!!!        "
@@ -2895,8 +2849,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #98D460"
-"2 c #006400"
+"1 c #98D460"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -2910,8 +2864,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #D0FCB8"
-"2 c #006400"
+"1 c #D0FCB8"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -2925,7 +2879,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #6064F8"
+"! c #6064F8"   alpha=00
 "  c none"
 "                                "
 "                                "
@@ -2973,8 +2927,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #F8FCF8"
-"2 c #000000"
+"1 c #F8FCF8"   alpha=00
+"2 c #000000"   alpha=00
 [end]
 
 
@@ -2982,7 +2936,7 @@ Xpm="0 0 2 0"
 Type=0x10c09
 ;GRMN_TYPE: //
 String1=0x04,RICE FIELD
-String2=0x01,RIZIï¿½RE
+String2=0x01,RIZIÈRE
 String3=0x02,REISFELD
 ExtendedLabels=N
 Xpm="32 32 2 1"
@@ -3029,7 +2983,7 @@ Type=0x10f00
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_1/Customizable area/Non NT, NT
 String1=0x04,RAILWAY AREA
 String2=0x01,VOIE DE TRIAGE
-String3=0x02,BAHNGELï¿½NDE
+String3=0x02,BAHNGELÄNDE
 String4=0x00,VOIE DE TRIAGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3038,7 +2992,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #D0D4D0"
+"1 c #D0D4D0"   alpha=00
 [end]
 
 
@@ -3056,7 +3010,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #B0B4B0"
+"1 c #B0B4B0"   alpha=00
 [end]
 
 
@@ -3064,9 +3018,9 @@ Xpm="0 0 1 0"
 Type=0x10f02
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_3/Customizable area/Non NT, NT
 String1=0x04,WATER TOWER
-String2=0x01,CHï¿½TEAU D'EAU
+String2=0x01,CHÂTEAU D'EAU
 String3=0x02,WASSERTURM
-String4=0x00,CHï¿½TEAU D'EAU
+String4=0x00,CHÂTEAU D'EAU
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3074,7 +3028,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #686C88"
+"1 c #686C88"   alpha=00
 [end]
 
 
@@ -3134,9 +3088,9 @@ Xpm="32 32 2 1"
 Type=0x10f04
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_5/Customizable area/Non NT, NT
 String1=0x04,AGRICULTURAL BUILDING
-String2=0x01,Bï¿½TIMENT AGRICOLE
-String3=0x02,LANDWIRTSCHAFTLICHES GEBï¿½UDE
-String4=0x00,Bï¿½TIMENT AGRICOLE
+String2=0x01,BÂTIMENT AGRICOLE
+String3=0x02,LANDWIRTSCHAFTLICHES GEBÄUDE
+String4=0x00,BÂTIMENT AGRICOLE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3144,7 +3098,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #808080"
+"1 c #808080"   alpha=00
 [end]
 
 
@@ -3206,9 +3160,9 @@ Xpm="0 0 1 0"
 Type=0x10f08
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_9/Customizable area/Non NT, NT
 String1=0x04,AMPHITHEATER
-String2=0x01,ARï¿½NE OU THï¿½ï¿½TRE ANTIQUE
+String2=0x01,ARÈNE OU THÉÂTRE ANTIQUE
 String3=0x02,AMPHITHEATER
-String4=0x00,ARï¿½NE OU THï¿½ï¿½TRE ANTIQUE
+String4=0x00,ARÈNE OU THÉÂTRE ANTIQUE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3216,7 +3170,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3242,9 +3196,9 @@ Xpm="0 0 1 0"
 Type=0x10f0a
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_11/Customizable area/Non NT, NT
 String1=0x04,CASTLE
-String2=0x01,CHï¿½TEAU
+String2=0x01,CHÂTEAU
 String3=0x02,SCHLOSS
-String4=0x00,CHï¿½TEAU
+String4=0x00,CHÂTEAU
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3252,7 +3206,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3314,9 +3268,9 @@ Xpm="0 0 1 0"
 Type=0x10f0e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_15/Customizable area/Non NT, NT
 String1=0x04,TICKET OFFICE
-String2=0x01,Pï¿½AGE
-String3=0x02,KASSENGEBï¿½UDE
-String4=0x00,Pï¿½AGE
+String2=0x01,PÉAGE
+String3=0x02,KASSENGEBÄUDE
+String4=0x00,PÉAGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3324,7 +3278,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3332,9 +3286,9 @@ Xpm="0 0 1 0"
 Type=0x10f0f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_16/Customizable area/Non NT, NT
 String1=0x04,PREFECTURE
-String2=0x01,PRï¿½FECTURE
-String3=0x02,PRï¿½FEKTUR
-String4=0x00,PRï¿½FECTURE
+String2=0x01,PRÉFECTURE
+String3=0x02,PRÄFEKTUR
+String4=0x00,PRÉFECTURE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3342,7 +3296,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3350,9 +3304,9 @@ Xpm="0 0 1 0"
 Type=0x10f10
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_17/Customizable area/Non NT, NT
 String1=0x04,PREFECTURE
-String2=0x01,SOUS-PRï¿½FECTURE
-String3=0x02,UNTERPRï¿½FEKTUR
-String4=0x00,SOUS-PRï¿½FECTURE
+String2=0x01,SOUS-PRÉFECTURE
+String3=0x02,UNTERPRÄFEKTUR
+String4=0x00,SOUS-PRÉFECTURE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3378,7 +3332,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3387,7 +3341,7 @@ Type=0x10f12
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_19/Customizable area/Non NT, NT
 String1=0x04,TRIBUNE
 String2=0x01,TRIBUNE
-String3=0x02,TRIBï¿½NE
+String3=0x02,TRIBÜNE
 String4=0x00,TRIBUNE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3396,7 +3350,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #505050"
+"1 c #505050"   alpha=00
 [end]
 
 
@@ -3405,7 +3359,7 @@ Type=0x10f13
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_20/Customizable area/Non NT, NT
 String1=0x04,CEMETARY(MILITAR)
 String2=0x01,CIMETIERE(MILITAIRE)
-String3=0x02,MILITï¿½RFRIEDHOF
+String3=0x02,MILITÄRFRIEDHOF
 String4=0x00,CIMETIERE(MILITAIRE)
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -3502,7 +3456,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #909490"
+"! c #909490"   alpha=00
 "  c none"
 "                                "
 "                                "
@@ -3559,58 +3513,6 @@ Xpm="0 0 1 0"
 
 
 [_polygon]
-Type=0x10f18
-;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_25/Customizable area/Non NT, NT
-String1=0x04,GRAVEL, SHINGLE
-String2=0x01,GRAVIERS, GALETS
-String3=0x02,KIES, SCHOTTER
-String4=0x00,GRAVIERS, GALETS
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-Xpm="32 32 2 1"
-"! c #B0A890"
-"  c none"
-"                                "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-;12345678901234567890123456789012
-[end]
-
-
-[_polygon]
 Type=0x10f1b
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_28/Customizable area/Non NT, NT
 String1=0x04,RACECOURSE
@@ -3642,7 +3544,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #80BC00"
+"1 c #80BC00"   alpha=00
 [end]
 
 
@@ -3668,9 +3570,9 @@ Xpm="0 0 1 0"
 Type=0x10f1e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_31/Customizable area/Non NT, NT
 String1=0x04,DECIDUOUS FOREST
-String2=0x01,FORï¿½T DE FEUILLUS
+String2=0x01,FORÊT DE FEUILLUS
 String3=0x02,LAUBWALD
-String4=0x00,FORï¿½T DE FEUILLUS
+String4=0x00,FORÊT DE FEUILLUS
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3684,15 +3586,16 @@ Xpm="32 32 4 1"
 "4 c #006400"
 "################################"
 "################################"
-"#####!!!!!######################"
-"####!#####!#####################"
-"###!#######!####################"
-"###!#######!####################"
-"####!#####!#####################"
-"#####!!!!!######################"
-"#######!########################"
-"#######!########################"
+"################################"
+"################################"
+"################################"
 "######!!!#######################"
+"#####!###!######################"
+"####!#####!#####################"
+"####!#####!#####################"
+"####!#####!#####################"
+"#####!###!######################"
+"######!#!!!#####################"
 "################################"
 "################################"
 "################################"
@@ -3701,16 +3604,15 @@ Xpm="32 32 4 1"
 "################################"
 "################################"
 "################################"
-"################################"
-"######################!!!!!#####"
-"#####################!#####!####"
-"####################!#######!###"
-"####################!#######!###"
-"#####################!#####!####"
-"######################!!!!!#####"
-"########################!#######"
-"########################!#######"
 "#######################!!!######"
+"######################!###!#####"
+"#####################!#####!####"
+"#####################!#####!####"
+"#####################!#####!####"
+"######################!###!#####"
+"#######################!#!!!####"
+"################################"
+"################################"
 "################################"
 "################################"
 "################################"
@@ -3722,9 +3624,9 @@ Xpm="32 32 4 1"
 Type=0x10f1f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_32/Customizable area/Non NT, NT
 String1=0x04,CONIFEROUS FOREST
-String2=0x01,FORï¿½T DE CONIFï¿½RES
+String2=0x01,FORÊT DE CONIFÈRES
 String3=0x02,NADELWALD
-String4=0x00,FORï¿½T DE CONIFï¿½RES
+String4=0x00,FORÊT DE CONIFÈRES
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3776,9 +3678,9 @@ Xpm="32 32 4 1"
 Type=0x11000
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_33/Customizable area/Non NT, NT
 String1=0x04,OPEN FOREST
-String2=0x01,FORï¿½T OUVERTE
+String2=0x01,FORÊT OUVERTE
 String3=0x02,LICHTER WALD
-String4=0x00,FORï¿½T OUVERTE
+String4=0x00,FORÊT OUVERTE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -3786,9 +3688,9 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 4 1"
-"! c #C0F0A0"
+"! c #C0F0A0"   alpha=00
 "  c none"
-"3 c #588C18"
+"3 c #588C18"   alpha=00
 "4 c none"
 "   !!         !!         !!     "
 " !!!!!!     !!!!!!     !!!!!!   "
@@ -3894,8 +3796,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #D0FCB8"
-"2 c #006400"
+"1 c #D0FCB8"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -3913,9 +3815,9 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 4 1"
-"! c #40D000"
+"! c #40D000"   alpha=00
 "  c none"
-"3 c #60A420"
+"3 c #60A420"   alpha=00
 "4 c none"
 "                                "
 "                                "
@@ -3963,44 +3865,44 @@ String4=0x00,VIGNE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
-DaycustomColor:#7B2D52
-NightcustomColor:#7B2D52
+DaycustomColor:#000000
+NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"g c #7B2D52"
-"# c #F5EDD0"
-"################################"
-"##ggggg######ggggg######ggggg###"
-"##ggggg######ggggg######ggggg###"
-"###ggg########ggg########ggg####"
-"###ggg########ggg########ggg####"
-"####g##########g##########g#####"
-"####g##########g##########g#####"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"######ggggg###########ggggg#####"
-"######ggggg###########ggggg#####"
-"#######ggg#############ggg######"
-"#######ggg#############ggg######"
-"########g###############g#######"
-"########g###############g#######"
-"################################"
-"################################"
-"################################"
-"################################"
-"##ggggg######ggggg######ggggg###"
-"##ggggg######ggggg######ggggg###"
-"###ggg########ggg########ggg####"
-"###ggg########ggg########ggg####"
-"####g##########g##########g#####"
-"####g##########g##########g#####"
-"################################"
-"################################"
-"################################"
-"################################"
+"! c #38D000"   alpha=00
+"  c none"
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"!          !         !          "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
+"     !          !          !    "
 ;12345678901234567890123456789012
 [end]
 
@@ -4019,8 +3921,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #D0FCB8"
-"2 c #006400"
+"1 c #D0FCB8"   alpha=00
+"2 c #006400"   alpha=00
 [end]
 
 
@@ -4082,9 +3984,9 @@ Xpm="32 32 4 1"
 Type=0x11007
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_40/Customizable area/Non NT, NT
 String1=0x04,SUGAR CANE
-String2=0x01,CANNE ï¿½ SUCRE
+String2=0x01,CANNE À SUCRE
 String3=0x02,ZUCKERROHR
-String4=0x00,CANNE ï¿½ SUCRE
+String4=0x00,CANNE À SUCRE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4164,7 +4066,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #60B8D0"
+"! c #60B8D0"   alpha=00
 "  c none"
 "                                "
 "                                "
@@ -4270,7 +4172,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #D0D4D0"
+"! c #D0D4D0"   alpha=00
 "  c none"
 "!  ! ! !!  ! ! !!  ! ! !!  ! ! !"
 " !! ! !  !! ! !  !! ! !  !! ! ! "
@@ -4312,9 +4214,9 @@ Xpm="32 32 2 1"
 Type=0x1100c
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_45/Customizable area/Non NT, NT
 String1=0x04,SPORT BUILDING
-String2=0x01,Bï¿½TIMENT SPORTIF
-String3=0x02,SPORTGEBï¿½UDE
-String4=0x00,Bï¿½TIMENT SPORTIF
+String2=0x01,BÂTIMENT SPORTIF
+String3=0x02,SPORTGEBÄUDE
+String4=0x00,BÂTIMENT SPORTIF
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -4330,9 +4232,9 @@ Xpm="0 0 1 0"
 Type=0x1100d
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_46/Customizable area/Non NT, NT
 String1=0x04,INDUSTRIAL BUILDING
-String2=0x01,Bï¿½TIMENT INDUSTRIEL
-String3=0x02,INDUSTRIEGEBï¿½UDE
-String4=0x00,Bï¿½TIMENT INDUSTRIEL
+String2=0x01,BÂTIMENT INDUSTRIEL
+String3=0x02,INDUSTRIEGEBÄUDE
+String4=0x00,BÂTIMENT INDUSTRIEL
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4349,7 +4251,7 @@ Type=0x1100e
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_47/Customizable area/Non NT, NT
 String1=0x04,GOVERNMENT BUILDING
 String2=0x01,MAIRIE
-String3=0x02,VERWALTUNGSGEBï¿½UDE
+String3=0x02,VERWALTUNGSGEBÄUDE
 String4=0x00,MAIRIE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -4366,9 +4268,9 @@ Xpm="0 0 1 0"
 Type=0x1100f
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_48/Customizable area/Non NT, NT
 String1=0x04,RELIGIOUS BUILDING
-String2=0x01,Bï¿½TIMENT RELIGIEUX
-String3=0x02,RELIGIONSGEBï¿½UDE
-String4=0x00,Bï¿½TIMENT RELIGIEUX
+String2=0x01,BÂTIMENT RELIGIEUX
+String3=0x02,RELIGIONSGEBÄUDE
+String4=0x00,BÂTIMENT RELIGIEUX
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4436,9 +4338,9 @@ Xpm="32 32 2 1"
 Type=0x11012
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_51/Customizable area/Non NT, NT
 String1=0x04,COMMERCIAL BUILDING
-String2=0x01,Bï¿½TIMENT COMMERCIAL
-String3=0x02,GEWERBEGEBï¿½UDE
-String4=0x00,Bï¿½TIMENT COMMERCIAL
+String2=0x01,BÂTIMENT COMMERCIAL
+String3=0x02,GEWERBEGEBÄUDE
+String4=0x00,BÂTIMENT COMMERCIAL
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4498,7 +4400,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #D0D4D0"
+"! c #D0D4D0"   alpha=00
 "  c none"
 "!!     !    !!  !!     !        "
 "  !!  !!     !!  !!    !  !!!!  "
@@ -4550,7 +4452,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #907C60"
+"! c #907C60"   alpha=00
 "  c none"
 "               !                "
 "                          !     "
@@ -4592,9 +4494,9 @@ Xpm="32 32 2 1"
 Type=0x11015
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_54/Customizable area/Non NT, NT
 String1=0x04,TOLL
-String2=0x01,Pï¿½AGE
+String2=0x01,PÉAGE
 String3=0x02,MAUTSTELLE
-String4=0x00,Pï¿½AGE
+String4=0x00,PÉAGE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4602,7 +4504,7 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
-"1 c #D0D4D0"
+"1 c #D0D4D0"   alpha=00
 [end]
 
 
@@ -4709,9 +4611,9 @@ Xpm="32 32 2 1"
 Type=0x11018
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_57/Customizable area/Non NT, NT
 String1=0x04,RECREATION AREA
-String2=0x01,TERRAIN DE Rï¿½CRï¿½ATION
+String2=0x01,TERRAIN DE RÉCRÉATION
 String3=0x02,FREIZEITANLAGE
-String4=0x00,TERRAIN DE Rï¿½CRï¿½ATION
+String4=0x00,TERRAIN DE RÉCRÉATION
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4763,9 +4665,9 @@ Xpm="32 32 4 1"
 Type=0x11019
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_58/Customizable area/Non NT, NT
 String1=0x04,LOCK
-String2=0x01,ï¿½CLUSE
+String2=0x01,ÉCLUSE
 String3=0x02,SCHLEUSE
-String4=0x00,ï¿½CLUSE
+String4=0x00,ÉCLUSE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -4833,7 +4735,7 @@ Xpm="32 32 2 1"
 Type=0x1101b
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_60/Customizable area/Non NT, NT
 String1=0x01,MILITAIRE
-String2=0x02,MILITï¿½R
+String2=0x02,MILITÄR
 String3=0x00,MILITARY
 ExtendedLabels=Y
 FontStyle=Default
@@ -4842,7 +4744,7 @@ DaycustomColor:#B85870
 NightcustomColor:#B85870
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #B85870"
+"! c #B85870"   alpha=00
 "  c none"
 "                               !"
 "                              ! "
@@ -4883,8 +4785,8 @@ Xpm="32 32 2 1"
 [_polygon]
 Type=0x1101c
 ;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_61/Customizable area/Non NT, NT
-String1=0x01,Bï¿½TIMENT
-String2=0x02,GEBï¿½UDE
+String1=0x01,BÂTIMENT
+String2=0x02,GEBÄUDE
 String3=0x00,BUILDING
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -4893,8 +4795,8 @@ DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 2 0"
-"1 c #000000"
-"2 c #E0E4E0"
+"1 c #000000"   alpha=00
+"2 c #E0E4E0"   alpha=00
 [end]
 
 
@@ -4909,7 +4811,7 @@ FontStyle=NoLabel (invisible)
 CustomColor=No
 ContourColor=No
 Xpm="32 32 2 1"
-"! c #909490"
+"! c #909490"   alpha=00
 "  c none"
 "              !                !"
 "             !                ! "
@@ -4947,23 +4849,6 @@ Xpm="32 32 2 1"
 [end]
 
 
-[_polygon]
-Type=0x1101e
-;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_63/Customizable area/Non NT, NT
-String1=0x04,SWIMMING POOL (PRIVATE)
-String2=0x01,PISCINE PRIVï¿½E
-String3=0x02,SCHWIMMBAD (PRIVAT)
-String4=0x00,PISCINE PRIVEE
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-Xpm="0 0 1 0"
-"1 c #10DCE0"
-[end]
-
 ;====================== LINES ===========================
 
 
@@ -4987,7 +4872,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #FF6A00"
+"1 c #F80000"
 "2 c #000000"
 ExtendedLabels=Y
 FontStyle=Default
@@ -5005,7 +4890,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #F8C800"
+"1 c #F80000"
 "2 c #000000"
 ExtendedLabels=Y
 FontStyle=Default
@@ -5023,7 +4908,7 @@ UseOrientation=Y
 LineWidth=4
 BorderWidth=1
 Xpm="0 0 2 0"
-"1 c #FFA030"
+"1 c #F80000"
 "2 c #303030"
 ExtendedLabels=Y
 FontStyle=Default
@@ -5132,10 +5017,10 @@ UseOrientation=Y
 LineWidth=1
 BorderWidth=1
 Xpm="0 0 4 0"
-"1 c #F8C800"
-"2 c #D8A800"
-"3 c #F8C800"
-"4 c #E0B800"
+"1 c #D08800"
+"2 c #C87400"
+"3 c #D08800"
+"4 c #B87C00"
 String1=0x04,ROUNDABOUT
 String2=0x01,ROND-POINT
 String3=0x02,KREISVERKEHR
@@ -5445,12 +5330,15 @@ ContourColor=No
 Type=0x20
 ;GRMN_TYPE: Contour Lines/MINOR_CONTOUR/Minor land-based contour line/Non NT
 UseOrientation=Y
-Xpm="32 1 2  1"
-"! c #C89428"
-"  c none"
-"!!!!!!!! !!!!!!! !!!!!!! !!!!!! "
-;12345678901234567890123456789012
-ExtendedLabels=N
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #C89428"
+ExtendedLabels=Y
+FontStyle=SmallFont
+CustomColor=DayAndNight
+DaycustomColor:#F89400
+NightcustomColor:#F89400
+ContourColor=No
 [end]
 
 
@@ -5458,16 +5346,14 @@ ExtendedLabels=N
 Type=0x21
 ;GRMN_TYPE: Contour Lines/INT_CONTOUR/Intermediate contour (should be used for about every 5th contour line)/Non NT
 UseOrientation=Y
-Xpm="32 1 2  1"
-"! c #C88028"
-"  c none"
-"!!!!!!! !!!!!!! !!!!!!! !!!!!!! "
-;12345678901234567890123456789012
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #C88028"
 ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
+FontStyle=SmallFont
 CustomColor=DayAndNight
-DaycustomColor:#C88028
-NightcustomColor:#C88028
+DaycustomColor:#F89400
+NightcustomColor:#F89400
 ContourColor=No
 [end]
 
@@ -5476,16 +5362,14 @@ ContourColor=No
 Type=0x22
 ;GRMN_TYPE: Contour Lines/MAJOR_CONTOUR/Major contour (should be used for about every 10th contour line)/Non NT
 UseOrientation=Y
-Xpm="32 1 2  1"
-"! c #D07020"
-"  c none"
-"!!!!!!! !!!!!!! !!!!!!! !!!!!!! "
-;12345678901234567890123456789012
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #D07020"
 ExtendedLabels=Y
-FontStyle=SmallFont
+FontStyle=NormalFont
 CustomColor=DayAndNight
-DaycustomColor:#D07020
-NightcustomColor:#D07020
+DaycustomColor:#705410
+NightcustomColor:#705410
 ContourColor=No
 [end]
 
@@ -5532,10 +5416,10 @@ LineWidth=1
 Xpm="0 0 1 0"
 "1 c #808080"
 ExtendedLabels=Y
-FontStyle=SmallFont
+FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
 DaycustomColor:#000000
-NightcustomColor:#FFFFFF
+NightcustomColor:#000000
 ContourColor=No
 [end]
 
@@ -5827,9 +5711,9 @@ Xpm="32 3 2  1"
 "    !       !       !       !   "
 ;12345678901234567890123456789012
 String1=0x04,MATERIAL TRANSPORT
-String2=0x01,Cï¿½BLE TRANSPORTEUR
+String2=0x01,CÂBLE TRANSPORTEUR
 String3=0x02,MATERIALSEILBAHN
-String4=0x00,Cï¿½BLE TRANSPORTEUR
+String4=0x00,CÂBLE TRANSPORTEUR
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5851,9 +5735,9 @@ Xpm="32 3 2  1"
 "   !!!       !!!        !!!     "
 ;12345678901234567890123456789012
 String1=0x04,SKILIFT, TELEPHERIC
-String2=0x01,Tï¿½Lï¿½CABINE, Tï¿½LEPHï¿½RIQUE
+String2=0x01,TÉLÉCABINE, TÉLEPHÉRIQUE
 String3=0x02,SEILBAHN, SKILIFT
-String4=0x00,Tï¿½Lï¿½CABINE, Tï¿½LEPHï¿½RIQUE
+String4=0x00,TÉLÉCABINE, TÉLEPHÉRIQUE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5901,9 +5785,9 @@ Xpm="32 4 2  1"
 "################################"
 ;12345678901234567890123456789012
 String1=0x04,DISUSED TRACK
-String2=0x01,VOIE NON EXPLOITï¿½E
+String2=0x01,VOIE NON EXPLOITÉE
 String3=0x02,STILLGELEGTES GLEIS
-String4=0x00,VOIE NON EXPLOITï¿½E
+String4=0x00,VOIE NON EXPLOITÉE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -5949,9 +5833,9 @@ Xpm="32 3 2  1"
 "  !!!     !!!     !!!     !!!   "
 ;12345678901234567890123456789012
 String1=0x04,MOUNTAIN RAIL
-String2=0x01,FUNICULAIRE OU CRï¿½MAILLï¿½RE
+String2=0x01,FUNICULAIRE OU CRÉMAILLÈRE
 String3=0x02,ZAHNRADBAHN
-String4=0x00,FUNICULAIRE OU CRï¿½MAILLï¿½RE
+String4=0x00,FUNICULAIRE OU CRÉMAILLÈRE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -5997,9 +5881,9 @@ Xpm="32 3 2  1"
 "!!!!!   !!!!!   !!!!!   !!!!!   "
 ;12345678901234567890123456789012
 String1=0x04,TUNNEL DISUSED TRACK
-String2=0x01,TUNNEL VOIE NON EXPLOITï¿½E
+String2=0x01,TUNNEL VOIE NON EXPLOITÉE
 String3=0x02,TUNNEL STILLGELEGTES GLEIS
-String4=0x00,TUNNEL VOIE NON EXPLOITï¿½E
+String4=0x00,TUNNEL VOIE NON EXPLOITÉE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6045,9 +5929,9 @@ Xpm="32 3 2  1"
 "!!!!!   !!!!!   !!!!!   !!!!!   "
 ;12345678901234567890123456789012
 String1=0x04,TUNNEL MOUNTAIN RAIL
-String2=0x01,TUNNEL CREMALLï¿½RE
+String2=0x01,TUNNEL CREMALLÈRE
 String3=0x02,TUNNEL BERGBAHN
-String4=0x00,TUNNEL CREMALLï¿½RE
+String4=0x00,TUNNEL CREMALLÈRE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6160,9 +6044,9 @@ LineWidth=3
 Xpm="0 0 1 0"
 "1 c #2090F8"
 String1=0x04,LOCK
-String2=0x01,ï¿½CLUSE
+String2=0x01,ÉCLUSE
 String3=0x02,SCHLEUSE
-String4=0x00,ï¿½CLUSE
+String4=0x00,ÉCLUSE
 ExtendedLabels=Y
 FontStyle=SmallFont
 CustomColor=DayAndNight
@@ -6181,7 +6065,7 @@ Xpm="0 0 1 0"
 "1 c #68B8F8"
 String1=0x04,CANAL BRIDGE
 String2=0x01,PONT-CANAL
-String3=0x02,KANALBRï¿½CKE
+String3=0x02,KANALBRÜCKE
 String4=0x00,PONT-CANAL
 ExtendedLabels=Y
 FontStyle=Default
@@ -6271,7 +6155,7 @@ Xpm="32 2 2  1"
 ;12345678901234567890123456789012
 String1=0x04,BULKHEAD
 String2=0x01,MUR ANTI-BRUIT
-String3=0x02,Lï¿½RMSCHUTZWAND
+String3=0x02,LÄRMSCHUTZWAND
 String4=0x00,MUR ANTI-BRUIT
 ExtendedLabels=Y
 FontStyle=Default
@@ -6295,7 +6179,7 @@ Xpm="32 3 2  1"
 ;12345678901234567890123456789012
 String1=0x04,BRIDGE
 String2=0x01,PONT
-String3=0x02,BRï¿½CKE
+String3=0x02,BRÜCKE
 String4=0x00,PONT
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6362,9 +6246,9 @@ Xpm="32 3 2  1"
 "!   !   !   !   !   !   !   !   "
 ;12345678901234567890123456789012
 String1=0x04,LEVEE
-String2=0x01,LEVï¿½E
+String2=0x01,LEVÉE
 String3=0x02,DAMM
-String4=0x00,LEVï¿½E
+String4=0x00,LEVÉE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6387,9 +6271,9 @@ Xpm="32 4 2  1"
 "                                "
 ;12345678901234567890123456789012
 String1=0x04,RETAIN WALL
-String2=0x01,MUR DE SOUTï¿½NEMENT
-String3=0x02,STï¿½TZMAUER
-String4=0x00,MUR DE SOUTï¿½NEMENT
+String2=0x01,MUR DE SOUTÉNEMENT
+String3=0x02,STÜTZMAUER
+String4=0x00,MUR DE SOUTÉNEMENT
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
@@ -6414,7 +6298,7 @@ Xpm="32 5 2  1"
 ;12345678901234567890123456789012
 String1=0x04,EMBANKMENT
 String2=0x01,TALUS
-String3=0x02,Bï¿½SCHUNG
+String3=0x02,BÖSCHUNG
 String4=0x00,TALUS
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6441,34 +6325,14 @@ Xpm="32 7 2  1"
 "                                "
 ;12345678901234567890123456789012
 String1=0x04,EMBANKMENT
-String2=0x01,CARRIï¿½RE
-String3=0x02,HANGBï¿½SCHUNG
-String4=0x00,CARRIï¿½RE
+String2=0x01,CARRIÈRE
+String3=0x02,HANGBÖSCHUNG
+String4=0x00,CARRIÈRE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#A05C50
 NightcustomColor:#A06850
-ContourColor=No
-[end]
-
-
-[_line]
-Type=0x10e1b
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_28/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-LineWidth=1
-Xpm="0 0 1 0"
-"1 c #505050"
-String1=0x04,LOW WATER MARK
-String2=0x01,LAISSE DE BASSE MER
-String3=0x02,NIEDRIGWASSERLINIE
-String4=0x00,LAISSE DE BASSE MER
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#505050
-NightcustomColor:#505050
 ContourColor=No
 [end]
 
@@ -6570,21 +6434,31 @@ ContourColor=No
 Type=0x10f01
 ;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_34/Non-routable customizable line/Non NT, NT
 UseOrientation=N
-Xpm="32 3 2  1"
-"! c #E00000"
+Xpm="32 13 2  1"
+"! c #F800D0"
 "  c none"
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
+"                                "
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 ;12345678901234567890123456789012
 String1=0x04,CLUB VOSGIEN TRAILS
-String2=0x01,CLUB VOSGIEN RANDONNï¿½E
+String2=0x01,CLUB VOSGIEN RANDONNÉE
 String3=0x02,CLUB VOSGIEN WANDERWEG
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
-DaycustomColor:#E00000
-NightcustomColor:#E00000
+DaycustomColor:#F800D0
+NightcustomColor:#F800D0
 ContourColor=No
 [end]
 
@@ -6641,31 +6515,6 @@ ContourColor=No
 
 
 [_line]
-Type=0x10f04
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_37/Non-routable customizable line/Non NT, NT
-UseOrientation=N
-Xpm="32 4 2  1"
-"! c #FFFFFF"
-"# c #F32204"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"################################"
-"################################"
-;12345678901234567890123456789012
-String1=0x04,GR
-String2=0x01,GR
-String3=0x02,GR
-String4=0x00,GR
-ExtendedLabels=Y
-FontStyle=Default
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-[end]
-
-
-[_line]
 Type=0x10f07
 ;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_40/Non-routable customizable line/Non NT, NT
 UseOrientation=Y
@@ -6673,7 +6522,7 @@ LineWidth=1
 Xpm="0 0 1 0"
 "1 c #B85870"
 String1=0x01,BASE MILITAIRE
-String2=0x02,MILITï¿½RSTï¿½TZPUNKT
+String2=0x02,MILITÄRSTÜTZPUNKT
 String3=0x00,MILITARY BASE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6714,7 +6563,7 @@ Xpm="0 0 2 0"
 "1 c #000000"
 "2 c #F8FCF8"
 String1=0x04,CEMETERY
-String2=0x01,CIMETIï¿½RE
+String2=0x01,CIMETIÈRE
 String3=0x02,FRIEDHOF
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
@@ -6732,7 +6581,7 @@ Xpm="0 0 1 0"
 "1 c #B83000"
 String1=0x04,MILITARY
 String2=0x01,MILITAIRE
-String3=0x02,MILITï¿½R
+String3=0x02,MILITÄR
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=No
@@ -6758,7 +6607,7 @@ Xpm="32 7 4  1"
 "            !!!!!!!             "
 ;12345678901234567890123456789012
 String1=0x04,SKI LIFT
-String2=0x01,REMONTï¿½E Mï¿½CANIQUE
+String2=0x01,REMONTÉE MÉCANIQUE
 String3=0x02,SKILIFT
 ExtendedLabels=N
 [end]
@@ -6783,56 +6632,6 @@ String1=0x04,MOUNTAIN SPORT
 String2=0x01,SPORT DE MONTAGNE
 String3=0x02,BERGSPORT
 ExtendedLabels=N
-[end]
-
-
-[_line]
-Type=0x11a00
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_385/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-Xpm="32 5 2  1"
-"! c #A06850"
-"  c none"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!    !!!!!    !!!!!    !!!!!"
-" !!!      !!!      !!!      !!! "
-"  !        !        !        !  "
-"                                "
-;12345678901234567890123456789012
-String1=0x04,Cliff
-String2=0x01,Falaise
-String3=0x00,Falaise
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#A06850
-NightcustomColor:#A06850
-ContourColor=No
-[end]
-
-
-[_line]
-Type=0x11a01
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_386/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-Xpm="32 5 2  1"
-"! c #A06850"
-"  c none"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!    !!!!!    !!!!!    !!!!!"
-" !!!      !!!      !!!      !!! "
-"  !        !        !        !  "
-"                                "
-;12345678901234567890123456789012
-String1=0x04,Cliff
-String2=0x01,Falaise
-String3=0x00,Falaise
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#A06850
-NightcustomColor:#A06850
-ContourColor=No
 [end]
 
 
@@ -6885,7 +6684,7 @@ Xpm="32 3 2  1"
 "!!  !!  !!  !!  !!  !!  !!  !!  "
 ;12345678901234567890123456789012
 String1=0x04,FENCE
-String2=0x01,CLï¿½TURE
+String2=0x01,CLÔTURE
 String3=0x02,ZAUN
 ExtendedLabels=N
 [end]
@@ -7010,7 +6809,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="5 5 3 1"   Colormode=0
 "!	c #000000"
 "#	c #F8FCF8"
@@ -7317,7 +7118,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 46 2"   Colormode=0
 "!!	c #38AC38"
 "!#	c #209020"
@@ -7393,7 +7196,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 71 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -7494,7 +7299,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 58 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -7582,7 +7389,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -7623,7 +7432,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #888068"
 "  	c none"
@@ -7767,7 +7578,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 75 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -7872,7 +7685,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 83 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -7985,7 +7800,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="14 12 3 1"   Colormode=16
 "!	c #B040A8"
 "#	c #707070"
@@ -8101,7 +7918,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -8142,7 +7961,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 12 1"   Colormode=16
 "!	c #A0A4A0"
 "#	c #202020"
@@ -8186,7 +8007,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -8227,7 +8050,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 10 1"   Colormode=16
 "!	c #A8ACA8"
 "#	c #202020"
@@ -8269,7 +8094,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 11 1"   Colormode=16
 "!	c #C8CCC8"
 "#	c #202020"
@@ -8312,7 +8139,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 76 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -8504,7 +8333,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 60 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -8594,7 +8425,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 37 2"   Colormode=16
 "!!	c #E0C0F0"
 "!#	c #682090"
@@ -8661,7 +8494,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 70 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -8761,7 +8596,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 54 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -8845,7 +8682,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 58 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -8933,7 +8772,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 64 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -9027,7 +8868,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 76 2"   Colormode=16
 "!!	c #6000A8"
 "!#	c #682090"
@@ -9133,7 +8976,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 77 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -9240,7 +9085,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 45 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -9766,7 +9613,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="19 19 66 2"   Colormode=16
 "!!	c #3080C8"
 "!#	c #084888"
@@ -9866,7 +9715,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 14 3 1"   Colormode=16
 "!	c #F09000"
 "#	c #F8FCF8"
@@ -9992,7 +9843,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 55 2"   Colormode=16
 "!!	c #D8E8F8"
 "!#	c #084888"
@@ -10079,7 +9932,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="16 16 4 1"   Colormode=16
 "!	c #7898F8"
 "#	c #F8FCF8"
@@ -10184,7 +10039,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 10 1"   Colormode=16
 "!	c #484848"
 "#	c #606060"
@@ -10224,7 +10081,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 40 2"   Colormode=16
 "!!	c #0098B0"
 "!#	c #207C90"
@@ -10294,7 +10153,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="18 18 58 2"   Colormode=16
 "!!	c #6080B8"
 "!#	c #F8FCF8"
@@ -10385,7 +10246,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 13 1"   Colormode=16
 "!	c #B0B4B0"
 "#	c #E0E4E0"
@@ -10473,7 +10336,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 27 2"   Colormode=16
 "!!	c #E8ECE8"
 "!#	c #383838"
@@ -10532,7 +10397,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 22 2"   Colormode=16
 "!!	c #484848"
 "!#	c #383838"
@@ -10586,7 +10453,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 57 2"   Colormode=16
 "!!	c #C03818"
 "!#	c #882008"
@@ -10675,7 +10544,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="8 8 4 1"   Colormode=16
 "!	c #101010"
 "#	c #F80000"
@@ -10702,7 +10573,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 34 2"   Colormode=16
 "!!	c #888888"
 "!#	c #383838"
@@ -10768,7 +10641,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 13 1"   Colormode=16
 "!	c #B0B4B0"
 "#	c #E0E4E0"
@@ -10811,15 +10686,14 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
-DayXpm="4 4 2 1"   Colormode=16
-"!	c #707070"
-"  	c none"
-"    "
-" !! "
-" !! "
-"    "
-;1234
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
+DayXpm="1 1 0 1"   Colormode=16
+;Couleurs 24 bits : pas de palette 
+"#000400"
+"#000400"
+;1
 [end]
 
 
@@ -10832,7 +10706,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="4 4 2 1"   Colormode=16
 "!	c #707070"
 "  	c none"
@@ -10884,7 +10760,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #000000"
 "  	c none"
@@ -10908,7 +10786,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#080808
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="6 6 2 1"   Colormode=16
 "!	c #606060"
 "  	c none"
@@ -10931,7 +10811,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="3 3 2 1"   Colormode=16
 "!	c #B0B4B0"
 "  	c none"
@@ -10950,7 +10832,8 @@ ExtendedLabels=Y
 FontStyle=Default
 CustomColor=Day
 DaycustomColor:#000000
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #000000"
 "  	c none"
@@ -11018,7 +10901,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="14 12 12 1"   Colormode=16
 "!	c #F8FCF8"
 "#	c #000000"
@@ -11057,7 +10942,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="9 14 3 1"   Colormode=16
 "!	c #000000"
 "#	c #F8FCF8"
@@ -11132,7 +11019,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="5 5 2 1"   Colormode=16
 "!	c #202020"
 "  	c none"
@@ -11154,7 +11043,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="13 13 3 1"   Colormode=16
 "!	c #F8FCF8"
 "#	c #000000"
@@ -11210,7 +11101,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #000000"
 "  	c none"
@@ -11351,7 +11244,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#004890
 NightcustomColor:#0094F8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="16 16 3 1"   Colormode=16
 "!	c #1864D0"
 "#	c #088CE8"
@@ -11385,7 +11280,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#004890
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#004890
 DayXpm="13 13 4 1"   Colormode=16
 "!	c #3800F8"
 "#	c #00C8F8"
@@ -12059,7 +11956,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="12 20 71 2"   Colormode=16
 "!!	c #808488"
 "!#	c #909490"
@@ -12165,7 +12064,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="13 19 4 1"   Colormode=16
 "!	c #E8E808"
 "#	c #F8FCF8"
@@ -12487,7 +12388,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 46 2"   Colormode=0
 "!!	c #38AC38"
 "!#	c #209020"
@@ -12563,7 +12466,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 71 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -12664,7 +12569,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 58 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -12752,7 +12659,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -12793,7 +12702,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #888068"
 "  	c none"
@@ -12937,7 +12848,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 75 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -13042,7 +12955,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 83 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -13155,7 +13070,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="14 12 3 1"   Colormode=16
 "!	c #B040A8"
 "#	c #707070"
@@ -13271,7 +13188,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -13312,7 +13231,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 12 1"   Colormode=16
 "!	c #A0A4A0"
 "#	c #202020"
@@ -13356,7 +13277,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 9 1"   Colormode=16
 "!	c #E8ECE8"
 "#	c #202020"
@@ -13397,7 +13320,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 10 1"   Colormode=16
 "!	c #A8ACA8"
 "#	c #202020"
@@ -13439,7 +13364,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 11 1"   Colormode=16
 "!	c #C8CCC8"
 "#	c #202020"
@@ -13482,7 +13409,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 76 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -13674,7 +13603,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 60 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -13764,7 +13695,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 37 2"   Colormode=16
 "!!	c #E0C0F0"
 "!#	c #682090"
@@ -13831,7 +13764,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 70 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -13931,7 +13866,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 54 2"   Colormode=0
 "!!	c #A85038"
 "!#	c #903420"
@@ -14015,7 +13952,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 58 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -14103,7 +14042,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 64 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -14197,7 +14138,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 76 2"   Colormode=16
 "!!	c #6000A8"
 "!#	c #682090"
@@ -14303,7 +14246,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 77 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -14410,7 +14355,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 45 2"   Colormode=0
 "!!	c #883CA8"
 "!#	c #682090"
@@ -14936,7 +14883,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="19 19 66 2"   Colormode=16
 "!!	c #3080C8"
 "!#	c #084888"
@@ -15036,7 +14985,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 14 3 1"   Colormode=16
 "!	c #F09000"
 "#	c #F8FCF8"
@@ -15162,7 +15113,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 55 2"   Colormode=16
 "!!	c #D8E8F8"
 "!#	c #084888"
@@ -15249,7 +15202,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="16 16 4 1"   Colormode=16
 "!	c #7898F8"
 "#	c #F8FCF8"
@@ -15354,7 +15309,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 10 1"   Colormode=16
 "!	c #484848"
 "#	c #606060"
@@ -15394,7 +15351,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 40 2"   Colormode=16
 "!!	c #0098B0"
 "!#	c #207C90"
@@ -15464,7 +15423,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="18 18 58 2"   Colormode=16
 "!!	c #6080B8"
 "!#	c #F8FCF8"
@@ -15555,7 +15516,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 13 1"   Colormode=16
 "!	c #B0B4B0"
 "#	c #E0E4E0"
@@ -15643,7 +15606,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 27 2"   Colormode=16
 "!!	c #E8ECE8"
 "!#	c #383838"
@@ -15702,7 +15667,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 22 2"   Colormode=16
 "!!	c #484848"
 "!#	c #383838"
@@ -15756,7 +15723,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 57 2"   Colormode=16
 "!!	c #C03818"
 "!#	c #882008"
@@ -15845,7 +15814,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="8 8 4 1"   Colormode=16
 "!	c #101010"
 "#	c #F80000"
@@ -15872,7 +15843,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="17 17 34 2"   Colormode=16
 "!!	c #888888"
 "!#	c #383838"
@@ -15938,7 +15911,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="15 15 13 1"   Colormode=16
 "!	c #B0B4B0"
 "#	c #E0E4E0"
@@ -16084,32 +16059,23 @@ Type=0x115
 SubType=0x00
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_1/User customizable point type/Non NT, NT
 String1=0x04,PYLON
-String2=0x01,PYLï¿½NE
+String2=0x01,PYLÔNE
 String3=0x02,MAST
-String4=0x00,PYLï¿½NE
+String4=0x00,PYLÔNE
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#000000
 ContourColor=No
-DayXpm="9 13 2 1"   Colormode=16
-"!	c #808080"
+DayXpm="4 4 2 1"   Colormode=16
+"!	c #505050"
 "  	c none"
-"         "
-" !!!!!!! "
-"    !    "
-"  !!!!!  "
-"    !    "
-"   !!!   "
-"    !    "
-"    !    "
-"    !    "
-"         "
-"         "
-"         "
-"         "
-;123456789
+"!!!!"
+"!  !"
+"!  !"
+"!!!!"
+;1234
 [end]
 
 
@@ -16197,7 +16163,7 @@ DayXpm="9 13 2 1"   Colormode=16
 Type=0x115
 SubType=0x04
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_5/User customizable point type/Non NT, NT
-String1=0x01,CHEMINï¿½E
+String1=0x01,CHEMINÉE
 String2=0x02,SCHORNSTEIN
 String3=0x00,CHIMNEY
 ExtendedLabels=Y
@@ -16225,7 +16191,7 @@ Type=0x115
 SubType=0x05
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_6/User customizable point type/Non NT, NT
 String1=0x04,WIND GENERATOR
-String2=0x01,ï¿½OLIENNE
+String2=0x01,ÉOLIENNE
 String3=0x02,WINDRAD
 String4=0x00,WIND GENERATOR
 ExtendedLabels=Y
@@ -16357,7 +16323,7 @@ SubType=0x09
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_10/User customizable point type/Non NT, NT
 String1=0x04,CAVE HOUSING PLACE
 String2=0x01,HABITATION TROGLODYTIQUE
-String3=0x02,Hï¿½HLENWOHNPLATZ
+String3=0x02,HÖHLENWOHNPLATZ
 String4=0x00,HABITATION TROGLODYTIQUE
 ExtendedLabels=Y
 FontStyle=Default
@@ -16424,15 +16390,17 @@ Type=0x115
 SubType=0x0b
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_12/User customizable point type/Non NT, NT
 String1=0x04,ARCHEOLOGIC SITE
-String2=0x01,VESTIGES ARCHï¿½OLOGIQUES
-String3=0x02,ARCHï¿½OLOGISCHE FUNDSTï¿½TTE
+String2=0x01,VESTIGES ARCHÉOLOGIQUES
+String3=0x02,ARCHÄOLOGISCHE FUNDSTÄTTE
 String4=0x00,ARCHEOLOGIC SITE
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#780000
 NightcustomColor:#780000
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#F8FCF8
 DayXpm="16 16 2 1"   Colormode=16
 "!	c #780000"
 "  	c none"
@@ -16501,7 +16469,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="7 7 2 1"   Colormode=16
 "!	c #606060"
 "  	c none"
@@ -16521,8 +16491,8 @@ Type=0x115
 SubType=0x0e
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_15/User customizable point type/Non NT, NT
 String1=0x04,PLANTATION
-String2=0x01,LIEU-DIT NON HABITï¿½
-String3=0x02,ANBAUFLï¿½CHE
+String2=0x01,LIEU-DIT NON HABITÉ
+String3=0x02,ANBAUFLÄCHE
 String4=0x00,PLANTATION
 ExtendedLabels=Y
 FontStyle=Default
@@ -16549,7 +16519,7 @@ Type=0x115
 SubType=0x0f
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_16/User customizable point type/Non NT, NT
 String1=0x04,CASTLE
-String2=0x01,CHï¿½TEAU
+String2=0x01,CHÂTEAU
 String3=0x02,SCHLOSS
 ExtendedLabels=N
 DayXpm="16 16 2 1"   Colormode=16
@@ -16588,7 +16558,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="8 8 2 1"   Colormode=16
 "!	c #808080"
 "  	c none"
@@ -16609,7 +16581,7 @@ Type=0x115
 SubType=0x11
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_18/User customizable point type/Non NT, NT
 String1=0x04,HOUSING SITE
-String2=0x01,LIEU-DIT HABITï¿½
+String2=0x01,LIEU-DIT HABITÉ
 String3=0x02,WOHNPLATZ
 String4=0x00,HOUSING SITE
 ExtendedLabels=Y
@@ -16617,7 +16589,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="8 8 2 1"   Colormode=16
 "!	c #808080"
 "  	c none"
@@ -16639,14 +16613,16 @@ SubType=0x12
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_19/User customizable point type/Non NT, NT
 String1=0x04,MILL
 String2=0x01,MOULIN
-String3=0x02,Mï¿½HLE
+String3=0x02,MÜHLE
 String4=0x00,MILL
 ExtendedLabels=Y
 FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="10 15 5 1"   Colormode=16
 "!	c #805C48"
 "#	c #000000"
@@ -16685,7 +16661,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="8 8 2 1"   Colormode=16
 "!	c #808080"
 "  	c none"
@@ -16714,7 +16692,9 @@ FontStyle=Default
 CustomColor=DayAndNight
 DaycustomColor:#303030
 NightcustomColor:#F8FCF8
-ContourColor=No
+ContourColor=DayAndNight
+DayContourColor:#F8FCF8
+NightContourColor:#000000
 DayXpm="4 4 2 1"   Colormode=16
 "!	c #906090"
 "  	c none"
@@ -16732,7 +16712,7 @@ SubType=0x15
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_22/User customizable point type/Non NT, NT
 String1=0x04,CAVE, PIT CAVE
 String2=0x01,GROTTE, GOUFFRE
-String3=0x02,Hï¿½HLE, SCHACHTHï¿½HLE
+String3=0x02,HÖHLE, SCHACHTHÖHLE
 ExtendedLabels=N
 DayXpm="16 16 2 1"   Colormode=16
 "!	c #008000"
@@ -17127,7 +17107,7 @@ SubType=0x1c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_29/User customizable point type/Non NT, NT
 String1=0x04,RING, GREEN
 String2=0x01,ANNEAU, VERT
-String3=0x02,RING, GRï¿½N
+String3=0x02,RING, GRÜN
 ExtendedLabels=N
 DayXpm="17 17 4 1"   Colormode=16
 "!	c #F8FCF8"
@@ -17296,7 +17276,7 @@ Type=0x115
 SubType=0x1f
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_32/User customizable point type/Non NT, NT
 String1=0x04,LIFEGUAD
-String2=0x01,BAIGNADE SURVEILLï¿½E
+String2=0x01,BAIGNADE SURVEILLÉE
 ExtendedLabels=N
 DayXpm="12 12 2 1"   Colormode=16
 "!	c #000000"
@@ -17339,8 +17319,8 @@ Type=0x116
 SubType=0x00
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_33/User customizable point type/Non NT, NT
 String1=0x04,ECOMUSEUM
-String2=0x01,ECOMUSï¿½E
-String3=0x02,ï¿½KOMUSEUM
+String2=0x01,ECOMUSÉE
+String3=0x02,ÖKOMUSEUM
 ExtendedLabels=N
 DayXpm="15 9 2 1"   Colormode=16
 "!	c #008000"
@@ -17363,7 +17343,7 @@ Type=0x116
 SubType=0x01
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_34/User customizable point type/Non NT, NT
 String1=0x04,SPORT FACILITY
-String2=0x01,ï¿½QUIPEMENT SPORTIF
+String2=0x01,ÉQUIPEMENT SPORTIF
 String3=0x02,SPORTANLAGE
 ExtendedLabels=N
 DayXpm="9 9 2 1"   Colormode=16
@@ -17444,7 +17424,7 @@ SubType=0x03
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_36/User customizable point type/Non NT, NT
 String1=0x04,X-CROSS, GREEN
 String2=0x01,CHEVALET, VERT
-String3=0x02,LIEGENDES KREUZ, GRï¿½N
+String3=0x02,LIEGENDES KREUZ, GRÜN
 ExtendedLabels=N
 DayXpm="18 17 3 1"   Colormode=16
 "!	c #000000"
@@ -17668,7 +17648,7 @@ SubType=0x07
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_40/User customizable point type/Non NT, NT
 String1=0x04,CROSS, GREEN
 String2=0x01,CROIX, VERT
-String3=0x02,KREUZ, GRï¿½N
+String3=0x02,KREUZ, GRÜN
 ExtendedLabels=N
 DayXpm="17 17 3 1"   Colormode=16
 "!	c #008000"
@@ -17776,7 +17756,7 @@ SubType=0x09
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_42/User customizable point type/Non NT, NT
 String1=0x04,RECTANGLE, WHITE-GREEN
 String2=0x01,RECTANGLE, BLANC-VERT
-String3=0x02,RECHTECK, WEISS-GRï¿½N
+String3=0x02,RECHTECK, WEISS-GRÜN
 ExtendedLabels=N
 DayXpm="19 8 3 1"   Colormode=0
 "!	c #000000"
@@ -17813,7 +17793,7 @@ Type=0x116
 SubType=0x0a
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_43/User customizable point type/Non NT, NT
 String1=0x04,BICYCLE SERVICE
-String2=0x01,SERVICE Dï¿½DIï¿½ AUX Vï¿½LOS
+String2=0x01,SERVICE DÉDIÉ AUX VÉLOS
 String3=0x02,FAHRRADSERVICE
 ExtendedLabels=N
 DayXpm="17 16 3 1"   Colormode=16
@@ -17845,8 +17825,8 @@ Type=0x116
 SubType=0x0b
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_44/User customizable point type/Non NT, NT
 String1=0x04,LEVEL CROSSING
-String2=0x01,PASSAGE ï¿½ NIVEAU
-String3=0x02,BAHNï¿½BERGANG
+String2=0x01,PASSAGE À NIVEAU
+String3=0x02,BAHNÜBERGANG
 ExtendedLabels=N
 DayXpm="16 15 2 1"   Colormode=16
 "!	c #000000"
@@ -17875,7 +17855,7 @@ Type=0x116
 SubType=0x0c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_45/User customizable point type/Non NT, NT
 String1=0x04,BARRIER
-String2=0x01,BARRIï¿½RE
+String2=0x01,BARRIÈRE
 String3=0x02,SPERRE
 ExtendedLabels=N
 DayXpm="13 10 3 1"   Colormode=16
@@ -17902,7 +17882,7 @@ SubType=0x0d
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_46/User customizable point type/Non NT, NT
 String1=0x04,PUBLIC SPACE
 String2=0x01,ESPACE PUBLIC
-String3=0x02,ï¿½FFENTLICHER RAUM
+String3=0x02,ÖFFENTLICHER RAUM
 ExtendedLabels=N
 DayXpm="15 15 2 1"   Colormode=16
 "!	c #505050"
@@ -18056,7 +18036,7 @@ SubType=0x10
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_49/User customizable point type/Non NT, NT
 String1=0x04,DISC, GREEN
 String2=0x01,DISQUE, VERT
-String3=0x02,PUNKT, GRï¿½N
+String3=0x02,PUNKT, GRÜN
 ExtendedLabels=N
 DayXpm="15 15 3 1"   Colormode=16
 "!	c #008000"
@@ -18252,7 +18232,7 @@ SubType=0x14
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_53/User customizable point type/Non NT, NT
 String1=0x04,DIAMOND, GREEN
 String2=0x01,LOSANGE, VERT
-String3=0x02,RAUTE, GRï¿½N
+String3=0x02,RAUTE, GRÜN
 ExtendedLabels=N
 DayXpm="17 13 3 1"   Colormode=16
 "!	c #008000"
@@ -18444,7 +18424,7 @@ SubType=0x18
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_57/User customizable point type/Non NT, NT
 String1=0x04,TRIANGLE, GREEN
 String2=0x01,TRIANGLE, VERT
-String3=0x02,DREIECK, GRï¿½N
+String3=0x02,DREIECK, GRÜN
 ExtendedLabels=N
 DayXpm="17 13 3 1"   Colormode=16
 "!	c #008000"
@@ -18630,7 +18610,7 @@ SubType=0x1c
 ;GRMN_TYPE: User Customizable Points/CUSTOMIZABLE_POINT_61/User customizable point type/Non NT, NT
 String1=0x04,RECTANGLE, GREEN
 String2=0x01,RECTANGLE, VERT
-String3=0x02,RECHTECK, GRï¿½N
+String3=0x02,RECHTECK, GRÜN
 ExtendedLabels=N
 DayXpm="17 13 2 1"   Colormode=0
 "!	c #000000"
@@ -18857,102 +18837,6 @@ DayXpm="15 15 46 2"   Colormode=0
 
 [_point]
 Type=0x14e
-SubType=0x01
-;GRMN_TYPE: //
-ExtendedLabels=N
-DayXpm="15 15 46 2"   Colormode=0
-"!!	c #38AC38"
-"!#	c #209020"
-"!%	c #60A860"
-"!?	c #58A858"
-"!$	c #D0F0D0"
-"!*	c #C8F8C8"
-"!=	c #C8F4C8"
-"!1	c #60AC60"
-"!2	c #D8FCD8"
-"!3	c #00B400"
-"!4	c #00B000"
-"!5	c #00B800"
-"!6	c #00A800"
-"!7	c #00A000"
-"!8	c #98E098"
-"!9	c #009800"
-"#!	c #08A008"
-"##	c #E8F8E8"
-"#%	c #F8FCF8"
-"#?	c #B0E4B0"
-"#$	c #008800"
-"#*	c #00AC00"
-"#=	c #10AC10"
-"#1	c #D8F4D8"
-"#2	c #E0F4E0"
-"#3	c #28B028"
-"#4	c #30AC30"
-"#5	c #90E090"
-"#6	c #90D890"
-"#7	c #B8E0B8"
-"#8	c #C8F0C8"
-"#9	c #18A818"
-"%!	c #88D488"
-"%#	c #009000"
-"%%	c #80D080"
-"%?	c #008000"
-"%$	c #009400"
-"%*	c #08AC08"
-"%=	c #F0F4F0"
-"%1	c #A8D4A8"
-"%2	c #A8DCA8"
-"%3	c #68D068"
-"%4	c #68D468"
-"%5	c #88E088"
-"%6	c #88DC88"
-"%7	c #00A400"
-"!!!#!%!?!?!?!?!?!?!?!?!?!%!#!!"
-"!#!$!*!=!*!*!*!*!*!*!*!=!*!$!#"
-"!1!2!3!4!3!5!4!6!4!5!3!4!3!2!1"
-"!?!=!4!6!4!7!4!8!4!7!4!6!4!=!?"
-"!?!*!3!4!9#!###%###!!9!4!3!*!?"
-"!?!*!5!7#!###?#$#?###!!7!5!*!?"
-"!?!*#*#=#1#2#3#4#3#2#1#=#*!*!?"
-"!?!=!6#5#%#6#7#8#7#6#%#5!6!=!?"
-"!?!*!3#9#?%!%#!7%#%!#?#9!3!*!?"
-"!?!*!5%##6%%%?%$%?%%#6%#!5!*!?"
-"!?!*!4%*#%%=%1%2%1%=#%%*!4!*!?"
-"!?!=!6!3%3%4%5%6%5%4%3!3!6!=!?"
-"!1!2!5#*%7%7%7%7%7%7%7#*!5!2!1"
-"!#!$!*!=!*!*!*!*!*!*!*!=!*!$!#"
-"!!!#!%!?!?!?!?!?!?!?!?!?!%!#!!"
-;123456789012345
-[end]
-
-
-[_point]
-Type=0x14e
-SubType=0x0b
-;GRMN_TYPE: //
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=No
-ContourColor=No
-DayXpm="10 10 2 1"   Colormode=16
-"!	c #808080"
-"  	c none"
-"          "
-"          "
-"          "
-"    !     "
-"   !!!    "
-"    !     "
-"          "
-"          "
-"          "
-"          "
-;1234567890
-[end]
-
-
-[_point]
-Type=0x14e
 SubType=0x0b
 ;GRMN_TYPE: //
 ExtendedLabels=Y
@@ -19029,60 +18913,96 @@ DayXpm="17 17 27 2"   Colormode=16
 ;12345678901234567
 [end]
 
-
-[_point]
-Type=0x14e
-SubType=0x0f
-;GRMN_TYPE: //
-ExtendedLabels=N
-DayXpm="17 17 27 2"   Colormode=16
-"!!	c #B01800"
-"!#	c #882008"
-"!%	c #904438"
-"!?	c #984C38"
-"!$	c #882010"
-"!*	c #D0ACA0"
-"!=	c #F8ECE0"
-"!1	c #F8E4D8"
-"!2	c #F8E4E0"
-"!3	c #F8DCD8"
-"!4	c #984838"
-"!5	c #F8FCF8"
-"!6	c #D06048"
-"!7	c #B83020"
-"!8	c #C03C20"
-"!9	c #C04020"
-"#!	c #B83010"
-"##	c #B81C00"
-"#%	c #B83418"
-"#?	c #780000"
-"#$	c #C04428"
-"#*	c #B82808"
-"#=	c #F8E0D8"
-"#1	c #B82408"
-"#2	c #D06450"
-"#3	c #B82010"
-"  	c none"
-"  !#!%!?!?!?!?!?!?!?!?!?!?!?!%!#  "
-"!$!*!=!1!2!2!2!2!3!2!2!2!2!1!=!*!$"
-"!4!5!6!7!8!9#!###%###!!9!8!7!6!5!4"
-"!?!2#%#?#?#?#?#?#?#?#?#?#?#?#%!2!?"
-"!?!2!8#?#?#?#?!5!5!5#?#?#?#?!8!2!?"
-"!?!2#!#?#?#?#?!5!5!5#?#?#?#?#!!2!?"
-"!?!2!8#?#?#?#?#?!5#?#?#?#?#?!8!2!?"
-"!?!2!9#?#?#?#?!5!5!5#?#?#?#?!9!2!?"
-"!?!2!8#?#?#?!5!5!5!5!5#?#?#?!8!2!?"
-"!?!2!8#?#?#?!5#?!5#?!5#?#?#?!8!2!?"
-"!?!2!8#?#?#?#?#?!5#?#?#?#?#?!8!2!?"
-"!?!2#$#?#?#?#?!5!5!5#?#?#?#?#$!2!?"
-"!?!2#*#?#?#?#?!5!5!5#?#?#?#?#*!2!?"
-"!?#=#1#?#?#?#?!5!5!5#?#?#?#?#1#=!?"
-"!4!5#2#3!!!!!!!!!!!!!!!!!!#3#2!5!4"
-"!$!*!=!1!2!2!2!2!2!2!2!2!2!1!=!*!$"
-"  !#!%!?!?!?!?!?!?!?!?!?!?!?!%!#  "
-;12345678901234567
+[_line]
+Type=0x10e1b
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_28/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #505050"
+String1=0x04,LOW WATER MARK
+String2=0x01,LAISSE DE BASSE MER
+String3=0x02,NIEDRIGWASSERLINIE
+String4=0x00,LAISSE DE BASSE MER
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#505050
+NightcustomColor:#505050
+ContourColor=No
 [end]
 
+[_line]
+Type=0x10f04
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_37/Non-routable customizable line/Non NT, NT
+UseOrientation=N
+Xpm="32 4 2  1"
+"! c #FFFFFF"
+"# c #F32204"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"################################"
+"################################"
+;12345678901234567890123456789012
+String1=0x04,GR
+String2=0x01,GR
+String3=0x02,GR
+String4=0x00,GR
+ExtendedLabels=Y
+FontStyle=Default
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+[end]
+
+[_line]
+Type=0x11a00
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_385/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+Xpm="32 5 2  1"
+"! c #A06850"
+"  c none"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!    !!!!!    !!!!!    !!!!!"
+" !!!      !!!      !!!      !!! "
+"  !        !        !        !  "
+"                                "
+;12345678901234567890123456789012
+String1=0x04,Cliff
+String2=0x01,Falaise
+String3=0x00,Falaise
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#A06850
+NightcustomColor:#A06850
+ContourColor=No
+[end]
+
+[_line]
+Type=0x11a01
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_386/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+Xpm="32 5 2  1"
+"! c #A06850"
+"  c none"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!    !!!!!    !!!!!    !!!!!"
+" !!!      !!!      !!!      !!! "
+"  !        !        !        !  "
+"                                "
+;12345678901234567890123456789012
+String1=0x04,Cliff
+String2=0x01,Falaise
+String3=0x00,Falaise
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#A06850
+NightcustomColor:#A06850
+ContourColor=No
+[end]
 
 [_point]
 Type=0x150
@@ -19192,7 +19112,6 @@ DayXpm="20 20 77 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x01
@@ -19294,7 +19213,6 @@ DayXpm="20 20 71 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -19423,12 +19341,11 @@ DayXpm="20 20 96 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x03
 ;GRMN_TYPE: //
-String1=0x01,Vï¿½tements
+String1=0x01,Vêtements
 String2=0x04,Clothes
 ExtendedLabels=N
 DayXpm="20 20 44 2"   Colormode=16
@@ -19499,12 +19416,11 @@ DayXpm="20 20 44 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x04
 ;GRMN_TYPE: //
-String1=0x01,Commoditï¿½
+String1=0x01,Commodité
 String2=0x04,Convenience
 ExtendedLabels=N
 DayXpm="20 20 78 2"   Colormode=16
@@ -19609,12 +19525,11 @@ DayXpm="20 20 78 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x05
 ;GRMN_TYPE: //
-String1=0x01,Rï¿½paration auto
+String1=0x01,Réparation auto
 String2=0x04,Car repair
 ExtendedLabels=N
 DayXpm="20 20 94 2"   Colormode=16
@@ -19735,12 +19650,11 @@ DayXpm="20 20 94 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x06
 ;GRMN_TYPE: //
-String1=0x01,Supermarchï¿½
+String1=0x01,Supermarché
 String2=0x04,Supermarket
 ExtendedLabels=N
 DayXpm="20 20 100 2"   Colormode=16
@@ -19867,7 +19781,6 @@ DayXpm="20 20 100 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x07
@@ -19993,7 +19906,6 @@ DayXpm="20 20 95 2"   Colormode=16
 "                                $7*4    "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -20138,12 +20050,11 @@ DayXpm="20 20 112 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x09
 ;GRMN_TYPE: //
-String1=0x01,Beautï¿½
+String1=0x01,Beauté
 String2=0x04,Beauty
 ExtendedLabels=N
 DayXpm="20 20 118 2"   Colormode=16
@@ -20288,7 +20199,6 @@ DayXpm="20 20 118 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x0a
@@ -20388,12 +20298,11 @@ DayXpm="20 20 68 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x0b
 ;GRMN_TYPE: //
-String1=0x01,decorationDï¿½coration
+String1=0x01,decorationDécoration
 String2=0x04,Interior decoration
 ExtendedLabels=N
 DayXpm="20 20 102 2"   Colormode=16
@@ -20522,7 +20431,6 @@ DayXpm="20 20 102 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x0c
@@ -20604,12 +20512,11 @@ DayXpm="20 20 50 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x0d
 ;GRMN_TYPE: //
-String1=0x01,Fruits et lï¿½gumes
+String1=0x01,Fruits et légumes
 String2=0x04,Greengrocer
 ExtendedLabels=N
 DayXpm="20 20 109 2"   Colormode=16
@@ -20745,7 +20652,6 @@ DayXpm="20 20 109 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x0e
@@ -20805,7 +20711,6 @@ DayXpm="28 28 21 2"   Colormode=16
 "                                                        "
 ;1234567890123456789012345678
 [end]
-
 
 [_point]
 Type=0x150
@@ -20936,7 +20841,6 @@ DayXpm="20 20 98 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x10
@@ -21058,7 +20962,6 @@ DayXpm="20 20 90 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x11
@@ -21118,7 +21021,6 @@ DayXpm="20 20 29 2"   Colormode=16
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*  "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -21253,7 +21155,6 @@ DayXpm="20 20 102 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x13
@@ -21353,7 +21254,6 @@ DayXpm="20 20 69 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -21481,7 +21381,6 @@ DayXpm="20 20 95 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x15
@@ -21575,7 +21474,6 @@ DayXpm="20 20 62 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x16
@@ -21665,7 +21563,6 @@ DayXpm="20 20 59 2"   Colormode=16
 "!!#3  !!%#  !!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -21763,7 +21660,6 @@ DayXpm="20 20 66 2"   Colormode=16
 "  %3!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#$  "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -21889,7 +21785,6 @@ DayXpm="20 20 94 2"   Colormode=16
 "                *1$9$9*?*5              "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -22023,12 +21918,11 @@ DayXpm="20 20 101 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x1a
 ;GRMN_TYPE: //
-String1=0x01,Tï¿½lï¿½phone Mobile
+String1=0x01,Téléphone Mobile
 String2=0x04,Mobile phone
 ExtendedLabels=N
 DayXpm="20 20 52 2"   Colormode=16
@@ -22106,7 +22000,6 @@ DayXpm="20 20 52 2"   Colormode=16
 "            ?#%4%2%2%2%2%3%8            "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -22201,12 +22094,11 @@ DayXpm="20 20 62 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x1c
 ;GRMN_TYPE: //
-String1=0x01,Fais le toi-mï¿½me
+String1=0x01,Fais le toi-même
 String2=0x04,Do it yourself
 ExtendedLabels=N
 DayXpm="20 20 64 2"   Colormode=16
@@ -22297,12 +22189,11 @@ DayXpm="20 20 64 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x1d
 ;GRMN_TYPE: //
-String1=0x01,Pï¿½tisserie
+String1=0x01,Pâtisserie
 String2=0x04,Pastry
 ExtendedLabels=N
 DayXpm="20 20 106 2"   Colormode=16
@@ -22435,12 +22326,11 @@ DayXpm="20 20 106 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x150
 SubType=0x1e
 ;GRMN_TYPE: //
-String1=0x01,Magasin de variï¿½tï¿½s
+String1=0x01,Magasin de variétés
 String2=0x04,Variety store
 ExtendedLabels=N
 DayXpm="20 20 36 2"   Colormode=16
@@ -22502,7 +22392,6 @@ DayXpm="20 20 36 2"   Colormode=16
 "  #4!?!!!5!8!!!!!!!!!!!!!!!!!!!!!!!!!6  "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x150
@@ -22608,12 +22497,11 @@ DayXpm="20 20 73 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x151
 SubType=0x00
 ;GRMN_TYPE: //
-String1=0x01,Produits de beautï¿½
+String1=0x01,Produits de beauté
 String2=0x04,Cosmetics
 ExtendedLabels=N
 DayXpm="20 20 91 2"   Colormode=16
@@ -22730,7 +22618,6 @@ DayXpm="20 20 91 2"   Colormode=16
 "        $8?!#?!#!!!!!!!!!!!8%4$3        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x151
@@ -22860,7 +22747,6 @@ DayXpm="20 20 97 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x151
 SubType=0x02
@@ -22931,7 +22817,6 @@ DayXpm="20 20 39 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x151
 SubType=0x03
@@ -22982,7 +22867,6 @@ DayXpm="20 20 20 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x151
@@ -23142,7 +23026,6 @@ DayXpm="20 20 127 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x151
 SubType=0x05
@@ -23279,7 +23162,6 @@ DayXpm="20 20 106 2"   Colormode=16
 "      =#*6*6*6*6*6*6*6*6*6*6*6*6*8==    "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x151
@@ -23422,7 +23304,6 @@ DayXpm="20 20 111 2"   Colormode=16
 "  ?3!!        $#!=!1?4=7$7!!!!%#        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x151
@@ -23567,7 +23448,6 @@ DayXpm="20 20 113 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x151
@@ -23725,7 +23605,6 @@ DayXpm="20 20 125 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x151
 SubType=0x09
@@ -23823,7 +23702,6 @@ DayXpm="20 20 66 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x00
@@ -23914,12 +23792,11 @@ DayXpm="20 20 59 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x01
 ;GRMN_TYPE: //
-String1=0x01,Bar ï¿½ biï¿½re
+String1=0x01,Bar à bière
 String2=0x04,Beer bar
 ExtendedLabels=N
 DayXpm="20 20 96 2"   Colormode=16
@@ -24042,12 +23919,11 @@ DayXpm="20 20 96 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x02
 ;GRMN_TYPE: //
-String1=0x01,Cafï¿½
+String1=0x01,Café
 String2=0x04,Cafe
 ExtendedLabels=N
 DayXpm="20 20 78 2"   Colormode=16
@@ -24152,7 +24028,6 @@ DayXpm="20 20 78 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x03
@@ -24234,7 +24109,6 @@ DayXpm="20 20 51 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -24374,7 +24248,6 @@ DayXpm="20 20 107 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x05
@@ -24489,7 +24362,6 @@ DayXpm="20 20 83 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x06
@@ -24577,12 +24449,11 @@ DayXpm="20 20 56 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x07
 ;GRMN_TYPE: //
-String1=0x01,Bibliothï¿½que
+String1=0x01,Bibliothèque
 String2=0x04,Library
 ExtendedLabels=N
 DayXpm="20 20 105 2"   Colormode=16
@@ -24714,12 +24585,11 @@ DayXpm="20 20 105 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x08
 ;GRMN_TYPE: //
-String1=0x01,Parking ï¿½ vï¿½lo
+String1=0x01,Parking à vélo
 String2=0x04,Parking bicycle
 ExtendedLabels=N
 DayXpm="20 20 133 2"   Colormode=16
@@ -24879,12 +24749,11 @@ DayXpm="20 20 133 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x09
 ;GRMN_TYPE: //
-String1=0x01,Station de rï¿½paration de vï¿½los
+String1=0x01,Station de réparation de vélos
 String2=0x04,Bicycle repair station
 ExtendedLabels=N
 DayXpm="20 20 146 2"   Colormode=16
@@ -25057,7 +24926,6 @@ DayXpm="20 20 146 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x0a
@@ -25153,7 +25021,6 @@ DayXpm="20 20 65 2"   Colormode=16
 "    ?4?1?1?1?1?1?1?1?1?1?3              "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -25291,7 +25158,6 @@ DayXpm="20 20 106 2"   Colormode=16
 "  =?*5*5*5*5*5*5*5*5                    "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -25438,7 +25304,6 @@ DayXpm="20 20 114 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x0d
@@ -25486,7 +25351,6 @@ DayXpm="10 16 21 2"   Colormode=16
 "!!!!!8              "
 ;1234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -25611,7 +25475,6 @@ DayXpm="20 20 92 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x0f
@@ -25718,7 +25581,6 @@ DayXpm="20 20 76 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -25837,12 +25699,11 @@ DayXpm="20 20 86 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x11
 ;GRMN_TYPE: //
-String1=0x01,Hï¿½pital
+String1=0x01,Hôpital
 String2=0x04,Hospital
 ExtendedLabels=N
 DayXpm="20 20 70 2"   Colormode=16
@@ -25939,7 +25800,6 @@ DayXpm="20 20 70 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x12
@@ -25999,12 +25859,11 @@ DayXpm="20 20 28 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x13
 ;GRMN_TYPE: //
-String1=0x01,Vï¿½tï¿½rinaire
+String1=0x01,Vétérinaire
 String2=0x04,Veterinary
 ExtendedLabels=N
 DayXpm="20 20 126 2"   Colormode=16
@@ -26157,7 +26016,6 @@ DayXpm="20 20 126 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x14
@@ -26261,7 +26119,6 @@ DayXpm="20 20 73 2"   Colormode=16
 "        #8!4                #8!4        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x152
@@ -26411,7 +26268,6 @@ DayXpm="20 20 117 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x152
 SubType=0x16
@@ -26471,7 +26327,6 @@ DayXpm="20 20 29 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
-
 
 [_point]
 Type=0x153
@@ -26596,7 +26451,6 @@ DayXpm="20 20 92 2"   Colormode=16
 ;12345678901234567890
 [end]
 
-
 [_point]
 Type=0x153
 SubType=0x01
@@ -26639,7 +26493,6 @@ DayXpm="8 8 24 2"   Colormode=16
 "!!!!!!    !!!!  "
 ;12345678
 [end]
-
 
 [_point]
 Type=0x154
@@ -26691,7 +26544,6 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
-
 [_point]
 Type=0x154
 SubType=0x01
@@ -26741,7 +26593,6 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
-
 
 [_point]
 Type=0x154
@@ -26793,7 +26644,6 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
-
 [_point]
 Type=0x154
 SubType=0x03
@@ -26843,7 +26693,6 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
-
 
 [_point]
 Type=0x154
@@ -26895,7 +26744,6 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
-
 [_point]
 Type=0x154
 SubType=0x05
@@ -26945,7 +26793,6 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
-
 
 [_point]
 Type=0x154
@@ -26997,12 +26844,11 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
-
 [_point]
 Type=0x155
 SubType=0x00
 ;GRMN_TYPE: //
-String1=0x01,Hï¿½liport
+String1=0x01,Héliport
 String2=0x04,Heliport
 ExtendedLabels=N
 DayXpm="16 16 38 2"   Colormode=16
@@ -27063,12 +26909,11 @@ DayXpm="16 16 38 2"   Colormode=16
 ;1234567890123456
 [end]
 
-
 [_point]
 Type=0x155
 SubType=0x01
 ;GRMN_TYPE: //
-String1=0x01,Tï¿½lï¿½cabine, Tï¿½lï¿½phï¿½rique, Tï¿½lï¿½siï¿½ge, Tï¿½lï¿½ski
+String1=0x01,Télécabine, Téléphérique, Télésiège, Téléski
 String2=0x04,Cable car, Cable car, Chairlift, Ski lift
 ExtendedLabels=N
 DayXpm="16 16 16 1"   Colormode=16
@@ -27107,7 +26952,6 @@ DayXpm="16 16 16 1"   Colormode=16
 ;1234567890123456
 [end]
 
-
 [_point]
 Type=0x155
 SubType=0x02
@@ -27137,7 +26981,6 @@ DayXpm="14 12 2 1"   Colormode=16
 "              "
 ;12345678901234
 [end]
-
 
 [_point]
 Type=0x155
@@ -27169,7 +27012,6 @@ DayXpm="14 12 2 1"   Colormode=16
 ;12345678901234
 [end]
 
-
 [_point]
 Type=0x155
 SubType=0x04
@@ -27194,7 +27036,6 @@ DayXpm="8 7 4 1"   Colormode=16
 "  !####%"
 ;12345678
 [end]
-
 
 [_point]
 Type=0x155
@@ -27221,4 +27062,119 @@ DayXpm="7 7 4 1"   Colormode=16
 " # ! # "
 "  # #  "
 ;1234567
+[end]
+
+[_polygon]
+Type=0x10a04
+;GRMN_TYPE: Park Areas/NATIONAL_FOREST(NT)/National or communal forest/NT
+ExtendedLabels=Y
+FontStyle=NormalFont
+CustomColor=DayAndNight
+DaycustomColor:#006400
+NightcustomColor:#006400
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #006400"
+"# c #B8EE98"
+"################################"
+"########!#######################"
+"#######!!!######################"
+"######!!!!!#####################"
+"#####!!!!!!!####################"
+"#######!!!######################"
+"######!!!!!#####################"
+"#####!!!!!!!####################"
+"####!!!!!!!!!###################"
+"########!#######################"
+"########!#######################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"###################!############"
+"##################!!!###########"
+"#################!!!!!##########"
+"################!!!!!!!#########"
+"##################!!!###########"
+"#################!!!!!##########"
+"################!!!!!!!#########"
+"###############!!!!!!!!!########"
+"###################!############"
+"###################!############"
+"################################"
+"################################"
+"################################"
+"################################"
+;12345678901234567890123456789012
+[end]
+
+[_polygon]
+Type=0x10f18
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_25/Customizable area/Non NT, NT
+String1=0x04,GRAVEL, SHINGLE
+String2=0x01,GRAVIERS, GALETS
+String3=0x02,KIES, SCHOTTER
+String4=0x00,GRAVIERS, GALETS
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #B0A890"
+"  c none"
+"                                "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+"   !   !   !   !   !   !   !   "
+"  !   !   !   !   !   !   !   !"
+" !   !   !   !   !   !   !   ! "
+"!   !   !   !   !   !   !   !  "
+;12345678901234567890123456789012
+[end]
+
+[_polygon]
+Type=0x1101e
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_63/Customizable area/Non NT, NT
+String1=0x04,SWIMMING POOL (PRIVATE)
+String2=0x01,PISCINE PRIVÉE
+String3=0x02,SCHWIMMBAD (PRIVAT)
+String4=0x00,PISCINE PRIVEE
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #10DCE0"
 [end]

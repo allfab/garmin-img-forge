@@ -1017,7 +1017,7 @@ rulesets:
           NATURE: "Glacier, névé"
         set:
           Type: "0x4d"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${NOM_P_EAU}"
 
       # 2. Intermittent (hors Glacier)
