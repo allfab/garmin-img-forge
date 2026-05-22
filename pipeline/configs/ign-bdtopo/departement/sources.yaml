@@ -199,6 +199,9 @@ inputs:
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # Forêts publiques (ONF)
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
