@@ -191,8 +191,14 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # ZONES RÉGLEMENTÉES (1 couche)
+  # ZONES RÉGLEMENTÉES (2 couches)
   # ==========================================================================
+
+  # Parcs et réserves naturelles (nationales, régionales, Natura 2000, etc.)
+  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
 
   # Forêts publiques (ONF)
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"

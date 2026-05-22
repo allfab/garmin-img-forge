@@ -130,6 +130,16 @@ profiles:
       - { n: 3, simplify: 0.00010 }
       - { n: 4, simplify: 0.00020 }
 
+  PARC_OU_RESERVE:
+    levels:
+      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00003 }
+      - { n: 1, simplify: 0.00005 }
+      - { n: 2, simplify: 0.00010 }
+      - { n: 3, simplify: 0.00020 }
+      - { n: 4, simplify: 0.00050 }
+      - { n: 5, simplify: 0.00100 }
+      - { n: 6, simplify: 0.00100 }
+
   COMMUNE:
     topology: false
     levels:
