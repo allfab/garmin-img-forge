@@ -1946,6 +1946,28 @@ rulesets:
           EndLevel: "2"
           Label: "${TOPONYME}"
 
+  # PARC_OU_RESERVE_CONTOUR — polyligne de bordure (type 0x10a10)
+  - name: PARC_OU_RESERVE_CONTOUR
+    source_layer: "PARC_OU_RESERVE_CONTOUR"
+    rules:
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10a10"
+          EndLevel: "5"
+
+  # PARC_OU_RESERVE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0b)
+  - name: PARC_OU_RESERVE_LABEL
+    source_layer: "PARC_OU_RESERVE_LABEL"
+    label_case: "title"
+    rules:
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10a0b"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+
   # ==========================================================================
   # ZONES RÉGLEMENTÉES — Forêts publiques (POLYGON)
   # 1 règle wildcard
@@ -1961,6 +1983,38 @@ rulesets:
           Type: "0x10a04"
           EndLevel: "4"
           Label: "${TOPONYME}"
+
+  # FORET_PUBLIQUE_CONTOUR — polyligne de bordure (type 0x10a05)
+  - name: FORET_PUBLIQUE_CONTOUR
+    source_layer: "FORET_PUBLIQUE_CONTOUR"
+    rules:
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10a05"
+          EndLevel: "4"
+
+  # FORET_PUBLIQUE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0c)
+  - name: FORET_PUBLIQUE_LABEL
+    source_layer: "FORET_PUBLIQUE_LABEL"
+    label_case: "title"
+    rules:
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x10a0c"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+
+  # DEPARTEMENT_LIMITE — polyligne administrative (type 0x10a06)
+  - name: DEPARTEMENT_LIMITE
+    source_layer: "DEPARTEMENT_LIMITE"
+    rules:
+      - match:
+          NOM: "*"
+        set:
+          Type: "0x10a06"
+          EndLevel: "6"
 
   # ==========================================================================
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)

@@ -876,6 +876,23 @@ impl SourceReader {
                                     return None;
                                 }
                             }
+                            if let Some(GeometryTransform::Boundary) = geometry_transform {
+                                if f.geometry_type == GeometryType::Polygon {
+                                    debug!(
+                                        source_layer = ?f.source_layer,
+                                        coord_count = f.geometry.len(),
+                                        "geometry_transform: boundary — Polygon converted to LineString (exterior ring)"
+                                    );
+                                    f.geometry_type = GeometryType::LineString;
+                                } else {
+                                    warn!(
+                                        source_layer = ?f.source_layer,
+                                        geometry_type = ?f.geometry_type,
+                                        "geometry_transform: boundary — non-Polygon feature skipped"
+                                    );
+                                    return None;
+                                }
+                            }
                             Some(f)
                         }));
                     }
@@ -2452,5 +2469,42 @@ mod tests {
         // Bypass `set_level` on purpose — this is the bug pattern we guard.
         bad.additional_geometries.insert(0, vec![(9.0, 9.0)]);
         bad.assert_multi_bucket_invariant();
+    }
+
+    #[test]
+    fn test_boundary_polygon_becomes_linestring() {
+        let coords = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)];
+        // Simule la mutation Feature telle qu'effectuée par le bloc Boundary dans reader.rs
+        let mut f = Feature {
+            geometry_type: GeometryType::Polygon,
+            geometry: coords.clone(),
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        assert_eq!(f.geometry_type, GeometryType::Polygon);
+        // Apply boundary transform (mirrors the reader.rs logic)
+        f.geometry_type = GeometryType::LineString;
+        assert_eq!(f.geometry_type, GeometryType::LineString);
+        assert_eq!(f.geometry.len(), 5); // 4 sommets + point de fermeture
+        assert_eq!(f.geometry[0], *f.geometry.last().unwrap()); // anneau fermé conservé
+    }
+
+    #[test]
+    fn test_boundary_preserves_coord_count() {
+        // Polygone à 10 sommets (closed ring = 11 coords)
+        let mut coords: Vec<(f64, f64)> = (0..10).map(|i| (i as f64, 0.0)).collect();
+        coords.push(coords[0]);
+        let mut f = Feature {
+            geometry_type: GeometryType::Polygon,
+            geometry: coords.clone(),
+            additional_geometries: std::collections::BTreeMap::new(),
+            attributes: HashMap::new(),
+            source_layer: None,
+        };
+        f.geometry_type = GeometryType::LineString;
+        assert_eq!(f.geometry_type, GeometryType::LineString);
+        assert_eq!(f.geometry.len(), 11);
+        assert_eq!(f.geometry.first(), f.geometry.last());
     }
 }

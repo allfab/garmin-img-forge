@@ -126,6 +126,7 @@ pub struct RoutingConfig {
 #[serde(rename_all = "snake_case")]
 pub enum GeometryTransform {
     Centroid,
+    Boundary,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -160,6 +161,7 @@ pub struct InputSource {
     pub dedup_by_field: Option<String>,
     /// Geometry transform applied after coordinate reprojection.
     /// `centroid`: converts each Polygon to its centroid Point.
+    /// `boundary`: converts each Polygon to its exterior ring LineString (interior rings ignored).
     #[serde(default)]
     pub geometry_transform: Option<GeometryTransform>,
 }

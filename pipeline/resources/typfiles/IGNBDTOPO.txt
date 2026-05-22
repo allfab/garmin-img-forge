@@ -2650,6 +2650,34 @@ Xpm="32 32 2 1"
 
 
 [_polygon]
+Type=0x10a0b
+;GRMN_TYPE: //
+ExtendedLabels=Y
+FontStyle=NormalFont
+CustomColor=DayAndNight
+DaycustomColor:#006400
+NightcustomColor:#AADDAA
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #006400"
+[end]
+
+
+[_polygon]
+Type=0x10a0c
+;GRMN_TYPE: //
+ExtendedLabels=Y
+FontStyle=NormalFont
+CustomColor=DayAndNight
+DaycustomColor:#228B22
+NightcustomColor:#88CC88
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #228B22"
+[end]
+
+
+[_polygon]
 Type=0x10b02
 ;GRMN_TYPE: Water Areas/SEA(NT)/Sea/NT
 ExtendedLabels=Y
@@ -5732,6 +5760,56 @@ Xpm="0 0 1 0"
 "1 c #6064F8"
 ExtendedLabels=Y
 FontStyle=Default
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+[end]
+
+
+[_line]
+Type=0x10a05
+;GRMN_TYPE: Misc. Line Types/MARINE_HAZARD(NT)/Marine Hazard Line/NT
+UseOrientation=N
+LineWidth=2
+Xpm="0 0 1 0"
+"1 c #228B22"
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+[end]
+
+
+[_line]
+Type=0x10a06
+;GRMN_TYPE: //
+UseOrientation=N
+Xpm="32 1 2  1"
+"! c #505050"
+"  c none"
+"!!!!!  !!!!!  !!!!!  !!!!!  !!!!"
+;12345678901234567890123456789012
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+[end]
+
+
+[_line]
+Type=0x10a10
+;GRMN_TYPE: //
+UseOrientation=N
+LineWidth=2
+Xpm="0 0 1 0"
+"1 c #006400"
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
 DaycustomColor:#000000
 NightcustomColor:#000000
