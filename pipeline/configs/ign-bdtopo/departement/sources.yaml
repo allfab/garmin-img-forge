@@ -1,8 +1,8 @@
 version: 1
 
 # Catalogue de profils de simplification pour BDTOPO — variante locale pour départements et outre-mer.
-generalize_profiles_path: "./generalize-profiles.yaml"
-# generalize_profiles_path: "./generalize-profiles-light.yaml"
+# generalize_profiles_path: "./generalize-profiles.yaml"
+generalize_profiles_path: "./generalize-profiles-light.yaml"
 
 routing:
   source_layer: TRONCON_DE_ROUTE
@@ -312,6 +312,7 @@ header:
   elevation: "M"
 
 # Règles de transformation BDTOPO → types Garmin
+# rules: ./pipeline/configs/ign-bdtopo/departement/garmin-rules-remap.yaml
 rules: ./pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml
 
 
