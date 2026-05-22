@@ -339,6 +339,10 @@ fn analyse_colours(xpm: &Xpm, simple: bool, has_border: bool) -> ColourInfo {
         Some(xpm.pixels.clone())
     };
 
+    // Indexed bitmap requiert une palette ; true-colour (C=0, Colormode=16) non
+    // supporté par putn (nb < 24) — on désactive le bitmap pour éviter le panic.
+    let has_bitmap = !xpm.pixels.is_empty() && !colours.is_empty();
+
     ColourInfo {
         width: xpm.width,
         height: xpm.height,
@@ -346,7 +350,7 @@ fn analyse_colours(xpm: &Xpm, simple: bool, has_border: bool) -> ColourInfo {
         pixels,
         colour_mode,
         simple,
-        has_bitmap: !xpm.pixels.is_empty(),
+        has_bitmap,
         has_border,
         nr_solid_colours,
     }
