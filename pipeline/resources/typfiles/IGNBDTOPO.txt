@@ -1,7 +1,4 @@
-; I0002387.TYP
-; Longueur: 816991 octets
-; Fichier TYP compilé     22/03/2021     15:23:18
-; Décompilé le 22/05/2026 à 09:01:43
+
 
 [_id]
 ProductCode=1
@@ -18,9 +15,9 @@ CodePage=1252
 
 ;=========== POLYGONES : PRIORITE DANS L'AFFICHAGE ======
 [_drawOrder]
+Type=0x04c,1
+Type=0x04d,1
 Type=0x054,1
-Type=0x4c,1
-Type=0x4d,1
 Type=0x10400,1
 Type=0x10409,1
 Type=0x10500,1
@@ -1936,7 +1933,7 @@ Xpm="32 32 4 1"
 "####!!######!!!!####!!###!!!!!##"
 "############!!!###########!!!!##"
 "!!###########!#############!!###"
-"!!######!##########4###########!"
+"!!######!######################!"
 "!!##!!###############!#########!"
 "!###!!!!############!!!!########"
 "####!!!!####!#!#####!!!!!#######"
@@ -1960,11 +1957,12 @@ Xpm="32 32 4 1"
 "!!!!#######!!##!!!####!!!!######"
 "#!!###########!!!!#####!!!!#####"
 "###############!!#######!!######"
-"#######3############3#######3###"
+"################################"
 "###!!###########################"
 "##!!!!######!!#######!##########"
 "##!!!!!####!!!!#####!!####!!####"
 "###!!!!####!!!!!####!!!##!!!!###"
+;12345678901234567890123456789012
 [end]
 
 
@@ -2599,6 +2597,54 @@ Xpm="32 32 2 1"
 "                                "
 "                               !"
 "                         !    ! "
+;12345678901234567890123456789012
+[end]
+
+
+[_polygon]
+Type=0x10a04
+;GRMN_TYPE: Park Areas/URBAN_PARK(NT)/Small urban park, typically only a few square blocks in size/NT
+ExtendedLabels=Y
+FontStyle=NormalFont
+CustomColor=DayAndNight
+DaycustomColor:#006400
+NightcustomColor:#006400
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #40D000"
+"# c #B8EE98"
+"################################"
+"########!#######################"
+"#######!#!######################"
+"######!###!#####################"
+"#####!#####!####################"
+"#######!#!######################"
+"######!###!#####################"
+"#####!#####!####################"
+"####!###!###!###################"
+"########!#######################"
+"########!#######################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"################################"
+"###################!############"
+"##################!#!###########"
+"#################!###!##########"
+"################!#####!#########"
+"##################!#!###########"
+"#################!###!##########"
+"################!#####!#########"
+"###############!###!###!########"
+"###################!############"
+"###################!############"
+"################################"
+"################################"
+"################################"
+"################################"
 ;12345678901234567890123456789012
 [end]
 
@@ -3544,6 +3590,58 @@ NightcustomColor:#000000
 ContourColor=No
 Xpm="0 0 1 0"
 "1 c #C0C090"
+[end]
+
+
+[_polygon]
+Type=0x10f18
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_25/Customizable area/Non NT, NT
+String1=0x04,GRAVEL, SHINGLE
+String2=0x01,GRAVIERS, GALETS
+String3=0x02,KIES, SCHOTTER
+String4=0x00,GRAVIERS, GALETS
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="32 32 2 1"
+"! c #B0A890"
+"  c none"
+"                                "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+"   !   !   !   !   !   !   !    "
+"  !   !   !   !   !   !   !   ! "
+" !   !   !   !   !   !   !   !  "
+"!   !   !   !   !   !   !   !   "
+;12345678901234567890123456789012
 [end]
 
 
@@ -4881,6 +4979,24 @@ Xpm="32 32 2 1"
 " !              !               "
 "!              !                "
 ;12345678901234567890123456789012
+[end]
+
+
+[_polygon]
+Type=0x1101e
+;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_63/Customizable area/Non NT, NT
+String1=0x04,SWIMMING POOL (PRIVATE)
+String2=0x01,PISCINE PRIVÉE
+String3=0x02,SCHWIMMBAD (PRIVAT)
+String4=0x00,PISCINE PRIVEE
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+Xpm="0 0 1 0"
+"1 c #10DCE0"
 [end]
 
 
@@ -6373,6 +6489,26 @@ ContourColor=No
 
 
 [_line]
+Type=0x10e1b
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_28/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+LineWidth=1
+Xpm="0 0 1 0"
+"1 c #505050"
+String1=0x04,LOW WATER MARK
+String2=0x01,LAISSE DE BASSE MER
+String3=0x02,NIEDRIGWASSERLINIE
+String4=0x00,LAISSE DE BASSE MER
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#505050
+NightcustomColor:#505050
+ContourColor=No
+[end]
+
+
+[_line]
 Type=0x10e1c
 ;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_29/Non-routable customizable line/Non NT, NT
 UseOrientation=N
@@ -6550,6 +6686,31 @@ ContourColor=No
 
 
 [_line]
+Type=0x10f04
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_37/Non-routable customizable line/Non NT, NT
+UseOrientation=N
+Xpm="32 4 2  1"
+"! c #FFFFFF"
+"# c #F32204"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"################################"
+"################################"
+;12345678901234567890123456789012
+String1=0x04,GR
+String2=0x01,GR
+String3=0x02,GR
+String4=0x00,GR
+ExtendedLabels=Y
+FontStyle=Default
+CustomColor=DayAndNight
+DaycustomColor:#000000
+NightcustomColor:#000000
+ContourColor=No
+[end]
+
+
+[_line]
 Type=0x10f07
 ;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_40/Non-routable customizable line/Non NT, NT
 UseOrientation=Y
@@ -6667,6 +6828,56 @@ String1=0x04,MOUNTAIN SPORT
 String2=0x01,SPORT DE MONTAGNE
 String3=0x02,BERGSPORT
 ExtendedLabels=N
+[end]
+
+
+[_line]
+Type=0x11a00
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_385/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+Xpm="32 5 2  1"
+"! c #A06850"
+"  c none"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!    !!!!!    !!!!!    !!!!!"
+" !!!      !!!      !!!      !!! "
+"  !        !        !        !  "
+"                                "
+;12345678901234567890123456789012
+String1=0x04,Cliff
+String2=0x01,Falaise
+String3=0x00,Falaise
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#A06850
+NightcustomColor:#A06850
+ContourColor=No
+[end]
+
+
+[_line]
+Type=0x11a01
+;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_386/Non-routable customizable line/Non NT, NT
+UseOrientation=Y
+Xpm="32 5 2  1"
+"! c #A06850"
+"  c none"
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+"!!!!!    !!!!!    !!!!!    !!!!!"
+" !!!      !!!      !!!      !!! "
+"  !        !        !        !  "
+"                                "
+;12345678901234567890123456789012
+String1=0x04,Cliff
+String2=0x01,Falaise
+String3=0x00,Falaise
+ExtendedLabels=Y
+FontStyle=NoLabel (invisible)
+CustomColor=DayAndNight
+DaycustomColor:#A06850
+NightcustomColor:#A06850
+ContourColor=No
 [end]
 
 
@@ -10869,17 +11080,8 @@ CustomColor=Day
 DaycustomColor:#000000
 ContourColor=DayAndNight
 DayContourColor:#F8FCF8
-DayXpm="7 7 2 1"   Colormode=16
-"!	c #000000"
-"  	c none"
-"  !!!  "
-" !! !! "
-"!!  !!!"
-"!  !  !"
-"!!!  !!"
-" !! !! "
-"  !!!  "
-;1234567
+NightContourColor:#DA0000
+DayXpm="0 0 0 0"
 [end]
 
 
@@ -18948,96 +19150,6 @@ DayXpm="17 17 27 2"   Colormode=16
 ;12345678901234567
 [end]
 
-[_line]
-Type=0x10e1b
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_28/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-LineWidth=1
-Xpm="0 0 1 0"
-"1 c #505050"
-String1=0x04,LOW WATER MARK
-String2=0x01,LAISSE DE BASSE MER
-String3=0x02,NIEDRIGWASSERLINIE
-String4=0x00,LAISSE DE BASSE MER
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#505050
-NightcustomColor:#505050
-ContourColor=No
-[end]
-
-[_line]
-Type=0x10f04
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_37/Non-routable customizable line/Non NT, NT
-UseOrientation=N
-Xpm="32 4 2  1"
-"! c #FFFFFF"
-"# c #F32204"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"################################"
-"################################"
-;12345678901234567890123456789012
-String1=0x04,GR
-String2=0x01,GR
-String3=0x02,GR
-String4=0x00,GR
-ExtendedLabels=Y
-FontStyle=Default
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-[end]
-
-[_line]
-Type=0x11a00
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_385/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-Xpm="32 5 2  1"
-"! c #A06850"
-"  c none"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!    !!!!!    !!!!!    !!!!!"
-" !!!      !!!      !!!      !!! "
-"  !        !        !        !  "
-"                                "
-;12345678901234567890123456789012
-String1=0x04,Cliff
-String2=0x01,Falaise
-String3=0x00,Falaise
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#A06850
-NightcustomColor:#A06850
-ContourColor=No
-[end]
-
-[_line]
-Type=0x11a01
-;GRMN_TYPE: Customizable Line Types/CUSTOMIZABLE_LINE_386/Non-routable customizable line/Non NT, NT
-UseOrientation=Y
-Xpm="32 5 2  1"
-"! c #A06850"
-"  c none"
-"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-"!!!!!    !!!!!    !!!!!    !!!!!"
-" !!!      !!!      !!!      !!! "
-"  !        !        !        !  "
-"                                "
-;12345678901234567890123456789012
-String1=0x04,Cliff
-String2=0x01,Falaise
-String3=0x00,Falaise
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#A06850
-NightcustomColor:#A06850
-ContourColor=No
-[end]
 
 [_point]
 Type=0x150
@@ -19147,6 +19259,7 @@ DayXpm="20 20 77 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x01
@@ -19248,6 +19361,7 @@ DayXpm="20 20 71 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -19376,6 +19490,7 @@ DayXpm="20 20 96 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x03
@@ -19450,6 +19565,7 @@ DayXpm="20 20 44 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -19559,6 +19675,7 @@ DayXpm="20 20 78 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -19684,6 +19801,7 @@ DayXpm="20 20 94 2"   Colormode=16
 "        $%!5#5*!          %5!5?#        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -19816,6 +19934,7 @@ DayXpm="20 20 100 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x07
@@ -19941,6 +20060,7 @@ DayXpm="20 20 95 2"   Colormode=16
 "                                $7*4    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -20084,6 +20204,7 @@ DayXpm="20 20 112 2"   Colormode=16
 "              *5#1?5                    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -20234,6 +20355,7 @@ DayXpm="20 20 118 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x0a
@@ -20332,6 +20454,7 @@ DayXpm="20 20 68 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -20466,6 +20589,7 @@ DayXpm="20 20 102 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x0c
@@ -20546,6 +20670,7 @@ DayXpm="20 20 50 2"   Colormode=16
 "      %8%?#=!6!%!!!!!!!!!!!2#$#8%9      "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -20687,6 +20812,7 @@ DayXpm="20 20 109 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x0e
@@ -20746,6 +20872,7 @@ DayXpm="28 28 21 2"   Colormode=16
 "                                                        "
 ;1234567890123456789012345678
 [end]
+
 
 [_point]
 Type=0x150
@@ -20876,6 +21003,7 @@ DayXpm="20 20 98 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x10
@@ -20997,6 +21125,7 @@ DayXpm="20 20 90 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x11
@@ -21056,6 +21185,7 @@ DayXpm="20 20 29 2"   Colormode=16
 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*  "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -21190,6 +21320,7 @@ DayXpm="20 20 102 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x13
@@ -21289,6 +21420,7 @@ DayXpm="20 20 69 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -21416,6 +21548,7 @@ DayXpm="20 20 95 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x15
@@ -21509,6 +21642,7 @@ DayXpm="20 20 62 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x16
@@ -21598,6 +21732,7 @@ DayXpm="20 20 59 2"   Colormode=16
 "!!#3  !!%#  !!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -21695,6 +21830,7 @@ DayXpm="20 20 66 2"   Colormode=16
 "  %3!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#$  "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -21820,6 +21956,7 @@ DayXpm="20 20 94 2"   Colormode=16
 "                *1$9$9*?*5              "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -21953,6 +22090,7 @@ DayXpm="20 20 101 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x1a
@@ -22035,6 +22173,7 @@ DayXpm="20 20 52 2"   Colormode=16
 "            ?#%4%2%2%2%2%3%8            "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -22128,6 +22267,7 @@ DayXpm="20 20 62 2"   Colormode=16
 "!5!!!!!!!!!!!!!!!!!!!!!!!3              "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -22223,6 +22363,7 @@ DayXpm="20 20 64 2"   Colormode=16
 "            ?=?7          ?7?2          "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -22361,6 +22502,7 @@ DayXpm="20 20 106 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x150
 SubType=0x1e
@@ -22427,6 +22569,7 @@ DayXpm="20 20 36 2"   Colormode=16
 "  #4!?!!!5!8!!!!!!!!!!!!!!!!!!!!!!!!!6  "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x150
@@ -22531,6 +22674,7 @@ DayXpm="20 20 73 2"   Colormode=16
 "  $?%2#%!*!!!!!!!!!!!2#1?4      !!?$    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -22653,6 +22797,7 @@ DayXpm="20 20 91 2"   Colormode=16
 "        $8?!#?!#!!!!!!!!!!!8%4$3        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -22782,6 +22927,7 @@ DayXpm="20 20 97 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x151
 SubType=0x02
@@ -22852,6 +22998,7 @@ DayXpm="20 20 39 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x151
 SubType=0x03
@@ -22902,6 +23049,7 @@ DayXpm="20 20 20 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -23061,6 +23209,7 @@ DayXpm="20 20 127 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x151
 SubType=0x05
@@ -23197,6 +23346,7 @@ DayXpm="20 20 106 2"   Colormode=16
 "      =#*6*6*6*6*6*6*6*6*6*6*6*6*8==    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -23339,6 +23489,7 @@ DayXpm="20 20 111 2"   Colormode=16
 "  ?3!!        $#!=!1?4=7$7!!!!%#        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -23483,6 +23634,7 @@ DayXpm="20 20 113 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x151
@@ -23640,6 +23792,7 @@ DayXpm="20 20 125 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x151
 SubType=0x09
@@ -23737,6 +23890,7 @@ DayXpm="20 20 66 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x00
@@ -23826,6 +23980,7 @@ DayXpm="20 20 59 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -23954,6 +24109,7 @@ DayXpm="20 20 96 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x02
@@ -24063,6 +24219,7 @@ DayXpm="20 20 78 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x03
@@ -24144,6 +24301,7 @@ DayXpm="20 20 51 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -24283,6 +24441,7 @@ DayXpm="20 20 107 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x05
@@ -24397,6 +24556,7 @@ DayXpm="20 20 83 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x06
@@ -24483,6 +24643,7 @@ DayXpm="20 20 56 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -24619,6 +24780,7 @@ DayXpm="20 20 105 2"   Colormode=16
 "                =!*2*2*6=1              "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -24783,6 +24945,7 @@ DayXpm="20 20 133 2"   Colormode=16
 "            2!1119          1412        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -24961,6 +25124,7 @@ DayXpm="20 20 146 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x0a
@@ -25056,6 +25220,7 @@ DayXpm="20 20 65 2"   Colormode=16
 "    ?4?1?1?1?1?1?1?1?1?1?3              "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -25193,6 +25358,7 @@ DayXpm="20 20 106 2"   Colormode=16
 "  =?*5*5*5*5*5*5*5*5                    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -25339,6 +25505,7 @@ DayXpm="20 20 114 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x0d
@@ -25386,6 +25553,7 @@ DayXpm="10 16 21 2"   Colormode=16
 "!!!!!8              "
 ;1234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -25510,6 +25678,7 @@ DayXpm="20 20 92 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x0f
@@ -25616,6 +25785,7 @@ DayXpm="20 20 76 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -25734,6 +25904,7 @@ DayXpm="20 20 86 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x11
@@ -25835,6 +26006,7 @@ DayXpm="20 20 70 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x12
@@ -25893,6 +26065,7 @@ DayXpm="20 20 28 2"   Colormode=16
 "      !!!!!!!!!!!!!!!!!!!!!!!!!!!!#=    "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -26051,6 +26224,7 @@ DayXpm="20 20 126 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x14
@@ -26154,6 +26328,7 @@ DayXpm="20 20 73 2"   Colormode=16
 "        #8!4                #8!4        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x152
@@ -26303,6 +26478,7 @@ DayXpm="20 20 117 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x152
 SubType=0x16
@@ -26362,6 +26538,7 @@ DayXpm="20 20 29 2"   Colormode=16
 "                                        "
 ;12345678901234567890
 [end]
+
 
 [_point]
 Type=0x153
@@ -26486,6 +26663,7 @@ DayXpm="20 20 92 2"   Colormode=16
 ;12345678901234567890
 [end]
 
+
 [_point]
 Type=0x153
 SubType=0x01
@@ -26528,6 +26706,7 @@ DayXpm="8 8 24 2"   Colormode=16
 "!!!!!!    !!!!  "
 ;12345678
 [end]
+
 
 [_point]
 Type=0x154
@@ -26579,6 +26758,7 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
+
 [_point]
 Type=0x154
 SubType=0x01
@@ -26628,6 +26808,7 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
+
 
 [_point]
 Type=0x154
@@ -26679,6 +26860,7 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
+
 [_point]
 Type=0x154
 SubType=0x03
@@ -26728,6 +26910,7 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
+
 
 [_point]
 Type=0x154
@@ -26779,6 +26962,7 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
+
 [_point]
 Type=0x154
 SubType=0x05
@@ -26829,6 +27013,7 @@ NightXpm="15 15 3 1"   Colormode=16
 ;123456789012345
 [end]
 
+
 [_point]
 Type=0x154
 SubType=0x06
@@ -26878,6 +27063,7 @@ NightXpm="15 15 3 1"   Colormode=16
 "      ###      "
 ;123456789012345
 [end]
+
 
 [_point]
 Type=0x155
@@ -26944,6 +27130,7 @@ DayXpm="16 16 38 2"   Colormode=16
 ;1234567890123456
 [end]
 
+
 [_point]
 Type=0x155
 SubType=0x01
@@ -26987,6 +27174,7 @@ DayXpm="16 16 16 1"   Colormode=16
 ;1234567890123456
 [end]
 
+
 [_point]
 Type=0x155
 SubType=0x02
@@ -27016,6 +27204,7 @@ DayXpm="14 12 2 1"   Colormode=16
 "              "
 ;12345678901234
 [end]
+
 
 [_point]
 Type=0x155
@@ -27047,6 +27236,7 @@ DayXpm="14 12 2 1"   Colormode=16
 ;12345678901234
 [end]
 
+
 [_point]
 Type=0x155
 SubType=0x04
@@ -27071,6 +27261,7 @@ DayXpm="8 7 4 1"   Colormode=16
 "  !####%"
 ;12345678
 [end]
+
 
 [_point]
 Type=0x155
@@ -27097,119 +27288,4 @@ DayXpm="7 7 4 1"   Colormode=16
 " # ! # "
 "  # #  "
 ;1234567
-[end]
-
-[_polygon]
-Type=0x10a04
-;GRMN_TYPE: Park Areas/NATIONAL_FOREST(NT)/National or communal forest/NT
-ExtendedLabels=Y
-FontStyle=NormalFont
-CustomColor=DayAndNight
-DaycustomColor:#006400
-NightcustomColor:#006400
-ContourColor=No
-Xpm="32 32 2 1"
-"! c #006400"
-"# c #B8EE98"
-"################################"
-"########!#######################"
-"#######!!!######################"
-"######!!!!!#####################"
-"#####!!!!!!!####################"
-"#######!!!######################"
-"######!!!!!#####################"
-"#####!!!!!!!####################"
-"####!!!!!!!!!###################"
-"########!#######################"
-"########!#######################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"################################"
-"###################!############"
-"##################!!!###########"
-"#################!!!!!##########"
-"################!!!!!!!#########"
-"##################!!!###########"
-"#################!!!!!##########"
-"################!!!!!!!#########"
-"###############!!!!!!!!!########"
-"###################!############"
-"###################!############"
-"################################"
-"################################"
-"################################"
-"################################"
-;12345678901234567890123456789012
-[end]
-
-[_polygon]
-Type=0x10f18
-;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_25/Customizable area/Non NT, NT
-String1=0x04,GRAVEL, SHINGLE
-String2=0x01,GRAVIERS, GALETS
-String3=0x02,KIES, SCHOTTER
-String4=0x00,GRAVIERS, GALETS
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-Xpm="32 32 2 1"
-"! c #B0A890"
-"  c none"
-"                                "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-"   !   !   !   !   !   !   !   "
-"  !   !   !   !   !   !   !   !"
-" !   !   !   !   !   !   !   ! "
-"!   !   !   !   !   !   !   !  "
-;12345678901234567890123456789012
-[end]
-
-[_polygon]
-Type=0x1101e
-;GRMN_TYPE: Customizable Areas/CUSTOMIZABLE_AREA_63/Customizable area/Non NT, NT
-String1=0x04,SWIMMING POOL (PRIVATE)
-String2=0x01,PISCINE PRIVÉE
-String3=0x02,SCHWIMMBAD (PRIVAT)
-String4=0x00,PISCINE PRIVEE
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
-Xpm="0 0 1 0"
-"1 c #10DCE0"
 [end]

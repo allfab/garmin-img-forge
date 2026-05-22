@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T15:12:36Z",
+  "generated_at": "2026-05-22T16:46:17Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,9 +9,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-22T15:12:36Z",
-          "size_bytes": 127000576,
-          "sha256": "f326361b7eeda34306028d68154a254a56315b5afe033ff8799ecfc91c954bc9",
+          "published_at": "2026-05-22T16:46:17Z",
+          "size_bytes": 125876224,
+          "sha256": "37d3a8510c140cc374fc4450d60c66e7860856876e26b27ec36bc753dca84fc3",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
