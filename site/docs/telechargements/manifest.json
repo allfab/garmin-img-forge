@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T18:56:16Z",
+  "generated_at": "2026-05-22T21:43:46Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -9,9 +9,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-22T18:56:16Z",
-          "size_bytes": 132192256,
-          "sha256": "5bab6060ec7a2780589c057f95d7633ea0b484fdc94b854fa769b0d533fe1262",
+          "published_at": "2026-05-22T21:43:46Z",
+          "size_bytes": 169213952,
+          "sha256": "b9ae5c696f113bea29854ce07b6bc0475242b50fdbc1d5784dec666906bca264",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "files/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
@@ -21,17 +21,17 @@
             "version": "v2026.03",
             "family_id": "38",
             "family_name": "IGN-BDTOPO-D038-v2026.03",
-            "copyright": "IGN-BDTOPO-D038-v2026.03",
-            "jobs": "2",
-            "mpforge_jobs": "2",
-            "imgforge_jobs": "2",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "jobs": "8",
+            "mpforge_jobs": "8",
+            "imgforge_jobs": "8",
             "series_name": "IGN-BDTOPO-MAP",
             "code_page": "1252",
             "levels": "24,23,22,21,20,18,16",
             "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
             "packaging": "legacy",
             "product_id": "1",
-            "publish_target": "local",
+            "publish_target": "s3",
             "reduce_point_density": "",
             "simplify_polygons": "",
             "min_size_polygon": "",

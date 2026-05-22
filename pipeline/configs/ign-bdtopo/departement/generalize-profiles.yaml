@@ -15,13 +15,13 @@ profiles:
 
   ZONE_DE_VEGETATION:
     levels:
-      - { n: 0, smooth: chaikin, iterations: 1, simplify: 0.00005 }
-      - { n: 1, simplify: 0.00006 }
-      - { n: 2, simplify: 0.00008 }
-      - { n: 3, simplify: 0.00010 }
-      - { n: 4, simplify: 0.00030 }
-      - { n: 5, simplify: 0.00080 }
-      - { n: 6, simplify: 0.00100 }
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify: 0.00002 }
+      - { n: 3, simplify: 0.00004 }
+      - { n: 4, simplify: 0.00008 }
+      - { n: 5, simplify: 0.00016 }
+      - { n: 6, simplify: 0.00032 }
 
   TRONCON_DE_ROUTE:
     # topology: true — vertices d'intersection ancrés (seul simplify_vw autorisé).

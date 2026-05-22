@@ -1,8 +1,8 @@
 version: 1
 
 # Catalogue de profils de simplification pour BDTOPO — variante locale pour départements et outre-mer.
-# generalize_profiles_path: "./generalize-profiles.yaml"
-generalize_profiles_path: "./generalize-profiles-light.yaml"
+generalize_profiles_path: "./generalize-profiles.yaml"
+# generalize_profiles_path: "./generalize-profiles-light.yaml"
 
 routing:
   source_layer: TRONCON_DE_ROUTE
@@ -61,6 +61,18 @@ inputs:
   # ==========================================================================
   # ADMINISTRATIF / LIEUX NOMMÉS (2 couches)
   # ==========================================================================
+
+  # Limites de département — anneau extérieur → [POLYLINE] limite administrative
+  # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
+  - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "DEPARTEMENT_LIMITE"
+    geometry_transform: boundary
+    dedup_by_field: ID
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 
   # Communes (POI chef-lieu + polygone limites)
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
@@ -194,14 +206,14 @@ inputs:
   # ZONES RÉGLEMENTÉES (2 couches)
   # ==========================================================================
 
-  # Parcs et réserves naturelles (nationales, régionales, Natura 2000, etc.)
-  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    dedup_by_field: ID
-    spatial_filter:
-      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
+  # # Parcs et réserves naturelles (nationales, régionales, Natura 2000, etc.)
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # Contours PARC_OU_RESERVE — anneau extérieur → [POLYLINE] contour épais simulé
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
@@ -224,38 +236,26 @@ inputs:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
-  # Forêts publiques (ONF)
+  # Forêts publiques
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
-  # Contours FORET_PUBLIQUE — anneau extérieur → [POLYLINE] contour épais simulé
-  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    layer_alias: "FORET_PUBLIQUE_CONTOUR"
-    geometry_transform: boundary
-    dedup_by_field: ID
+  # # Contours FORET_PUBLIQUE — anneau extérieur → [POLYLINE] contour épais simulé
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "FORET_PUBLIQUE_CONTOUR"
+  #   geometry_transform: boundary
+  #   dedup_by_field: ID
 
-  # FORET_PUBLIQUE label transparent — même SHP, type polygone sans fond, affiche TOPONYME
-  - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    layer_alias: "FORET_PUBLIQUE_LABEL"
-    dedup_by_field: ID
-
-  # Limites de département — anneau extérieur → [POLYLINE] limite administrative
-  # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
-  - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
-    source_srs: "EPSG:2154"
-    target_srs: "EPSG:4326"
-    layer_alias: "DEPARTEMENT_LIMITE"
-    geometry_transform: boundary
-    dedup_by_field: ID
-    spatial_filter:
-      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500
+  # # FORET_PUBLIQUE label transparent — même SHP, type polygone sans fond, affiche TOPONYME
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "FORET_PUBLIQUE_LABEL"
+  #   dedup_by_field: ID
 
   # ==========================================================================
   # TOPONYMIE (1 couche)

@@ -821,6 +821,15 @@ rulesets:
   # ADMINISTRATIF — Communes (POLYGON)
   # 1 règle wildcard — attributs CountryName, CityName, Zip
   # ==========================================================================
+  - name: DEPARTEMENT_LIMITE
+    source_layer: "DEPARTEMENT_LIMITE"
+    rules:
+      - match:
+          NOM: "*"
+        set:
+          Type: "0x10a06"
+          EndLevel: "6"
+
   - name: "Communes"
     source_layer: "COMMUNE"
     label_case: "title"
@@ -993,7 +1002,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x26"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${NOM_C_EAU}"
 
       # 2. Catch-all (Permanent, Inconnue, vide)
@@ -1001,7 +1010,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x18"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${NOM_C_EAU}"
 
   # ==========================================================================
@@ -1025,7 +1034,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x4c"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${NOM_P_EAU}"
 
       # 3. Inconnue
@@ -1033,7 +1042,7 @@ rulesets:
           PERSISTANC: "Inconnue"
         set:
           Type: "0x4c"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${NOM_P_EAU}"
 
       # 4. Lagune
@@ -1059,7 +1068,7 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x3f"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${NOM_P_EAU}"
 
   # ==========================================================================
@@ -1215,91 +1224,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "0"
+          EndLevel: "2"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "0"
+          EndLevel: "2"
 
   # ==========================================================================
   # BATI — Cimetières (POLYGON)
@@ -1549,7 +1558,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x11503"
-          EndLevel: "0"
+          EndLevel: "2"
 
   # ==========================================================================
   # BATI — Terrains de sport (POLYGON)
@@ -1795,7 +1804,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x29"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "Ligne ${VOLTAGE}"
 
   # ==========================================================================
@@ -1804,169 +1813,169 @@ rulesets:
   # 16 NATURE explicites + catch-all. EndLevel 6 (majeur) → 2 (local).
   # 0x14 = NATIONAL_PARK_MAJOR, 0x15 = NATIONAL_PARK, 0x16 = NATIONAL_PARK_OTHER
   # ==========================================================================
-  - name: "Parcs et reserves"
-    source_layer: "PARC_OU_RESERVE"
-    label_case: "title"
-    rules:
-      # 1. Parc national
-      - match:
-          NATURE: "Parc national"
-        set:
-          Type: "0x14"
-          EndLevel: "6"
-          Label: "${TOPONYME}"
+  # - name: "Parcs et reserves"
+  #   source_layer: "PARC_OU_RESERVE"
+  #   label_case: "title"
+  #   rules:
+  #     # 1. Parc national
+  #     - match:
+  #         NATURE: "Parc national"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "6"
+  #         Label: "${TOPONYME}"
 
-      # 2. Parc naturel marin
-      - match:
-          NATURE: "Parc naturel marin"
-        set:
-          Type: "0x14"
-          EndLevel: "6"
-          Label: "${TOPONYME}"
+  #     # 2. Parc naturel marin
+  #     - match:
+  #         NATURE: "Parc naturel marin"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "6"
+  #         Label: "${TOPONYME}"
 
-      # 3. Bien inscrit sur la liste du patrimoine mondial de l'UNESCO
-      # Tronqué C,48 : 59 bytes → "Bien inscrit sur la liste du patrimoine mondial"
-      - match:
-          NATURE: "Bien inscrit sur la liste du patrimoine mondial"
-        set:
-          Type: "0x14"
-          EndLevel: "5"
-          Label: "${TOPONYME}"
+  #     # 3. Bien inscrit sur la liste du patrimoine mondial de l'UNESCO
+  #     # Tronqué C,48 : 59 bytes → "Bien inscrit sur la liste du patrimoine mondial"
+  #     - match:
+  #         NATURE: "Bien inscrit sur la liste du patrimoine mondial"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
 
-      # 4. Géoparc mondial UNESCO
-      - match:
-          NATURE: "Géoparc mondial UNESCO"
-        set:
-          Type: "0x14"
-          EndLevel: "5"
-          Label: "${TOPONYME}"
+  #     # 4. Géoparc mondial UNESCO
+  #     - match:
+  #         NATURE: "Géoparc mondial UNESCO"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
 
-      # 5. Parc naturel régional
-      - match:
-          NATURE: "Parc naturel régional"
-        set:
-          Type: "0x15"
-          EndLevel: "5"
-          Label: "${TOPONYME}"
+  #     # 5. Parc naturel régional
+  #     - match:
+  #         NATURE: "Parc naturel régional"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
 
-      # 6. Réserve de biosphère
-      - match:
-          NATURE: "Réserve de biosphère"
-        set:
-          Type: "0x15"
-          EndLevel: "5"
-          Label: "${TOPONYME}"
+  #     # 6. Réserve de biosphère
+  #     - match:
+  #         NATURE: "Réserve de biosphère"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
 
-      # 7. Réserve naturelle
-      - match:
-          NATURE: "Réserve naturelle"
-        set:
-          Type: "0x15"
-          EndLevel: "4"
-          Label: "${TOPONYME}"
+  #     # 7. Réserve naturelle
+  #     - match:
+  #         NATURE: "Réserve naturelle"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
 
-      # 8. Réserve nationale de chasse et de faune sauvage
-      - match:
-          NATURE: "Réserve nationale de chasse et de faune sauvage"
-        set:
-          Type: "0x15"
-          EndLevel: "4"
-          Label: "${TOPONYME}"
+  #     # 8. Réserve nationale de chasse et de faune sauvage
+  #     - match:
+  #         NATURE: "Réserve nationale de chasse et de faune sauvage"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
 
-      # 9. Site Natura 2000
-      - match:
-          NATURE: "Site Natura 2000"
-        set:
-          Type: "0x16"
-          EndLevel: "3"
-          Label: "${TOPONYME}"
+  #     # 9. Site Natura 2000
+  #     - match:
+  #         NATURE: "Site Natura 2000"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
 
-      # 10. Réserve biologique
-      - match:
-          NATURE: "Réserve biologique"
-        set:
-          Type: "0x16"
-          EndLevel: "3"
-          Label: "${TOPONYME}"
+  #     # 10. Réserve biologique
+  #     - match:
+  #         NATURE: "Réserve biologique"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
 
-      # 11. Site Ramsar
-      - match:
-          NATURE: "Site Ramsar"
-        set:
-          Type: "0x16"
-          EndLevel: "3"
-          Label: "${TOPONYME}"
+  #     # 11. Site Ramsar
+  #     - match:
+  #         NATURE: "Site Ramsar"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
 
-      # 12. Terrain du Conservatoire du Littoral
-      - match:
-          NATURE: "Terrain du Conservatoire du Littoral"
-        set:
-          Type: "0x16"
-          EndLevel: "3"
-          Label: "${TOPONYME}"
+  #     # 12. Terrain du Conservatoire du Littoral
+  #     - match:
+  #         NATURE: "Terrain du Conservatoire du Littoral"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
 
-      # 13. Site acquis ou assimilé des conservatoires d'espaces naturels
-      # Tronqué C,48 : 62 bytes → "Site acquis ou assimilé des conservatoires d'es"
-      - match:
-          NATURE: "Site acquis ou assimilé des conservatoires d'es"
-        set:
-          Type: "0x16"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
+  #     # 13. Site acquis ou assimilé des conservatoires d'espaces naturels
+  #     # Tronqué C,48 : 62 bytes → "Site acquis ou assimilé des conservatoires d'es"
+  #     - match:
+  #         NATURE: "Site acquis ou assimilé des conservatoires d'es"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
 
-      # 14. Arrêté de protection
-      - match:
-          NATURE: "Arrêté de protection"
-        set:
-          Type: "0x16"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
+  #     # 14. Arrêté de protection
+  #     - match:
+  #         NATURE: "Arrêté de protection"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
 
-      # 15. Zone de silence
-      - match:
-          NATURE: "Zone de silence"
-        set:
-          Type: "0x16"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
+  #     # 15. Zone de silence
+  #     - match:
+  #         NATURE: "Zone de silence"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
 
-      # 16. Zone naturelle
-      - match:
-          NATURE: "Zone naturelle"
-        set:
-          Type: "0x16"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
+  #     # 16. Zone naturelle
+  #     - match:
+  #         NATURE: "Zone naturelle"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
 
-      # 17. Catch-all (NATURE non reconnue)
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x16"
-          EndLevel: "2"
-          Label: "${TOPONYME}"
+  #     # 17. Catch-all (NATURE non reconnue)
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
 
-  # PARC_OU_RESERVE_CONTOUR — polyligne de bordure (type 0x10a10)
-  - name: PARC_OU_RESERVE_CONTOUR
-    source_layer: "PARC_OU_RESERVE_CONTOUR"
-    rules:
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x10a10"
-          EndLevel: "5"
+  # # PARC_OU_RESERVE_CONTOUR — polyligne de bordure (type 0x10a10)
+  # - name: PARC_OU_RESERVE_CONTOUR
+  #   source_layer: "PARC_OU_RESERVE_CONTOUR"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a10"
+  #         EndLevel: "5"
 
-  # PARC_OU_RESERVE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0b)
-  - name: PARC_OU_RESERVE_LABEL
-    source_layer: "PARC_OU_RESERVE_LABEL"
-    label_case: "title"
-    rules:
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x10a0b"
-          EndLevel: "5"
-          Label: "${TOPONYME}"
+  # # PARC_OU_RESERVE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0b)
+  # - name: PARC_OU_RESERVE_LABEL
+  #   source_layer: "PARC_OU_RESERVE_LABEL"
+  #   label_case: "title"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a0b"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
 
   # ==========================================================================
   # ZONES RÉGLEMENTÉES — Forêts publiques (POLYGON)
@@ -1984,37 +1993,27 @@ rulesets:
           EndLevel: "4"
           Label: "${TOPONYME}"
 
-  # FORET_PUBLIQUE_CONTOUR — polyligne de bordure (type 0x10a05)
-  - name: FORET_PUBLIQUE_CONTOUR
-    source_layer: "FORET_PUBLIQUE_CONTOUR"
-    rules:
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x10a05"
-          EndLevel: "4"
+  # # FORET_PUBLIQUE_CONTOUR — polyligne de bordure (type 0x10a05)
+  # - name: FORET_PUBLIQUE_CONTOUR
+  #   source_layer: "FORET_PUBLIQUE_CONTOUR"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a05"
+  #         EndLevel: "4"
 
-  # FORET_PUBLIQUE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0c)
-  - name: FORET_PUBLIQUE_LABEL
-    source_layer: "FORET_PUBLIQUE_LABEL"
-    label_case: "title"
-    rules:
-      - match:
-          NATURE: "*"
-        set:
-          Type: "0x10a0c"
-          EndLevel: "4"
-          Label: "${TOPONYME}"
-
-  # DEPARTEMENT_LIMITE — polyligne administrative (type 0x10a06)
-  - name: DEPARTEMENT_LIMITE
-    source_layer: "DEPARTEMENT_LIMITE"
-    rules:
-      - match:
-          NOM: "*"
-        set:
-          Type: "0x10a06"
-          EndLevel: "6"
+  # # FORET_PUBLIQUE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0c)
+  # - name: FORET_PUBLIQUE_LABEL
+  #   source_layer: "FORET_PUBLIQUE_LABEL"
+  #   label_case: "title"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a0c"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
 
   # ==========================================================================
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
