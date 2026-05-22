@@ -2658,8 +2658,10 @@ CustomColor=DayAndNight
 DaycustomColor:#006400
 NightcustomColor:#AADDAA
 ContourColor=No
-Xpm="0 0 1 0"
-"1 c #006400"
+Xpm="1 1 2 1"
+"a c none"
+"b c #006400"
+"a"
 [end]
 
 
