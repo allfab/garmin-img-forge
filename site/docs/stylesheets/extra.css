@@ -139,6 +139,12 @@
   /* Pas de défilement interne : c'est l'overlay qui défile */
 }
 
+.dl-modal-tools {
+  font-size: 0.78em;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.6));
+  margin-bottom: 1rem;
+}
+
 /* ---- Onglets ---- */
 
 .dl-modal-tablist {

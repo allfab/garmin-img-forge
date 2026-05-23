@@ -120,6 +120,8 @@ GDAL_DRIVER_PATH_OVERRIDE="${GDAL_DRIVER_PATH:-}"
 # Binaires résolus
 _MPFORGE=""
 _IMGFORGE=""
+_MPFORGE_VERSION=""
+_IMGFORGE_VERSION=""
 
 # Métriques mpforge
 BUILD_START_TIME=0
@@ -891,7 +893,9 @@ check_prerequisites() {
         log_error "  → Compilez avec : cd tools/mpforge && cargo build --release"
         exit 1
     fi
-    log_ok "mpforge : $_MPFORGE"
+    _MPFORGE_VERSION=$("$_MPFORGE" --version 2>/dev/null)
+    _MPFORGE_VERSION="${_MPFORGE_VERSION#mpforge }"
+    log_ok "mpforge : $_MPFORGE (${_MPFORGE_VERSION:-version inconnue})"
 
     # --- imgforge ---
     if [[ -z "$_IMGFORGE" ]]; then
@@ -902,7 +906,9 @@ check_prerequisites() {
         log_error "  → Compilez avec : cd tools/imgforge && cargo build --release"
         exit 1
     fi
-    log_ok "imgforge : $_IMGFORGE"
+    _IMGFORGE_VERSION=$("$_IMGFORGE" --version 2>/dev/null)
+    _IMGFORGE_VERSION="${_IMGFORGE_VERSION#imgforge }"
+    log_ok "imgforge : $_IMGFORGE (${_IMGFORGE_VERSION:-version inconnue})"
 
     # --- Driver ogr-polishmap (tech-spec #2 multi-Data) ---
     # mpforge charge le driver dynamiquement via libgdal ; si le plugin
@@ -1403,6 +1409,8 @@ update_manifest() {
     local bp_dem_expand="${DEM_EXPAND:-}"
     local bp_dem_dists="${DEM_DISTS:-}"
     local bp_dem_interpolation="${DEM_INTERPOLATION:-}"
+    local bp_mpforge_version="${_MPFORGE_VERSION}"
+    local bp_imgforge_version="${_IMGFORGE_VERSION}"
 
     jq \
         --arg key "$key" \
@@ -1453,6 +1461,8 @@ update_manifest() {
         --arg bp_dem_expand "$bp_dem_expand" \
         --arg bp_dem_dists "$bp_dem_dists" \
         --arg bp_dem_interpolation "$bp_dem_interpolation" \
+        --arg bp_mpforge_version "$bp_mpforge_version" \
+        --arg bp_imgforge_version "$bp_imgforge_version" \
         '
         .generated_at = $now
         | .storage = (
@@ -1511,7 +1521,9 @@ update_manifest() {
                         keep_going: $bp_keep_going,
                         dem_expand: $bp_dem_expand,
                         dem_dists: $bp_dem_dists,
-                        dem_interpolation: $bp_dem_interpolation
+                        dem_interpolation: $bp_dem_interpolation,
+                        mpforge_version: $bp_mpforge_version,
+                        imgforge_version: $bp_imgforge_version
                     }
                 }]
               )

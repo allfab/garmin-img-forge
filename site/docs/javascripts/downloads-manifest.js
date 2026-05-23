@@ -23,6 +23,7 @@
         sec_imgforge:     'IMG compilation (imgforge)',
         date_locale:      'en-GB',
         env_comment:      '# Environment variables required by mpforge (YAML config)',
+        tools_label:      'Built with: ',
     } : {
         unavailable:      'Non disponible',
         download:         'Télécharger',
@@ -40,6 +41,7 @@
         sec_imgforge:     'Compilation IMG (imgforge)',
         date_locale:      'fr-FR',
         env_comment:      '# Variables d\'environnement requises par mpforge (config YAML)',
+        tools_label:      'Généré avec : ',
     };
 
     // Dérive l'URL du manifest depuis l'emplacement du script :
@@ -116,8 +118,7 @@
             '    --format SHP \\',
             '    --with-contours \\',
             '    --with-osm \\',
-            '    --with-dem \\',
-            '    --dry-run'
+            '    --with-dem'
         ].join('\n');
     }
 
@@ -416,12 +417,22 @@
         });
     }
 
-    function openModal(titleText, sections, triggerEl) {
+    function openModal(titleText, sections, triggerEl, versionInfo) {
         var m = getOrCreateModal();
         _modalTrigger = triggerEl || null;
         m.title.textContent = titleText;
 
         while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
+
+        if (versionInfo && (versionInfo.mpforge || versionInfo.imgforge)) {
+            var toolsDiv = document.createElement('div');
+            toolsDiv.className = 'dl-modal-tools';
+            var parts = [];
+            if (versionInfo.mpforge)  parts.push('mpforge ' + versionInfo.mpforge);
+            if (versionInfo.imgforge) parts.push('imgforge ' + versionInfo.imgforge);
+            toolsDiv.textContent = T.tools_label + parts.join(' — ');
+            m.body.appendChild(toolsDiv);
+        }
 
         var tablist = document.createElement('div');
         tablist.className = 'dl-modal-tablist';
@@ -506,13 +517,18 @@
             [T.sec_imgforge, buildImgforgeCmd(bp, entry || {})]
         ];
 
+        var versionInfo = {
+            mpforge:  bp.mpforge_version  || null,
+            imgforge: bp.imgforge_version || null
+        };
+
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dl-cmds-trigger';
         btn.setAttribute('aria-haspopup', 'dialog');
         btn.textContent = T.commands_btn;
         btn.addEventListener('click', function () {
-            openModal(T.modal_prefix + label, sections, btn);
+            openModal(T.modal_prefix + label, sections, btn, versionInfo);
         });
         return btn;
     }
