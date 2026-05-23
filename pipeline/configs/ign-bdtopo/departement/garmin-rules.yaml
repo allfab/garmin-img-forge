@@ -63,7 +63,7 @@ rulesets:
 
       # -----------------------------------------------------------------------
       # BLOC 1 — Autoroute (CL_ADMIN=Autoroute, NATURE≠Bretelle déjà capturée)
-      # IMPORTANCE 1-3. Rond-point → Type=0x0c sans shield.
+      # IMPORTANCE 1-3. Rond-point → Type=0x01 (hérite du type autoroute).
       # -----------------------------------------------------------------------
       # 1.1 Autoroute Rond-point IMPORTANCE 1
       - match:
@@ -71,7 +71,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "1"
         set:
-          Type: "0x0c"
+          Type: "0x01"
           EndLevel: "6"
 
       # 1.2 Autoroute Rond-point IMPORTANCE 2
@@ -80,7 +80,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "2"
         set:
-          Type: "0x0c"
+          Type: "0x01"
           EndLevel: "5"
 
       # 1.3 Autoroute Rond-point IMPORTANCE 3
@@ -89,7 +89,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "3"
         set:
-          Type: "0x0c"
+          Type: "0x01"
           EndLevel: "4"
 
       # 1.4 Autoroute IMPORTANCE 1
@@ -124,7 +124,7 @@ rulesets:
           CL_ADMIN: "Autoroute"
           NATURE: "Rond-point"
         set:
-          Type: "0x0c"
+          Type: "0x01"
           EndLevel: "3"
 
       # 1.8 Autoroute IMPORTANCE 4+ ou manquante (catch-all)
@@ -137,7 +137,8 @@ rulesets:
 
       # -----------------------------------------------------------------------
       # BLOC 2 — Nationale (CL_ADMIN=Nationale, NATURE≠Bretelle)
-      # IMPORTANCE 1-3. Nationales IMP=2 visibles au niveau 5 (régional).
+      # IMPORTANCE 1-3 → Type=0x04 (nationale, rouge). Rond-point hérite 0x04.
+      # IMPORTANCE 4-5 → Type=0x06 (local) : voies de service/transition N7 en ville.
       # -----------------------------------------------------------------------
       # 2.1 Nationale Rond-point IMPORTANCE 1
       - match:
@@ -145,7 +146,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "1"
         set:
-          Type: "0x0c"
+          Type: "0x04"
           EndLevel: "6"
 
       # 2.2 Nationale Rond-point IMPORTANCE 2
@@ -154,7 +155,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "2"
         set:
-          Type: "0x0c"
+          Type: "0x04"
           EndLevel: "5"
 
       # 2.3 Nationale Rond-point IMPORTANCE 3
@@ -163,7 +164,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "3"
         set:
-          Type: "0x0c"
+          Type: "0x04"
           EndLevel: "4"
 
       # 2.4 Nationale IMPORTANCE 1
@@ -198,15 +199,33 @@ rulesets:
           CL_ADMIN: "Nationale"
           NATURE: "Rond-point"
         set:
-          Type: "0x0c"
+          Type: "0x06"
           EndLevel: "3"
 
-      # 2.8 Nationale IMPORTANCE 4+ ou manquante (catch-all)
+      # 2.8 Nationale IMPORTANCE 4 (voie locale sans numéro propre)
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.9 Nationale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.10 Nationale IMPORTANCE 6+ ou manquante (catch-all)
       - match:
           CL_ADMIN: "Nationale"
         set:
-          Type: "0x04"
-          EndLevel: "3"
+          Type: "0x06"
+          EndLevel: "0"
           Label: "~[0x05]${NUMERO}"
 
       # -----------------------------------------------------------------------
@@ -272,7 +291,7 @@ rulesets:
 
       # -----------------------------------------------------------------------
       # BLOC 5 — Départementale (CL_ADMIN=Départementale, NATURE≠Bretelle)
-      # IMPORTANCE 1-5. Rond-point → Type=0x0c sans shield.
+      # IMPORTANCE 1-5. Rond-point → Type=0x05 (hérite du type départementale).
       # -----------------------------------------------------------------------
       # 5.1 Départementale Rond-point IMPORTANCE 1
       - match:
@@ -280,7 +299,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "1"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "6"
 
       # 5.2 Départementale Rond-point IMPORTANCE 2
@@ -289,7 +308,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "2"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "5"
 
       # 5.3 Départementale Rond-point IMPORTANCE 3
@@ -298,7 +317,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "3"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "4"
 
       # 5.4 Départementale Rond-point IMPORTANCE 4
@@ -307,7 +326,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "4"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "3"
 
       # 5.5 Départementale Rond-point IMPORTANCE 5
@@ -316,7 +335,7 @@ rulesets:
           NATURE: "Rond-point"
           IMPORTANCE: "5"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "1"
 
       # 5.6 Départementale IMPORTANCE 1
@@ -369,7 +388,7 @@ rulesets:
           CL_ADMIN: "Départementale"
           NATURE: "Rond-point"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "0"
 
       # 5.12 Départementale IMPORTANCE 6+ ou manquante (catch-all)
@@ -571,6 +590,9 @@ rulesets:
           Label: "~[0x04]${NUMERO}"
 
       # --- Route à 2 chaussées ---
+      # IMP 1-2 = 0x04 (nationale-level), IMP 3 = 0x05 (départementale-level),
+      # IMP 4+ = 0x06 (voie locale). Miroir de la logique Route à 1 chaussée,
+      # décalé d'un cran car physiquement plus importante.
       # 9.3 Route à 2 chaussées IMPORTANCE 1
       - match:
           NATURE: "Route à 2 chaussées"
@@ -592,21 +614,29 @@ rulesets:
           NATURE: "Route à 2 chaussées"
           IMPORTANCE: "3"
         set:
-          Type: "0x04"
+          Type: "0x05"
           EndLevel: "4"
 
-      # 9.6 Route à 2 chaussées IMPORTANCE 4 (ou tout autre IMP)
+      # 9.6 Route à 2 chaussées IMPORTANCE 4
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+
+      # 9.7 Route à 2 chaussées IMPORTANCE 5+ (catch-all)
       - match:
           NATURE: "Route à 2 chaussées"
         set:
-          Type: "0x04"
-          EndLevel: "3"
+          Type: "0x06"
+          EndLevel: "1"
 
       # --- Route à 1 chaussée ---
       # Type varie par IMPORTANCE : IMP 1-2 = 0x04 (nationale-level), IMP 3 = 0x05
       # (départementale-level), IMP 4-6 = 0x06 (voie locale). Sans cette différenciation,
       # les 85 % de tronçons null CL_ADMIN héritaient tous de 0x05 = carte tout-jaune.
-      # 9.7 Route à 1 chaussée IMPORTANCE 1
+      # 9.8 Route à 1 chaussée IMPORTANCE 1
       - match:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "1"
@@ -614,7 +644,7 @@ rulesets:
           Type: "0x04"
           EndLevel: "6"
 
-      # 9.8 Route à 1 chaussée IMPORTANCE 2
+      # 9.9 Route à 1 chaussée IMPORTANCE 2
       - match:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "2"
@@ -622,7 +652,7 @@ rulesets:
           Type: "0x04"
           EndLevel: "5"
 
-      # 9.9 Route à 1 chaussée IMPORTANCE 3
+      # 9.10 Route à 1 chaussée IMPORTANCE 3
       - match:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "3"
@@ -630,7 +660,7 @@ rulesets:
           Type: "0x05"
           EndLevel: "4"
 
-      # 9.10 Route à 1 chaussée IMPORTANCE 4
+      # 9.11 Route à 1 chaussée IMPORTANCE 4
       - match:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "4"
@@ -638,7 +668,7 @@ rulesets:
           Type: "0x06"
           EndLevel: "3"
 
-      # 9.11 Route à 1 chaussée IMPORTANCE 5
+      # 9.12 Route à 1 chaussée IMPORTANCE 5
       - match:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "5"
@@ -646,7 +676,7 @@ rulesets:
           Type: "0x06"
           EndLevel: "1"
 
-      # 9.12 Route à 1 chaussée IMPORTANCE 6 (ou catch-all)
+      # 9.13 Route à 1 chaussée IMPORTANCE 6 (ou catch-all)
       - match:
           NATURE: "Route à 1 chaussée"
         set:
@@ -654,19 +684,20 @@ rulesets:
           EndLevel: "0"
 
       # --- Rond-point générique (sans CL_ADMIN classé) ---
-      # 9.13 Rond-point générique IMPORTANCE 3 (IMP 1-2 → catch-all 9.14)
+      # Hérite du type de la route correspondante à l'IMPORTANCE.
+      # 9.14 Rond-point générique IMPORTANCE 3
       - match:
           NATURE: "Rond-point"
           IMPORTANCE: "3"
         set:
-          Type: "0x0c"
+          Type: "0x05"
           EndLevel: "4"
 
-      # 9.14 Rond-point générique IMPORTANCE 4 (ou catch-all)
+      # 9.15 Rond-point générique IMPORTANCE 4+ (ou catch-all)
       - match:
           NATURE: "Rond-point"
         set:
-          Type: "0x0c"
+          Type: "0x06"
           EndLevel: "3"
 
       # --- Route empierrée ---
