@@ -537,22 +537,73 @@ fn read_simple_colours(r: &mut Reader, scheme: u8) -> Result<Vec<Rgba>, TypError
     Ok(out)
 }
 
+/// Lit `nbits` bits depuis `slice` à partir de l'offset bit `bit_off`, LSB-first.
+#[inline]
+fn lsb_bits(slice: &[u8], bit_off: usize, nbits: usize) -> u32 {
+    debug_assert!(nbits <= 32, "lsb_bits: nbits={nbits} dépasse 32");
+    let mut v = 0u32;
+    for i in 0..nbits {
+        let pos = bit_off + i;
+        let byte = slice[pos / 8];
+        let bit = (byte >> (pos % 8)) & 1;
+        v |= (bit as u32) << i;
+    }
+    v
+}
+
 /// Lit une image complète (points/icons) : num_colours u8, colour_mode u8,
-/// couleurs BGR (ou BGR+alpha 4bits si mode 0x20), puis bitmap LSB-first.
+/// couleurs BGR (ou BGR+alpha 4bits packés LSB-first si mode 0x20), puis bitmap.
 fn read_full_image(r: &mut Reader, width: u16, height: u16) -> Result<Xpm, TypError> {
     let num_solid = r.u8()? as usize;
     let colour_mode = r.u8()?;
     let mut colors = Vec::with_capacity(num_solid);
-    for _ in 0..num_solid {
-        let b = r.u8()?;
-        let g = r.u8()?;
-        let r_ = r.u8()?;
-        colors.push(Rgba { r: r_, g, b, a: 0 });
+
+    if colour_mode != 0x00 && colour_mode != 0x10 && colour_mode != 0x20 {
+        tracing::warn!("read_full_image: colour_mode inconnu {:#x}", colour_mode);
     }
-    // Bitmap bits : dépend de num_colours (pas num_solid). Simplification :
-    // on suppose ici bits_per_pixel à partir du nombre de couleurs solides
-    // (conservateur). Ne gère pas les vraies XPM true-color 24bit.
-    let bpp = bits_per_pixel_from_count(num_solid);
+
+    if colour_mode == 0x20 {
+        // Chaque couleur = B(8)+G(8)+R(8)+alpha4(4) = 28 bits, packés LSB-first
+        // (cf. ColourInfo.writeColours20 / BitWriter dans mkgmap).
+        let total_bits = num_solid * 28;
+        let total_bytes = (total_bits + 7) / 8;
+        r.need(total_bytes)?; // garantit que r.pos + total_bytes ≤ buf.len()
+        let slice = &r.buf[r.pos..r.pos + total_bytes];
+        let mut bit_off = 0usize;
+        for _ in 0..num_solid {
+            let b  = lsb_bits(slice, bit_off, 8) as u8; bit_off += 8;
+            let g  = lsb_bits(slice, bit_off, 8) as u8; bit_off += 8;
+            let rv = lsb_bits(slice, bit_off, 8) as u8; bit_off += 8;
+            let a4 = lsb_bits(slice, bit_off, 4) as u8; bit_off += 4;
+            // alpha4 encode l'opacité inverse (0=transparent,15=opaque) sur 4 bits.
+            // Reconstruction 8 bits par réplication : 4-bit → 8-bit (0..15 → 0..255).
+            // Convention Rgba : a=0 opaque, a=0xFF transparent (alpha-inverse Garmin).
+            let alpha_inv = (a4 << 4) | a4;
+            let a = 0xffu8.wrapping_sub(alpha_inv);
+            colors.push(Rgba { r: rv, g, b, a });
+        }
+        r.pos += total_bytes;
+    } else {
+        for _ in 0..num_solid {
+            let b = r.u8()?;
+            let g = r.u8()?;
+            let r_ = r.u8()?;
+            colors.push(Rgba { r: r_, g, b, a: 0 });
+        }
+    }
+
+    // Pour mode=0x10, mkgmap écrit le bitmap avec bpp basé sur numberOfColours
+    // = num_solid + 1 (le pixel transparent n'est pas écrit dans la palette mais
+    // est bien compté pour le bpp). Pour mode=0x20 et mode=0, num_solid = total
+    // (cf. ColourInfo.getBitsPerPixel / getNumberOfSColoursForCM dans mkgmap).
+    let nc_for_bpp = if colour_mode == 0x10 { num_solid + 1 } else { num_solid };
+    let bpp = bits_per_pixel_from_count(nc_for_bpp);
+
+    // num_solid=0 indique une image sans palette indexée (true-color ou vide).
+    // Le décodage pixel-à-pixel n'est pas supporté sans palette ; bitmap vide.
+    if colors.is_empty() {
+        return Ok(Xpm { width, height, colors, pixels: vec![], mode: ColorMode::Indexed });
+    }
     let mut pixels = Vec::with_capacity((width as usize) * (height as usize));
     for _row in 0..height {
         let row_bits = (width as usize) * bpp;
@@ -863,6 +914,57 @@ Xpm="0 0 2 0"
         let txt2 = decompile_binary_to_text(&bin1, TypEncoding::Cp1252).unwrap();
         let bin2 = compile_text_to_binary(&txt2, TypEncoding::Cp1252).unwrap();
         assert_eq!(bin1, bin2, "round-trip label CP1252 byte-à-byte échoué");
+    }
+
+    /// Round-trip point avec colour_mode=0x20 (transparence partielle) :
+    /// régression sur le bug de désynchronisation curseur qui produisait
+    /// "préfixe label inconnu: 0x54" lors de la décompilation de fichiers
+    /// TYP externes (e.g. IGNBDTOP-ROUTING.TYP).
+    #[test]
+    fn self_roundtrip_point_colour_mode_0x20() {
+        use super::super::{compile_text_to_binary, decompile_binary_to_text, TypEncoding};
+        // Un point avec couleur partiellement transparente (alpha != 0 et != 255)
+        // force colour_mode=0x20 dans le writer → 28 bits LSB-first par couleur.
+        // Suivi d'un second point avec labels pour détecter toute dérive curseur.
+        let src = r#"[_id]
+ProductCode=1
+FID=1100
+CodePage=1252
+[end]
+
+[_point]
+Type=0x0100
+Xpm="4 4 2 1"
+"a c #FF000080"
+"b c #0000FF"
+"abba"
+"baab"
+"abba"
+"baab"
+[end]
+
+[_point]
+Type=0x0101
+Xpm="2 2 2 1"
+"1 c #00FF00"
+"2 c #FFFFFF"
+"12"
+"21"
+String1=0x04,TEST
+[end]
+"#;
+        let bin1 = compile_text_to_binary(src.as_bytes(), TypEncoding::Utf8).unwrap();
+        // AC principal : decompile ne doit PAS échouer avec "préfixe label inconnu".
+        // (alpha 8-bit → 4-bit est lossy : pas d'assertion byte-à-byte ici.)
+        let txt2 = decompile_binary_to_text(&bin1, TypEncoding::Utf8).unwrap();
+        // Le label du second point doit être préservé malgré la présence d'un
+        // premier point colour_mode=0x20.
+        assert!(txt2.windows(4).any(|w| w == b"TEST"), "label du second point perdu après décompilation");
+        // Le premier point doit être présent dans le TXT décompilé.
+        assert!(txt2.windows(7).any(|w| w == b"_point]"), "section [_point] absente du TXT décompilé");
+        // Recompilation doit réussir (curseur correctement avancé).
+        let bin2 = compile_text_to_binary(&txt2, TypEncoding::Utf8).unwrap();
+        assert!(!bin2.is_empty(), "recompilation après décompilation a produit un résultat vide");
     }
 
     /// Round-trip shape-stacking avec types étendus (régression H1).
