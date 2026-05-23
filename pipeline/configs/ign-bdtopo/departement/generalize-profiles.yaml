@@ -5,13 +5,9 @@
 profiles:
   TRONCON_HYDROGRAPHIQUE:
     levels:
-      - { n: 0, simplify: 0.00001 }
-      - { n: 1, simplify: 0.00002 }
-      - { n: 2, simplify: 0.00008 }
-      - { n: 3, simplify: 0.00010 }
-      - { n: 4, simplify: 0.00030 }
-      - { n: 5, simplify: 0.00080 }
-      - { n: 6, simplify: 0.00100 }
+      - { n: 0 }
+      - { n: 1, simplify: 0.0001 }
+      - { n: 2, simplify: 0.0002 }
 
   ZONE_DE_VEGETATION:
     levels:
