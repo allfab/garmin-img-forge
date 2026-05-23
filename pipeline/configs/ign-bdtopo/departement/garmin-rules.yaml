@@ -633,7 +633,8 @@ rulesets:
           EndLevel: "1"
 
       # --- Route à 1 chaussée ---
-      # Type varie par IMPORTANCE : IMP 1-2 = 0x04 (nationale-level), IMP 3 = 0x05
+      # Type varie par IMPORTANCE : IMP 1 = 0x04 (nationale-level), IMP 2 = 0x06 (voie locale
+      # sans CL_ADMIN = route de liaison sans classement administratif → blanc), IMP 3 = 0x05
       # (départementale-level), IMP 4-6 = 0x06 (voie locale). Sans cette différenciation,
       # les 85 % de tronçons null CL_ADMIN héritaient tous de 0x05 = carte tout-jaune.
       # 9.8 Route à 1 chaussée IMPORTANCE 1
@@ -649,7 +650,7 @@ rulesets:
           NATURE: "Route à 1 chaussée"
           IMPORTANCE: "2"
         set:
-          Type: "0x04"
+          Type: "0x06"
           EndLevel: "5"
 
       # 9.10 Route à 1 chaussée IMPORTANCE 3
