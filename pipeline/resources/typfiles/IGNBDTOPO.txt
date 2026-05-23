@@ -5397,7 +5397,7 @@ Type=0x18
 UseOrientation=Y
 LineWidth=2
 Xpm="0 0 1 0"
-"1 c #68B4F8"
+"1 c #98CCF8"
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
@@ -5702,7 +5702,7 @@ Type=0x10a00
 UseOrientation=Y
 LineWidth=2
 Xpm="0 0 1 0"
-"1 c #68B4F8"
+"1 c #98CCF8"
 ExtendedLabels=Y
 FontStyle=NoLabel (invisible)
 CustomColor=DayAndNight
