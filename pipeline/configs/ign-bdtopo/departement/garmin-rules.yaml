@@ -4367,16 +4367,16 @@ rulesets:
       - match:
           NAME: "*"
         set:
-          Type: "0x10f04"
-          EndLevel: "5"
+          Type: "0x10f01"
+          EndLevel: "3"
           Label: "${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
       - match:
           NAME: ""
         set:
-          Type: "0x10f04"
-          EndLevel: "5"
+          Type: "0x10f01"
+          EndLevel: "3"
 
   # ==========================================================================
   # CADASTRE — Piscines privées (TSURF_id, SYM=65)
