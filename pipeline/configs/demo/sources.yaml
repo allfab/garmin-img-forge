@@ -16,25 +16,25 @@ inputs:
   # ==========================================================================
 
   # Routes (couche principale — la plus volumineuse)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Voies ferrées
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_VOIE_FERREE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Pistes d'aérodrome
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/PISTE_D_AERODROME.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/PISTE_D_AERODROME.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Transport par câble (téléphériques, télésièges)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/TRANSPORT_PAR_CABLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -44,13 +44,13 @@ inputs:
   # ==========================================================================
 
   # Communes (POI chef-lieu + polygone limites)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Zones d'habitation
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -60,19 +60,19 @@ inputs:
   # ==========================================================================
 
   # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # NOTE : Utiliser SURFACE_HYDROGRAPHIQUE (pas PLAN_D_EAU)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/HYDROGRAPHIE/SURFACE_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Détails hydrographiques (POI : sources, cascades, etc.)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/HYDROGRAPHIE/DETAIL_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -82,43 +82,43 @@ inputs:
   # ==========================================================================
 
   # Bâtiments (polygon — couche volumineuse)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/BATIMENT.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/BATIMENT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Cimetières
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/CIMETIERE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/CIMETIERE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Constructions linéaires (murs, digues)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/CONSTRUCTION_LINEAIRE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/CONSTRUCTION_LINEAIRE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Constructions ponctuelles (châteaux d'eau, monuments)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/CONSTRUCTION_PONCTUELLE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/CONSTRUCTION_PONCTUELLE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Pylônes (POI)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/PYLONE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/PYLONE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Terrains de sport
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/TERRAIN_DE_SPORT.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/TERRAIN_DE_SPORT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # Lignes orographiques
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/BATI/LIGNE_OROGRAPHIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/BATI/LIGNE_OROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -128,7 +128,7 @@ inputs:
   # ==========================================================================
 
   # Zones de végétation (forêts, haies — couche volumineuse)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -138,7 +138,7 @@ inputs:
   # ==========================================================================
 
   # Forêts publiques (ONF)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -148,7 +148,7 @@ inputs:
   # ==========================================================================
 
   # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
-  - path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/LIEUX_NOMMES/TOPONYMIE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/LIEUX_NOMMES/TOPONYMIE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
@@ -157,13 +157,13 @@ inputs:
   # COURBES DE NIVEAU (produit IGN séparé)
   # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
   # ==========================================================================
-  - path: "./pipeline/data/contours/D038/COURBE_*.shp"
+  - path: "./pipeline/data/ign-bdtopo/contours/D038/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
     layer_alias: "COURBE"
     spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+      source: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # ==========================================================================
@@ -172,31 +172,31 @@ inputs:
   # ==========================================================================
 
   # --- Amenity POIs (restaurants, pharmacies, parking, etc.) ---
-  - path: "./pipeline/data/osm/gpkg/*-amenity-points.gpkg"
+  - path: "./pipeline/data/ign-bdtopo/osm/gpkg/*-amenity-points.gpkg"
     layer_alias: "osm_amenity"
     spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+      source: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Natural features ponctuelles (grottes, rochers, dolines) ---
-  - path: "./pipeline/data/osm/gpkg/*-natural-points.gpkg"
+  - path: "./pipeline/data/ign-bdtopo/osm/gpkg/*-natural-points.gpkg"
     layer_alias: "osm_natural_points"
     spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+      source: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # --- Tourism viewpoints ---
-  - path: "./pipeline/data/osm/gpkg/*-tourism-points.gpkg"
+  - path: "./pipeline/data/ign-bdtopo/osm/gpkg/*-tourism-points.gpkg"
     layer_alias: "osm_tourism"
     spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+      source: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
   # ==========================================================================
   # CADASTRE — Piscines privées (SYM=65)
   # Données produites par download-data.sh (--with-pools). Déjà en EPSG:4326.
   # ==========================================================================
-  - path: "./pipeline/data/cadastre/D038/gpkg/TSURF_id.gpkg"
+  - path: "./pipeline/data/ign-bdtopo/cadastre/D038/gpkg/TSURF_id.gpkg"
     layer_alias: "TSURF_id"
     attribute_filter: "SYM = '65'"
 
@@ -204,10 +204,10 @@ inputs:
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
   # Shapefile EPSG:4326 — clippé à l'emprise communale + buffer.
   # ==========================================================================
-  - path: "./pipeline/data/hiking-trails/MON_GR_ITINERAIRE_ME.shp"
+  - path: "./pipeline/data/static/hiking-trails/MON_GR_ITINERAIRE_ME.shp"
     layer_alias: "MON_GR_ITINERAIRE_ME"
     spatial_filter:
-      source: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+      source: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
 
 output:

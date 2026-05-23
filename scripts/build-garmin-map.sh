@@ -47,12 +47,12 @@ DATA_DIR="./pipeline/data"
 OUTPUT_BASE="./pipeline/output/ign-bdtopo"
 
 # Chemins sources (si vide : dérivé de DATA_DIR)
-CONTOURS_DIR=""         # défaut: ${DATA_DIR}/contours
-DEM_DIR=""              # défaut: ${DATA_DIR}/dem
-OSM_DIR=""              # défaut: ${DATA_DIR}/osm
-CADASTRE_DIR=""         # défaut: ${DATA_DIR}/cadastre
-HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/hiking-trails
-OCSGE_DIR=""            # défaut: ${DATA_DIR}/ocsge
+CONTOURS_DIR=""         # défaut: ${DATA_DIR}/ign-bdtopo/contours
+DEM_DIR=""              # défaut: ${DATA_DIR}/ign-bdtopo/dem
+OSM_DIR=""              # défaut: ${DATA_DIR}/ign-bdtopo/osm
+CADASTRE_DIR=""         # défaut: ${DATA_DIR}/ign-bdtopo/cadastre
+HIKING_TRAILS_DIR=""    # défaut: ${DATA_DIR}/static/hiking-trails
+OCSGE_DIR=""            # défaut: ${DATA_DIR}/ign-bdtopo/ocsge
 
 # mpforge
 CONFIG_FILE=""          # si vide : utilise sources.yaml avec envsubst
@@ -332,12 +332,12 @@ OPTIONS GÉOGRAPHIQUES :
 
 CHEMINS :
     --data-dir DIR          Racine des données (défaut: ./pipeline/data)
-    --contours-dir DIR      Racine courbes de niveau (défaut: ${data-dir}/contours)
-    --dem-dir DIR           Racine MNT BD ALTI (défaut: ${data-dir}/dem)
-    --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/osm)
-    --cadastre-dir DIR      Racine données cadastre (défaut: ${data-dir}/cadastre)
-    --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/hiking-trails)
-    --ocsge-dir DIR         Racine données OCS-GE (défaut: ${data-dir}/ocsge)
+    --contours-dir DIR      Racine courbes de niveau (défaut: ${data-dir}/ign-bdtopo/contours)
+    --dem-dir DIR           Racine MNT BD ALTI (défaut: ${data-dir}/ign-bdtopo/dem)
+    --osm-dir DIR           Racine données OSM (défaut: ${data-dir}/ign-bdtopo/osm)
+    --cadastre-dir DIR      Racine données cadastre (défaut: ${data-dir}/ign-bdtopo/cadastre)
+    --hiking-trails-dir DIR Racine sentiers GR (défaut: ${data-dir}/static/hiking-trails)
+    --ocsge-dir DIR         Racine données OCS-GE (défaut: ${data-dir}/ign-bdtopo/ocsge)
     --output-base DIR       Base des sorties (défaut: ./pipeline/output)
     --config FILE           Config YAML mpforge custom (défaut auto-résolu :
                               - Quadrant Garmin (FRANCE-SE/SO/NE/NO) → france-quadrant/sources.yaml
@@ -733,7 +733,7 @@ validate_base_id() {
 # Auto-détection année/version depuis l'arborescence data
 # ---------------------------------------------------------------------------
 auto_detect_year_version() {
-    local bdtopo_dir="${DATA_DIR}/bdtopo"
+    local bdtopo_dir="${DATA_DIR}/ign-bdtopo/bdtopo"
 
     if [[ ! -d "$bdtopo_dir" ]]; then
         log_error "Répertoire BDTOPO introuvable : $bdtopo_dir"
@@ -772,13 +772,13 @@ auto_detect_year_version() {
 # Résolution des chemins
 # ---------------------------------------------------------------------------
 resolve_paths() {
-    _DATA_ROOT="${DATA_DIR}/bdtopo/${YEAR}/${VERSION}"
-    _CONTOURS_DATA_ROOT="${CONTOURS_DIR:-${DATA_DIR}/contours}"
-    _DEM_DATA_ROOT="${DEM_DIR:-${DATA_DIR}/dem}"
-    _OSM_DATA_ROOT="${OSM_DIR:-${DATA_DIR}/osm}"
-    _CADASTRE_DATA_ROOT="${CADASTRE_DIR:-${DATA_DIR}/cadastre}"
-    _HIKING_TRAILS_DATA_ROOT="${HIKING_TRAILS_DIR:-${DATA_DIR}/hiking-trails}"
-    _OCSGE_DATA_ROOT="${OCSGE_DIR:-${DATA_DIR}/ocsge}"
+    _DATA_ROOT="${DATA_DIR}/ign-bdtopo/bdtopo/${YEAR}/${VERSION}"
+    _CONTOURS_DATA_ROOT="${CONTOURS_DIR:-${DATA_DIR}/ign-bdtopo/contours}"
+    _DEM_DATA_ROOT="${DEM_DIR:-${DATA_DIR}/ign-bdtopo/dem}"
+    _OSM_DATA_ROOT="${OSM_DIR:-${DATA_DIR}/ign-bdtopo/osm}"
+    _CADASTRE_DATA_ROOT="${CADASTRE_DIR:-${DATA_DIR}/ign-bdtopo/cadastre}"
+    _HIKING_TRAILS_DATA_ROOT="${HIKING_TRAILS_DIR:-${DATA_DIR}/static/hiking-trails}"
+    _OCSGE_DATA_ROOT="${OCSGE_DIR:-${DATA_DIR}/ign-bdtopo/ocsge}"
 
     # Nom de la carte pour l'output
     local zones_label

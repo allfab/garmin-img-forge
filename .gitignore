@@ -5,8 +5,33 @@ rapport-*.json
 __pycache__/
 # Pipeline de production — données et artefacts
 pipeline/.env
-pipeline/data/bdtopo/*/
-!pipeline/data/bdtopo/.gitkeep
+pipeline/data/ign-bdtopo/bdtopo/*
+!pipeline/data/ign-bdtopo/bdtopo/.gitkeep
+pipeline/data/ign-bdtopo/cadastre/*
+!pipeline/data/ign-bdtopo/cadastre/.gitkeep
+pipeline/data/ign-bdtopo/contours/*
+!pipeline/data/ign-bdtopo/contours/.gitkeep
+pipeline/data/ign-bdtopo/dem/*
+!pipeline/data/ign-bdtopo/dem/.gitkeep
+pipeline/data/ign-bdtopo/mongr/*
+!pipeline/data/ign-bdtopo/mongr/.gitkeep
+pipeline/data/ign-bdtopo/ocsge/*
+!pipeline/data/ign-bdtopo/ocsge/.gitkeep
+pipeline/data/ign-bdtopo/osm/*
+!pipeline/data/ign-bdtopo/osm/.gitkeep
+pipeline/data/swisstopo/*
+!pipeline/data/swisstopo/.gitkeep
+# static/sea/ → versionné git (fichiers < 2 Mo, hand-crafted)
+# static/hiking-trails/ → fichiers volumineux exclus du git (à héberger sur S3)
+pipeline/data/static/hiking-trails/*.shp
+pipeline/data/static/hiking-trails/*.dbf
+pipeline/data/static/hiking-trails/*.shx
+pipeline/data/static/hiking-trails/*.prj
+pipeline/data/static/hiking-trails/*.qmd
+pipeline/data/static/hiking-trails/*.cpg
+pipeline/data/static/hiking-trails/*.xml
+pipeline/data/static/hiking-trails/*.sbn
+pipeline/data/static/hiking-trails/*.sbx
 pipeline/output/tiles/*.mp
 pipeline/output/img/
 pipeline/output/*.img
@@ -31,7 +56,7 @@ pipeline/resources/img/osmmap.tdb
 .claude/
 mpforge-report.*
 *.asc
-data/
+/data/
 # Build artifacts (CMake)
 **/build/
 pipeline/resources/typfiles/xIGNBBTOP.typ

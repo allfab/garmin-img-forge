@@ -241,7 +241,7 @@ inputs:
 
   # ==========================================================================
   # CADASTRE — Piscines privées (SYM=65, TSURF_id)
-  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
+  # Source : pipeline/data/ign-bdtopo/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
   # Construit par : ./scripts/download-data.sh --with-pools (ou --with-cadastre)
   # Déjà en EPSG:4326 — pas de reprojection. Filtre attributaire : SYM='65'
   # ==========================================================================
@@ -251,7 +251,7 @@ inputs:
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (tracké dans git)
+  # Source : pipeline/data/static/hiking-trails/FRANCE-GR.shp (tracké dans git)
   # Déjà en EPSG:4326 — pas de reprojection nécessaire
   # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
   # ==========================================================================

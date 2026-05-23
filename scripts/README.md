@@ -120,7 +120,7 @@ Script : `scripts/download-data.sh`
 ./scripts/download-data.sh --zones D038 --dry-run
 ```
 
-Les données sont organisées dans `pipeline/data/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`.
+Les données sont organisées dans `pipeline/data/ign-bdtopo/bdtopo/{YYYY}/v{YYYY.MM}/{DXXX}/`.
 
 ### Cibler un millésime particulier
 
@@ -166,12 +166,12 @@ Le produit IGN "Courbes de niveau" est livré séparément de la BD TOPO, par d�
 ./scripts/download-data.sh --zones D038 --with-contours --contours-root /data/courbes
 ```
 
-Les courbes sont téléchargées dans `pipeline/data/courbes/{DXXX}/` (arborescence séparée de la BDTOPO). Chaque département contient plusieurs dalles SHP (`COURBE_0840_6440.shp`, `COURBE_0880_6440.shp`, etc.).
+Les courbes sont téléchargées dans `pipeline/data/ign-bdtopo/contours/{DXXX}/` (arborescence séparée de la BDTOPO). Chaque département contient plusieurs dalles SHP (`COURBE_0840_6440.shp`, `COURBE_0880_6440.shp`, etc.).
 
 | Option | Description | Défaut |
 |---|---|---|
 | `--with-contours` | Télécharger aussi les courbes de niveau | `false` |
-| `--contours-root <dir>` | Racine des données courbes | `./pipeline/data/courbes` |
+| `--contours-root <dir>` | Racine des données courbes | `./pipeline/data/ign-bdtopo/contours` |
 
 > **Note** : `--with-contours` nécessite `--zones` ou `--region`. Sans zone, une erreur explicite est affichée.
 
@@ -188,12 +188,12 @@ Enchaîne automatiquement l'export des tuiles `.mp` (via mpforge) et la compilat
 ./scripts/build-garmin-map.sh
 
 # Département spécifique
-./scripts/build-garmin-map.sh --data-root pipeline/data/bdtopo/2025/v2025.12/D038
+./scripts/build-garmin-map.sh --data-root pipeline/data/ign-bdtopo/bdtopo/2025/v2025.12/D038
 
 # Avec config YAML explicite
 ./scripts/build-garmin-map.sh \
   --config pipeline/configs/ign-bdtopo/departement/sources.yaml \
-  --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
+  --data-root pipeline/data/ign-bdtopo/bdtopo/2025/v2025.12/D038 \
   --jobs 8
 
 # Simulation
@@ -205,14 +205,14 @@ Enchaîne automatiquement l'export des tuiles `.mp` (via mpforge) et la compilat
 # Avec courbes de niveau (après download --with-contours)
 ./scripts/build-garmin-map.sh \
   --config pipeline/configs/ign-bdtopo/departement/sources.yaml \
-  --data-root pipeline/data/bdtopo/2025/v2025.12/D038 \
-  --contours-root pipeline/data/courbes/D038
+  --data-root pipeline/data/ign-bdtopo/bdtopo/2025/v2025.12/D038 \
+  --contours-root pipeline/data/ign-bdtopo/contours/D038
 ```
 
 | Option | Description | Défaut |
 |---|---|---|
-| `--data-root <dir>` | Racine des données BDTOPO | `./pipeline/data/bdtopo` |
-| `--contours-root <dir>` | Racine des courbes de niveau | `./pipeline/data/courbes` |
+| `--data-root <dir>` | Racine des données BDTOPO | `./pipeline/data/ign-bdtopo/bdtopo` |
+| `--contours-root <dir>` | Racine des courbes de niveau | `./pipeline/data/ign-bdtopo/contours` |
 | `--config <file>` | Config YAML mpforge explicite | génération auto |
 | `--rules <file>` | Fichier de règles YAML | auto-découverte |
 | `--jobs <n>` | Parallélisation | `8` |

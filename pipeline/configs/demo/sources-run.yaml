@@ -11,22 +11,22 @@ filters:
   bbox: [5.5, 45.1, 5.9, 45.4]
 
 inputs:
-  - path: "./pipeline/data/bdtopo/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
-  - path: "./pipeline/data/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/ADMINISTRATIF/COMMUNE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
-  - path: "./pipeline/data/bdtopo/2026/v2026.03/D038/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/HYDROGRAPHIE/TRONCON_HYDROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
-  - path: "./pipeline/data/bdtopo/2026/v2026.03/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
+  - path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/OCCUPATION_DU_SOL/ZONE_DE_VEGETATION.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID

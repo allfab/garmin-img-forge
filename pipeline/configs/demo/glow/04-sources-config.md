@@ -14,7 +14,7 @@ Chaque tuile devient un fichier **Polish Map** (`.mp`).
 ## Déclarer une couche d'entrée
 
 ```yaml
-- path: "./pipeline/data/IGN-BDTOPO/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
+- path: "./pipeline/data/ign-bdtopo/bdtopo/2026/v2026.03/D038/TRANSPORT/TRONCON_DE_ROUTE.shp"
   source_srs: "EPSG:2154"   # Lambert-93 (projection IGN)
   target_srs: "EPSG:4326"   # WGS84 (requis par les GPS Garmin)
   dedup_by_field: ID        # Supprime les doublons sur l'identifiant IGN

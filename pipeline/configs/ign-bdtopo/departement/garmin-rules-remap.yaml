@@ -4195,7 +4195,7 @@ rulesets:
 
   # ==========================================================================
   # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : pipeline/data/hiking-trails/FRANCE-GR.shp (fichier fixe, EPSG:4326)
+  # Source : pipeline/data/static/hiking-trails/FRANCE-GR.shp (fichier fixe, EPSG:4326)
   # Type et EndLevel portés directement par les attributs du shapefile
   # ==========================================================================
   - name: "Sentiers GR"
@@ -4217,7 +4217,7 @@ rulesets:
 
   # ==========================================================================
   # CADASTRE — Piscines privées (TSURF_id, SYM=65)
-  # Source : pipeline/data/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
+  # Source : pipeline/data/ign-bdtopo/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
   # Pas de Label (TSURF_id ne porte pas de nom).
   # ==========================================================================
   - name: "Piscines cadastre"
