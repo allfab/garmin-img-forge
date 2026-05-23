@@ -5158,17 +5158,12 @@ ContourColor=No
 Type=0x09
 ;GRMN_TYPE: Roads/HIGH_SPEED_RAMP, RAMP/Highway ramp which is to be driven at high speeds/Non NT, NT
 UseOrientation=Y
-LineWidth=3
-BorderWidth=1
+LineWidth=2
+BorderWidth=2
 Xpm="0 0 2 0"
-"1 c #F89400"
-"2 c #303030"
-ExtendedLabels=Y
-FontStyle=NoLabel (invisible)
-CustomColor=DayAndNight
-DaycustomColor:#000000
-NightcustomColor:#000000
-ContourColor=No
+"1 c #F8FCF8"
+"2 c #0000F8"
+ExtendedLabels=N
 [end]
 
 
