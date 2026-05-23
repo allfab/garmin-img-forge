@@ -846,7 +846,7 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10f0b"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
   # ==========================================================================
@@ -2325,7 +2325,7 @@ rulesets:
           NATURE: "Cap"
         set:
           Type: "0x06606"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 27. Cirque
@@ -2334,7 +2334,7 @@ rulesets:
           NATURE: "Cirque"
         set:
           Type: "0x06608"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 28. Col
@@ -2370,7 +2370,7 @@ rulesets:
           NATURE: "Dune"
         set:
           Type: "0x15502"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 32. Escarpement
@@ -2379,7 +2379,7 @@ rulesets:
           NATURE: "Escarpement"
         set:
           Type: "0x06607"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 33. Gorge
@@ -2388,7 +2388,7 @@ rulesets:
           NATURE: "Gorge"
         set:
           Type: "0x06611"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 34. Gouffre
@@ -2397,7 +2397,7 @@ rulesets:
           NATURE: "Gouffre"
         set:
           Type: "0x11515"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 35. Grotte
@@ -2406,7 +2406,7 @@ rulesets:
           NATURE: "Grotte"
         set:
           Type: "0x11515"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 36. Ile
@@ -2433,7 +2433,7 @@ rulesets:
           NATURE: "Montagne"
         set:
           Type: "0x06601"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 39. Pic
@@ -2442,7 +2442,7 @@ rulesets:
           NATURE: "Pic"
         set:
           Type: "0x06616"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 40. Plage
@@ -2478,7 +2478,7 @@ rulesets:
           NATURE: "Rochers"
         set:
           Type: "0x06614"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 44. Sommet
@@ -2523,7 +2523,7 @@ rulesets:
           NATURE: "Volcan"
         set:
           Type: "0x06608"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
@@ -3817,12 +3817,12 @@ rulesets:
           IMPORTANCE: "1"
         set:
           Type: "0x22"
-          EndLevel: "2"
+          EndLevel: "3"
           Label: "${ALTITUDE}"
 
       # 2. Courbes intermédiaires (multiples de 10m, non-maîtresses)
       - match:
-          IMPORTANCE: "0"
+          IMPORTANCE: "2"
         set:
           Type: "0x21"
           EndLevel: "0"
