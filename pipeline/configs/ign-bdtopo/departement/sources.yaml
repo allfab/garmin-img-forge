@@ -66,7 +66,7 @@ inputs:
   # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
   # - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
   - path: "./pipeline/data/static/departement/{${ZONES}}/DEPARTEMENT.shp"
-    source_srs: "EPSG:2154"
+    source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
     layer_alias: "DEPARTEMENT_LIMITE"
     dedup_by_field: cleabs

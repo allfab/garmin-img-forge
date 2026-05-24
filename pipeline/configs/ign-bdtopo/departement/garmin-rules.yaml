@@ -857,7 +857,7 @@ rulesets:
     source_layer: "DEPARTEMENT_LIMITE"
     rules:
       - match:
-          NOM: "*"
+          nom_offici: "*"
         set:
           Type: "0x1e"
           EndLevel: "6"
