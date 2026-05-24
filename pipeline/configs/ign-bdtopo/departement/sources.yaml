@@ -64,12 +64,13 @@ inputs:
 
   # Limites de département — anneau extérieur → [POLYLINE] limite administrative
   # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
-  - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
+  # - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
+  - path: "./pipeline/data/static/departement/{${ZONES}}/DEPARTEMENT.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     layer_alias: "DEPARTEMENT_LIMITE"
-    geometry_transform: boundary
-    dedup_by_field: ID
+    dedup_by_field: cleabs
+    # geometry_transform: boundary
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
