@@ -1372,6 +1372,19 @@ update_manifest() {
     fi
     local tmp="${manifest}.tmp"
 
+    # Détecte les previews existants pour cette couverture (JPG/PNG dans previews/{type}/{slug}/).
+    local previews_dir="site/docs/telechargements/previews/${type}/${slug}"
+    local previews_json="null"
+    if [[ -d "$previews_dir" ]]; then
+        local _previews=()
+        while IFS= read -r f; do
+            _previews+=("previews/${type}/${slug}/$(basename "$f")")
+        done < <(find "$previews_dir" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | sort)
+        if [[ ${#_previews[@]} -gt 0 ]]; then
+            previews_json=$(printf '%s\n' "${_previews[@]}" | jq -R . | jq -s .)
+        fi
+    fi
+
     # build_params : toutes les valeurs nécessaires pour régénérer exactement les
     # commandes download-data.sh et build-garmin-map.sh. Le front
     # (downloads-manifest.js) les utilise pour reconstruire la commande complète.
@@ -1427,6 +1440,7 @@ update_manifest() {
         --arg storage_type "$storage_type" \
         --arg storage_endpoint "$storage_endpoint" \
         --argjson size "$size" \
+        --argjson previews "$previews_json" \
         --arg bp_zones "$bp_zones" \
         --arg bp_base_id "$bp_base_id" \
         --arg bp_year "$bp_year" \
@@ -1476,6 +1490,7 @@ update_manifest() {
             | .type = $type
             | .slug = $slug
             | .label = $label
+            | (if $previews != null then .previews = $previews else . end)
             | .latest_file = $latest_file
             | (if $latest_path != "" then .latest_path = $latest_path else del(.latest_path) end)
             | .versions = (

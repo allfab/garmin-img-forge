@@ -24,6 +24,9 @@
         date_locale:      'en-GB',
         env_comment:      '# Environment variables required by mpforge (YAML config)',
         tools_unknown:    '—',
+        preview_btn:      '🖼 Previews',
+        preview_prefix:   'Previews — ',
+        preview_placeholder: 'Screenshot coming soon',
     } : {
         unavailable:      'Non disponible',
         download:         'Télécharger',
@@ -42,6 +45,9 @@
         date_locale:      'fr-FR',
         env_comment:      '# Variables d\'environnement requises par mpforge (config YAML)',
         tools_unknown:    '—',
+        preview_btn:      '🖼 Aperçus',
+        preview_prefix:   'Aperçus — ',
+        preview_placeholder: 'Capture d\'écran à venir',
     };
 
     // Dérive l'URL du manifest depuis l'emplacement du script :
@@ -541,6 +547,167 @@
         return btn;
     }
 
+    // Infrastructure modale dédiée aux prévisualisations (instance unique séparée de _modal).
+    var _previewModal = null;
+    var _previewTrigger = null;
+    var _previewZoomInstances = []; // instances medium-zoom à détacher à chaque réouverture (F-03)
+    var _previewKeydownRegistered = false; // listener global enregistré une seule fois (F-01)
+
+    function getOrCreatePreviewModal() {
+        if (_previewModal) return _previewModal;
+
+        var overlay = document.createElement('div');
+        overlay.className = 'dl-preview-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.setAttribute('aria-labelledby', 'dl-preview-title');
+
+        var dialog = document.createElement('div');
+        dialog.className = 'dl-preview-dialog';
+
+        // Réutilise les classes CSS .dl-modal-header / .dl-modal-title / .dl-modal-close (partagées avec _modal).
+        var header = document.createElement('div');
+        header.className = 'dl-modal-header';
+
+        var title = document.createElement('h3');
+        title.className = 'dl-modal-title';
+        title.id = 'dl-preview-title';
+        header.appendChild(title);
+
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'dl-modal-close';
+        closeBtn.setAttribute('aria-label', T.close_label);
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', function () { closePreviewModal(); });
+        header.appendChild(closeBtn);
+
+        var body = document.createElement('div');
+        body.className = 'dl-preview-body';
+
+        dialog.appendChild(header);
+        dialog.appendChild(body);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closePreviewModal();
+        });
+
+        // F-01 : enregistrement unique du listener global pour éviter l'accumulation en navigation SPA.
+        if (!_previewKeydownRegistered) {
+            _previewKeydownRegistered = true;
+            document.addEventListener('keydown', function (e) {
+                if (!_previewModal || !_previewModal.overlay.classList.contains('is-open')) return;
+                if (e.key === 'Escape') {
+                    // F-02 : cède la main à medium-zoom si un zoom est actif (il gère Escape lui-même).
+                    if (document.querySelector('.medium-zoom-image--opened')) return;
+                    closePreviewModal();
+                    return;
+                }
+                // F-04 : focus trap — Tab/Shift+Tab reste dans la dialog.
+                if (e.key === 'Tab') {
+                    var focusable = Array.prototype.slice.call(
+                        _previewModal.overlay.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')
+                    );
+                    if (focusable.length === 0) return;
+                    var first = focusable[0];
+                    var last  = focusable[focusable.length - 1];
+                    if (e.shiftKey) {
+                        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+                    } else {
+                        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+                    }
+                }
+            });
+        }
+
+        _previewModal = { overlay: overlay, title: title, body: body, closeBtn: closeBtn };
+        return _previewModal;
+    }
+
+    function closePreviewModal() {
+        if (!_previewModal) return;
+        _previewModal.overlay.classList.remove('is-open');
+        _previewModal.overlay.setAttribute('aria-hidden', 'true');
+        if (_previewTrigger) { _previewTrigger.focus(); _previewTrigger = null; }
+    }
+
+    function openPreviewModal(titleText, imgPaths, triggerEl) {
+        var m = getOrCreatePreviewModal();
+        _previewTrigger = triggerEl || null;
+        m.title.textContent = titleText;
+
+        // F-03 : détache les instances medium-zoom précédentes avant de vider le body.
+        _previewZoomInstances.forEach(function (zoom) {
+            try { zoom.detach(); } catch (e) {}
+        });
+        _previewZoomInstances = [];
+
+        while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
+
+        var grid = document.createElement('div');
+        grid.className = 'dl-preview-grid';
+
+        imgPaths.forEach(function (src, idx) {
+            var item = document.createElement('div');
+            item.className = 'dl-preview-item';
+
+            var img = document.createElement('img');
+            img.className = 'dl-preview-img';
+            img.src = src;
+            img.alt = T.preview_btn + ' ' + (idx + 1);
+            // F-07 : eager pour garantir le chargement immédiat à l'ouverture de la dialog.
+            img.setAttribute('loading', 'eager');
+
+            img.addEventListener('error', function () {
+                item.classList.add('is-placeholder');
+                img.style.display = 'none';
+                var ph = document.createElement('span');
+                ph.className = 'dl-preview-ph-label';
+                ph.textContent = T.preview_placeholder;
+                item.appendChild(ph);
+            });
+
+            item.appendChild(img);
+            grid.appendChild(item);
+
+            // F-03 : stocke l'instance pour pouvoir la détacher à la prochaine ouverture.
+            if (typeof window.mediumZoom === 'function') {
+                var zoom = window.mediumZoom(img, { margin: 24, background: 'rgba(0,0,0,0.88)' });
+                _previewZoomInstances.push(zoom);
+            }
+        });
+
+        m.body.appendChild(grid);
+        m.overlay.classList.add('is-open');
+        // F-05 : removeAttribute plutôt que setAttribute('aria-hidden', 'false').
+        m.overlay.removeAttribute('aria-hidden');
+        m.closeBtn.focus();
+    }
+
+    // Construit le bouton déclencheur de la modal des aperçus.
+    function buildPreviewTrigger(entry) {
+        var previews = entry && entry.previews;
+        if (!previews || !previews.length) return null;
+
+        var label = entry.label || entry.slug || '';
+        var imgPaths = previews.map(function (p) {
+            return TELECHARGEMENTS_BASE + p;
+        });
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dl-preview-trigger';
+        btn.setAttribute('aria-haspopup', 'dialog');
+        btn.textContent = T.preview_btn;
+        btn.addEventListener('click', function () {
+            openPreviewModal(T.preview_prefix + label, imgPaths, btn);
+        });
+        return btn;
+    }
+
     function buildMetaBlock(version) {
         if (!version || !version.published_at) return null;
         var formatted = formatDate(version.published_at);
@@ -625,6 +792,25 @@
                     link.parentNode.insertBefore(trigger, anchor.nextSibling);
                 } else {
                     link.parentNode.appendChild(trigger);
+                }
+            }
+
+            var previewTrigger = buildPreviewTrigger(entry);
+            if (previewTrigger) {
+                // Si le lien est dans une cellule de tableau, injecte dans la 4e colonne (index 3).
+                var td = link.closest ? link.closest('td') : null;
+                var tr = td && link.closest ? link.closest('tr') : null;
+                var previewCell = tr && tr.cells && tr.cells[3] ? tr.cells[3] : null;
+                if (previewCell) {
+                    previewCell.appendChild(previewTrigger);
+                } else if (link.parentNode) {
+                    // Fallback pour les layouts hors tableau (grid cards, listes).
+                    var previewAnchor = trigger || meta || link;
+                    if (previewAnchor.nextSibling) {
+                        link.parentNode.insertBefore(previewTrigger, previewAnchor.nextSibling);
+                    } else {
+                        link.parentNode.appendChild(previewTrigger);
+                    }
                 }
             }
         }

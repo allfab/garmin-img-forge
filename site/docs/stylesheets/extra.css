@@ -284,6 +284,146 @@
 
 
 /* ============================================================
+   medium-zoom — z-index au-dessus des modals (z-index: 9999)
+   Les deux modals (.dl-modal-overlay, .dl-preview-overlay) partagent
+   les classes .dl-modal-header / .dl-modal-title / .dl-modal-close.
+   ============================================================ */
+
+.medium-zoom-overlay {
+  z-index: 10000;
+}
+
+.medium-zoom-image--opened {
+  z-index: 10001;
+}
+
+/* ============================================================
+   Téléchargements — bouton déclencheur de la modal aperçus
+   ============================================================ */
+
+.dl-preview-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  background: none;
+  border: 1px solid #1565c0;
+  border-radius: 4px;
+  padding: 0.3em 0.7em;
+  cursor: pointer;
+  color: #1565c0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+}
+
+[data-md-color-scheme="slate"] .dl-preview-trigger {
+  border-color: #90caf9;
+  color: #90caf9;
+}
+
+.dl-preview-trigger:hover {
+  background: #1565c0;
+  color: #fff;
+}
+
+[data-md-color-scheme="slate"] .dl-preview-trigger:hover {
+  background: #90caf9;
+  color: #0d1117;
+}
+
+.dl-preview-trigger:focus-visible {
+  outline: 2px solid #1565c0;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================================
+   Téléchargements — modal aperçus
+   ============================================================ */
+
+.dl-preview-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 9999;
+  overflow-y: auto;
+  padding: 1.5rem 1rem;
+}
+
+.dl-preview-overlay.is-open {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dl-preview-dialog {
+  background: var(--md-default-bg-color, #fff);
+  border-radius: 6px;
+  max-width: 900px;
+  width: 100%;
+  margin: auto;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+
+.dl-preview-body {
+  margin-top: 0.5rem;
+}
+
+.dl-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.dl-preview-item {
+  position: relative;
+  background: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.06));
+  border-radius: 4px;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dl-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+}
+
+.dl-preview-img:hover {
+  opacity: 0.9;
+}
+
+.dl-preview-item.is-placeholder {
+  background: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.06));
+}
+
+.dl-preview-ph-label {
+  font-size: 0.75em;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.45));
+  text-align: center;
+  padding: 0 0.5rem;
+}
+
+[data-md-color-scheme="slate"] .dl-preview-item {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-md-color-scheme="slate"] .dl-preview-ph-label {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* ============================================================
    Dark Mode — Mermaid Diagram Overrides
    ============================================================ */
 

@@ -1,10 +1,15 @@
 {
-  "generated_at": "2026-05-24T18:00:59Z",
+  "generated_at": "2026-05-24T18:55:19Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
       "slug": "d038",
       "label": "Départements: D038",
+      "previews": [
+        "previews/departement/d038/1.jpg",
+        "previews/departement/d038/2.jpg",
+        "previews/departement/d038/3.jpg"
+      ],
       "latest": "v2026.03",
       "versions": [
         {
@@ -174,9 +179,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:15:10Z",
-          "size_bytes": 97062912,
-          "sha256": "bea88a75d0daa1c8f9b2fa7aab2906065f0b8144125b71f20ac9f13a43d4e08b",
+          "published_at": "2026-05-24T18:42:55Z",
+          "size_bytes": 109346816,
+          "sha256": "e04c8095c9d68d364b0514abe7b025b068e2c581336370bb788e9cf2e19130a2",
           "file": "IGN-BDTOPO-D001-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d001/v2026.03/IGN-BDTOPO-D001-v2026.03.img",
           "build_params": {
@@ -186,7 +191,7 @@
             "version": "v2026.03",
             "family_id": "1",
             "family_name": "IGN-BDTOPO-D001-v2026.03",
-            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO/Courbes/BDALTI/OCSGE - ©DGFiP Cadastre - Licence Ouverte Etalab 2.0 - ©OSM Les Contributeurs ODbL",
             "jobs": "8",
             "mpforge_jobs": "8",
             "imgforge_jobs": "8",
@@ -211,8 +216,11 @@
             "no_size_filter": "false",
             "no_remove_obsolete_points": "false",
             "keep_going": "false",
+            "dem_expand": "0.005",
             "dem_dists": "",
-            "dem_interpolation": ""
+            "dem_interpolation": "",
+            "mpforge_version": "v0.9.1-dirty",
+            "imgforge_version": "v0.9.1-dirty"
           }
         }
       ],
@@ -333,9 +341,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:25:23Z",
-          "size_bytes": 86396928,
-          "sha256": "7660a95d660593001b961c1d6ac2c6c966c1b3b8ba9c65f278f6d680a2b5dacc",
+          "published_at": "2026-05-24T18:47:11Z",
+          "size_bytes": 107642880,
+          "sha256": "a1af519ac3104d77d5666c6cd43cd44a2791351fc61b4bafcfcebd8d596fa279",
           "file": "IGN-BDTOPO-D003-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d003/v2026.03/IGN-BDTOPO-D003-v2026.03.img",
           "build_params": {
@@ -345,7 +353,7 @@
             "version": "v2026.03",
             "family_id": "3",
             "family_name": "IGN-BDTOPO-D003-v2026.03",
-            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO/Courbes/BDALTI/OCSGE - ©DGFiP Cadastre - Licence Ouverte Etalab 2.0 - ©OSM Les Contributeurs ODbL",
             "jobs": "8",
             "mpforge_jobs": "8",
             "imgforge_jobs": "8",
@@ -370,8 +378,11 @@
             "no_size_filter": "false",
             "no_remove_obsolete_points": "false",
             "keep_going": "false",
+            "dem_expand": "0.005",
             "dem_dists": "",
-            "dem_interpolation": ""
+            "dem_interpolation": "",
+            "mpforge_version": "v0.9.1-dirty",
+            "imgforge_version": "v0.9.1-dirty"
           }
         }
       ],
@@ -386,9 +397,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:31:06Z",
-          "size_bytes": 121348096,
-          "sha256": "d5ff42314a44e177444c845d14bf21f989e66ff5646a277d2e0f774d0fee0910",
+          "published_at": "2026-05-24T18:51:54Z",
+          "size_bytes": 145674240,
+          "sha256": "62211173be451990e3603f7c93e99721e41b663fd858c6c7d5ab65d7fe926121",
           "file": "IGN-BDTOPO-D004-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d004/v2026.03/IGN-BDTOPO-D004-v2026.03.img",
           "build_params": {
@@ -398,7 +409,7 @@
             "version": "v2026.03",
             "family_id": "4",
             "family_name": "IGN-BDTOPO-D004-v2026.03",
-            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO/Courbes/BDALTI/OCSGE - ©DGFiP Cadastre - Licence Ouverte Etalab 2.0 - ©OSM Les Contributeurs ODbL",
             "jobs": "8",
             "mpforge_jobs": "8",
             "imgforge_jobs": "8",
@@ -423,8 +434,11 @@
             "no_size_filter": "false",
             "no_remove_obsolete_points": "false",
             "keep_going": "false",
+            "dem_expand": "0.005",
             "dem_dists": "",
-            "dem_interpolation": ""
+            "dem_interpolation": "",
+            "mpforge_version": "v0.9.1-dirty",
+            "imgforge_version": "v0.9.1-dirty"
           }
         }
       ],
@@ -439,9 +453,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-11T19:35:35Z",
-          "size_bytes": 110147584,
-          "sha256": "9c3a5b10488f454960581c9dfb19c53b1ac7b646332da0ea4f943e527c002873",
+          "published_at": "2026-05-24T18:55:19Z",
+          "size_bytes": 129228800,
+          "sha256": "935baeeb01672e932096ec7abfb94038baf8ea6b03520d9b0689a8c805c86f65",
           "file": "IGN-BDTOPO-D005-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d005/v2026.03/IGN-BDTOPO-D005-v2026.03.img",
           "build_params": {
@@ -451,7 +465,7 @@
             "version": "v2026.03",
             "family_id": "5",
             "family_name": "IGN-BDTOPO-D005-v2026.03",
-            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0",
+            "copyright": "©2026 Allfab Studio - ©IGN BDTOPO/Courbes/BDALTI/OCSGE - ©DGFiP Cadastre - Licence Ouverte Etalab 2.0 - ©OSM Les Contributeurs ODbL",
             "jobs": "8",
             "mpforge_jobs": "8",
             "imgforge_jobs": "8",
@@ -476,8 +490,11 @@
             "no_size_filter": "false",
             "no_remove_obsolete_points": "false",
             "keep_going": "false",
+            "dem_expand": "0.005",
             "dem_dists": "",
-            "dem_interpolation": ""
+            "dem_interpolation": "",
+            "mpforge_version": "v0.9.1-dirty",
+            "imgforge_version": "v0.9.1-dirty"
           }
         }
       ],
