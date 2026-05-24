@@ -2590,7 +2590,7 @@ rulesets:
           NATURE: "Abri de montagne"
         set:
           Type: "0x02b04"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 55. Administration centrale de l'Etat
@@ -2707,7 +2707,7 @@ rulesets:
           NATURE: "Capitainerie"
         set:
           Type: "0x02f09"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 68. Carriere
@@ -2734,7 +2734,7 @@ rulesets:
           NATURE: "Caserne de pompiers"
         set:
           Type: "0x03008"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 71. Centrale electrique
@@ -2806,7 +2806,7 @@ rulesets:
           NATURE: "Culte chrétien"
         set:
           Type: "0x02c0e"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 79. Culte divers
@@ -2986,7 +2986,7 @@ rulesets:
           NATURE: "Gendarmerie"
         set:
           Type: "0x03001"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 99. Golf
@@ -3040,7 +3040,7 @@ rulesets:
           NATURE: "Hôpital"
         set:
           Type: "0x03002"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 105. Hotel de departement
@@ -3085,7 +3085,7 @@ rulesets:
           NATURE: "Mairie"
         set:
           Type: "0x03003"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 110. Maison de retraite
@@ -3112,7 +3112,7 @@ rulesets:
           NATURE: "Maison forestière"
         set:
           Type: "0x14e01"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 113. Marais salant
@@ -3157,7 +3157,7 @@ rulesets:
           NATURE: "Monument"
         set:
           Type: "0x14e0f"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 118. Musee
@@ -3256,7 +3256,7 @@ rulesets:
           NATURE: "Police"
         set:
           Type: "0x03001"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 129. Poste
@@ -3346,7 +3346,7 @@ rulesets:
           NATURE: "Site de vol libre"
         set:
           Type: "0x02d0b"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 139. Site d'escalade
@@ -3355,7 +3355,7 @@ rulesets:
           NATURE: "Site d'escalade"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 140. Sous-prefecture
@@ -3373,7 +3373,7 @@ rulesets:
           NATURE: "Sports en eaux vives"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 142. Sports mecaniques
@@ -3391,7 +3391,7 @@ rulesets:
           NATURE: "Sports nautiques"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 144. Stade
@@ -3530,7 +3530,7 @@ rulesets:
           NATURE: "Lieu-dit habité"
         set:
           Type: "0x00d00"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 159. Moulin
@@ -3802,27 +3802,30 @@ rulesets:
       #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
 
   # ==========================================================================
-  # COURBES DE NIVEAU — Contour lines (POLYLINE)
+  # COURBES DE NIVEAU — Contour lines (POLYLINE) — affichage progressif 2 couches
   # Source : Produit IGN "Courbes de niveau" v1.0
-  # 2 règles : maîtresses (25m) et intermédiaires (10m)
-  # Le filtrage au pas de 10m est fait côté GDAL (attribute_filter)
-  # Features non-matchées = ignorées silencieusement
+  # Types TYP : 0x22 MAJOR (brun foncé) · 0x21 INTERMEDIATE (brun clair)
+  # EndLevel : 4 = visible dès zoom intermédiaire · 1 = zoom détaillé uniquement
   # ==========================================================================
-  - name: "Courbes de niveau"
-    source_layer: "COURBE"
+
+  # --- 100m : maîtresses majeures (EndLevel=4 : visible dès zoom intermédiaire) ---
+  - name: "Courbes 100m"
+    source_layer: "COURBE_100"
     label_case: "title"
     rules:
-      # 1. Courbes maîtresses (altitude multiple de 25m)
       - match:
-          IMPORTANCE: "1"
+          IMPORTANCE: "*"
         set:
           Type: "0x22"
-          EndLevel: "3"
+          EndLevel: "1"
           Label: "${ALTITUDE}"
 
-      # 2. Courbes intermédiaires (multiples de 10m, non-maîtresses)
+  # --- 20m : intermédiaires (EndLevel=1 : visible uniquement au zoom détaillé) ---
+  - name: "Courbes 20m"
+    source_layer: "COURBE_20"
+    rules:
       - match:
-          IMPORTANCE: "2"
+          IMPORTANCE: "*"
         set:
           Type: "0x21"
           EndLevel: "0"

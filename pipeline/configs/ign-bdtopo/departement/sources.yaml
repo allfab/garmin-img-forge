@@ -268,17 +268,30 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # COURBES DE NIVEAU (produit IGN séparé)
-  # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
+  # COURBES DE NIVEAU (produit IGN séparé) — affichage progressif 2 couches
+  # Polylignes 3D, équidistance 5m. 2 niveaux de filtrage altitude via attribute_filter.
+  # COURBE_100 : visible au zoom large (EndLevel=4) — COURBE_20 : zoom détaillé (EndLevel=1)
   # ==========================================================================
+
+  # COURBE_100 — maîtresses majeures : multiples de 100m (100m, 200m, 300m…)
   - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
-    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 20) * 20"
-    layer_alias: "COURBE"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 100) * 100"
+    layer_alias: "COURBE_100"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
+      buffer: 500
+
+  # COURBE_20 — intermédiaires : multiples de 20m hors 100m (20m, 40m, 60m, 80m, 120m…)
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 20) * 20 AND CAST(ALTITUDE AS INTEGER) != (CAST(ALTITUDE AS INTEGER) / 100) * 100"
+    layer_alias: "COURBE_20"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 
   # ==========================================================================
   # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
