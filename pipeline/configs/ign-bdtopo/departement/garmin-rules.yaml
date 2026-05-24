@@ -59,7 +59,7 @@ rulesets:
           NATURE: "Bretelle"
         set:
           Type: "0x09"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # -----------------------------------------------------------------------
       # BLOC 1 — Autoroute (CL_ADMIN=Autoroute, NATURE≠Bretelle déjà capturée)
@@ -225,7 +225,7 @@ rulesets:
           CL_ADMIN: "Nationale"
         set:
           Type: "0x06"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "~[0x05]${NUMERO}"
 
       # -----------------------------------------------------------------------
@@ -389,14 +389,14 @@ rulesets:
           NATURE: "Rond-point"
         set:
           Type: "0x05"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # 5.12 Départementale IMPORTANCE 6+ ou manquante (catch-all)
       - match:
           CL_ADMIN: "Départementale"
         set:
           Type: "0x05"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "~[0x06]${NUMERO}"
 
       # -----------------------------------------------------------------------
@@ -682,7 +682,7 @@ rulesets:
           NATURE: "Route à 1 chaussée"
         set:
           Type: "0x06"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # --- Rond-point générique (sans CL_ADMIN classé) ---
       # Hérite du type de la route correspondante à l'IMPORTANCE.
@@ -707,7 +707,7 @@ rulesets:
           NATURE: "Route empierrée"
         set:
           Type: "0x07"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # --- Chemins et sentiers ---
       # 9.16 Chemin
@@ -715,21 +715,21 @@ rulesets:
           NATURE: "Chemin"
         set:
           Type: "0x0a"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # 9.17 Escalier
       - match:
           NATURE: "Escalier"
         set:
           Type: "0x0f"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # 9.18 Sentier
       - match:
           NATURE: "Sentier"
         set:
           Type: "0x10"
-          EndLevel: "0"
+          EndLevel: "1"
 
       # --- Maritime ---
       # 9.19 Bac ou liaison maritime (EndLevel=3 : visible à l'échelle intercommunale)
@@ -1254,91 +1254,91 @@ rulesets:
           NATURE: "Arène ou théâtre antique"
         set:
           Type: "0x10f08"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 2. Chapelle
       - match:
           NATURE: "Chapelle"
         set:
           Type: "0x10f09"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 3. Chateau
       - match:
           NATURE: "Château"
         set:
           Type: "0x10f0a"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 4. Eglise
       - match:
           NATURE: "Eglise"
         set:
           Type: "0x10f0b"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 5. Fort, blockhaus, casemate
       - match:
           NATURE: "Fort, blockhaus, casemate"
         set:
           Type: "0x10f0c"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 6. Indifferenciee
       - match:
           NATURE: "Indifférenciée"
         set:
           Type: "0x1101c"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 7. Industriel, agricole ou commercial
       - match:
           NATURE: "Industriel, agricole ou commercial"
         set:
           Type: "0x10f04"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 8. Monument
       - match:
           NATURE: "Monument"
         set:
           Type: "0x10f0d"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 9. Serre
       - match:
           NATURE: "Serre"
         set:
           Type: "0x10f05"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 10. Silo
       - match:
           NATURE: "Silo"
         set:
           Type: "0x10f06"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 11. Tour, donjon
       - match:
           NATURE: "Tour, donjon"
         set:
           Type: "0x10f11"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 12. Tribune
       - match:
           NATURE: "Tribune"
         set:
           Type: "0x10f12"
-          EndLevel: "1"
+          EndLevel: "0"
 
       # 13. Catch-all (NATURE inconnue, Prefecture, Sous-prefecture, Construction legere)
       - match:
           NATURE: "*"
         set:
           Type: "0x1101c"
-          EndLevel: "1"
+          EndLevel: "0"
 
   # ==========================================================================
   # BATI — Cimetières (POLYGON)
