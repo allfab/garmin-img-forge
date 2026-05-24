@@ -68,7 +68,7 @@ SERIES_NAME="IGN-BDTOPO-MAP"
 CODE_PAGE=1252
 LEVELS="24,22,20,18,16"
 TYP_FILE="pipeline/resources/typfiles/IGNBDTOPO.typ"
-COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO - ©OpenStreetMap Les Contributeurs - Licence Ouverte Etalab 2.0"
+COPYRIGHT="©$(date +%Y) Allfab Studio - ©IGN BDTOPO/Courbes/BDALTI/OCSGE - ©DGFiP Cadastre - Licence Ouverte Etalab 2.0 - ©OSM Les Contributeurs ODbL"
 
 # imgforge — optimisation taille IMG (opt-in, off par défaut)
 REDUCE_POINT_DENSITY=""    # imgforge --reduce-point-density (réf. mkgmap : 4.0)
