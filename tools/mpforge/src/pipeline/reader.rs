@@ -1495,11 +1495,58 @@ impl SourceReader {
         tile_bounds: &crate::pipeline::tiler::TileBounds,
         spatial_filter_geometries: &HashMap<usize, SpatialFilterGeometry>,
     ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
+        Self::read_features_impl(config, tile_bounds, spatial_filter_geometries, None)
+    }
+
+    /// Variante filtrée de [`read_features_for_tile`] pour la Phase 1.5.
+    ///
+    /// Ignore les sources dont le nom de couche effectif (`layer_alias` ou stem du path)
+    /// n'est pas dans `layer_names_filter`, évitant de charger en mémoire les sources
+    /// non-topologiques juste pour les supprimer immédiatement après.
+    ///
+    /// Les sources dont le nom ne peut pas être résolu avant ouverture GDAL (wildcards
+    /// non-expandés) émettent un `warn!` et sont incluses par sécurité.
+    pub fn read_features_for_tile_filtered(
+        config: &Config,
+        tile_bounds: &crate::pipeline::tiler::TileBounds,
+        spatial_filter_geometries: &HashMap<usize, SpatialFilterGeometry>,
+        layer_names_filter: &HashSet<String>,
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
+        Self::read_features_impl(config, tile_bounds, spatial_filter_geometries, Some(layer_names_filter))
+    }
+
+    /// Implémentation commune de `read_features_for_tile` et `read_features_for_tile_filtered`.
+    ///
+    /// Quand `layer_names_filter` est `Some`, les sources dont le nom de couche effectif
+    /// n'est pas dans le filtre sont ignorées avant ouverture GDAL.
+    fn read_features_impl(
+        config: &Config,
+        tile_bounds: &crate::pipeline::tiler::TileBounds,
+        spatial_filter_geometries: &HashMap<usize, SpatialFilterGeometry>,
+        layer_names_filter: Option<&HashSet<String>>,
+    ) -> Result<(Vec<Feature>, UnsupportedTypeStats, MultiGeometryStats)> {
         let mut all_features = Vec::new();
         let mut all_unsupported = UnsupportedTypeStats::default();
         let mut all_multi_geom = MultiGeometryStats::default();
 
         for (idx, input) in config.inputs.iter().enumerate() {
+            // Si un filtre est actif, ignorer les sources hors-filtre avant ouverture GDAL.
+            if let Some(filter) = layer_names_filter {
+                match input.effective_layer_name() {
+                    Some(ref name) if !filter.contains(name) => continue,
+                    None => {
+                        // Nom de couche non résolvable (wildcard non-expansé) : inclure
+                        // par sécurité mais signaler pour visibilité en production.
+                        warn!(
+                            source_index = idx,
+                            path = ?input.path,
+                            "Layer name unresolvable for filtered read — source included by safety"
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
             let path = match input.path.as_ref() {
                 Some(p) => p,
                 None => continue,
@@ -1723,9 +1770,9 @@ impl SourceReader {
         }
 
         debug!(
-            tile = %tile_bounds.tile_id(),
             features = all_features.len(),
-            "Tile features loaded"
+            filtered = layer_names_filter.is_some(),
+            "Features loaded"
         );
 
         Ok((all_features, all_unsupported, all_multi_geom))

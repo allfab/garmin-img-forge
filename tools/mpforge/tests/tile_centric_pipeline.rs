@@ -364,3 +364,127 @@ fn test_scan_extents_grid_covers_rtree_grid() {
         );
     }
 }
+
+// ============================================================================
+// read_features_for_tile_filtered : filtre par nom de couche avant ouverture GDAL
+// ============================================================================
+
+/// Quand le filtre contient le nom de la couche, les features sont retournées.
+#[test]
+fn test_read_features_filtered_matching_layer_returns_features() {
+    use std::collections::HashSet;
+    let config = make_config(&["file1.shp"]);
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new())
+        .expect("scan_extents failed");
+    let global_tile = TileBounds {
+        col: 0,
+        row: 0,
+        min_lon: extent.min_x - 1.0,
+        min_lat: extent.min_y - 1.0,
+        max_lon: extent.max_x + 1.0,
+        max_lat: extent.max_y + 1.0,
+        overlap: 0.0,
+    };
+    // "file1" = stem de file1.shp → dans le filtre
+    let filter: HashSet<String> = ["file1".to_string()].into();
+    let (filtered, _, _) = SourceReader::read_features_for_tile_filtered(
+        &config,
+        &global_tile,
+        &std::collections::HashMap::new(),
+        &filter,
+    )
+    .expect("read_features_for_tile_filtered failed");
+
+    let (unfiltered, _, _) = SourceReader::read_features_for_tile(
+        &config,
+        &global_tile,
+        &std::collections::HashMap::new(),
+    )
+    .expect("read_features_for_tile failed");
+
+    assert_eq!(
+        filtered.len(),
+        unfiltered.len(),
+        "Filtre incluant la couche → même résultat que lecture non-filtrée"
+    );
+}
+
+/// Quand le filtre exclut la couche, aucune feature n'est retournée.
+#[test]
+fn test_read_features_filtered_excluded_layer_returns_empty() {
+    use std::collections::HashSet;
+    let config = make_config(&["file1.shp"]);
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new())
+        .expect("scan_extents failed");
+    let global_tile = TileBounds {
+        col: 0,
+        row: 0,
+        min_lon: extent.min_x - 1.0,
+        min_lat: extent.min_y - 1.0,
+        max_lon: extent.max_x + 1.0,
+        max_lat: extent.max_y + 1.0,
+        overlap: 0.0,
+    };
+    // Filtre ne contenant pas "file1" → source skippée avant ouverture GDAL
+    let filter: HashSet<String> = ["OTHER_LAYER".to_string()].into();
+    let (features, _, _) = SourceReader::read_features_for_tile_filtered(
+        &config,
+        &global_tile,
+        &std::collections::HashMap::new(),
+        &filter,
+    )
+    .expect("read_features_for_tile_filtered failed");
+
+    assert!(
+        features.is_empty(),
+        "Filtre excluant la couche → 0 features, got {}",
+        features.len()
+    );
+}
+
+/// Avec deux sources, le filtre ne retourne que les features de la couche incluse.
+#[test]
+fn test_read_features_filtered_two_sources_one_excluded() {
+    use std::collections::HashSet;
+    let config = make_config(&["file1.shp", "file2.shp"]);
+    let extent = SourceReader::scan_extents(&config, &std::collections::HashMap::new())
+        .expect("scan_extents failed");
+    let global_tile = TileBounds {
+        col: 0,
+        row: 0,
+        min_lon: extent.min_x - 1.0,
+        min_lat: extent.min_y - 1.0,
+        max_lon: extent.max_x + 1.0,
+        max_lat: extent.max_y + 1.0,
+        overlap: 0.0,
+    };
+
+    // Lecture de file1 seul via filtre
+    let filter_file1: HashSet<String> = ["file1".to_string()].into();
+    let (only_file1, _, _) = SourceReader::read_features_for_tile_filtered(
+        &config,
+        &global_tile,
+        &std::collections::HashMap::new(),
+        &filter_file1,
+    )
+    .expect("read_features_for_tile_filtered failed");
+
+    // Lecture totale
+    let (all_features, _, _) = SourceReader::read_features_for_tile(
+        &config,
+        &global_tile,
+        &std::collections::HashMap::new(),
+    )
+    .expect("read_features_for_tile failed");
+
+    assert!(
+        only_file1.len() < all_features.len(),
+        "Filtre file1 seulement ({}) doit retourner moins que lecture totale ({})",
+        only_file1.len(),
+        all_features.len()
+    );
+    assert!(
+        !only_file1.is_empty(),
+        "file1 a des features, le filtre ne doit pas retourner 0"
+    );
+}

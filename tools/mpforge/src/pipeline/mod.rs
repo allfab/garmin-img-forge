@@ -1254,29 +1254,31 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
             max_lat: global_extent.max_y + 1.0,
             overlap: 0.0,
         };
+        // Lire uniquement les sources dont le nom de couche est dans topo_layer_names.
+        // Évite de charger les ~1200 sources non-topologiques en mémoire pour les
+        // supprimer aussitôt (cause de l'OOM sur FRANCE-SE / 25 départements).
         let (mut all_features, _, _) =
-            SourceReader::read_features_for_tile(config, &global_tb, &*spatial_filter_geometries)
-                .context("Phase 1.5: lecture globale des couches topologiques")?;
+            SourceReader::read_features_for_tile_filtered(
+                config,
+                &global_tb,
+                &*spatial_filter_geometries,
+                &topo_layer_names,
+            )
+            .context("Phase 1.5: lecture globale des couches topologiques")?;
 
         // Pré-pass routing déclarative AVANT le rules engine : indispensable lorsqu'une
         // couche routable est marquée `topology: true` (cas TRONCON_DE_ROUTE en config
         // départementale). Sans ce passage, les features pré-simplifiées qui re-substituent
         // les versions per-tile (étape 2b dans process_single_tile) écraseraient
         // les RouteParam denied calculés par la pré-pass per-tile.
-        // Note : on tague AVANT le retain topology pour que les anchors (autoroutes)
-        // restent visibles à apply_adjacency_tags, car la pré-pass cherche les endpoints
-        // d'anchor parmi les features de la même `source_layer` (toutes lues ici).
+        // Note : apply_adjacency_tags cherche les endpoints d'ancrage (autoroutes) parmi
+        // les features de la même `source_layer`. La contrainte est satisfaite car
+        // TRONCON_DE_ROUTE est marquée `topology: true` → incluse dans topo_layer_names →
+        // chargée par read_features_for_tile_filtered. Anchors et targets sont donc
+        // tous présents dans all_features à ce stade.
         if let Some(ref routing_rules) = routing_rules {
             apply_adjacency_tags(&mut all_features, &routing_rules.adjacency_tags);
         }
-
-        // Garder uniquement les couches topology.
-        all_features.retain(|f| {
-            f.source_layer
-                .as_deref()
-                .map(|l| topo_layer_names.contains(l))
-                .unwrap_or(false)
-        });
 
         // Appliquer les règles (Type, EndLevel, Label nécessaires pour l'écriture).
         if let Some(ref rules_file) = rules {

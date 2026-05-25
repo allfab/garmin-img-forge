@@ -20,9 +20,13 @@ profiles:
       - { n: 6, simplify: 0.00032 }
 
   TRONCON_DE_ROUTE:
-    # topology: true — vertices d'intersection ancrés (seul simplify_vw autorisé).
-    # Variante locale : n=0..3 réduits ~50 % vs catalogue partagé.
-    topology: true
+    # topology: false — simplification par tuile (non globale).
+    # Raison : topology: true avec n=0..6 × 25 départements charge des millions
+    # de segments en RAM simultanément → OOM sur les scopes multi-départements.
+    # Pour france-quadrant, les artefacts de jonction aux croisées de tuiles sont
+    # imperceptibles à l'échelle de rendu (overview France entière).
+    # Routing non impacté : le graphe routier est calculé par tuile dans process_single_tile.
+    topology: false
     when:
       - field: CL_ADMIN
         values: [Autoroute]
