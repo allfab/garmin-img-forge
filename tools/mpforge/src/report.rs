@@ -36,6 +36,10 @@ pub struct ExecutionReport {
     /// `OGR_F_SetGeomField` ≠ NONE ou WKT invalide). `0` en mode mono-Data.
     #[serde(skip_serializing_if = "is_zero")]
     pub skipped_additional_geom: usize,
+    /// Polygones Data0 écartés avant écriture GDAL (aire < seuil de dégénérescence,
+    /// ex. toutes coordonnées identiques après clipping/généralisation).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub skipped_degenerate_polygon: usize,
     /// Total execution duration in seconds (float for precision)
     pub duration_seconds: f64,
     /// Detailed error information for failed tiles
@@ -230,6 +234,7 @@ mod tests {
             tiles_skipped: 2,
             features_processed: 1000,
             skipped_additional_geom: 0,
+            skipped_degenerate_polygon: 0,
             duration_seconds: 5.5,
             errors: vec![],
             dry_run: false,
@@ -255,6 +260,7 @@ mod tests {
             tiles_skipped: 0,
             features_processed: 800,
             skipped_additional_geom: 0,
+            skipped_degenerate_polygon: 0,
             duration_seconds: 10.2,
             errors: vec![
                 TileError {
@@ -313,6 +319,7 @@ mod tests {
             tiles_skipped: 1,
             features_processed: 500,
             skipped_additional_geom: 0,
+            skipped_degenerate_polygon: 0,
             duration_seconds: 3.0,
             errors: vec![],
             dry_run: false,

@@ -756,6 +756,7 @@ fn make_tile_result(points: usize, linestrings: usize, polygons: usize) -> TileR
             linestring_count: linestrings,
             polygon_count: polygons,
             skipped_additional_geom: 0,
+            skipped_degenerate_polygon: 0,
         },
         validation_stats: ValidationStats::default(),
         unsupported: UnsupportedTypeStats::default(),

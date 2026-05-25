@@ -832,6 +832,7 @@ pub fn aggregate_outcome(outcome: TileOutcome, accumulators: &SharedAccumulators
                 stats.linestring_count += result.stats.linestring_count;
                 stats.polygon_count += result.stats.polygon_count;
                 stats.skipped_additional_geom += result.stats.skipped_additional_geom;
+                stats.skipped_degenerate_polygon += result.stats.skipped_degenerate_polygon;
             }
             {
                 let mut vs = accumulators
@@ -1562,6 +1563,7 @@ pub fn run(config: &Config, args: &BuildArgs) -> Result<TileExportSummary> {
         tiles_skipped: summary.tiles_skipped,
         features_processed: summary.total_features(),
         skipped_additional_geom: summary.global_stats.skipped_additional_geom,
+        skipped_degenerate_polygon: summary.global_stats.skipped_degenerate_polygon,
         duration_seconds: total_duration,
         dry_run: args.dry_run,
         errors: summary

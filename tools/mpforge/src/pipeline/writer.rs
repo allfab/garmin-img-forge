@@ -140,6 +140,9 @@ pub struct ExportStats {
     /// `OGR_F_SetGeomField` non-NONE OU construction WKT invalide. Remonté
     /// dans le rapport JSON mpforge pour observabilité.
     pub skipped_additional_geom: usize,
+    /// Polygones Data0 écartés avant écriture GDAL car leur aire est en-dessous
+    /// de `MIN_POLYGON_AREA_DEG2` (dégénérés après clipping/généralisation).
+    pub skipped_degenerate_polygon: usize,
 }
 
 /// Limite de points par polyligne dans le format IMG Garmin — miroir de
@@ -147,6 +150,14 @@ pub struct ExportStats {
 /// évite qu'imgforge scinde les courbes à des positions arbitraires et assure
 /// des tronçons cohérents dès le fichier .mp.
 const MAX_POINTS_PER_LINE: usize = 250;
+
+/// Seuil minimal d'aire (en degrés WGS84 au carré) en-dessous duquel un polygone
+/// est considéré dégénéré et ignoré avant l'écriture GDAL.
+/// 1e-14 deg² ≈ 0.12 mm² à l'équateur — en-dessous de tout pixel Garmin rendu.
+/// Ce seuil couvre à la fois les polygones de coordonnées identiques (area == 0.0
+/// exactement, cas GDAL WriteSinglePOLYGON) et les quasi-dégénérés collinéaires
+/// produits par Douglas-Peucker sur terrain plat (area ~ 1e-18 deg²).
+const MIN_POLYGON_AREA_DEG2: f64 = 1e-14;
 
 /// Calcule les intervalles `[start, end)` de découpe pour `n` points.
 /// Retourne `[(0, n)]` si `n ≤ MAX_POINTS_PER_LINE`.
@@ -750,7 +761,7 @@ impl MpWriter {
                     if written {
                         stats.polygon_count += 1;
                     } else {
-                        stats.skipped_additional_geom += 1;
+                        stats.skipped_degenerate_polygon += 1;
                     }
                 }
             }
@@ -761,6 +772,7 @@ impl MpWriter {
             linestrings = stats.linestring_count,
             polygons = stats.polygon_count,
             skipped_additional_geom = stats.skipped_additional_geom,
+            skipped_degenerate_polygon = stats.skipped_degenerate_polygon,
             "Export completed"
         );
 
@@ -970,6 +982,20 @@ impl MpWriter {
 
         let geometry = GdalGeometry::from_wkt(&wkt).context("Failed to create Polygon geometry")?;
 
+        // Invariant : cette fonction est appelée uniquement pour GeometryType::Polygon.
+        // OGR_G_Area retourne 0.0 pour tout type non-surfacique (Point, LineString) ;
+        // si le guard était réutilisé sur un autre type, il skipperait tout silencieusement.
+        if geometry.area() < MIN_POLYGON_AREA_DEG2 {
+            warn!(
+                source_layer = feature.source_layer.as_deref().unwrap_or(""),
+                label = feature.attributes.get("Label").map(String::as_str).unwrap_or(""),
+                feature_type = feature.attributes.get("Type").map(String::as_str).unwrap_or(""),
+                area = geometry.area(),
+                "Skipping degenerate POLYGON feature (area below threshold)"
+            );
+            return Ok(false);
+        }
+
         // Create feature
         let layer_defn = layer.defn();
         let mut ogr_feature =
@@ -1016,6 +1042,15 @@ impl MpWriter {
                         return Ok(false);
                     }
                 };
+                if geom_n.area() < MIN_POLYGON_AREA_DEG2 {
+                    warn!(
+                        feature_layer = feature.source_layer.as_deref().unwrap_or(""),
+                        n = *n,
+                        area = geom_n.area(),
+                        "degenerate additional Polygon bucket (area below threshold) — bucket skipped"
+                    );
+                    continue;
+                }
                 if let Err(e) =
                     Self::set_additional_geom_field(&mut ogr_feature, *n as i32, &geom_n)
                 {
@@ -1164,6 +1199,7 @@ mod tests {
         assert_eq!(stats.linestring_count, 0);
         assert_eq!(stats.polygon_count, 0);
         assert_eq!(stats.skipped_additional_geom, 0);
+        assert_eq!(stats.skipped_degenerate_polygon, 0);
     }
 
     #[test]
@@ -1173,9 +1209,32 @@ mod tests {
             linestring_count: 5,
             polygon_count: 3,
             skipped_additional_geom: 2,
+            skipped_degenerate_polygon: 1,
         };
         let cloned = stats.clone();
         assert_eq!(stats, cloned);
+    }
+
+    #[test]
+    fn test_degenerate_polygon_area_check() {
+        // Régression : polygone avec 4 points identiques — précédemment rejeté
+        // par GDAL WriteSinglePOLYGON et faisait échouer la tuile entière.
+        // Vérifie que area() < MIN_POLYGON_AREA_DEG2, condition du guard qui
+        // skipe la feature avant d'appeler create(layer).
+        let wkt = "POLYGON ((2.35 48.85, 2.35 48.85, 2.35 48.85, 2.35 48.85))";
+        let geom = GdalGeometry::from_wkt(wkt).expect("WKT valide");
+        assert!(
+            geom.area() < MIN_POLYGON_AREA_DEG2,
+            "polygone dégénéré (4 points identiques) doit avoir area < seuil"
+        );
+
+        // Cas normal : un triangle valide doit passer le guard.
+        let wkt_valid = "POLYGON ((2.0 48.0, 2.1 48.0, 2.05 48.1, 2.0 48.0))";
+        let geom_valid = GdalGeometry::from_wkt(wkt_valid).expect("WKT valide");
+        assert!(
+            geom_valid.area() >= MIN_POLYGON_AREA_DEG2,
+            "polygone valide doit avoir area >= seuil"
+        );
     }
 
     // =================================================================
