@@ -1,176 +1,747 @@
 # Regles de transformation BDTOPO -> Polish Map (production)
-# ============================================================================
-# Variante quadrants Garmin (FRANCE-SE, FRANCE-SO, FRANCE-NE, FRANCE-NO) —
-# dérivée à l'origine de pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml.
-#
-# Les EndLevel avaient été rabaissés pour réduire la taille IMG des quadrants :
-#   - BATIMENT (13 règles)            : "0" -> "1" [ANNULÉ — retour à "0" pour cohérence avec departement/]
-#   - CONSTRUCTION_LINEAIRE (12 règles): "0" -> "1"
-#   - ZONE_DE_VEGETATION forêts fermées (4 règles) : "2" -> "1"
-#
-# Remap mécanique 5L→6L (header 24/23/22/20/18/16 — cf. sources.yaml) :
-# les EndLevel référencent désormais l'index dans un header à 6 niveaux, le
-# rendu visuel des quadrants est préservé à l'identique (juste plus fluide) :
-#   - "0" (n=0 seul, 24 bits)       → "0" inchangé             (279 règles)
-#   - "1" (n≤1, 24+22)              → "2" (n≤2, 24+23+22)       (52 règles)
-#   - "2" (n≤2, 24+22+20)           → "3" (n≤3, 24+23+22+20)    (16 règles)
-#   - "5" (fallback "toujours")     → "5" (=max, toujours)       (4 règles)
-#
-# Note historique : un premier essai en 7L (24/23/22/21/20/18/16) a été
-# abandonné car l'Alpha 100 ne digère pas un header > 6 niveaux (moitié de
-# carte vide sur device, rendu OK sous QMapShack). 6L = compromis compat.
-#
-# NE PAS répercuter mécaniquement les évolutions de departement/garmin-rules.yaml
-# sans réappliquer ce remap 5L→6L.
-# ============================================================================
 version: 1
 
 rulesets:
   # ==========================================================================
-  # TRANSPORT — Troncons de route (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_ROUTE
-  # 17 regles couvrant toutes les combinaisons CL_ADMIN x NATURE
+  # TRANSPORT — Tronçons de route (POLYLINE)
+  # ~76 règles — IMPORTANCE pilote EndLevel, CL_ADMIN + NATURE pilotent Type et Label
   # ==========================================================================
   - name: "Routes"
     source_layer: "TRONCON_DE_ROUTE"
     rules:
-      # --- Priorite CL_ADMIN (evaluee en premier dans FME) ---
+      # -----------------------------------------------------------------------
+      # BLOC 0 — Bretelle (NATURE=Bretelle, toutes CL_ADMIN)
+      # EN TÊTE ABSOLU : court-circuite les blocs CL_ADMIN suivants.
+      # EndLevel = IMP-1 (IMP=3 plafonné à 4 comme IMP=2).
+      # -----------------------------------------------------------------------
+      # 0.1 Bretelle IMPORTANCE 1
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x09"
+          EndLevel: "5"
 
-      # 1. Autoroute (toute NATURE)
+      # 0.2 Bretelle IMPORTANCE 2
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x09"
+          EndLevel: "4"
+
+      # 0.3 Bretelle IMPORTANCE 3 (plafonné — même EndLevel que IMP=2)
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x09"
+          EndLevel: "4"
+
+      # 0.4 Bretelle IMPORTANCE 4
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x09"
+          EndLevel: "3"
+
+      # 0.5 Bretelle IMPORTANCE 5
+      - match:
+          NATURE: "Bretelle"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x09"
+          EndLevel: "1"
+
+      # 0.6 Bretelle IMPORTANCE manquante ou hors table (catch-all)
+      - match:
+          NATURE: "Bretelle"
+        set:
+          Type: "0x09"
+          EndLevel: "1"
+
+      # -----------------------------------------------------------------------
+      # BLOC 1 — Autoroute (CL_ADMIN=Autoroute, NATURE≠Bretelle déjà capturée)
+      # IMPORTANCE 1-3. Rond-point → Type=0x01 (hérite du type autoroute).
+      # -----------------------------------------------------------------------
+      # 1.1 Autoroute Rond-point IMPORTANCE 1
       - match:
           CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+
+      # 1.2 Autoroute Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+
+      # 1.3 Autoroute Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x01"
+          EndLevel: "4"
+
+      # 1.4 Autoroute IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
+
+      # 1.5 Autoroute IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
+
+      # 1.6 Autoroute IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Autoroute"
+          IMPORTANCE: "3"
         set:
           Type: "0x01"
           EndLevel: "4"
           Label: "~[0x04]${NUMERO}"
 
-      # 2. Nationale (hors Rond-point)
+      # 1.7 Autoroute Rond-point IMPORTANCE 4+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Autoroute"
+          NATURE: "Rond-point"
+        set:
+          Type: "0x01"
+          EndLevel: "3"
+
+      # 1.8 Autoroute IMPORTANCE 4+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Autoroute"
+        set:
+          Type: "0x01"
+          EndLevel: "3"
+          Label: "~[0x04]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 2 — Nationale (CL_ADMIN=Nationale, NATURE≠Bretelle)
+      # IMPORTANCE 1-3 → Type=0x04 (nationale, rouge). Rond-point hérite 0x04.
+      # IMPORTANCE 4-5 → Type=0x06 (local) : voies de service/transition N7 en ville.
+      # -----------------------------------------------------------------------
+      # 2.1 Nationale Rond-point IMPORTANCE 1
       - match:
           CL_ADMIN: "Nationale"
-          NATURE: "!Rond-point"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+
+      # 2.2 Nationale Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+
+      # 2.3 Nationale Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x04"
+          EndLevel: "4"
+
+      # 2.4 Nationale IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.5 Nationale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+          Label: "~[0x05]${NUMERO}"
+
+      # 2.6 Nationale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "3"
         set:
           Type: "0x04"
           EndLevel: "4"
           Label: "~[0x05]${NUMERO}"
 
-      # 3. Nationale Rond-point (pas de label)
+      # 2.7 Nationale Rond-point IMPORTANCE 4+ ou manquante (catch-all)
       - match:
           CL_ADMIN: "Nationale"
           NATURE: "Rond-point"
         set:
-          Type: "0x04"
-          EndLevel: "4"
+          Type: "0x06"
+          EndLevel: "3"
 
-      # 4. Departementale (hors Rond-point)
+      # 2.8 Nationale IMPORTANCE 4 (voie locale sans numéro propre)
       - match:
-          CL_ADMIN: "Départementale"
-          NATURE: "!Rond-point"
-        set:
-          Type: "0x05"
-          EndLevel: "4"
-          Label: "~[0x06]${NUMERO}"
-
-      # 5. Departementale Rond-point — garde Type=0x05 (couleur RD),
-      #    pas de label (cohérence avec rond-point Nationale).
-      - match:
-          CL_ADMIN: "Départementale"
-          NATURE: "Rond-point"
-        set:
-          Type: "0x05"
-          EndLevel: "4"
-
-      # 6. Route intercommunale (toute NATURE)
-      - match:
-          CL_ADMIN: "Route intercommunale"
-        set:
-          Type: "0x05"
-          EndLevel: "0"
-          Label: "${NUMERO}"
-
-      # --- Fallback NATURE (quand CL_ADMIN ne matche pas les prioritaires) ---
-
-      # 7. Route a 1 chaussee
-      - match:
-          NATURE: "Route à 1 chaussée"
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "4"
         set:
           Type: "0x06"
-          EndLevel: "0"
+          EndLevel: "3"
+          Label: "~[0x05]${NUMERO}"
 
-      # 8. Route a 2 chaussees
+      # 2.9 Nationale IMPORTANCE 5
       - match:
-          NATURE: "Route à 2 chaussées"
+          CL_ADMIN: "Nationale"
+          IMPORTANCE: "5"
         set:
           Type: "0x06"
-          EndLevel: "0"
+          EndLevel: "1"
+          Label: "~[0x05]${NUMERO}"
 
-      # 9. Rond-point (generique, apres les CL_ADMIN specifiques)
+      # 2.10 Nationale IMPORTANCE 6+ ou manquante (catch-all)
       - match:
-          NATURE: "Rond-point"
+          CL_ADMIN: "Nationale"
         set:
           Type: "0x06"
-          EndLevel: "0"
+          EndLevel: "1"
+          Label: "~[0x05]${NUMERO}"
 
-      # 10. Route empierree
+      # -----------------------------------------------------------------------
+      # BLOC 3 — Autoroute/Route nommée (CL_ADMIN hybride)
+      # Tronçon à double classement : Autoroute + Route nommée.
+      # -----------------------------------------------------------------------
+      # 3.1 Autoroute/Route nommée IMPORTANCE 1
       - match:
-          NATURE: "Route empierrée"
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "1"
         set:
-          Type: "0x07"
-          EndLevel: "0"
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
 
-      # 11. Bretelle
+      # 3.2 Autoroute/Route nommée IMPORTANCE 2
       - match:
-          NATURE: "Bretelle"
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "2"
         set:
-          Type: "0x09"
-          EndLevel: "4"
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
 
-      # 12. Type autoroutier
+      # 3.3 Autoroute/Route nommée IMPORTANCE 3
       - match:
-          NATURE: "Type autoroutier"
+          CL_ADMIN: "Autoroute/Route nommée"
+          IMPORTANCE: "3"
         set:
           Type: "0x01"
           EndLevel: "4"
           Label: "~[0x04]${NUMERO}"
 
-      # 13. Chemin
+      # -----------------------------------------------------------------------
+      # BLOC 4 — Nationale/Route nommée (CL_ADMIN hybride)
+      # -----------------------------------------------------------------------
+      # 4.1 Nationale/Route nommée IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+          Label: "~[0x05]${NUMERO}"
+
+      # 4.2 Nationale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+          Label: "~[0x05]${NUMERO}"
+
+      # 4.3 Nationale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Nationale/Route nommée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x04"
+          EndLevel: "4"
+          Label: "~[0x05]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 5 — Départementale (CL_ADMIN=Départementale, NATURE≠Bretelle)
+      # IMPORTANCE 1-5. Rond-point → Type=0x05 (hérite du type départementale).
+      # -----------------------------------------------------------------------
+      # 5.1 Départementale Rond-point IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+
+      # 5.2 Départementale Rond-point IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+
+      # 5.3 Départementale Rond-point IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+
+      # 5.4 Départementale Rond-point IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+
+      # 5.5 Départementale Rond-point IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+
+      # 5.6 Départementale IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.7 Départementale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.8 Départementale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.9 Départementale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.10 Départementale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # 5.11 Départementale Rond-point IMPORTANCE 6+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Départementale"
+          NATURE: "Rond-point"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+
+      # 5.12 Départementale IMPORTANCE 6+ ou manquante (catch-all)
+      - match:
+          CL_ADMIN: "Départementale"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 6 — Départementale hybrides (CL_ADMIN composites)
+      # Départementale/Route nommée : IMP 1-5
+      # Départementale/Route intercommunale : IMP 2-5 (IMP=1 inexistant per doc)
+      # -----------------------------------------------------------------------
+      # 6.1 Départementale/Route nommée IMPORTANCE 1
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x05"
+          EndLevel: "6"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.2 Départementale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.3 Départementale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.4 Départementale/Route nommée IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.5 Départementale/Route nommée IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale/Route nommée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.6 Départementale/Route intercommunale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x05"
+          EndLevel: "5"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.7 Départementale/Route intercommunale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.8 Départementale/Route intercommunale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x05"
+          EndLevel: "3"
+          Label: "~[0x06]${NUMERO}"
+
+      # 6.9 Départementale/Route intercommunale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Départementale/Route intercommunale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x05"
+          EndLevel: "1"
+          Label: "~[0x06]${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 7 — Route intercommunale (CL_ADMIN=Route intercommunale)
+      # IMPORTANCE 2-5 (IMP=1 absent per sémantique intercommunale).
+      # Pas de shield — label texte nu.
+      # -----------------------------------------------------------------------
+      # 7.1 Route intercommunale IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x06"
+          EndLevel: "5"
+          Label: "${NUMERO}"
+
+      # 7.2 Route intercommunale IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x06"
+          EndLevel: "4"
+          Label: "${NUMERO}"
+
+      # 7.3 Route intercommunale IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+          Label: "${NUMERO}"
+
+      # 7.4 Route intercommunale IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Route intercommunale"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+          Label: "${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 8 — Route intercommunale/Route nommée (CL_ADMIN hybride)
+      # -----------------------------------------------------------------------
+      # 8.1 Route intercommunale/Route nommée IMPORTANCE 2
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x06"
+          EndLevel: "5"
+          Label: "${NUMERO}"
+
+      # 8.2 Route intercommunale/Route nommée IMPORTANCE 3
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x06"
+          EndLevel: "4"
+          Label: "${NUMERO}"
+
+      # 8.3 Route intercommunale/Route nommée IMPORTANCE 4
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+          Label: "${NUMERO}"
+
+      # 8.4 Route intercommunale/Route nommée IMPORTANCE 5
+      - match:
+          CL_ADMIN: "Route intercommunale/Route nommée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+          Label: "${NUMERO}"
+
+      # -----------------------------------------------------------------------
+      # BLOC 9 — Fallbacks NATURE
+      # Tronçons sans CL_ADMIN classé, ou CL_ADMIN=Voie communale/Chemin rural.
+      # IMPORTANCE pilote EndLevel selon la table standard.
+      # -----------------------------------------------------------------------
+
+      # --- Type autoroutier (IMPORTANCE 1-2 uniquement per doc BDTOPO p.88) ---
+      # 9.1 Type autoroutier IMPORTANCE 1
+      - match:
+          NATURE: "Type autoroutier"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          Label: "~[0x04]${NUMERO}"
+
+      # 9.2 Type autoroutier IMPORTANCE 2 (ou tout autre IMP)
+      - match:
+          NATURE: "Type autoroutier"
+        set:
+          Type: "0x01"
+          EndLevel: "5"
+          Label: "~[0x04]${NUMERO}"
+
+      # --- Route à 2 chaussées ---
+      # IMP 1-2 = 0x04 (nationale-level), IMP 3 = 0x05 (départementale-level),
+      # IMP 4+ = 0x06 (voie locale). Miroir de la logique Route à 1 chaussée,
+      # décalé d'un cran car physiquement plus importante.
+      # 9.3 Route à 2 chaussées IMPORTANCE 1
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+
+      # 9.4 Route à 2 chaussées IMPORTANCE 2
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x04"
+          EndLevel: "5"
+
+      # 9.5 Route à 2 chaussées IMPORTANCE 3
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+
+      # 9.6 Route à 2 chaussées IMPORTANCE 4
+      - match:
+          NATURE: "Route à 2 chaussées"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+
+      # 9.7 Route à 2 chaussées IMPORTANCE 5+ (catch-all)
+      - match:
+          NATURE: "Route à 2 chaussées"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+
+      # --- Route à 1 chaussée ---
+      # Type varie par IMPORTANCE : IMP 1 = 0x04 (nationale-level), IMP 2 = 0x06 (voie locale
+      # sans CL_ADMIN = route de liaison sans classement administratif → blanc), IMP 3 = 0x05
+      # (départementale-level), IMP 4-6 = 0x06 (voie locale). Sans cette différenciation,
+      # les 85 % de tronçons null CL_ADMIN héritaient tous de 0x05 = carte tout-jaune.
+      # 9.8 Route à 1 chaussée IMPORTANCE 1
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "1"
+        set:
+          Type: "0x04"
+          EndLevel: "6"
+
+      # 9.9 Route à 1 chaussée IMPORTANCE 2
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "2"
+        set:
+          Type: "0x06"
+          EndLevel: "5"
+
+      # 9.10 Route à 1 chaussée IMPORTANCE 3
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+
+      # 9.11 Route à 1 chaussée IMPORTANCE 4
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "4"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+
+      # 9.12 Route à 1 chaussée IMPORTANCE 5
+      - match:
+          NATURE: "Route à 1 chaussée"
+          IMPORTANCE: "5"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+
+      # 9.13 Route à 1 chaussée IMPORTANCE 6 (ou catch-all)
+      - match:
+          NATURE: "Route à 1 chaussée"
+        set:
+          Type: "0x06"
+          EndLevel: "1"
+
+      # --- Rond-point générique (sans CL_ADMIN classé) ---
+      # Hérite du type de la route correspondante à l'IMPORTANCE.
+      # 9.14 Rond-point générique IMPORTANCE 3
+      - match:
+          NATURE: "Rond-point"
+          IMPORTANCE: "3"
+        set:
+          Type: "0x05"
+          EndLevel: "4"
+
+      # 9.15 Rond-point générique IMPORTANCE 4+ (ou catch-all)
+      - match:
+          NATURE: "Rond-point"
+        set:
+          Type: "0x06"
+          EndLevel: "3"
+
+      # --- Route empierrée ---
+      # 9.15 Route empierrée (toute IMPORTANCE)
+      - match:
+          NATURE: "Route empierrée"
+        set:
+          Type: "0x07"
+          EndLevel: "1"
+
+      # --- Chemins et sentiers ---
+      # 9.16 Chemin
       - match:
           NATURE: "Chemin"
         set:
           Type: "0x0a"
-          EndLevel: "0"
+          EndLevel: "1"
 
-      # 14. Escalier
+      # 9.17 Escalier
       - match:
           NATURE: "Escalier"
         set:
           Type: "0x0f"
-          EndLevel: "0"
+          EndLevel: "1"
 
-      # 15. Piste cyclable
-      - match:
-          NATURE: "Piste cyclable"
-        set:
-          Type: "0x0e"
-          EndLevel: "0"
-
-      # 16. Sentier
+      # 9.18 Sentier
       - match:
           NATURE: "Sentier"
         set:
           Type: "0x10"
-          EndLevel: "0"
+          EndLevel: "1"
 
-      # 17. Bac ou liaison maritime
+      # --- Maritime ---
+      # 9.19 Bac ou liaison maritime (EndLevel=3 : visible à l'échelle intercommunale)
       - match:
           NATURE: "Bac ou liaison maritime"
         set:
           Type: "0x1b"
-          EndLevel: "0"
+          EndLevel: "3"
 
   # ==========================================================================
-  # TRANSPORT — Voies ferrees (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRONCON_DE_VOIE_FERREE
-  # 7 regles — POS_SOL="-1" en PREMIER (souterrain override toute NATURE)
+  # TRANSPORT — Voies ferrées (POLYLINE)
+  # 7 règles — POS_SOL="-1" en premier (souterrain override toute NATURE)
   # ==========================================================================
   - name: "Voies ferrees"
     source_layer: "TRONCON_DE_VOIE_FERREE"
@@ -239,9 +810,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # TRANSPORT — Pistes d'aerodrome (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager PISTE_D_AERODROME
-  # 2 regles — pas de catch-all (NATURE non reconnue = feature ignoree)
+  # TRANSPORT — Pistes d'aérodrome (POLYLINE)
+  # 2 règles — pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Pistes aerodrome"
     source_layer: "PISTE_D_AERODROME"
@@ -264,9 +834,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # TRANSPORT — Transport par cable (POLYLINE)
-  # Source FME : 07-VOIRIE.fmw / AttributeManager TRANSPORT_PAR_CABLE
-  # 1 regle statique (wildcard)
+  # TRANSPORT — Transport par câble (POLYLINE)
+  # 1 règle statique (wildcard)
   # ==========================================================================
   - name: "Transport par cable"
     source_layer: "TRANSPORT_PAR_CABLE"
@@ -277,17 +846,24 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10f0b"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${TOPONYME}"
 
   # ==========================================================================
   # ADMINISTRATIF — Communes (POLYGON)
-  # Source FME : 01-COMMUNE-ZONEURBA.fmw
-  # 1 regle wildcard avec attributs speciaux CountryName, CityName, Zip
+  # 1 règle wildcard — attributs CountryName, CityName, Zip
   # ==========================================================================
+  - name: DEPARTEMENT_LIMITE
+    source_layer: "DEPARTEMENT_LIMITE"
+    rules:
+      - match:
+          nom_offici: "*"
+        set:
+          Type: "0x1e"
+          EndLevel: "6"
+
   - name: "Communes"
     source_layer: "COMMUNE"
-    label_case: "title"
     rules:
       # 1. Toute commune (mapping statique)
       - match:
@@ -295,36 +871,157 @@ rulesets:
         set:
           Type: "0x54"
           EndLevel: "6"
-          Label: "${NOM}"
+          # Label: "${NOM}"
           CountryName: "France~[0x1d]FRA"
           CityName: "${NOM}"
           Zip: "${CODE_POST}"
 
   # ==========================================================================
   # ADMINISTRATIF — Zones d'habitation (POLYGON)
-  # Source FME : 01-COMMUNE-ZONEURBA.fmw / Tester-ZONEHABITATION
-  # Filtre : IMPORTANCE in {1,2,3}
-  #           AND NATURE = "Lieu-dit habité"
-  #           AND NOT TOPONYME commence par "Commune d" (insensible casse)
+  # Filtre commun : NATURE = "Lieu-dit habité", ACQU_PLANI = "Calcul d'enveloppe urbaine",
+  #                 TOPONYME ne commence pas par "Commune d" (insensible à la casse)
+  # EndLevel et Type calés sur IMPORTANCE IGN (1=national → 6=local)
   # ==========================================================================
   - name: "Zones d'habitation"
     source_layer: "ZONE_D_HABITATION"
-    label_case: "title"
     rules:
+      # 1. IMPORTANCE 1 — rayonnement national (1:1 000 000)
       - match:
-          IMPORTANCE: "in:1,2,3"
+          IMPORTANCE: "1"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x01"
+          EndLevel: "6"
+          # Label: "${TOPONYME}"
+
+      # 2. IMPORTANCE 2 — rayonnement régional (1:250 000)
+      - match:
+          IMPORTANCE: "2"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x02"
+          EndLevel: "5"
+          # Label: "${TOPONYME}"
+
+      # 3. IMPORTANCE 3 — rayonnement départemental (1:100 000)
+      - match:
+          IMPORTANCE: "3"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x02"
+          EndLevel: "4"
+          # Label: "${TOPONYME}"
+
+      # 4. IMPORTANCE 4 — rayonnement intercommunal (1:50 000)
+      - match:
+          IMPORTANCE: "4"
           NATURE: "Lieu-dit habité"
           ACQU_PLANI: "Calcul d'enveloppe urbaine"
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x03"
+          EndLevel: "3"
+          # Label: "${TOPONYME}"
+
+      # 5. IMPORTANCE 5 — rayonnement communal (1:25 000)
+      - match:
+          IMPORTANCE: "5"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x03"
+          EndLevel: "2"
+          # Label: "${TOPONYME}"
+
+      # 6. IMPORTANCE 6 — rayonnement local (1:5 000)
+      - match:
+          IMPORTANCE: "6"
+          NATURE: "Lieu-dit habité"
+          ACQU_PLANI: "Calcul d'enveloppe urbaine"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x03"
+          EndLevel: "1"
+          # Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # ADMINISTRATIF -- Zones d'habitation POI (centroides de ZONE_D_HABITATION)
+  # ATTENTION : ce ruleset depend de attribute_filter="ACQU_PLANI='Calcul d''enveloppe urbaine'"
+  # declare dans sources.yaml. Si copie vers france-quadrant/outre-mer, reproduire ce filtre.
+  # Les rules ne filtrent PAS ACQU_PLANI individuellement : omission = fuite de donnees.
+  # EndLevel cale sur IMPORTANCE IGN (1=national -> 6=local)
+  # Types POI hierarchiques Garmin : 0x700 (national) -> 0x1100 (local)
+  # Seul NATURE="Lieu-dit habite" est traite -- les autres valeurs NATURE sont ignorees.
+  # ==========================================================================
+  - name: "Zones d'habitation POI"
+    source_layer: "ZONE_D_HABITATION_POI"
+    label_case: "title"
+    rules:
+      # 1. IMPORTANCE 1 — rayonnement national
+      - match:
+          IMPORTANCE: "1"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x700"
           EndLevel: "6"
+          Label: "${TOPONYME}"
+      # 2. IMPORTANCE 2 — rayonnement régional
+      - match:
+          IMPORTANCE: "2"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x900"
+          EndLevel: "5"
+          Label: "${TOPONYME}"
+      # 3. IMPORTANCE 3 — rayonnement départemental
+      - match:
+          IMPORTANCE: "3"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0xb00"
+          EndLevel: "4"
+          Label: "${TOPONYME}"
+      # 4. IMPORTANCE 4 — rayonnement intercommunal
+      - match:
+          IMPORTANCE: "4"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0xd00"
+          EndLevel: "3"
+          Label: "${TOPONYME}"
+      # 5. IMPORTANCE 5 — rayonnement communal
+      - match:
+          IMPORTANCE: "5"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0xf00"
+          EndLevel: "2"
+          Label: "${TOPONYME}"
+      # 6. IMPORTANCE 6 — rayonnement local
+      - match:
+          IMPORTANCE: "6"
+          NATURE: "Lieu-dit habité"
+          TOPONYME: "!^i:Commune d"
+        set:
+          Type: "0x1100"
+          EndLevel: "1"
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Troncons hydrographiques (POLYLINE)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 2 regles — Intermittent en premier, puis catch-all (Permanent, Inconnue, vide)
+  # HYDROGRAPHIE — Tronçons hydrographiques (POLYLINE)
+  # 2 règles — Intermittent en premier, puis catch-all
   # ==========================================================================
   - name: "Troncons hydrographiques"
     source_layer: "TRONCON_HYDROGRAPHIQUE"
@@ -335,7 +1032,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x26"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${NOM_C_EAU}"
 
       # 2. Catch-all (Permanent, Inconnue, vide)
@@ -343,13 +1040,12 @@ rulesets:
           PERSISTANC: "*"
         set:
           Type: "0x18"
-          EndLevel: "0"
+          EndLevel: "3"
           Label: "${NOM_C_EAU}"
 
   # ==========================================================================
   # HYDROGRAPHIE — Surfaces hydrographiques (POLYGON)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 4 regles — NATURE="Glacier, neve" en PREMIER (override PERSISTANC)
+  # 4 règles — Glacier/névé en premier (override PERSISTANC)
   # ==========================================================================
   - name: "Surfaces hydrographiques"
     source_layer: "SURFACE_HYDROGRAPHIQUE"
@@ -360,7 +1056,7 @@ rulesets:
           NATURE: "Glacier, névé"
         set:
           Type: "0x4d"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${NOM_P_EAU}"
 
       # 2. Intermittent (hors Glacier)
@@ -368,7 +1064,7 @@ rulesets:
           PERSISTANC: "Intermittent"
         set:
           Type: "0x4c"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${NOM_P_EAU}"
 
       # 3. Inconnue
@@ -376,21 +1072,38 @@ rulesets:
           PERSISTANC: "Inconnue"
         set:
           Type: "0x4c"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${NOM_P_EAU}"
 
-      # 4. Catch-all (Permanent, vide)
+      # 4. Lagune
+      - match:
+          PERSISTANC: "Permanent"
+          NATURE: "Lagune"
+        set:
+          Type: "0x3f"
+          EndLevel: "6"
+          Label: "${NOM_P_EAU}"
+
+      #5. Retenue-bassin portuaire, Ecoulement canalisé
+      - match:
+          PERSISTANC: "Permanent"
+          NATURE: "in:Retenue-bassin portuaire,Ecoulement canalisé"
+        set:
+          Type: "0x3f"
+          EndLevel: "6"
+          Label: "${NOM_P_EAU}"
+
+      # 6. Catch-all (Permanent, vide)
       - match:
           PERSISTANC: "*"
         set:
           Type: "0x3f"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${NOM_P_EAU}"
 
   # ==========================================================================
-  # HYDROGRAPHIE — Details hydrographiques (POI)
-  # Source FME : 04-COMMUNE-HYDROGRAPHIE.fmw
-  # 13 regles — 12 NATURE explicites + catch-all (Citerne, Lavoir, Perte, Point d'eau, Resurgence)
+  # HYDROGRAPHIE — Détails hydrographiques (POI)
+  # 13 règles — 12 NATURE explicites + catch-all
   # ==========================================================================
   - name: "Details hydrographiques"
     source_layer: "DETAIL_HYDROGRAPHIQUE"
@@ -501,10 +1214,37 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # BATI — Batiments (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager BATIMENT
-  # 12 regles NATURE + catch-all 0x1101c (Indifferenciee)
-  # Label : Pas de Label (FME supprime TOPONYME via AttributeKeeper)
+  # HYDROGRAPHIE — Limite terre-mer / trait de côte (POLYLINE)
+  # Couche optionnelle — présente uniquement pour les départements côtiers.
+  # 2 règles NIVEAU + catch-all
+  # ==========================================================================
+  - name: "Limite terre-mer"
+    source_layer: "LIMITE_TERRE_MER"
+    rules:
+      # 1. Ligne des plus hautes eaux (trait de côte principal)
+      - match:
+          NIVEAU: "Plus hautes eaux"
+        set:
+          Type: "0x15"
+          EndLevel: "4"
+
+      # 2. Ligne des plus basses eaux (laisse de basse mer — trait fin gris foncé)
+      - match:
+          NIVEAU: "Plus basses eaux"
+        set:
+          Type: "0x10e1b"
+          EndLevel: "3"
+
+      # 3. Catch-all (limites administratives maritimes, null NIVEAU)
+      - match:
+          NIVEAU: "*"
+        set:
+          Type: "0x15"
+          EndLevel: "2"
+
+  # ==========================================================================
+  # BATI — Bâtiments (POLYGON)
+  # 12 règles NATURE + catch-all 0x1101c (Indifférenciée). Pas de Label.
   # ==========================================================================
   - name: "Batiments"
     source_layer: "BATIMENT"
@@ -601,10 +1341,8 @@ rulesets:
           EndLevel: "0"
 
   # ==========================================================================
-  # BATI — Cimetieres (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager CIMETIERE
-  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : Pas de Label (FME : AttributeKeeper ne garde que NATURE)
+  # BATI — Cimetières (POLYGON)
+  # 3 règles NATURE, pas de catch-all. Pas de Label.
   # ==========================================================================
   - name: "Cimetieres"
     source_layer: "CIMETIERE"
@@ -631,10 +1369,8 @@ rulesets:
           EndLevel: "2"
 
   # ==========================================================================
-  # BATI — Constructions lineaires (POLYLINE)
-  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_LINEAIRE
-  # 11 regles NATURE + catch-all 0x10c04
-  # Label : ${TOPONYME} (FME renomme TOPONYME→NAME)
+  # BATI — Constructions linéaires (POLYLINE)
+  # 11 règles NATURE + catch-all 0x10c04
   # ==========================================================================
   - name: "Constructions lineaires"
     source_layer: "CONSTRUCTION_LINEAIRE"
@@ -645,7 +1381,7 @@ rulesets:
           NATURE: "Autre ligne descriptive"
         set:
           Type: "0x10c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 2. Barrage
@@ -653,7 +1389,7 @@ rulesets:
           NATURE: "Barrage"
         set:
           Type: "0x10f08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 3. Cloture
@@ -661,7 +1397,7 @@ rulesets:
           NATURE: "Clôture"
         set:
           Type: "0x13309"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 4. Mur
@@ -669,7 +1405,7 @@ rulesets:
           NATURE: "Mur"
         set:
           Type: "0x13308"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 5. Mur anti-bruit
@@ -677,7 +1413,7 @@ rulesets:
           NATURE: "Mur anti-bruit"
         set:
           Type: "0x10e13"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 6. Mur de soutenement
@@ -685,7 +1421,7 @@ rulesets:
           NATURE: "Mur de soutènement"
         set:
           Type: "0x10e18"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 7. Pont
@@ -693,7 +1429,7 @@ rulesets:
           NATURE: "Pont"
         set:
           Type: "0x10e14"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 8. Quai
@@ -701,7 +1437,7 @@ rulesets:
           NATURE: "Quai"
         set:
           Type: "0x10e16"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 9. Ruines
@@ -709,7 +1445,7 @@ rulesets:
           NATURE: "Ruines"
         set:
           Type: "0x10e15"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 10. Sport de montagne
@@ -717,7 +1453,7 @@ rulesets:
           NATURE: "Sport de montagne"
         set:
           Type: "0x10f0c"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 11. Tunnel
@@ -725,7 +1461,7 @@ rulesets:
           NATURE: "Tunnel"
         set:
           Type: "0x10e08"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
       # 12. Catch-all (NATURE non reconnue)
@@ -733,14 +1469,12 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10c04"
-          EndLevel: "2"
+          EndLevel: "0"
           Label: "${TOPONYME}"
 
   # ==========================================================================
   # BATI — Constructions ponctuelles (POI)
-  # Source FME : 06-BATI.fmw / AttributeManager CONSTRUCTION_PONCTUELLE
-  # 12 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : ${TOPONYME} (FME : fallback NAT_DETAIL/NATURE non reproductible)
+  # 12 règles NATURE, pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Constructions ponctuelles"
     source_layer: "CONSTRUCTION_PONCTUELLE"
@@ -843,10 +1577,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # BATI — Pylones (POI)
-  # Source FME : 06-BATI.fmw / AttributeCreator PYLONE (statique)
-  # 1 regle wildcard — Type 0x11503 (ECART avec doc : doc dit 0x11500)
-  # Label : Pas de Label (pas de champ NAME dans FME)
+  # BATI — Pylônes (POI)
+  # 1 règle wildcard — Type 0x11503. Pas de Label.
   # ==========================================================================
   - name: "Pylones"
     source_layer: "PYLONE"
@@ -856,13 +1588,11 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x11503"
-          EndLevel: "0"
+          EndLevel: "2"
 
   # ==========================================================================
   # BATI — Terrains de sport (POLYGON)
-  # Source FME : 06-BATI.fmw / AttributeManager TERRAIN_DE_SPORT
-  # 5 regles NATURE + catch-all 0x1090d, EndLevel variable (2 ou 4)
-  # Label : ${NAT_DETAIL} (FME renomme NAT_DETAIL→NAME)
+  # 5 règles NATURE + catch-all 0x1090d
   # ==========================================================================
   - name: "Terrains de sport"
     source_layer: "TERRAIN_DE_SPORT"
@@ -918,9 +1648,7 @@ rulesets:
 
   # ==========================================================================
   # OROGRAPHIE — Lignes orographiques (POLYLINE)
-  # Source FME : 06-BATI.fmw / AttributeManager LIGNE_OROGRAPHIQUE
-  # 3 regles NATURE, pas de catch-all (NATURE non reconnue = feature ignoree)
-  # Label : ${NATURE} (FME renomme NATURE→NAME)
+  # 3 règles NATURE, pas de catch-all (NATURE non reconnue = feature ignorée)
   # ==========================================================================
   - name: "Lignes orographiques"
     source_layer: "LIGNE_OROGRAPHIQUE"
@@ -951,52 +1679,50 @@ rulesets:
           Label: "${NATURE}"
 
   # ==========================================================================
-  # VEGETATION — Zones de vegetation (POLYGON)
-  # Source FME : 05-VEGETATION.fmw / AttributeManager ZONE_DE_VEGETATION
-  # 10 regles NATURE + catch-all 0x11005, EndLevel variable (4 ou 6)
-  # Labels : raccourcis FME (pas le NATURE brut), certains sans Label
+  # VÉGÉTATION — Zones de végétation (POLYGON)
+  # 10 règles NATURE + catch-all. Labels raccourcis, certains sans Label.
   # ==========================================================================
   - name: "Zones de vegetation"
     source_layer: "ZONE_DE_VEGETATION"
     label_case: "title"
     rules:
-      # 1. Bois (EndLevel=2, Label statique)
+      # 1. Bois (EndLevel=3, Label statique)
       - match:
           NATURE: "Bois"
         set:
           Type: "0x11005"
-          EndLevel: "2"
+          EndLevel: "3"
           Label: "Bois"
 
-      # 2. Foret fermee de coniferes (EndLevel=1 [FRANCE-SE], Label raccourci)
+      # 2. Foret fermee de coniferes (EndLevel=6, Label raccourci)
       - match:
           NATURE: "Forêt fermée de conifères"
         set:
           Type: "0x10f1f"
-          EndLevel: "2"
+          EndLevel: "3"
           Label: "Forêt de conifères"
 
-      # 3. Foret fermee de feuillus (EndLevel=1 [FRANCE-SE], Label raccourci)
+      # 3. Foret fermee de feuillus (EndLevel=6, Label raccourci)
       - match:
           NATURE: "Forêt fermée de feuillus"
         set:
           Type: "0x10f1e"
-          EndLevel: "2"
+          EndLevel: "3"
           Label: "Forêt de feuillus"
 
-      # 4. Foret fermee mixte (EndLevel=1 [FRANCE-SE], pas de Label)
+      # 4. Foret fermee mixte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt fermée mixte"
         set:
           Type: "0x4e"
-          EndLevel: "2"
+          EndLevel: "3"
 
-      # 5. Foret ouverte (EndLevel=1 [FRANCE-SE], pas de Label)
+      # 5. Foret ouverte (EndLevel=6, pas de Label)
       - match:
           NATURE: "Forêt ouverte"
         set:
           Type: "0x11000"
-          EndLevel: "2"
+          EndLevel: "3"
 
       # 6. Haie (EndLevel=4, pas de Label)
       - match:
@@ -1044,10 +1770,44 @@ rulesets:
           EndLevel: "2"
 
   # ==========================================================================
-  # SERVICES — Zones d'activite ou d'interet (POLYGON)
-  # Source FME : 03-SERVICES-ACTIVITES.fmw
-  # 1 regle wildcard — Type=0x0c, EndLevel=4, Label=${TOPONYME}
-  # ECART FME : EndLevel=4 (MPBITLEVEL=20), PAS 2 comme doc pipeline
+  # OCCUPATION DU SOL — Zone d'estran / intertidal (POLYGON)
+  # Couche optionnelle — présente uniquement pour les départements côtiers.
+  # 3 règles NATURE + catch-all
+  # ==========================================================================
+  - name: "Estran"
+    source_layer: "ZONE_D_ESTRAN"
+    rules:
+      # 1. Sable (0x11014 — SAND, GRAVEL, tan #907C60 — existant dans TYP)
+      - match:
+          NATURE: "Sable"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
+
+      # 2. Graviers ou galets (0x10f18 — custom #B0A890 — créé dans TYP)
+      - match:
+          NATURE: "Graviers ou galets"
+        set:
+          Type: "0x10f18"
+          EndLevel: "4"
+
+      # 3. Rocher (0x1101a — rocky texture #606060 — existant dans TYP)
+      - match:
+          NATURE: "Rocher"
+        set:
+          Type: "0x1101a"
+          EndLevel: "4"
+
+      # 4. Catch-all
+      - match:
+          NATURE: "*"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
+
+  # ==========================================================================
+  # SERVICES — Zones d'activité ou d'intérêt (POLYGON)
+  # 1 règle wildcard
   # ==========================================================================
   - name: "Zones d'activite"
     source_layer: "ZONE_D_ACTIVITE_OU_D_INTERET"
@@ -1062,10 +1822,8 @@ rulesets:
           Label: "${TOPONYME}"
 
   # ==========================================================================
-  # SERVICES — Lignes electriques (POLYLINE)
-  # Source FME : 03-SERVICES-ACTIVITES.fmw
-  # 1 regle wildcard — Type=0x29, EndLevel=2, Label="Ligne ${VOLTAGE}"
-  # Label : concatenation "Ligne " + VOLTAGE
+  # SERVICES — Lignes électriques (POLYLINE)
+  # 1 règle wildcard — Label "Ligne ${VOLTAGE}"
   # ==========================================================================
   - name: "Lignes electriques"
     source_layer: "LIGNE_ELECTRIQUE"
@@ -1076,13 +1834,182 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x29"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "Ligne ${VOLTAGE}"
 
   # ==========================================================================
-  # ZONES REGLEMENTEES — Forets publiques (POLYGON)
-  # Source FME : 02-ZONES-REGLEMENTEES.fmw
-  # 1 regle wildcard — Type=0x10a03, EndLevel=3, Label=${TOPONYME}
+  # ZONES RÉGLEMENTÉES — Parcs et réserves (POLYGON)
+  # Champs : NATURE (48), NAT_DETAIL (64), TOPONYME (127)
+  # 16 NATURE explicites + catch-all. EndLevel 6 (majeur) → 2 (local).
+  # 0x14 = NATIONAL_PARK_MAJOR, 0x15 = NATIONAL_PARK, 0x16 = NATIONAL_PARK_OTHER
+  # ==========================================================================
+  # - name: "Parcs et reserves"
+  #   source_layer: "PARC_OU_RESERVE"
+  #   label_case: "title"
+  #   rules:
+  #     # 1. Parc national
+  #     - match:
+  #         NATURE: "Parc national"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "6"
+  #         Label: "${TOPONYME}"
+
+  #     # 2. Parc naturel marin
+  #     - match:
+  #         NATURE: "Parc naturel marin"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "6"
+  #         Label: "${TOPONYME}"
+
+  #     # 3. Bien inscrit sur la liste du patrimoine mondial de l'UNESCO
+  #     # Tronqué C,48 : 59 bytes → "Bien inscrit sur la liste du patrimoine mondial"
+  #     - match:
+  #         NATURE: "Bien inscrit sur la liste du patrimoine mondial"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
+
+  #     # 4. Géoparc mondial UNESCO
+  #     - match:
+  #         NATURE: "Géoparc mondial UNESCO"
+  #       set:
+  #         Type: "0x14"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
+
+  #     # 5. Parc naturel régional
+  #     - match:
+  #         NATURE: "Parc naturel régional"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
+
+  #     # 6. Réserve de biosphère
+  #     - match:
+  #         NATURE: "Réserve de biosphère"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
+
+  #     # 7. Réserve naturelle
+  #     - match:
+  #         NATURE: "Réserve naturelle"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
+
+  #     # 8. Réserve nationale de chasse et de faune sauvage
+  #     - match:
+  #         NATURE: "Réserve nationale de chasse et de faune sauvage"
+  #       set:
+  #         Type: "0x15"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
+
+  #     # 9. Site Natura 2000
+  #     - match:
+  #         NATURE: "Site Natura 2000"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
+
+  #     # 10. Réserve biologique
+  #     - match:
+  #         NATURE: "Réserve biologique"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
+
+  #     # 11. Site Ramsar
+  #     - match:
+  #         NATURE: "Site Ramsar"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
+
+  #     # 12. Terrain du Conservatoire du Littoral
+  #     - match:
+  #         NATURE: "Terrain du Conservatoire du Littoral"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "3"
+  #         Label: "${TOPONYME}"
+
+  #     # 13. Site acquis ou assimilé des conservatoires d'espaces naturels
+  #     # Tronqué C,48 : 62 bytes → "Site acquis ou assimilé des conservatoires d'es"
+  #     - match:
+  #         NATURE: "Site acquis ou assimilé des conservatoires d'es"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
+
+  #     # 14. Arrêté de protection
+  #     - match:
+  #         NATURE: "Arrêté de protection"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
+
+  #     # 15. Zone de silence
+  #     - match:
+  #         NATURE: "Zone de silence"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
+
+  #     # 16. Zone naturelle
+  #     - match:
+  #         NATURE: "Zone naturelle"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
+
+  #     # 17. Catch-all (NATURE non reconnue)
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x16"
+  #         EndLevel: "2"
+  #         Label: "${TOPONYME}"
+
+  # # PARC_OU_RESERVE_CONTOUR — polyligne de bordure (type 0x10a10)
+  # - name: PARC_OU_RESERVE_CONTOUR
+  #   source_layer: "PARC_OU_RESERVE_CONTOUR"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a10"
+  #         EndLevel: "5"
+
+  # # PARC_OU_RESERVE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0b)
+  # - name: PARC_OU_RESERVE_LABEL
+  #   source_layer: "PARC_OU_RESERVE_LABEL"
+  #   label_case: "title"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a0b"
+  #         EndLevel: "5"
+  #         Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # ZONES RÉGLEMENTÉES — Forêts publiques (POLYGON)
+  # 1 règle wildcard
   # ==========================================================================
   - name: "Forets publiques"
     source_layer: "FORET_PUBLIQUE"
@@ -1093,26 +2020,58 @@ rulesets:
           NATURE: "*"
         set:
           Type: "0x10a04"
-          EndLevel: "3"
+          EndLevel: "4"
           Label: "${TOPONYME}"
+
+  # # FORET_PUBLIQUE_CONTOUR — polyligne de bordure (type 0x10a05)
+  # - name: FORET_PUBLIQUE_CONTOUR
+  #   source_layer: "FORET_PUBLIQUE_CONTOUR"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a05"
+  #         EndLevel: "4"
+
+  # # FORET_PUBLIQUE_LABEL — polygone transparent pour affichage label TOPONYME (0x10a0c)
+  # - name: FORET_PUBLIQUE_LABEL
+  #   source_layer: "FORET_PUBLIQUE_LABEL"
+  #   label_case: "title"
+  #   rules:
+  #     - match:
+  #         NATURE: "*"
+  #       set:
+  #         Type: "0x10a0c"
+  #         EndLevel: "4"
+  #         Label: "${TOPONYME}"
+
+  # ==========================================================================
+  # OCSGE — Sols nus CS1.2.1 (POLYGON)
+  # Source : IGN OCS-GE — couche OCCUPATION_SOL, filtrée code_cs='CS1.2.1' dans sources.yaml
+  # Sols couverts de sable, galets, rochers, surfaces pierreuses, matériaux minéraux.
+  # Enrichit les zones montagneuses et abords des glaciers.
+  # 0x11014 = SAND/bare ground (tan #907C60) — type Garmin standard, déjà dans TYP.
+  # ==========================================================================
+  - name: "OCSGE"
+    source_layer: "OCCUPATION_SOL"
+    rules:
+      - match:
+          code_cs: "CS1.2.1"
+        set:
+          Type: "0x11014"
+          EndLevel: "4"
 
   # ==========================================================================
   # TOPONYMIE — POI/POLYGON/POLYLINE (variable par CLASSE)
-  # Source FME : 08-TOPONYMIE.fmw
-  # Input BDTOPO : Couche unique TOPONYMIE, champs CLASSE, NATURE, GRAPHIE
-  # 10 categories CLASSE actives, 11 desactivees (doublons avec autres couches)
-  # Conditions AND : CLASSE + NATURE (chaque regle doit avoir les deux)
-  # Label source : GRAPHIE (FME renomme GRAPHIE→NAME)
-  # EndLevel : 2 pour toutes les regles, MPBITLEVEL=22
-  # Total : 162 regles actives (+ 11 categories commentees en fin de bloc)
+  # Champs : CLASSE, NATURE, GRAPHIE. Chaque règle combine CLASSE + NATURE.
+  # 10 catégories actives, 11 désactivées (doublons). 162 règles actives.
   # ==========================================================================
   - name: "Toponymie"
     source_layer: "TOPONYMIE"
     label_case: "title"
     rules:
       # ------------------------------------------------------------------
-      # Categorie 1 : Aerodrome (3 NATURE + catch-all 0x02d0b)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Aerodrome"
+      # Catégorie 1 : Aérodrome (3 NATURE + catch-all)
       # ------------------------------------------------------------------
 
       # 1. Aerodrome
@@ -1152,9 +2111,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 2 : Cimetiere (simplifie en 1 regle wildcard)
-      # FME: 3 NATURE + catch-all, toutes mappent a 0x06403
-      # Optimisation : 1 seule regle CLASSE="Cimetiere" + NATURE="*"
+      # Catégorie 2 : Cimetière (1 règle wildcard — toutes NATURE → 0x06403)
       # ------------------------------------------------------------------
 
       # 5. Cimetiere (toute NATURE → 0x06403)
@@ -1167,8 +2124,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 3 : Construction lineaire (8 NATURE + catch-all 0x06402)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction lineaire"
+      # Catégorie 3 : Construction linéaire (8 NATURE + catch-all 0x06402)
       # ------------------------------------------------------------------
 
       # 6. Barrage
@@ -1253,8 +2209,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 4 : Construction ponctuelle (5 NATURE + catch-all 0x10101)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction ponctuelle"
+      # Catégorie 4 : Construction ponctuelle (5 NATURE + catch-all 0x10101)
       # ------------------------------------------------------------------
 
       # 15. Autre construction elevee
@@ -1312,8 +2267,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 5 : Construction surfacique (4 NATURE + catch-all 0x06401)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Construction surfacique"
+      # Catégorie 5 : Construction surfacique (4 NATURE + catch-all 0x06401)
       # ------------------------------------------------------------------
 
       # 21. Barrage
@@ -1362,8 +2316,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 6 : Detail orographique (23 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_ (feature ignoree si NATURE non reconnue)
+      # Catégorie 6 : Détail orographique (23 NATURE, sans catch-all)
       # ------------------------------------------------------------------
 
       # 26. Cap
@@ -1372,7 +2325,7 @@ rulesets:
           NATURE: "Cap"
         set:
           Type: "0x06606"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 27. Cirque
@@ -1381,7 +2334,7 @@ rulesets:
           NATURE: "Cirque"
         set:
           Type: "0x06608"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 28. Col
@@ -1390,7 +2343,7 @@ rulesets:
           NATURE: "Col"
         set:
           Type: "0x06601"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 29. Crete
@@ -1399,7 +2352,7 @@ rulesets:
           NATURE: "Crête"
         set:
           Type: "0x06613"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 30. Depression
@@ -1417,7 +2370,7 @@ rulesets:
           NATURE: "Dune"
         set:
           Type: "0x15502"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 32. Escarpement
@@ -1426,7 +2379,7 @@ rulesets:
           NATURE: "Escarpement"
         set:
           Type: "0x06607"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 33. Gorge
@@ -1435,7 +2388,7 @@ rulesets:
           NATURE: "Gorge"
         set:
           Type: "0x06611"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 34. Gouffre
@@ -1444,7 +2397,7 @@ rulesets:
           NATURE: "Gouffre"
         set:
           Type: "0x11515"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 35. Grotte
@@ -1453,7 +2406,7 @@ rulesets:
           NATURE: "Grotte"
         set:
           Type: "0x11515"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 36. Ile
@@ -1480,7 +2433,7 @@ rulesets:
           NATURE: "Montagne"
         set:
           Type: "0x06601"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 39. Pic
@@ -1489,7 +2442,7 @@ rulesets:
           NATURE: "Pic"
         set:
           Type: "0x06616"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 40. Plage
@@ -1525,7 +2478,7 @@ rulesets:
           NATURE: "Rochers"
         set:
           Type: "0x06614"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 44. Sommet
@@ -1534,7 +2487,7 @@ rulesets:
           NATURE: "Sommet"
         set:
           Type: "0x06616"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 45. Terril
@@ -1570,12 +2523,11 @@ rulesets:
           NATURE: "Volcan"
         set:
           Type: "0x06608"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 7 : Foret publique (1 regle statique, pas de condition NATURE)
-      # FME: NATURE MP_TYPE 0x0660a RENAME_SET_VALUE (SET fixe)
+      # Catégorie 7 : Forêt publique (1 règle wildcard NATURE → 0x0660a)
       # ------------------------------------------------------------------
 
       # 49. Foret publique (wildcard NATURE)
@@ -1588,8 +2540,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 8 : Lieu-dit non habite (4 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_
+      # Catégorie 8 : Lieu-dit non habité (4 NATURE, sans catch-all)
       # ------------------------------------------------------------------
 
       # 50. Arbre
@@ -1629,9 +2580,8 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 9 : Zone d'activite ou d'interet (102 NATURE, PAS de catch-all)
-      # FME: DEFAULT = _FME_NO_OP_
-      # Site skiable : FME_NULL_VALUE → exclu (pas de regle)
+      # Catégorie 9 : Zone d'activité ou d'intérêt (102 NATURE, sans catch-all)
+      # Site skiable : exclu (pas de règle — NATURE sans équivalent Garmin)
       # ------------------------------------------------------------------
 
       # 54. Abri de montagne
@@ -1640,7 +2590,7 @@ rulesets:
           NATURE: "Abri de montagne"
         set:
           Type: "0x02b04"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 55. Administration centrale de l'Etat
@@ -1757,7 +2707,7 @@ rulesets:
           NATURE: "Capitainerie"
         set:
           Type: "0x02f09"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 68. Carriere
@@ -1784,7 +2734,7 @@ rulesets:
           NATURE: "Caserne de pompiers"
         set:
           Type: "0x03008"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 71. Centrale electrique
@@ -1856,7 +2806,7 @@ rulesets:
           NATURE: "Culte chrétien"
         set:
           Type: "0x02c0e"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 79. Culte divers
@@ -2036,7 +2986,7 @@ rulesets:
           NATURE: "Gendarmerie"
         set:
           Type: "0x03001"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 99. Golf
@@ -2090,7 +3040,7 @@ rulesets:
           NATURE: "Hôpital"
         set:
           Type: "0x03002"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 105. Hotel de departement
@@ -2135,7 +3085,7 @@ rulesets:
           NATURE: "Mairie"
         set:
           Type: "0x03003"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 110. Maison de retraite
@@ -2162,7 +3112,7 @@ rulesets:
           NATURE: "Maison forestière"
         set:
           Type: "0x14e01"
-          EndLevel: "0"
+          EndLevel: "2"
           Label: "${GRAPHIE}"
 
       # 113. Marais salant
@@ -2207,7 +3157,7 @@ rulesets:
           NATURE: "Monument"
         set:
           Type: "0x14e0f"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 118. Musee
@@ -2306,7 +3256,7 @@ rulesets:
           NATURE: "Police"
         set:
           Type: "0x03001"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 129. Poste
@@ -2342,7 +3292,7 @@ rulesets:
           NATURE: "Refuge"
         set:
           Type: "0x02b04"
-          EndLevel: "0"
+          EndLevel: "4"
           Label: "${GRAPHIE}"
 
       # 133. Salle de danse ou de jeux
@@ -2396,7 +3346,7 @@ rulesets:
           NATURE: "Site de vol libre"
         set:
           Type: "0x02d0b"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 139. Site d'escalade
@@ -2405,7 +3355,7 @@ rulesets:
           NATURE: "Site d'escalade"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 140. Sous-prefecture
@@ -2423,7 +3373,7 @@ rulesets:
           NATURE: "Sports en eaux vives"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 142. Sports mecaniques
@@ -2441,7 +3391,7 @@ rulesets:
           NATURE: "Sports nautiques"
         set:
           Type: "0x11601"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 144. Stade
@@ -2553,8 +3503,7 @@ rulesets:
           Label: "${GRAPHIE}"
 
       # ------------------------------------------------------------------
-      # Categorie 10 : Zone d'habitation (6 NATURE + catch-all 0x00d00)
-      # FME: 08-TOPONYMIE.fmw / TestFilter CLASSE="Zone d'habitation"
+      # Catégorie 10 : Zone d'habitation (6 NATURE + catch-all 0x00d00)
       # ------------------------------------------------------------------
 
       # 156. Chateau
@@ -2581,7 +3530,7 @@ rulesets:
           NATURE: "Lieu-dit habité"
         set:
           Type: "0x00d00"
-          EndLevel: "0"
+          EndLevel: "1"
           Label: "${GRAPHIE}"
 
       # 159. Moulin
@@ -2853,35 +3802,37 @@ rulesets:
       #   set: { Type: "0x02f08", EndLevel: "0", Label: "${GRAPHIE}" }
 
   # ==========================================================================
-  # COURBES DE NIVEAU — Contour lines (POLYLINE)
+  # COURBES DE NIVEAU — Contour lines (POLYLINE) — affichage progressif 2 couches
   # Source : Produit IGN "Courbes de niveau" v1.0
-  # 2 règles : maîtresses (25m) et intermédiaires (10m)
-  # Le filtrage au pas de 10m est fait côté GDAL (attribute_filter)
-  # Features non-matchées = ignorées silencieusement
+  # Types TYP : 0x22 MAJOR (brun foncé) · 0x21 INTERMEDIATE (brun clair)
+  # EndLevel : 4 = visible dès zoom intermédiaire · 1 = zoom détaillé uniquement
   # ==========================================================================
-  - name: "Courbes de niveau"
-    source_layer: "COURBE"
+
+  # --- 100m : maîtresses majeures (EndLevel=4 : visible dès zoom intermédiaire) ---
+  - name: "Courbes 100m"
+    source_layer: "COURBE_100"
     label_case: "title"
     rules:
-      # 1. Courbes maîtresses (altitude multiple de 25m)
       - match:
-          IMPORTANCE: "1"
+          IMPORTANCE: "*"
         set:
           Type: "0x22"
-          EndLevel: "2"
+          EndLevel: "1"
           Label: "${ALTITUDE}"
 
-      # 2. Courbes intermédiaires (multiples de 10m, non-maîtresses)
+  # --- 20m : intermédiaires (EndLevel=1 : visible uniquement au zoom détaillé) ---
+  - name: "Courbes 20m"
+    source_layer: "COURBE_20"
+    rules:
       - match:
-          IMPORTANCE: "0"
+          IMPORTANCE: "*"
         set:
           Type: "0x21"
           EndLevel: "0"
 
   # ==========================================================================
   # OSM — Amenity POIs (bar, restaurant, pharmacie, parking, etc.)
-  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
-  # 24 types amenity mappés depuis le job FME de référence
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points" (24 types)
   # Opérateur in: pour regrouper les types partageant le même code Garmin
   # ==========================================================================
   - name: "OSM Amenity POIs"
@@ -3052,10 +4003,8 @@ rulesets:
 
   # ==========================================================================
   # OSM — Shop POIs (boulangeries, supermarchés, coiffeurs, etc.)
-  # Source : OpenStreetMap via Geofabrik PBF — couche "points"
-  # 53 types shop mappés depuis le job FME de référence
-  # Les types partageant le code 0x1500e (cheese, e-cigarette, etc.) sont
-  # capturés par la règle default wildcard en fin de ruleset
+  # Source : OpenStreetMap via Geofabrik PBF — couche "points" (53 types)
+  # Les types partageant 0x1500e sont capturés par le wildcard en fin de ruleset
   # ==========================================================================
   - name: "OSM Shop POIs"
     source_layer: "osm_shop"
@@ -3348,10 +4297,9 @@ rulesets:
           EndLevel: "0"
           Label: "${name}"
 
-      # Default (0x1500e) — capte les 6 types FME explicitement mappés à ce code
-      # (cheese, e-cigarette, funeral_directors, hearing_aids, tattoo, yes)
-      # ainsi que tout type shop non listé ci-dessus.
-      # Pour ajouter un type shop dédié, insérer une règle AVANT ce wildcard.
+      # Default (0x1500e) — catch-all pour tout type shop non listé ci-dessus
+      # (cheese, e-cigarette, funeral_directors, hearing_aids, tattoo, yes…).
+      # Pour ajouter un type dédié, insérer la règle AVANT ce wildcard.
       - match:
           shop: "*"
         set:
@@ -3449,21 +4397,21 @@ rulesets:
   # Type et EndLevel portés directement par les attributs du shapefile
   # ==========================================================================
   - name: "Sentiers GR"
-    source_layer: "FRANCE_GR"
+    source_layer: "MON_GR_ITINERAIRE_ME"
     rules:
       - match:
           NAME: "*"
         set:
-          Type: "0x10f04"
-          EndLevel: "4"
+          Type: "0x10f01"
+          EndLevel: "3"
           Label: "${NAME}"
 
       # Fallback — GR sans nom (NAME vide ou absent)
       - match:
           NAME: ""
         set:
-          Type: "0x10f04"
-          EndLevel: "4"
+          Type: "0x10f01"
+          EndLevel: "3"
 
   # ==========================================================================
   # CADASTRE — Piscines privées (TSURF_id, SYM=65)
@@ -3478,3 +4426,17 @@ rulesets:
         set:
           Type: "0x1101e"
           EndLevel: "0"
+
+  # ==========================================================================
+  # SEA — Polygones de mer (bounds, EPSG:4326)
+  # Source : ./pipeline/resources/bounds/FRANCE/SEA.shp
+  # Catch-all : toutes les features reçoivent le type mer (0x32).
+  # ==========================================================================
+  - name: "Mer (SEA bounds)"
+    source_layer: "SEA"
+    rules:
+      - match:
+          NAME: "*"
+        set:
+          Type: "0x32"
+          EndLevel: "6"

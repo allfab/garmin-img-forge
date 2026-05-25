@@ -49,7 +49,7 @@ signalés *Non disponible* par le site.
 | D031 | Haute-Garonne | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d031/v2026.03/IGN-BDTOPO-D031-v2026.03.img){ .md-button } |  |
 | D032 | Gers | [:material-download: Télécharger](files/departement/d032/latest/IGN-BDTOPO-D032.img){ .md-button } |  |
 | D033 | Gironde | [:material-download: Télécharger](files/departement/d033/latest/IGN-BDTOPO-D033.img){ .md-button } |  |
-| D034 | Hérault | [:material-download: Télécharger](files/departement/d034/latest/IGN-BDTOPO-D034.img){ .md-button } |  |
+| D034 | Hérault | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d034/v2026.03/IGN-BDTOPO-D034-v2026.03.img){ .md-button } |  |
 | D035 | Ille-et-Vilaine | [:material-download: Télécharger](files/departement/d035/latest/IGN-BDTOPO-D035.img){ .md-button } |  |
 | D036 | Indre | [:material-download: Télécharger](files/departement/d036/latest/IGN-BDTOPO-D036.img){ .md-button } |  |
 | D037 | Indre-et-Loire | [:material-download: Télécharger](files/departement/d037/latest/IGN-BDTOPO-D037.img){ .md-button } |  |
@@ -57,13 +57,13 @@ signalés *Non disponible* par le site.
 | D039 | Jura | [:material-download: Télécharger](files/departement/d039/latest/IGN-BDTOPO-D039.img){ .md-button } |  |
 | D040 | Landes | [:material-download: Télécharger](files/departement/d040/latest/IGN-BDTOPO-D040.img){ .md-button } |  |
 | D041 | Loir-et-Cher | [:material-download: Télécharger](files/departement/d041/latest/IGN-BDTOPO-D041.img){ .md-button } |  |
-| D042 | Loire | [:material-download: Télécharger](files/departement/d042/latest/IGN-BDTOPO-D042.img){ .md-button } |  |
-| D043 | Haute-Loire | [:material-download: Télécharger](files/departement/d043/latest/IGN-BDTOPO-D043.img){ .md-button } |  |
+| D042 | Loire | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d042/v2026.03/IGN-BDTOPO-D042-v2026.03.img){ .md-button } |  |
+| D043 | Haute-Loire | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d043/v2026.03/IGN-BDTOPO-D043-v2026.03.img){ .md-button } |  |
 | D044 | Loire-Atlantique | [:material-download: Télécharger](files/departement/d044/latest/IGN-BDTOPO-D044.img){ .md-button } |  |
 | D045 | Loiret | [:material-download: Télécharger](files/departement/d045/latest/IGN-BDTOPO-D045.img){ .md-button } |  |
 | D046 | Lot | [:material-download: Télécharger](files/departement/d046/latest/IGN-BDTOPO-D046.img){ .md-button } |  |
 | D047 | Lot-et-Garonne | [:material-download: Télécharger](files/departement/d047/latest/IGN-BDTOPO-D047.img){ .md-button } |  |
-| D048 | Lozère | [:material-download: Télécharger](files/departement/d048/latest/IGN-BDTOPO-D048.img){ .md-button } |  |
+| D048 | Lozère | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d048/v2026.03/IGN-BDTOPO-D048-v2026.03.img){ .md-button } |  |
 | D049 | Maine-et-Loire | [:material-download: Télécharger](files/departement/d049/latest/IGN-BDTOPO-D049.img){ .md-button } |  |
 | D050 | Manche | [:material-download: Télécharger](files/departement/d050/latest/IGN-BDTOPO-D050.img){ .md-button } |  |
 | D051 | Marne | [:material-download: Télécharger](files/departement/d051/latest/IGN-BDTOPO-D051.img){ .md-button } |  |
@@ -78,10 +78,10 @@ signalés *Non disponible* par le site.
 | D060 | Oise | [:material-download: Télécharger](files/departement/d060/latest/IGN-BDTOPO-D060.img){ .md-button } |  |
 | D061 | Orne | [:material-download: Télécharger](files/departement/d061/latest/IGN-BDTOPO-D061.img){ .md-button } |  |
 | D062 | Pas-de-Calais | [:material-download: Télécharger](files/departement/d062/latest/IGN-BDTOPO-D062.img){ .md-button } |  |
-| D063 | Puy-de-Dôme | [:material-download: Télécharger](files/departement/d063/latest/IGN-BDTOPO-D063.img){ .md-button } |  |
+| D063 | Puy-de-Dôme | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d063/v2026.03/IGN-BDTOPO-D063-v2026.03.img){ .md-button } |  |
 | D064 | Pyrénées-Atlantiques | [:material-download: Télécharger](files/departement/d064/latest/IGN-BDTOPO-D064.img){ .md-button } |  |
 | D065 | Hautes-Pyrénées | [:material-download: Télécharger](files/departement/d065/latest/IGN-BDTOPO-D065.img){ .md-button } |  |
-| D066 | Pyrénées-Orientales | [:material-download: Télécharger](files/departement/d066/latest/IGN-BDTOPO-D066.img){ .md-button } |  |
+| D066 | Pyrénées-Orientales | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d066/v2026.03/IGN-BDTOPO-D066-v2026.03.img){ .md-button } |  |
 | D067 | Bas-Rhin | [:material-download: Télécharger](files/departement/d067/latest/IGN-BDTOPO-D067.img){ .md-button } |  |
 | D068 | Haut-Rhin | [:material-download: Télécharger](files/departement/d068/latest/IGN-BDTOPO-D068.img){ .md-button } |  |
 | D069 | Rhône | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d069/v2026.03/IGN-BDTOPO-D069-v2026.03.img){ .md-button } |  |
@@ -89,7 +89,7 @@ signalés *Non disponible* par le site.
 | D071 | Saône-et-Loire | [:material-download: Télécharger](files/departement/d071/latest/IGN-BDTOPO-D071.img){ .md-button } |  |
 | D072 | Sarthe | [:material-download: Télécharger](files/departement/d072/latest/IGN-BDTOPO-D072.img){ .md-button } |  |
 | D073 | Savoie | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d073/v2026.03/IGN-BDTOPO-D073-v2026.03.img){ .md-button } |  |
-| D074 | Haute-Savoie | [:material-download: Télécharger](files/departement/d074/latest/IGN-BDTOPO-D074.img){ .md-button } |  |
+| D074 | Haute-Savoie | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d074/v2026.03/IGN-BDTOPO-D074-v2026.03.img){ .md-button } |  |
 | D075 | Paris | [:material-download: Télécharger](files/departement/d075/latest/IGN-BDTOPO-D075.img){ .md-button } |  |
 | D076 | Seine-Maritime | [:material-download: Télécharger](files/departement/d076/latest/IGN-BDTOPO-D076.img){ .md-button } |  |
 | D077 | Seine-et-Marne | [:material-download: Télécharger](files/departement/d077/latest/IGN-BDTOPO-D077.img){ .md-button } |  |
@@ -98,7 +98,7 @@ signalés *Non disponible* par le site.
 | D080 | Somme | [:material-download: Télécharger](files/departement/d080/latest/IGN-BDTOPO-D080.img){ .md-button } |  |
 | D081 | Tarn | [:material-download: Télécharger](files/departement/d081/latest/IGN-BDTOPO-D081.img){ .md-button } |  |
 | D082 | Tarn-et-Garonne | [:material-download: Télécharger](files/departement/d082/latest/IGN-BDTOPO-D082.img){ .md-button } |  |
-| D083 | Var | [:material-download: Télécharger](files/departement/d083/latest/IGN-BDTOPO-D083.img){ .md-button } |  |
+| D083 | Var | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d083/v2026.03/IGN-BDTOPO-D083-v2026.03.img){ .md-button } |  |
 | D084 | Vaucluse | [:material-download: Télécharger](https://download-maps.garmin.allfabox.fr/departement/d084/v2026.03/IGN-BDTOPO-D084-v2026.03.img){ .md-button } |  |
 | D085 | Vendée | [:material-download: Télécharger](files/departement/d085/latest/IGN-BDTOPO-D085.img){ .md-button } |  |
 | D086 | Vienne | [:material-download: Télécharger](files/departement/d086/latest/IGN-BDTOPO-D086.img){ .md-button } |  |

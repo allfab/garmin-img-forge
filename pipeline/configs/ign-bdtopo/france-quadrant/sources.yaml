@@ -1,46 +1,37 @@
-# ============================================================================
-# Variante quadrants Garmin (FRANCE-SE, FRANCE-SO, FRANCE-NE, FRANCE-NO) —
-# dérivée à l'origine de pipeline/configs/ign-bdtopo/departement/sources.yaml.
-#
-# Divergences intentionnelles vs departement/ :
-#   - `rules:` pointe vers france-quadrant/garmin-rules.yaml (EndLevel rabaissés
-#     pour alléger l'IMG des quadrants : BATIMENT/CONSTRUCTION_LINEAIRE "0"→"1"
-#     puis remap 5L→7L standard).
-#
-# Note : le header 7L (24/23/22/21/20/18/16) et le catalogue 7L `generalize-profiles.yaml`
-# sont communs à tous les scopes (departement, outre-mer, france-quadrant) depuis
-# la refonte avril 2026 (contiguïté des paliers Data0..DataN obligatoire, garantie
-# par mpforge fill_level_gaps).
-#
-# NE PAS répercuter mécaniquement les évolutions header ou catalogue depuis
-# departement/ sans réviser le remap EndLevel correspondant.
-# ============================================================================
 version: 1
 
-# Tech-spec #2 — catalogue de profils de simplification multi-niveaux BDTOPO.
-# Résolu relativement à ce fichier. Voir ../generalize-profiles.yaml pour la
-# sémantique des `levels` / `when`. Conflit rejeté au chargement si une couche
-# apparaît à la fois en inline `generalize:` et dans le catalogue externe.
+# Catalogue de profils de simplification pour BDTOPO — variante locale pour départements et outre-mer.
 generalize_profiles_path: "./generalize-profiles.yaml"
+# generalize_profiles_path: "./generalize-profiles-light.yaml"
 
 routing:
   source_layer: TRONCON_DE_ROUTE
   rules: ../routing-rules.yaml
 
-# Dédup par attribut déclaré explicitement (`dedup_by_field: ID`) sur chaque source
-# BDTOPO : le champ `ID` des SHP contient le CLEABS IGN (le format DBF/SHP tronque
-# les noms de colonnes à 10 chars, donc "cleabs" → "ID" à la livraison).
-# Pourquoi : certaines livraisons IGN (p.ex. D038 v2025.09) contiennent chaque
-# feature 2× (mêmes CLEABS, mêmes géométries). Les sources OSM, contours et
-# randonnée ne déclarent pas ce champ et restent préservées intactes (sans warning).
+# BDTOPO livre parfois chaque feature en double — dedup_by_field: ID dédoublonne
+# sur le CLEABS IGN (DBF/SHP tronque "cleabs" → "ID" à la livraison).
 
 grid:
-  cell_size: 0.225      # ~22.5 km par tuile (cible ~600 tuiles FRANCE-SE)
+  cell_size: 0.225      # 0.225 = ~25 km par tuile (plus de détails, mais plus de tuiles et de temps de traitement)
   overlap: 0.005        # Léger chevauchement pour éviter les artefacts aux bords
 
 inputs:
   # ==========================================================================
-  # TRANSPORT (4 couches — FME 01-TRANSPORT)
+  # BOUNDS - SEA — Polygones de mer (pour rendre les zones marines bleues)
+  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # ==========================================================================
+  # - path: "./pipeline/resources/bounds/FRANCE/SEA.shp"
+  #   layer_alias: "SEA"
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/sea/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 60000
+  - path: "./pipeline/data/static/sea/{${ZONES}}/SEA_BOUNDS.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "SEA"
+
+  # ==========================================================================
+  # TRANSPORT (4 couches)
   # ==========================================================================
 
   # Routes (couche principale — la plus volumineuse)
@@ -68,8 +59,21 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches — FME 01-TRANSPORT chef-lieu)
+  # ADMINISTRATIF / LIEUX NOMMÉS (2 couches)
   # ==========================================================================
+
+  # Limites de département — anneau extérieur → [POLYLINE] limite administrative
+  # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
+  # - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
+  - path: "./pipeline/data/static/departement/{${ZONES}}/DEPARTEMENT.shp"
+    source_srs: "EPSG:4326"
+    target_srs: "EPSG:4326"
+    layer_alias: "DEPARTEMENT_LIMITE"
+    dedup_by_field: cleabs
+    # geometry_transform: boundary
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 
   # Communes (POI chef-lieu + polygone limites)
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
@@ -83,8 +87,18 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Zones d'habitation — centroïdes POI (ACQU_PLANI="Calcul d'enveloppe urbaine")
+  # Génère des [POI] avec IMPORTANCE -> type Garmin hiérarchique (0x700..0x1100)
+  - path: "${DATA_ROOT}/{${ZONES}}/LIEUX_NOMMES/ZONE_D_HABITATION.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "ZONE_D_HABITATION_POI"
+    geometry_transform: centroid
+    attribute_filter: "ACQU_PLANI = 'Calcul d''enveloppe urbaine'"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # HYDROGRAPHIE (3 couches — FME 04-HYDROGRAPHIE)
+  # HYDROGRAPHIE (3 couches)
   # ==========================================================================
 
   # NOTE : Utiliser TRONCON_HYDROGRAPHIQUE (pas COURS_D_EAU)
@@ -105,8 +119,14 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Limite terre-mer / trait de côte (optionnel — départements côtiers uniquement)
+  - path: "${DATA_ROOT}/{${ZONES}}/HYDROGRAPHIE/LIMITE_TERRE_MER.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # BATI (7 couches — FME 06-BATI + 07-OROGRAPHIE)
+  # BATI (7 couches)
   # ==========================================================================
 
   # Bâtiments (polygon — couche volumineuse)
@@ -145,14 +165,14 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
-  # Lignes orographiques (FME 07-OROGRAPHIE)
+  # Lignes orographiques
   - path: "${DATA_ROOT}/{${ZONES}}/BATI/LIGNE_OROGRAPHIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
   # ==========================================================================
-  # VEGETATION (1 couche — FME 05-VEGETATION)
+  # VEGETATION (1 couche)
   # ==========================================================================
 
   # Zones de végétation (forêts, haies — couche volumineuse)
@@ -161,8 +181,14 @@ inputs:
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # Estran / zones intertidales (optionnel — départements côtiers uniquement)
+  - path: "${DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL/ZONE_D_ESTRAN.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    dedup_by_field: ID
+
   # ==========================================================================
-  # SERVICES & ACTIVITÉS (2 couches — FME 03-SERVICES)
+  # SERVICES & ACTIVITÉS (2 couches)
   # ==========================================================================
 
   # Zones d'activité ou d'intérêt (zones industrielles, touristiques)
@@ -178,17 +204,62 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # ZONES RÉGLEMENTÉES (1 couche — FME 02-ZONES_REG)
+  # ZONES RÉGLEMENTÉES (2 couches)
   # ==========================================================================
 
-  # Forêts publiques (ONF)
+  # # Parcs et réserves naturelles (nationales, régionales, Natura 2000, etc.)
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500  # mètres, dans le SRS source (EPSG:2154)
+
+  # Contours PARC_OU_RESERVE — anneau extérieur → [POLYLINE] contour épais simulé
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "PARC_OU_RESERVE_CONTOUR"
+  #   geometry_transform: boundary
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500
+
+  # PARC_OU_RESERVE label transparent — même SHP, type polygone sans fond, affiche TOPONYME
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/PARC_OU_RESERVE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "PARC_OU_RESERVE_LABEL"
+  #   dedup_by_field: ID
+  #   spatial_filter:
+  #     source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+  #     buffer: 500
+
+  # Forêts publiques
   - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
     dedup_by_field: ID
 
+  # # Contours FORET_PUBLIQUE — anneau extérieur → [POLYLINE] contour épais simulé
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "FORET_PUBLIQUE_CONTOUR"
+  #   geometry_transform: boundary
+  #   dedup_by_field: ID
+
+  # # FORET_PUBLIQUE label transparent — même SHP, type polygone sans fond, affiche TOPONYME
+  # - path: "${DATA_ROOT}/{${ZONES}}/ZONES_REGLEMENTEES/FORET_PUBLIQUE.shp"
+  #   source_srs: "EPSG:2154"
+  #   target_srs: "EPSG:4326"
+  #   layer_alias: "FORET_PUBLIQUE_LABEL"
+  #   dedup_by_field: ID
+
   # ==========================================================================
-  # TOPONYMIE (1 couche — FME 08-TOPONYMIE)
+  # TOPONYMIE (1 couche)
   # ==========================================================================
 
   # Toponymie (POI — 162 branches sur 10 catégories CLASSE)
@@ -198,27 +269,34 @@ inputs:
     dedup_by_field: ID
 
   # ==========================================================================
-  # COURBES DE NIVEAU (produit IGN séparé)
-  # Polylignes 3D, équidistance 5m filtrée à 10m via attribute_filter
+  # COURBES DE NIVEAU (produit IGN séparé) — affichage progressif 2 couches
+  # Polylignes 3D, équidistance 5m. 2 niveaux de filtrage altitude via attribute_filter.
+  # COURBE_100 : visible au zoom large (EndLevel=4) — COURBE_20 : zoom détaillé (EndLevel=1)
   # ==========================================================================
+
+  # COURBE_100 — maîtresses majeures : multiples de 100m (100m, 200m, 300m…)
   - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
     source_srs: "EPSG:2154"
     target_srs: "EPSG:4326"
-    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 10) * 10"
-    layer_alias: "COURBE"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 100) * 100"
+    layer_alias: "COURBE_100"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
-      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
+      buffer: 500
+
+  # COURBE_20 — intermédiaires : multiples de 20m hors 100m (20m, 40m, 60m, 80m, 120m…)
+  - path: "${CONTOURS_DATA_ROOT}/{${ZONES}}/**/COURBE_*.shp"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    attribute_filter: "CAST(ALTITUDE AS INTEGER) = (CAST(ALTITUDE AS INTEGER) / 20) * 20 AND CAST(ALTITUDE AS INTEGER) != (CAST(ALTITUDE AS INTEGER) / 100) * 100"
+    layer_alias: "COURBE_20"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500
 
   # ==========================================================================
   # OSM — POIs et features naturelles (Geofabrik PBF → GPKG)
-  #
-  # Les PBF sont pré-convertis en GPKG par le script download-data.sh
-  # (option --with-osm). Les GPKG ont un accès aléatoire, éliminant les
-  # erreurs "Too many features accumulated" du driver OSM sur les gros PBF.
-  #
-  # Le chemin glob intègre automatiquement tous les GPKG du sous-dossier gpkg/.
-  # Le spatial_filter restreint les features à l'emprise communale + buffer.
+  # PBF pré-convertis en GPKG par download-data.sh (--with-osm).
   # ==========================================================================
 
   # --- Amenity POIs (restaurants, pharmacies, parking, etc.) ---
@@ -257,23 +335,30 @@ inputs:
       buffer: 500
 
   # ==========================================================================
-  # CADASTRE — Piscines privées (SYM=65, TSURF_id)
-  # Source : pipeline/data/ign-bdtopo/cadastre/{ZONES}/gpkg/TSURF_id.gpkg
-  # Construit par : ./scripts/download-data.sh --with-pools (ou --with-cadastre)
-  # Déjà en EPSG:4326 — pas de reprojection. Filtre attributaire : SYM='65'
+  # CADASTRE — Piscines privées (SYM=65)
+  # Données produites par download-data.sh (--with-pools). Déjà en EPSG:4326.
   # ==========================================================================
   - path: "${CADASTRE_DATA_ROOT}/{${ZONES}}/gpkg/TSURF_id.gpkg"
     layer_alias: "TSURF_id"
     attribute_filter: "SYM = '65'"
 
   # ==========================================================================
-  # RANDONNÉE — Sentiers de Grande Randonnée (GR)
-  # Source : pipeline/data/static/hiking-trails/FRANCE-GR.shp (tracké dans git)
-  # Déjà en EPSG:4326 — pas de reprojection nécessaire
-  # Attributs : NAME (label), MP_TYPE (type Garmin), EndLevel
+  # OCSGE — Sols nus CS1.2.1 (GPKG EPSG:2154)
+  # Source : IGN OCS-GE — couche OCCUPATION_SOL filtrée code_cs='CS1.2.1'
+  # Couvre sable, galets, rochers, surfaces pierreuses et matériaux minéraux.
   # ==========================================================================
-  - path: "${HIKING_TRAILS_DATA_ROOT}/FRANCE-GR.shp"
-    layer_alias: "FRANCE_GR"
+  - path: "${OCSGE_DATA_ROOT}/{${ZONES}}/OCCUPATION_DU_SOL.gpkg"
+    source_srs: "EPSG:2154"
+    target_srs: "EPSG:4326"
+    layer_alias: "OCCUPATION_SOL"
+    attribute_filter: "code_cs = 'CS1.2.1'"
+
+  # ==========================================================================
+  # RANDONNÉE — Sentiers de Grande Randonnée (GR)
+  # Shapefile EPSG:4326 — clippé à l'emprise communale + buffer.
+  # ==========================================================================
+  - path: "${HIKING_TRAILS_DATA_ROOT}/MON_GR_ITINERAIRE_ME.shp"
+    layer_alias: "MON_GR_ITINERAIRE_ME"
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
       buffer: 500
@@ -289,7 +374,7 @@ output:
 # avec padding optionnel {col:03}
 header:
   name: "BDTOPO-{col:03}-{row:03}"
-  copyright: "2026 Allfab Studio - IGN BDTOPO 2025 - Les contributeurs de la communauté OpenStreetMap"
+  copyright: "2026 Allfab Studio - IGN BDTOPO 2026 - Les contributeurs de la communauté OpenStreetMap"
   levels: "7"
   level0: "24"
   level1: "23"
@@ -309,7 +394,8 @@ header:
   elevation: "M"
 
 # Règles de transformation BDTOPO → types Garmin
-rules: pipeline/configs/ign-bdtopo/france-quadrant/garmin-rules.yaml
+# rules: ./pipeline/configs/ign-bdtopo/departement/garmin-rules-remap.yaml
+rules: ./pipeline/configs/ign-bdtopo/departement/garmin-rules.yaml
 
 
 error_handling: "continue"
