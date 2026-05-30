@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-30T10:57:00Z",
+  "generated_at": "2026-05-30T15:36:27Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -21,9 +21,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-30T10:57:00Z",
-          "size_bytes": 172146688,
-          "sha256": "b692b5931179899614524e2cbab12f532738d03903b0ffa4ad998bd5af97bdb6",
+          "published_at": "2026-05-30T15:16:35Z",
+          "size_bytes": 172130304,
+          "sha256": "717cef40afe8123c88ee9bbd521095795eb70e6efbe49f84c15762bb1097d755",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
@@ -62,7 +62,7 @@
             "dem_dists": "",
             "dem_interpolation": "",
             "mpforge_version": "v0.9.1-15-gef524dd-dirty",
-            "imgforge_version": "v0.9.1"
+            "imgforge_version": "v0.9.1-19-gfb8f49d-dirty"
           }
         }
       ],
@@ -1024,9 +1024,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-25T08:04:30Z",
-          "size_bytes": 118515712,
-          "sha256": "f80e3050b3afa203379859c61e048ed426cc7b1a172b0fbdf99def91213e9f09",
+          "published_at": "2026-05-30T15:36:27Z",
+          "size_bytes": 118499328,
+          "sha256": "c9c20a05429c04083f858c3ac3cf81f7b6f9aff995d8c93d45f82768e67b1d85",
           "file": "IGN-BDTOPO-D073-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d073/v2026.03/IGN-BDTOPO-D073-v2026.03.img",
           "build_params": {
@@ -1064,8 +1064,8 @@
             "dem_expand": "0.005",
             "dem_dists": "",
             "dem_interpolation": "",
-            "mpforge_version": "v0.9.1-13-g69d4daa-dirty",
-            "imgforge_version": "v0.9.1"
+            "mpforge_version": "v0.9.1-15-gef524dd-dirty",
+            "imgforge_version": "v0.9.1-19-gfb8f49d-dirty"
           }
         }
       ],
