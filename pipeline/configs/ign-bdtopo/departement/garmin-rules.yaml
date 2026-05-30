@@ -980,7 +980,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0x900"
-          EndLevel: "5"
+          EndLevel: "4"
           Label: "${TOPONYME}"
       # 3. IMPORTANCE 3 — rayonnement départemental
       - match:
@@ -989,7 +989,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0xb00"
-          EndLevel: "4"
+          EndLevel: "3"
           Label: "${TOPONYME}"
       # 4. IMPORTANCE 4 — rayonnement intercommunal
       - match:
@@ -998,7 +998,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0xd00"
-          EndLevel: "3"
+          EndLevel: "2"
           Label: "${TOPONYME}"
       # 5. IMPORTANCE 5 — rayonnement communal
       - match:
@@ -1007,7 +1007,7 @@ rulesets:
           TOPONYME: "!^i:Commune d"
         set:
           Type: "0xf00"
-          EndLevel: "2"
+          EndLevel: "1"
           Label: "${TOPONYME}"
       # 6. IMPORTANCE 6 — rayonnement local
       - match:
