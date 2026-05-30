@@ -62,9 +62,7 @@ inputs:
   # ADMINISTRATIF / LIEUX NOMMÉS (2 couches)
   # ==========================================================================
 
-  # Limites de département — anneau extérieur → [POLYLINE] limite administrative
-  # Contient D038 + 7 départements limitrophes (pas de filtre INSEE_DEP — tous visibles)
-  # - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/DEPARTEMENT.shp"
+  # Limites de département → [POLYLINE] limite administrative
   - path: "./pipeline/data/static/departement/{${ZONES}}/DEPARTEMENT.shp"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"

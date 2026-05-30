@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T13:21:38Z",
+  "generated_at": "2026-05-30T10:57:00Z",
   "coverages": {
     "departement/d038": {
       "type": "departement",
@@ -21,9 +21,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-24T23:20:05Z",
+          "published_at": "2026-05-30T10:57:00Z",
           "size_bytes": 172146688,
-          "sha256": "b8c359fa1c376f2d8b7679dd7bd9726a9d6e3f9ceb377cc7a5a7192990264d7a",
+          "sha256": "b692b5931179899614524e2cbab12f532738d03903b0ffa4ad998bd5af97bdb6",
           "file": "IGN-BDTOPO-D038-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d038/v2026.03/IGN-BDTOPO-D038-v2026.03.img",
           "build_params": {
@@ -61,7 +61,7 @@
             "dem_expand": "0.005",
             "dem_dists": "",
             "dem_interpolation": "",
-            "mpforge_version": "v0.9.1",
+            "mpforge_version": "v0.9.1-15-gef524dd-dirty",
             "imgforge_version": "v0.9.1"
           }
         }
@@ -914,9 +914,9 @@
       "versions": [
         {
           "version": "v2026.03",
-          "published_at": "2026-05-25T08:50:47Z",
-          "size_bytes": 105058304,
-          "sha256": "82ae1d1a90f45b81f13a1a29e629493580ac2ccb8ab349f47afb55db776ce7cd",
+          "published_at": "2026-05-25T20:20:30Z",
+          "size_bytes": 104853504,
+          "sha256": "ed83a8fb4a57cc755ab447b7dce05d1226426dae0936d279ce3429373411c338",
           "file": "IGN-BDTOPO-D084-v2026.03.img",
           "path": "https://download-maps.garmin.allfabox.fr/departement/d084/v2026.03/IGN-BDTOPO-D084-v2026.03.img",
           "build_params": {
@@ -934,7 +934,7 @@
             "code_page": "1252",
             "levels": "24,23,22,21,20,18,16",
             "typ_file": "./pipeline/resources/typfiles/IGNBDTOPO.typ",
-            "packaging": "legacy",
+            "packaging": "gmp",
             "product_id": "1",
             "publish_target": "s3",
             "reduce_point_density": "",
@@ -954,7 +954,7 @@
             "dem_expand": "0.005",
             "dem_dists": "",
             "dem_interpolation": "",
-            "mpforge_version": "v0.9.1-13-g69d4daa-dirty",
+            "mpforge_version": "v0.9.1-15-gef524dd-dirty",
             "imgforge_version": "v0.9.1"
           }
         }

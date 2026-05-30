@@ -857,10 +857,10 @@ rulesets:
     source_layer: "DEPARTEMENT_LIMITE"
     rules:
       - match:
-          nom_offici: "*"
+          NAME: "*"
         set:
-          Type: "0x1e"
-          EndLevel: "6"
+          Type: "0x1c"
+          EndLevel: "5"
 
   - name: "Communes"
     source_layer: "COMMUNE"

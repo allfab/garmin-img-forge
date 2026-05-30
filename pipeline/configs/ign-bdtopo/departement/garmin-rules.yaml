@@ -859,7 +859,7 @@ rulesets:
       - match:
           nom_offici: "*"
         set:
-          Type: "0x1e"
+          Type: "0x1c"
           EndLevel: "6"
 
   - name: "Communes"
