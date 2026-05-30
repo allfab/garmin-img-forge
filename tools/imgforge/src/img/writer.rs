@@ -675,6 +675,52 @@ fn build_multilevel_hierarchy(
         }
     }
 
+    // ── Propagation bottom-up des bounds parent⊇enfant (parité invariant mkgmap) ──
+    // mkgmap garantit par construction que la box d'une subdivision englobe celles
+    // de ses enfants : son MapArea parent est splitté EN ses enfants (mêmes features
+    // partitionnées ⇒ full_bounds enfant ⊆ full_bounds parent). imgforge traite chaque
+    // niveau INDÉPENDAMMENT depuis le .mp (parent en DataN simplifié plus court, enfant
+    // en Data0 plein plus long) ⇒ la box enfant peut déborder celle du parent. Un moteur
+    // Garmin qui descend l'arbre (BaseCamp) clippe à la chaîne d'ancêtres → les features
+    // dans la partie débordante deviennent inatteignables → région entière manquante à
+    // zoom intermédiaire (bug courbes coupées Meyssies). On agrandit donc chaque parent
+    // pour couvrir ses enfants, du niveau le plus fin (résolution haute) au plus grossier,
+    // afin que la propagation soit transitive (un parent absorbe déjà les petits-enfants).
+    // N'agrandit QUE les box (centre inchangé) ⇒ ne peut pas régresser le fix panning.
+    {
+        // Numéros contigus 1..N poussés dans l'ordre ⇒ index = number - 1.
+        let mut order: Vec<usize> = (0..all_subdivisions.len()).collect();
+        order.sort_by(|&a, &b| all_subdivisions[b].resolution.cmp(&all_subdivisions[a].resolution));
+        for idx in order {
+            let (parent_num, c_clat, c_clon, c_w, c_h, c_res) = {
+                let c = &all_subdivisions[idx];
+                (c.parent, c.center_lat, c.center_lon, c.width as i32, c.height as i32, c.resolution)
+            };
+            if parent_num == 0 || parent_num == all_subdivisions[idx].number {
+                continue;
+            }
+            let c_shift = (24i32 - c_res as i32).max(0);
+            let c_min_lat = c_clat - (c_h << c_shift);
+            let c_max_lat = c_clat + (c_h << c_shift);
+            let c_min_lon = c_clon - (c_w << c_shift);
+            let c_max_lon = c_clon + (c_w << c_shift);
+
+            let p_idx = (parent_num as usize).wrapping_sub(1);
+            let Some(p) = all_subdivisions.get_mut(p_idx) else { continue };
+            debug_assert_eq!(p.number, parent_num);
+            let p_shift = (24i32 - p.resolution as i32).max(0);
+            let mask = if p_shift > 0 { (1i32 << p_shift) - 1 } else { 0 };
+            let need_w_left  = ((p.center_lon - c_min_lon).max(0) + mask) >> p_shift;
+            let need_w_right = ((c_max_lon - p.center_lon).max(0) + mask) >> p_shift;
+            let need_h_down  = ((p.center_lat - c_min_lat).max(0) + mask) >> p_shift;
+            let need_h_up    = ((c_max_lat - p.center_lat).max(0) + mask) >> p_shift;
+            let new_w = (p.width as i32).max(need_w_left).max(need_w_right).min(0x7FFF);
+            let new_h = (p.height as i32).max(need_h_down).max(need_h_up).min(0xFFFF);
+            p.width = new_w as u16;
+            p.height = new_h as u16;
+        }
+    }
+
     // Build TRE zoom levels from actual subdivisions
     // mkgmap: highest level is inherited (topdiv only), rest are regular
     // Collect active levels (those with subdivisions), then renumber contiguously.
