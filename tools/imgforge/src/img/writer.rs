@@ -687,6 +687,16 @@ fn build_multilevel_hierarchy(
     // pour couvrir ses enfants, du niveau le plus fin (résolution haute) au plus grossier,
     // afin que la propagation soit transitive (un parent absorbe déjà les petits-enfants).
     // N'agrandit QUE les box (centre inchangé) ⇒ ne peut pas régresser le fix panning.
+    //
+    // EXCEPTION topdiv (subdivision racine, parent == 0) : on ne l'agrandit JAMAIS. Les
+    // bounds du header TRE sont figés indépendamment (tre.set_bounds, depuis feature_bounds)
+    // et BaseCamp bâtit son index spatial depuis ce header puis descend dans le topdiv : si
+    // le topdiv déborde le header (ce que provoque l'agrandissement transitif, ~2× l'aire
+    // déclarée sur Meyssies), l'index devient incohérent → crash au chargement BaseCamp.
+    // Le débordement des subdivisions INTERMÉDIAIRES hors-header est en revanche toléré par
+    // BaseCamp (le build sain D069 en contient déjà 208) ⇒ seul le topdiv est load-critique.
+    // Le topdiv ne porte aucune feature (flags=0x00) : ne pas l'agrandir ne retire rien de
+    // dessinable, et le fix "courbes coupées" reste préservé sur L0..L4 (parents intermédiaires).
     {
         // Numéros contigus 1..N poussés dans l'ordre ⇒ index = number - 1.
         let mut order: Vec<usize> = (0..all_subdivisions.len()).collect();
@@ -708,6 +718,15 @@ fn build_multilevel_hierarchy(
             let p_idx = (parent_num as usize).wrapping_sub(1);
             let Some(p) = all_subdivisions.get_mut(p_idx) else { continue };
             debug_assert_eq!(p.number, parent_num);
+            // Ne jamais agrandir le topdiv : il doit rester ≈ bounds du header TRE, sinon
+            // l'index spatial de BaseCamp devient incohérent et la carte crashe au chargement.
+            // (Discriminant unique du topdiv : p.parent == 0 ; les autres subdivisions ont un
+            // parent ≥ 1. À NE PAS confondre avec le `continue` en tête de boucle qui teste le
+            // *child* parent_num == 0 — celui-ci ne protège le topdiv que comme enfant, pas
+            // comme parent de ses subdivisions de niveau overview.)
+            if p.parent == 0 {
+                continue;
+            }
             let p_shift = (24i32 - p.resolution as i32).max(0);
             let mask = if p_shift > 0 { (1i32 << p_shift) - 1 } else { 0 };
             let need_w_left  = ((p.center_lon - c_min_lon).max(0) + mask) >> p_shift;
@@ -2517,6 +2536,211 @@ Data0=(48.90,7.90),(48.91,7.90),(48.91,7.91),(48.90,7.91)
                 fc, total_subdivs, ml_pos, ml_size, sd_pos, sd_size
             );
         }
+    }
+
+    #[test]
+    fn test_topdiv_contained_in_header_bounds() {
+        // Régression BaseCamp (tech-spec basecamp-regression-bounds-parent-child) :
+        // la propagation bottom-up des bounds parent⊇enfant ne doit JAMAIS agrandir le
+        // topdiv (subdivision racine n°1). Si le topdiv déborde les bounds du header TRE,
+        // l'index spatial de BaseCamp devient incohérent → crash au chargement.
+        // Ce test reconstruit l'arbre des subdivisions depuis le TRE binaire et vérifie :
+        //   AC1 : box(topdiv) ⊆ bounds(header TRE)            ← garde anti-régression BaseCamp
+        //   AC2 : pour tout parent NON-topdiv, box(enfant) ⊆ box(parent)  ← fix "courbes" préservé
+        //   AC4 : flags(topdiv) == 0x00                       ← le topdiv ne porte aucune feature
+        //
+        // Carte 7 niveaux avec des lignes EndLevel=0 (présentes au seul niveau de détail)
+        // étalées vers les bords de la tuile : la géométrie pleine (Data0) déborde les
+        // parents simplifiés ⇒ déclenche l'agrandissement parent⊇enfant.
+        let content = r#"
+[IMG ID]
+ID=63240005
+Name=Topdiv Header Containment
+Levels=24,23,22,21,20,18,16
+[END-IMG ID]
+[POLYLINE]
+Type=0x05
+EndLevel=0
+Data0=(48.05,7.05),(48.45,7.45),(48.85,7.85),(48.95,7.95)
+[END]
+[POLYLINE]
+Type=0x05
+EndLevel=0
+Data0=(48.95,7.05),(48.55,7.45),(48.15,7.85),(48.05,7.95)
+[END]
+[POLYLINE]
+Type=0x06
+EndLevel=2
+Data0=(48.40,7.40),(48.60,7.60)
+[END]
+[POLYGON]
+Type=0x03
+Data0=(48.40,7.40),(48.50,7.40),(48.50,7.50),(48.40,7.50)
+[END]
+"#;
+        let mp = parser::parse_mp(content).unwrap();
+        let result = build_subfiles(&mp).unwrap();
+        let tre = &result.tre;
+        assert!(tre.len() >= 49, "TRE trop court");
+
+        // Bounds du header TRE (i24 LE signés) : north@21, east@24, south@27, west@30.
+        let i24 = |b: &[u8], o: usize| -> i32 {
+            let v = (b[o] as i32) | ((b[o + 1] as i32) << 8) | ((b[o + 2] as i32) << 16);
+            if v & 0x0080_0000 != 0 { v | !0x00FF_FFFF } else { v }
+        };
+        let h_north = i24(tre, 21);
+        let h_east = i24(tre, 24);
+        let h_south = i24(tre, 27);
+        let h_west = i24(tre, 30);
+
+        let ml_pos = u32::from_le_bytes([tre[33], tre[34], tre[35], tre[36]]) as usize;
+        let ml_size = u32::from_le_bytes([tre[37], tre[38], tre[39], tre[40]]) as usize;
+        let sd_pos = u32::from_le_bytes([tre[41], tre[42], tre[43], tre[44]]) as usize;
+        let sd_size = u32::from_le_bytes([tre[45], tre[46], tre[47], tre[48]]) as usize;
+        assert!(ml_size > 0 && ml_size % 4 == 0, "map_levels invalide");
+        assert!(sd_pos + sd_size <= tre.len(), "subdivisions hors TRE");
+        let num_levels = ml_size / 4;
+
+        // Résolution + nombre de subdivisions par niveau (ordre TRE = top→bottom).
+        let mut lvl_res: Vec<u8> = Vec::new();
+        let mut lvl_count: Vec<u16> = Vec::new();
+        for i in 0..num_levels {
+            let base = ml_pos + i * 4;
+            lvl_res.push(tre[base + 1]); // octet résolution complet (1..24)
+            lvl_count.push(u16::from_le_bytes([tre[base + 2], tre[base + 3]]));
+        }
+
+        // Box d'une subdivision en unités res24 : center ± (demi-dim << (24-res)).
+        struct Box {
+            number: u16,
+            flags: u8,
+            min_lat: i64,
+            max_lat: i64,
+            min_lon: i64,
+            max_lon: i64,
+            first_child: u16, // 0 si feuille
+        }
+        let mut boxes: Vec<Box> = Vec::new();
+        let sd_end = sd_pos + sd_size.saturating_sub(4); // -4 = lastRgnPos
+        let mut pos = sd_pos;
+        let mut number: u16 = 1;
+        for (lvl_idx, &count) in lvl_count.iter().enumerate() {
+            let is_leaf = lvl_idx == num_levels - 1;
+            let rec = if is_leaf { 14 } else { 16 };
+            let shift = (24i32 - lvl_res[lvl_idx] as i32).max(0);
+            for _ in 0..count {
+                assert!(pos + rec <= sd_end, "enregistrement subdivision tronqué");
+                let flags = tre[pos + 3];
+                let clon = i24(tre, pos + 4) as i64;
+                let clat = i24(tre, pos + 7) as i64;
+                let w = (u16::from_le_bytes([tre[pos + 10], tre[pos + 11]]) & 0x7FFF) as i64;
+                let h = u16::from_le_bytes([tre[pos + 12], tre[pos + 13]]) as i64;
+                let first_child = if is_leaf {
+                    0
+                } else {
+                    u16::from_le_bytes([tre[pos + 14], tre[pos + 15]])
+                };
+                boxes.push(Box {
+                    number,
+                    flags,
+                    min_lat: clat - (h << shift),
+                    max_lat: clat + (h << shift),
+                    min_lon: clon - (w << shift),
+                    max_lon: clon + (w << shift),
+                    first_child,
+                });
+                number += 1;
+                pos += rec;
+            }
+        }
+        assert!(!boxes.is_empty(), "aucune subdivision parsée");
+
+        // AC1 : topdiv (number == 1, premier enregistrement) ≈ bounds header, à l'arrondi
+        // de quantification près. Le topdiv est calé sur la résolution overview (res basse),
+        // donc center ET demi-extents s'arrondissent au pas de résolution → la box déborde le
+        // header de quelques unités par bord (build sain D069 : ~50–200 u, bénin). La
+        // RÉGRESSION skip-topdiv visait un débordement ~2× l'aire (≈8000 u/bord sur Meyssies).
+        // Tolérance principielle = 2 cellules de résolution topdiv (center + demi-extent
+        // arrondis), ce qui sépare nettement l'arrondi bénin (≤ ~1.5 cellule) du bug (~31 cellules).
+        let topdiv = &boxes[0];
+        assert_eq!(topdiv.number, 1, "le premier enregistrement doit être le topdiv");
+        let topdiv_shift = (24i32 - lvl_res[0] as i32).max(0);
+        let tol = 2i64 << topdiv_shift;
+        let ovf_s = (h_south as i64) - topdiv.min_lat;
+        let ovf_n = topdiv.max_lat - (h_north as i64);
+        let ovf_w = (h_west as i64) - topdiv.min_lon;
+        let ovf_e = topdiv.max_lon - (h_east as i64);
+        let max_ovf = ovf_s.max(ovf_n).max(ovf_w).max(ovf_e).max(0);
+        assert!(
+            max_ovf <= tol,
+            "AC1 VIOLÉE : box topdiv [lat {}..{}, lon {}..{}] déborde le header TRE \
+             [lat {}..{}, lon {}..{}] de {} u (> tolérance arrondi {} u) — régression BaseCamp",
+            topdiv.min_lat, topdiv.max_lat, topdiv.min_lon, topdiv.max_lon,
+            h_south, h_north, h_west, h_east, max_ovf, tol
+        );
+
+        // AC4 : le topdiv ne porte aucune feature.
+        assert_eq!(topdiv.flags, 0x00, "AC4 VIOLÉE : le topdiv porte des features (flags != 0)");
+
+        // Reconstruire les liens parent : pour un parent à first_child=fc, ses enfants
+        // forment la plage [fc, fc_du_parent_suivant) au niveau immédiatement inférieur.
+        // On parcourt par niveau : les enfants de chaque parent sont contigus.
+        let by_number: std::collections::HashMap<u16, usize> =
+            boxes.iter().enumerate().map(|(i, b)| (b.number, i)).collect();
+        // Bornes de numérotation de chaque niveau.
+        let mut level_start: Vec<u16> = Vec::new();
+        let mut acc: u16 = 1;
+        for &c in &lvl_count {
+            level_start.push(acc);
+            acc += c;
+        }
+        // AC2 : pour chaque parent NON-topdiv, ses enfants ⊆ parent.
+        let mut checked_pairs = 0usize;
+        for lvl_idx in 0..num_levels.saturating_sub(1) {
+            let start = level_start[lvl_idx];
+            let count = lvl_count[lvl_idx];
+            let next_level_end = level_start[lvl_idx + 1] + lvl_count[lvl_idx + 1];
+            for k in 0..count {
+                let pnum = start + k;
+                let pidx = by_number[&pnum];
+                let fc = boxes[pidx].first_child;
+                if fc == 0 {
+                    continue;
+                }
+                // Fin de la plage d'enfants = first_child du parent suivant, sinon fin de niveau+1.
+                let child_end = if k + 1 < count {
+                    boxes[by_number[&(pnum + 1)]].first_child
+                } else {
+                    next_level_end
+                };
+                // Le topdiv (number==1) est exclu : ses enfants overview (L5) PEUVENT déborder
+                // (résidu documenté) — c'est précisément le prix du correctif skip-topdiv.
+                if pnum == 1 {
+                    continue;
+                }
+                let (pmnlat, pmxlat, pmnlon, pmxlon) = {
+                    let p = &boxes[pidx];
+                    (p.min_lat, p.max_lat, p.min_lon, p.max_lon)
+                };
+                for cnum in fc..child_end {
+                    let c = &boxes[by_number[&cnum]];
+                    assert!(
+                        c.min_lat >= pmnlat
+                            && c.max_lat <= pmxlat
+                            && c.min_lon >= pmnlon
+                            && c.max_lon <= pmxlon,
+                        "AC2 VIOLÉE : subdiv enfant #{} non contenue dans le parent #{} \
+                         (fix 'courbes coupées' régressé au niveau intermédiaire)",
+                        cnum, pnum
+                    );
+                    checked_pairs += 1;
+                }
+            }
+        }
+        assert!(
+            checked_pairs > 0,
+            "aucun couple parent⊇enfant non-topdiv vérifié — la fixture ne couvre pas le fix"
+        );
     }
 
     fn find_subfile_in_img(img: &[u8], ext: &str) -> bool {
