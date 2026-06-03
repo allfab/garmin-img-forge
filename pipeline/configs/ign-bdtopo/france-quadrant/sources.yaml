@@ -63,11 +63,12 @@ inputs:
   # ==========================================================================
 
   # Limites de département → [POLYLINE] limite administrative
-  - path: "./pipeline/data/static/departement/{${ZONES}}/DEPARTEMENT.shp"
+  # Fichier national statique (127 features, EPSG:4326, champs : NAME, MP_TYPE, COVERAGE)
+  - path: "pipeline/data/static/departement/DEPARTEMENT.shp"
     source_srs: "EPSG:4326"
     target_srs: "EPSG:4326"
     layer_alias: "DEPARTEMENT_LIMITE"
-    dedup_by_field: cleabs
+    dedup_by_field: fid
     # geometry_transform: boundary
     spatial_filter:
       source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
