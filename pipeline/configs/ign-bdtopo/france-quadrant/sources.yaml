@@ -70,7 +70,7 @@ inputs:
     layer_alias: "DEPARTEMENT_LIMITE"
     dedup_by_field: fid
     # geometry_transform: boundary
-    attribute_filter: "COVERAGE = '${ZONES}'"
+    attribute_filter: "COVERAGE IN (${ZONES_SQL_IN})"
 
   # Communes (POI chef-lieu + polygone limites)
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"

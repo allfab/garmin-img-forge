@@ -1073,6 +1073,9 @@ prepare_config() {
     export OUTPUT_DIR="$_OUTPUT_DIR"
     export BASE_ID
     export ZONES
+    # ZONES_SQL_IN : liste formatée pour OGR SQL IN (ex: 'D038' ou 'D001','D003','D038')
+    ZONES_SQL_IN=$(echo "$ZONES" | tr ',' '\n' | sed "s/.*/'&'/" | paste -sd,)
+    export ZONES_SQL_IN
 
     # Compter les .shp disponibles
     IFS=',' read -ra zone_array <<< "$ZONES"
