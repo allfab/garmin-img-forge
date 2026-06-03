@@ -70,7 +70,10 @@ inputs:
     layer_alias: "DEPARTEMENT_LIMITE"
     dedup_by_field: fid
     # geometry_transform: boundary
-    attribute_filter: "COVERAGE IN (${ZONES_SQL_IN})"
+    attribute_filter: "COVERAGE IN (${ZONES})"
+    spatial_filter:
+      source: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"
+      buffer: 500  # mètres, dans le SRS source (EPSG:2154)
 
   # Communes (POI chef-lieu + polygone limites)
   - path: "${DATA_ROOT}/{${ZONES}}/ADMINISTRATIF/COMMUNE.shp"

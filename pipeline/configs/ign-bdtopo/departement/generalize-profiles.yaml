@@ -161,6 +161,34 @@ profiles:
       - { n: 5, simplify_vw: 0.00005 }
       - { n: 6, simplify_vw: 0.00007 }
 
+  # Fond de mer (POLYGON 0x32) — départements côtiers (ex : Corse).
+  # Polygone littoral d'un seul tenant : sans simplification dès n=0, un seul
+  # shape atteint ~45 000 points (~183 KB) > MAX_RGN_SIZE, gonfle le RGN et fait
+  # déborder la FAT IMG (Block overflow > 65534 blocs). imgforge ne sait pas
+  # scinder un shape unique → on dégrossit ici. C'est un aplat d'arrière-plan :
+  # le trait de côte visible reste porté par LIMITE_TERRE_MER (0x15).
+  SEA:
+    levels:
+      - { n: 0, simplify: 0.0001 }
+      - { n: 1, simplify: 0.0002 }
+      - { n: 2, simplify: 0.0004 }
+      - { n: 3, simplify: 0.0008 }
+      - { n: 4, simplify: 0.0010 }
+      - { n: 5, simplify: 0.0010 }
+      - { n: 6, simplify: 0.0010 }
+
+  # Trait de côte (POLYLINE 0x15 / 0x10e1b) — EndLevel max 4, paliers n=0..4.
+  # Lignes clippées géographiquement (pas de débordement single-shape), mais
+  # 17 498 features à pleine résolution alourdissent le RGN : simplification
+  # douce pour préserver le rendu de la côte au zoom élevé.
+  LIMITE_TERRE_MER:
+    levels:
+      - { n: 0 }
+      - { n: 1 }
+      - { n: 2, simplify: 0.00008 }
+      - { n: 3, simplify: 0.00016 }
+      - { n: 4, simplify: 0.00032 }
+
   OCCUPATION_DU_SOL:
     topology: false
     levels:
